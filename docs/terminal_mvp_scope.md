@@ -5,6 +5,7 @@
 - Byte-oriented feed API.
 - UTF-8 decoding with replacement for malformed input.
 - C0: BEL, BS, HT, LF, VT, FF, CR, CAN, SUB, ESC.
+- DEL (`0x7F`) is ignored outside string-control payloads.
 - C1: IND (`0x84`), NEL (`0x85`), HTS (`0x88`), RIS (`0x8C`), RI (`0x8D`),
   DCS (`0x90`), SOS (`0x98`), CSI (`0x9B`), OSC (`0x9D`), PM (`0x9E`), APC
   (`0x9F`), and ST (`0x9C`) are recognized as byte-oriented controls.

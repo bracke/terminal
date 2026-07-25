@@ -202,4 +202,52 @@ begin
          "C1 recovery should still execute CSI");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 6, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "DEL initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#7F#,
+       3 => Byte (Character'Pos ('b'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DEL feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
+         "DEL should leave preceding text");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
+         "DEL should not render as a cell");
+      Assert
+        (S.Cursor.Col = 3,
+         "DEL should not advance the cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "DEL UTF-8 recovery initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#C2#, 2 => 16#7F#, 3 => Byte (Character'Pos ('x'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DEL UTF-8 recovery feed failed");
+   Assert
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 1,
+      "DEL after UTF-8 lead should recover the incomplete sequence");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#FFFD#,
+         "DEL recovery should emit replacement first");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#78#,
+         "text after DEL recovery should render");
+      Terminal.Core.Release (S);
+   end;
 end Core_UTF8_Smoke;

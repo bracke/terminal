@@ -1947,6 +1947,9 @@ package body Terminal.Core is
                T.OSC_Count := 0;
                T.State := OSC;
                goto Continue;
+            elsif Natural (B) = 16#7F# then
+               Recover_Incomplete_UTF8 (T);
+               goto Continue;
             end if;
          end if;
 
