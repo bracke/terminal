@@ -55,12 +55,11 @@ The Vulkan device creates a descriptor-backed 1x1 fallback atlas during
 initialization so the shader sampler binding is always valid. Dirty
 `textrender` atlas batches replace that image through a bounded staging upload.
 
-The current visible Vulkan draw path still renders glyph quads generated from
-`textrender`. `Terminal.App.Text_Shaper` classifies each text run and uses a
-HarfBuzz-backed app-layer shaping adapter against the selected font file.
-Text-run commands are carried through renderer, submit, presenter, and device
-diagnostics without moving terminal parsing or terminal state into the
-renderer.
+The visible Vulkan draw path renders glyph quads generated from `textrender`.
+`Terminal.App.Text_Shaper` classifies each text run and uses a HarfBuzz-backed
+app-layer shaping adapter against the selected font file. Text-run commands are
+carried through renderer, submit, presenter, and device diagnostics without
+moving terminal parsing or terminal state into the renderer.
 Each `Text_Run_Command` carries the run kind, shape status, direction, script,
 raw codepoints, and a bounded shaped-glyph output buffer. The renderer
 coalesces compatible adjacent cells in a row up to the text-run codepoint
@@ -69,14 +68,13 @@ wide/cluster cells, cursor-inverted cells, and other boundaries that would make
 fallback rendering ambiguous. The HarfBuzz adapter returns real font glyph IDs,
 source clusters, advances, and offsets for simple text, ligature candidates,
 combining clusters, emoji ZWJ clusters, RTL runs, and complex-script runs when
-the selected font can be loaded. If HarfBuzz cannot load or shape a run, the
-run remains explicitly marked as `Needs_Shaping_Backend`.
-`Fallback_Glyphs` marks runs that are still represented by the existing glyph
-fallback path, and renderer diagnostics count those fallback runs. Submit
-batches, presenter diagnostics, and device upload diagnostics also carry
-aggregate shaped-glyph counts so the shaped-text path remains observable across
-the whole render path. The remaining visible-rendering gap is rasterizing and
-drawing shaped font glyph IDs rather than the current codepoint glyph quads.
+the selected font can be loaded. The terminal renderer draws successful shaped
+runs through `textrender`'s glyph-index rasterization API. If HarfBuzz cannot
+load or shape a run, the run remains explicitly marked as
+`Needs_Shaping_Backend` and is represented by the existing codepoint fallback
+path. Submit batches, presenter diagnostics, and device upload diagnostics also
+carry aggregate shaped-glyph counts so the shaped-text path remains observable
+across the whole render path.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions

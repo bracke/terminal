@@ -120,11 +120,13 @@ The app-layer HarfBuzz adapter shapes those runs against the selected font file
 and returns real font glyph IDs, source clusters, advances, and offsets in the
 bounded shaped-glyph output. If HarfBuzz cannot load or shape the selected font
 or run, the command remains explicitly marked as `Needs_Shaping_Backend`.
-The submit/presenter/device layers carry those runs without parsing terminal
-data. Full paragraph BiDi reordering, font fallback during shaping, color emoji
-glyph rendering, and visible rasterization of shaped font glyph IDs are still
-outside the current draw path. Renderer, submit, presenter, and device
-diagnostics expose aggregate shaped-glyph counts for that path.
+The renderer draws successful shaped runs through `textrender` glyph-index
+rasterization; fallback runs use the existing codepoint glyph path. The
+submit/presenter/device layers carry those runs without parsing terminal data.
+Full paragraph BiDi reordering, font fallback during shaping, and color emoji
+glyph rendering are still outside the current draw path. Renderer, submit,
+presenter, and device diagnostics expose aggregate shaped-glyph counts for that
+path.
 
 ## Cursor
 

@@ -725,6 +725,121 @@ package body Terminal.App.Renderer is
       end case;
    end Draw_Glyph;
 
+   procedure Draw_Shaped_Run
+     (R      : in out Renderer;
+      Run    : RM.Text_Run_Command;
+      Status : out Render_Status)
+   is
+      Pen_X : Float := Run.X;
+   begin
+      if Run.Shape_Status /= RM.Shape_Ok
+        or else Run.Fallback_Glyphs
+        or else Run.Shaped_Glyph_Count = 0
+      then
+         Status := Glyph_Load_Failed;
+         return;
+      end if;
+
+      for I in 1 .. Run.Shaped_Glyph_Count loop
+         declare
+            Glyph : constant RM.Shaped_Glyph_Command := Run.Shaped_Glyphs (I);
+            Metric : Textrender.Glyph_Metric;
+            Glyph_Status : constant Textrender.Status_Code :=
+              Textrender.Get_Glyph_By_Index
+                (R           => R.Text,
+                 Glyph_Index => Glyph.Glyph_ID,
+                 M           => Metric,
+                 Style       =>
+                   (if Run.Italic then Textrender.Italic else Textrender.Regular));
+         begin
+            case Glyph_Status is
+               when Textrender.Success | Textrender.Glyph_Missing =>
+                  if Glyph_Status = Textrender.Glyph_Missing then
+                     R.Missing_Glyph_Count := R.Missing_Glyph_Count + 1;
+                  end if;
+
+                  if Metric.W > 0 and then Metric.H > 0 then
+                     declare
+                        Baseline_Y : constant Float :=
+                          Run.Y + Textrender.Ascent (R.Text);
+                        Placement  : Textrender.Glyph_Placement :=
+                          (X => Pen_X + Glyph.X_Offset + Metric.Bearing_X,
+                           Y =>
+                             Baseline_Y
+                             - Metric.Bearing_Y
+                             - Glyph.Y_Offset);
+                     begin
+                        Add_Glyph
+                          (R,
+                           Placement => Placement,
+                           Metric    => Metric,
+                           Color     => Run.Color,
+                           Codepoint => Glyph.Codepoint);
+                        if Run.Bold then
+                           Placement.X := Placement.X + 1.0;
+                           Add_Glyph
+                             (R,
+                              Placement => Placement,
+                              Metric    => Metric,
+                              Color     => Run.Color,
+                              Codepoint => Glyph.Codepoint);
+                        end if;
+                     end;
+                  end if;
+               when others =>
+                  Status := Glyph_Load_Failed;
+                  return;
+            end case;
+
+            Pen_X := Pen_X + Glyph.X_Advance;
+         end;
+      end loop;
+
+      Status := Ok;
+   end Draw_Shaped_Run;
+
+   function Is_Shaped_Draw_Run (Run : RM.Text_Run_Command) return Boolean is
+     (Run.Shape_Status = RM.Shape_Ok
+      and then not Run.Fallback_Glyphs
+      and then Run.Shaped_Glyph_Count > 0);
+
+   function Shaped_Run_Start
+     (R : Renderer;
+      X : Float;
+      Y : Float) return Natural
+   is
+   begin
+      for I in 1 .. R.Text_Run_Count loop
+         if Is_Shaped_Draw_Run (R.Text_Runs (I))
+           and then R.Text_Runs (I).X = X
+           and then R.Text_Runs (I).Y = Y
+         then
+            return I;
+         end if;
+      end loop;
+
+      return 0;
+   end Shaped_Run_Start;
+
+   function Covered_By_Shaped_Run
+     (R : Renderer;
+      X : Float;
+      Y : Float) return Boolean
+   is
+   begin
+      for I in 1 .. R.Text_Run_Count loop
+         if Is_Shaped_Draw_Run (R.Text_Runs (I))
+           and then R.Text_Runs (I).Y = Y
+           and then X >= R.Text_Runs (I).X
+           and then X < R.Text_Runs (I).X + R.Text_Runs (I).Cell_Width
+         then
+            return True;
+         end if;
+      end loop;
+
+      return False;
+   end Covered_By_Shaped_Run;
+
    procedure Render
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
@@ -753,7 +868,12 @@ package body Terminal.App.Renderer is
       begin
          R.Rectangles := new RM.Rectangle_Array (1 .. Rect_Max);
          R.Glyphs := new RM.Glyph_Array
-           (1 .. Cell_Count * (Terminal.Core.Max_Cluster_Attachments + 1) * 2);
+           (1 ..
+              Cell_Count
+              * Natural'Max
+                  (Terminal.Core.Max_Cluster_Attachments + 1,
+                   RM.Max_Shaped_Glyphs_Per_Run)
+              * 2);
          R.Text_Runs := new RM.Text_Run_Array (1 .. Cell_Count);
       exception
          when Storage_Error =>
@@ -845,40 +965,54 @@ package body Terminal.App.Renderer is
                if Is_Drawable (Cell) and then not Cell.Style.Conceal then
                   declare
                      Glyph_Render_Status : Render_Status;
+                     Run_Index           : constant Natural :=
+                       Shaped_Run_Start (R, X, Y);
                   begin
-                     Draw_Glyph
-                       (R,
-                        Codepoint => Cell.Text.Code_Point,
-                        X         => X,
-                        Y         => Y,
-                        Color     => FG,
-                        Bold      => Cell.Style.Bold,
-                        Italic    => Cell.Style.Italic,
-                        Status    => Glyph_Render_Status);
-                     if Glyph_Render_Status /= Ok then
-                        Set_Render_Status (R, Status, Glyph_Render_Status);
-                        return;
-                     end if;
-
-                     for I in 1 .. Cell.Text.Attachment_Count loop
-                        if Terminal.Core.Is_Renderable_Attachment
-                          (Cell.Text.Attachments (I))
-                        then
-                           Draw_Glyph
-                             (R,
-                              Codepoint => Cell.Text.Attachments (I),
-                              X         => X,
-                              Y         => Y,
-                              Color     => FG,
-                              Bold      => Cell.Style.Bold,
-                              Italic    => Cell.Style.Italic,
-                              Status    => Glyph_Render_Status);
-                           if Glyph_Render_Status /= Ok then
-                              Set_Render_Status (R, Status, Glyph_Render_Status);
-                              return;
-                           end if;
+                     if Run_Index > 0 then
+                        Draw_Shaped_Run
+                          (R,
+                           Run    => R.Text_Runs (Run_Index),
+                           Status => Glyph_Render_Status);
+                        if Glyph_Render_Status /= Ok then
+                           Set_Render_Status (R, Status, Glyph_Render_Status);
+                           return;
                         end if;
-                     end loop;
+                     elsif not Covered_By_Shaped_Run (R, X, Y) then
+                        Draw_Glyph
+                          (R,
+                           Codepoint => Cell.Text.Code_Point,
+                           X         => X,
+                           Y         => Y,
+                           Color     => FG,
+                           Bold      => Cell.Style.Bold,
+                           Italic    => Cell.Style.Italic,
+                           Status    => Glyph_Render_Status);
+                        if Glyph_Render_Status /= Ok then
+                           Set_Render_Status (R, Status, Glyph_Render_Status);
+                           return;
+                        end if;
+
+                        for I in 1 .. Cell.Text.Attachment_Count loop
+                           if Terminal.Core.Is_Renderable_Attachment
+                             (Cell.Text.Attachments (I))
+                           then
+                              Draw_Glyph
+                                (R,
+                                 Codepoint => Cell.Text.Attachments (I),
+                                 X         => X,
+                                 Y         => Y,
+                                 Color     => FG,
+                                 Bold      => Cell.Style.Bold,
+                                 Italic    => Cell.Style.Italic,
+                                 Status    => Glyph_Render_Status);
+                              if Glyph_Render_Status /= Ok then
+                                 Set_Render_Status
+                                   (R, Status, Glyph_Render_Status);
+                                 return;
+                              end if;
+                           end if;
+                        end loop;
+                     end if;
                   end;
 
                   if Cell.Style.Overline then

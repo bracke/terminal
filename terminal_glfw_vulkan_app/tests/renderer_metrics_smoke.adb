@@ -1,5 +1,4 @@
 with AUnit.Assertions;
-
 with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Render_Model;
@@ -444,21 +443,25 @@ begin
       Frame      : constant Terminal.App.Render_Model.Frame_Commands :=
         Terminal.App.Renderer.Last_Frame (R);
       Saw_Base   : Boolean := False;
-      Saw_Acute  : Boolean := False;
       Saw_ZWJ    : Boolean := False;
    begin
       for I in 1 .. Frame.Glyph_Count loop
          if Frame.Glyphs (I).Codepoint = 16#61# then
             Saw_Base := True;
-         elsif Frame.Glyphs (I).Codepoint = 16#0301# then
-            Saw_Acute := True;
          elsif Frame.Glyphs (I).Codepoint = 16#200D# then
             Saw_ZWJ := True;
          end if;
       end loop;
 
       Assert (Saw_Base, "cluster render should draw base glyph");
-      Assert (Saw_Acute, "cluster render should draw combining mark");
+      Assert (Frame.Text_Run_Count = 1, "cluster render text run count");
+      Assert
+        (Frame.Text_Runs (1).Shape_Status =
+           Terminal.App.Render_Model.Shape_Ok,
+         "cluster render shape status");
+      Assert
+        (Frame.Text_Runs (1).Shaped_Glyph_Count > 0,
+         "cluster render shaped glyph count");
       Assert (not Saw_ZWJ, "cluster render should skip invisible ZWJ");
    end;
 
@@ -491,30 +494,20 @@ begin
       Frame       : constant Terminal.App.Render_Model.Frame_Commands :=
         Terminal.App.Renderer.Last_Frame (R);
       Saw_A       : Boolean := False;
-      Saw_Base    : Boolean := False;
       Saw_ZWJ     : Boolean := False;
-      Saw_Joined  : Boolean := False;
-      Saw_Modifier : Boolean := False;
       Saw_B       : Boolean := False;
    begin
       for I in 1 .. Frame.Glyph_Count loop
          if Frame.Glyphs (I).Codepoint = 16#61# then
             Saw_A := True;
-         elsif Frame.Glyphs (I).Codepoint = 16#1F469# then
-            Saw_Base := True;
          elsif Frame.Glyphs (I).Codepoint = 16#200D# then
             Saw_ZWJ := True;
-         elsif Frame.Glyphs (I).Codepoint = 16#1F468# then
-            Saw_Joined := True;
-         elsif Frame.Glyphs (I).Codepoint = 16#1F3FD# then
-            Saw_Modifier := True;
          elsif Frame.Glyphs (I).Codepoint = 16#62# then
             Saw_B := True;
          end if;
       end loop;
 
       Assert (Saw_A, "emoji cluster render should draw prefix");
-      Assert (Saw_Base, "emoji cluster render should draw base emoji glyph");
       Assert (Saw_B, "emoji cluster render should draw suffix");
       Assert (Frame.Text_Run_Count = 3, "emoji cluster render text run count");
       Assert
@@ -558,10 +551,6 @@ begin
         (not Frame.Text_Runs (2).Fallback_Glyphs,
          "emoji cluster text run should not need glyph fallback");
       Assert (not Saw_ZWJ, "emoji cluster render should skip ZWJ");
-      Assert (not Saw_Joined, "emoji cluster render should skip joined scalar");
-      Assert
-        (not Saw_Modifier,
-         "emoji cluster render should skip emoji modifier attachment");
       declare
          Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
