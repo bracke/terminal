@@ -16,6 +16,7 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Color_Kind;
    use type Terminal.Core.Cursor_Shape;
    use type Terminal.Core.Dirty_Row_Array_Access;
+   use type Terminal.Core.Style;
    use type Terminal.Common.Code_Point;
    use type RM.Glyph_Array_Access;
    use type RM.Rectangle_Array_Access;
@@ -234,6 +235,9 @@ package body Terminal.App.Renderer is
         and then Snapshot.Cursor.Shape = Terminal.Core.Cursor_Block;
    end Is_Block_Cursor;
 
+   function Cell_Column_Span (Cell : Terminal.Core.Cell) return Positive is
+     (if Cell.Text.Width = Terminal.Core.Width_Two then 2 else 1);
+
    procedure Set_Render_Status
      (R      : in out Renderer;
       Status : out Render_Status;
@@ -313,9 +317,14 @@ package body Terminal.App.Renderer is
          Codepoint => Codepoint);
    end Add_Glyph;
 
+   function Is_Drawable (Cell : Terminal.Core.Cell) return Boolean;
+
    procedure Add_Text_Run
      (R       : in out Renderer;
-      Cell    : Terminal.Core.Cell;
+      Snapshot : Terminal.Core.Render_Snapshot;
+      Row     : Positive;
+      First_Col : Positive;
+      Last_Col  : Positive;
       X       : Float;
       Y       : Float;
       Width   : Float;
@@ -324,10 +333,12 @@ package body Terminal.App.Renderer is
    is
       Count : RM.Text_Run_Codepoint_Count := 0;
       Shape_Status : Terminal.App.Text_Shaper.Shape_Status;
+      First_Cell : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (Snapshot, Row, First_Col);
    begin
       if R.Text_Runs = null
         or else R.Text_Run_Count >= R.Text_Runs'Length
-        or else Cell.Text.Code_Point = 0
+        or else First_Cell.Text.Code_Point = 0
       then
          return;
       end if;
@@ -338,11 +349,10 @@ package body Terminal.App.Renderer is
          Y               => Y,
          Cell_Width      => Width,
          Cell_Height     => Height,
-         Cell_Span       =>
-           (if Cell.Text.Width = Terminal.Core.Width_Two then 2 else 1),
+         Cell_Span       => Last_Col - First_Col + Cell_Column_Span (First_Cell),
          Color           => Color,
-         Bold            => Cell.Style.Bold,
-         Italic          => Cell.Style.Italic,
+         Bold            => First_Cell.Style.Bold,
+         Italic          => First_Cell.Style.Italic,
          Codepoints      => (others => 0),
          Codepoint_Count => 0,
          Run_Kind        => RM.Invalid_Run,
@@ -351,15 +361,25 @@ package body Terminal.App.Renderer is
          Shaped_Glyph_Count => 0,
          Fallback_Glyphs => True);
 
-      Count := Count + 1;
-      R.Text_Runs (R.Text_Run_Count).Codepoints (Count) :=
-        Natural (Cell.Text.Code_Point);
+      for Col in First_Col .. Last_Col loop
+         declare
+            Cell : constant Terminal.Core.Cell :=
+              Terminal.Core.Cell_At (Snapshot, Row, Col);
+         begin
+            if Cell.Kind /= Terminal.Core.Wide_Continuation then
+               exit when Count = RM.Max_Text_Run_Codepoints;
+               Count := Count + 1;
+               R.Text_Runs (R.Text_Run_Count).Codepoints (Count) :=
+                 Natural (Cell.Text.Code_Point);
 
-      for I in 1 .. Cell.Text.Attachment_Count loop
-         exit when Count = RM.Max_Text_Run_Codepoints;
-         Count := Count + 1;
-         R.Text_Runs (R.Text_Run_Count).Codepoints (Count) :=
-           Natural (Cell.Text.Attachments (I));
+               for I in 1 .. Cell.Text.Attachment_Count loop
+                  exit when Count = RM.Max_Text_Run_Codepoints;
+                  Count := Count + 1;
+                  R.Text_Runs (R.Text_Run_Count).Codepoints (Count) :=
+                    Natural (Cell.Text.Attachments (I));
+               end loop;
+            end if;
+         end;
       end loop;
 
       R.Text_Runs (R.Text_Run_Count).Codepoint_Count := Count;
@@ -370,6 +390,92 @@ package body Terminal.App.Renderer is
          R.Shaping_Fallback_Count := R.Shaping_Fallback_Count + 1;
       end if;
    end Add_Text_Run;
+
+   function Can_Coalesce_With
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      Base     : Terminal.Core.Cell;
+      Col      : Positive) return Boolean
+   is
+      Cell : constant Terminal.Core.Cell := Terminal.Core.Cell_At (Snapshot, Row, Col);
+   begin
+      return Is_Drawable (Cell)
+        and then not Cell.Style.Conceal
+        and then Cell.Kind /= Terminal.Core.Wide_Continuation
+        and then Cell.Text.Width = Terminal.Core.Width_One
+        and then Cell.Text.Attachment_Count = 0
+        and then Base.Text.Width = Terminal.Core.Width_One
+        and then Base.Text.Attachment_Count = 0
+        and then Base.Style = Cell.Style
+        and then not Is_Block_Cursor (Snapshot, Row, Col);
+   end Can_Coalesce_With;
+
+   procedure Build_Text_Runs
+     (R        : in out Renderer;
+      Snapshot : Terminal.Core.Render_Snapshot)
+   is
+   begin
+      for Row in 1 .. Snapshot.Rows loop
+         declare
+            Col : Positive := 1;
+         begin
+            while Col <= Snapshot.Cols loop
+               declare
+                  Cell : constant Terminal.Core.Cell :=
+                    Terminal.Core.Cell_At (Snapshot, Row, Col);
+                  First : constant Positive := Col;
+                  Last  : Natural := Col;
+               begin
+                  if Is_Drawable (Cell)
+                    and then not Cell.Style.Conceal
+                    and then Cell.Kind /= Terminal.Core.Wide_Continuation
+                  then
+                     if Cell.Text.Width = Terminal.Core.Width_One
+                       and then Cell.Text.Attachment_Count = 0
+                       and then not Is_Block_Cursor (Snapshot, Row, Col)
+                     then
+                        while Last < Snapshot.Cols
+                          and then Last - First + 1 < RM.Max_Text_Run_Codepoints
+                          and then Can_Coalesce_With
+                            (Snapshot, Row, Cell, Positive (Last + 1))
+                        loop
+                           Last := Last + 1;
+                        end loop;
+                     end if;
+
+                     Add_Text_Run
+                       (R,
+                        Snapshot  => Snapshot,
+                        Row       => Row,
+                        First_Col => First,
+                        Last_Col  => Positive (Last),
+                        X         =>
+                          Float (Content_Margin + (First - 1) * R.CW),
+                        Y         =>
+                          Float (Content_Margin + (Row - 1) * R.CH),
+                        Width     =>
+                          Float ((Last - First + Cell_Column_Span (Cell)) * R.CW),
+                        Height    => Float (R.CH),
+                        Color     =>
+                          (if Is_Block_Cursor (Snapshot, Row, First)
+                           then Cursor_FG
+                           else Foreground (Cell)));
+
+                     if Last + Cell_Column_Span (Cell) > Snapshot.Cols then
+                        exit;
+                     else
+                        Col := Positive (Last + Cell_Column_Span (Cell));
+                     end if;
+                  elsif Col = Snapshot.Cols then
+                     exit;
+                  else
+                     Col := Col + 1;
+                  end if;
+               end;
+            end loop;
+         end;
+      end loop;
+   end Build_Text_Runs;
 
    procedure Initialize_Text
      (R      : in out Renderer;
@@ -616,6 +722,8 @@ package body Terminal.App.Renderer is
          Height => Float (R.Last_Frame_Height),
          Color  => Default_BG);
 
+      Build_Text_Runs (R, Snapshot);
+
       for Row in 1 .. Snapshot.Rows loop
          for Col in 1 .. Snapshot.Cols loop
             declare
@@ -677,15 +785,6 @@ package body Terminal.App.Renderer is
                   declare
                      Glyph_Render_Status : Render_Status;
                   begin
-                     Add_Text_Run
-                       (R,
-                        Cell   => Cell,
-                        X      => X,
-                        Y      => Y,
-                        Width  => Float (Cell_W),
-                        Height => Float (R.CH),
-                        Color  => FG);
-
                      Draw_Glyph
                        (R,
                         Codepoint => Cell.Text.Code_Point,

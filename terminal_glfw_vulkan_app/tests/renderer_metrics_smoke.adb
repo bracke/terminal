@@ -460,7 +460,7 @@ begin
       Assert (not Saw_ZWJ, "cluster render should skip invisible ZWJ");
    end;
 
-   Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
+   Terminal.Core.Initialize (T, 1, 5, 10, Core_Status);
    Assert
      (Core_Status = Terminal.Core.Ok,
       "emoji cluster render core initialize failed");
@@ -563,6 +563,99 @@ begin
            (Diag.Last_Shaping_Fallback_Count = 1,
             "renderer diagnostics should report complex text fallback count");
       end;
+   end;
+
+   Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "simple text run core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (Character'Val (16#1B#) & "[?25labc"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "simple text run feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "simple text run render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Text_Run_Count = 1, "simple text should coalesce");
+      Assert
+        (Frame.Text_Runs (1).Codepoint_Count = 3,
+         "simple text run codepoint count");
+      Assert
+        (Frame.Text_Runs (1).Run_Kind =
+           Terminal.App.Render_Model.Simple_Text,
+         "simple text run class");
+      Assert
+        (Frame.Text_Runs (1).Shape_Status =
+           Terminal.App.Render_Model.Shape_Ok,
+         "simple text run shape status");
+      Assert
+        (Frame.Text_Runs (1).Shaped_Glyph_Count = 3,
+         "simple text shaped glyph count");
+      Assert
+        (not Frame.Text_Runs (1).Fallback_Glyphs,
+         "simple text should not need glyph fallback");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "ligature text run core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (Character'Val (16#1B#) & "[?25lfile"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "ligature text run feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "ligature text run render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+      Diag  : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+        Terminal.App.Renderer.Diagnostics (R);
+   begin
+      Assert (Frame.Text_Run_Count = 1, "ligature text should coalesce");
+      Assert
+        (Frame.Text_Runs (1).Codepoint_Count = 4,
+         "ligature text run codepoint count");
+      Assert
+        (Frame.Text_Runs (1).Run_Kind =
+           Terminal.App.Render_Model.Ligature_Candidate,
+         "ligature text run class");
+      Assert
+        (Frame.Text_Runs (1).Shape_Status =
+           Terminal.App.Render_Model.Needs_Shaping_Backend,
+         "ligature text run shape status");
+      Assert
+        (Frame.Text_Runs (1).Shaped_Glyph_Count = 0,
+         "ligature text should wait for shaping backend");
+      Assert
+        (Frame.Text_Runs (1).Fallback_Glyphs,
+         "ligature text should use glyph fallback");
+      Assert
+        (Diag.Last_Shaping_Fallback_Count = 1,
+         "ligature fallback diagnostic count");
    end;
 
    Terminal.App.Renderer.Finalize (R);

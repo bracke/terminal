@@ -14,7 +14,8 @@ procedure Text_Shaper_Smoke is
      (A : Natural;
       B : Natural := 0;
       C : Natural := 0;
-      D : Natural := 0) return RM.Text_Run_Command
+      D : Natural := 0;
+      Width : Float := 10.0) return RM.Text_Run_Command
    is
       Count : RM.Text_Run_Codepoint_Count := 1;
    begin
@@ -29,9 +30,9 @@ procedure Text_Shaper_Smoke is
       end if;
 
       return
-        (X               => 0.0,
+         (X               => 0.0,
          Y               => 0.0,
-         Cell_Width      => 10.0,
+         Cell_Width      => Width,
          Cell_Height     => 20.0,
          Cell_Span       => 1,
          Color           => (R => 1.0, G => 1.0, B => 1.0, A => 1.0),
@@ -52,6 +53,19 @@ procedure Text_Shaper_Smoke is
    end Run;
 
    Simple    : RM.Text_Run_Command := Run (Character'Pos ('A'));
+   Text      : RM.Text_Run_Command :=
+     Run
+       (Character'Pos ('a'),
+        Character'Pos ('b'),
+        Character'Pos ('c'),
+        Width => 30.0);
+   Ligature  : RM.Text_Run_Command :=
+     Run
+       (Character'Pos ('f'),
+        Character'Pos ('i'),
+        Character'Pos ('l'),
+        Character'Pos ('e'),
+        Width => 40.0);
    Combining : RM.Text_Run_Command := Run (Character'Pos ('e'), 16#0301#);
    Joined    : RM.Text_Run_Command := Run (16#1F469#, 16#200D#, 16#1F468#);
    Modified  : RM.Text_Run_Command := Run (16#1F469#, 16#1F3FD#);
@@ -75,6 +89,34 @@ begin
      (Simple.Shaped_Glyphs (1).X_Advance = Simple.Cell_Width,
       "simple glyph advance");
    Assert (not Simple.Fallback_Glyphs, "simple glyph should not need fallback");
+
+   Assert (TS.Classify (Text) = RM.Simple_Text, "simple text class");
+   TS.Prepare (Text, Status);
+   Assert (Status = RM.Shape_Ok, "simple text status");
+   Assert (Text.Run_Kind = RM.Simple_Text, "simple text stored class");
+   Assert (Text.Shaped_Glyph_Count = 3, "simple text shaped count");
+   Assert
+     (Text.Shaped_Glyphs (2).Codepoint = Character'Pos ('b'),
+      "simple text second glyph codepoint");
+   Assert
+     (Text.Shaped_Glyphs (2).Source_Index = 2,
+      "simple text second source index");
+   Assert
+     (Text.Shaped_Glyphs (2).X_Advance = 10.0,
+      "simple text per-cell advance");
+   Assert (not Text.Fallback_Glyphs, "simple text fallback flag");
+
+   Assert
+     (TS.Classify (Ligature) = RM.Ligature_Candidate,
+      "ligature text class");
+   TS.Prepare (Ligature, Status);
+   Assert
+     (Status = RM.Needs_Shaping_Backend,
+      "ligature text needs shaping");
+   Assert
+     (Ligature.Shaped_Glyph_Count = 0,
+      "ligature text should not invent shaped glyphs");
+   Assert (Ligature.Fallback_Glyphs, "ligature text fallback flag");
 
    Assert
      (TS.Classify (Combining) = RM.Combining_Cluster,

@@ -57,6 +57,7 @@ package Terminal.App.Render_Model is
 
    type Text_Run_Kind is
      (Simple_Glyph,
+      Simple_Text,
       Combining_Cluster,
       Joined_Emoji_Cluster,
       Emoji_Modified_Cluster,

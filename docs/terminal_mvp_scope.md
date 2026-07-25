@@ -113,12 +113,15 @@ current glyph fallback path. The app renderer also emits bounded text-run
 commands that preserve the full stored cluster for each drawable cell, and the
 `Terminal.App.Text_Shaper` adapter classifies which runs require a shaping
 backend and stores that run kind and shape status directly on each text-run
-command. It emits a bounded one-glyph shape result for simple single-scalar
-runs, but complex runs keep an empty shaped-glyph output until a backend is
-available. The submit/presenter/device layers carry those runs without parsing
-terminal data. BiDi layout, OpenType shaping, emoji ZWJ glyph composition,
-complex-script cluster shaping, and ligature substitution still require a real
-shaping backend behind those text-run commands.
+command. Compatible adjacent cells in a row are coalesced up to the bounded
+text-run capacity, so ordinary text is available as a run rather than only as
+one cell at a time. The adapter emits bounded shaped-glyph output for simple
+glyph/text runs, but ligature candidates and complex runs keep an empty
+shaped-glyph output until a backend is available. The submit/presenter/device
+layers carry those runs without parsing terminal data. BiDi layout, OpenType
+shaping, emoji ZWJ glyph composition, complex-script cluster shaping, and
+ligature substitution still require a real shaping backend behind those
+text-run commands.
 
 ## Cursor
 

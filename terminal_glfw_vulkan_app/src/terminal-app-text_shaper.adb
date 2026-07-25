@@ -33,13 +33,28 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#A980# .. 16#A9DF#)
       or else (C in 16#AA00# .. 16#AA5F#));
 
-   function Is_ASCII_Letter (C : Natural) return Boolean is
-     ((C in Character'Pos ('A') .. Character'Pos ('Z'))
-      or else (C in Character'Pos ('a') .. Character'Pos ('z')));
+   function Has_Common_Ligature_Sequence (Run : RM.Text_Run_Command) return Boolean is
+   begin
+      if Run.Codepoint_Count < 2 then
+         return False;
+      end if;
+
+      for I in 1 .. Run.Codepoint_Count - 1 loop
+         if Run.Codepoints (I) = Character'Pos ('f') then
+            if Run.Codepoints (I + 1) = Character'Pos ('f')
+              or else Run.Codepoints (I + 1) = Character'Pos ('i')
+              or else Run.Codepoints (I + 1) = Character'Pos ('l')
+            then
+               return True;
+            end if;
+         end if;
+      end loop;
+
+      return False;
+   end Has_Common_Ligature_Sequence;
 
    function Classify (Run : RM.Text_Run_Command) return Run_Kind is
       Saw_Combining : Boolean := False;
-      Saw_Letter    : Natural := 0;
    begin
       if Run.Codepoint_Count = 0 then
          return RM.Invalid_Run;
@@ -61,23 +76,23 @@ package body Terminal.App.Text_Shaper is
                return RM.Complex_Script;
             elsif Is_Combining_Or_Format (C) then
                Saw_Combining := True;
-            elsif Is_ASCII_Letter (C) then
-               Saw_Letter := Saw_Letter + 1;
             end if;
          end;
       end loop;
 
       if Saw_Combining then
          return RM.Combining_Cluster;
-      elsif Saw_Letter >= 2 then
+      elsif Has_Common_Ligature_Sequence (Run) then
          return RM.Ligature_Candidate;
+      elsif Run.Codepoint_Count > 1 then
+         return RM.Simple_Text;
       else
          return RM.Simple_Glyph;
       end if;
    end Classify;
 
    function Requires_Backend (Kind : Run_Kind) return Boolean is
-     (Kind /= RM.Simple_Glyph);
+     (Kind not in RM.Simple_Glyph | RM.Simple_Text);
 
    procedure Prepare
      (Run    : in out RM.Text_Run_Command;
@@ -98,17 +113,24 @@ package body Terminal.App.Text_Shaper is
          Run.Fallback_Glyphs := True;
          Status := RM.Needs_Shaping_Backend;
       else
+         declare
+            Advance : constant Float :=
+              Run.Cell_Width / Float (Run.Codepoint_Count);
+         begin
+            for I in 1 .. Run.Codepoint_Count loop
+               Run.Shaped_Glyphs (I) :=
+                 (Glyph_ID     => 0,
+                  Codepoint    => Run.Codepoints (I),
+                  Source_Index => I,
+                  X_Offset     => 0.0,
+                  Y_Offset     => 0.0,
+                  X_Advance    => Advance,
+                  Y_Advance    => 0.0);
+            end loop;
+         end;
          Run.Shape_Status := RM.Shape_Ok;
          Run.Fallback_Glyphs := False;
-         Run.Shaped_Glyph_Count := 1;
-         Run.Shaped_Glyphs (1) :=
-           (Glyph_ID     => 0,
-            Codepoint    => Run.Codepoints (1),
-            Source_Index => 1,
-            X_Offset     => 0.0,
-            Y_Offset     => 0.0,
-            X_Advance    => Run.Cell_Width,
-            Y_Advance    => 0.0);
+         Run.Shaped_Glyph_Count := Run.Codepoint_Count;
          Status := RM.Shape_Ok;
       end if;
    end Prepare;
