@@ -53,6 +53,9 @@ begin
         (Diag.Color_Sample_Count = 1,
          "uninitialized device should report 1x color sampling");
       Assert
+        (Diag.Uploaded_Text_Run_Count = 0,
+         "uninitialized device should report no uploaded text runs");
+      Assert
         (not Diag.Color_MSAA_Created,
          "uninitialized device should not report an MSAA target");
    end;

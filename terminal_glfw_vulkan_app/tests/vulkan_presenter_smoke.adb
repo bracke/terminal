@@ -37,5 +37,8 @@ begin
       Assert
         (Diag.Last_Status = VP.Not_Initialized,
          "last present status should be retained");
+      Assert
+        (Diag.Last_Text_Run_Count = 0,
+         "rejected present should clear text run count");
    end;
 end Vulkan_Presenter_Smoke;

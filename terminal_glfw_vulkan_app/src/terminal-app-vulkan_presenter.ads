@@ -75,6 +75,7 @@ package Terminal.App.Vulkan_Presenter is
       Rejected_Frames   : Natural := 0;
       Last_Status       : Present_Status := Not_Initialized;
       Last_Vertex_Count : Natural := 0;
+      Last_Text_Run_Count : Natural := 0;
       Last_Frame_Width  : Natural := 0;
       Last_Frame_Height : Natural := 0;
       Last_Atlas_Bytes  : Natural := 0;
@@ -109,6 +110,7 @@ private
       Rejected_Frames   : Natural := 0;
       Last_Status       : Present_Status := Not_Initialized;
       Last_Vertex_Count : Natural := 0;
+      Last_Text_Run_Count : Natural := 0;
       Last_Frame_Width  : Natural := 0;
       Last_Frame_Height : Natural := 0;
       Last_Atlas_Bytes  : Natural := 0;

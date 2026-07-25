@@ -96,6 +96,7 @@ package Terminal.App.Vulkan_Device is
       Vertex_Buffer_Created : Boolean := False;
       Vertex_Buffer_Bytes : Natural := 0;
       Uploaded_Vertex_Count : Natural := 0;
+      Uploaded_Text_Run_Count : Natural := 0;
       Rendered_Frame_Count : Natural := 0;
       Color_Sample_Count : Natural := 1;
       Color_MSAA_Created : Boolean := False;
@@ -224,6 +225,7 @@ private
       Sync_Frame_Count   : Natural := 0;
       Vertex_Buffer_Bytes : Natural := 0;
       Uploaded_Vertex_Count : Natural := 0;
+      Uploaded_Text_Run_Count : Natural := 0;
       Rendered_Frame_Count : Natural := 0;
       Current_Frame      : Natural := 1;
       Atlas_Width        : Natural := 0;
