@@ -148,6 +148,30 @@ begin
 
    Terminal.Core.Feed
      (T,
+      To_Bytes (ASCII.ESC & "[>" & ASCII.ESC & "c" & ASCII.ESC & "[c"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "RIS parser reset feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 11,
+      "RIS should clear pending CSI private marker before primary DA");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[?62;4;22c"),
+         "primary DA after RIS parser reset");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "primary DA after RIS parser reset should drain");
+   end;
+
+   Terminal.Core.Feed
+     (T,
       To_Bytes
         (ASCII.ESC & "[?2004h"
          & ASCII.ESC & "[?2026h"

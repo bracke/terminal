@@ -216,6 +216,10 @@ package body Terminal.Core is
       T.Window_Title := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
+      T.CSI_Private := ASCII.NUL;
+      T.CSI_Params := (others => 0);
+      T.CSI_Set := (others => False);
+      T.CSI_Separators := (others => ASCII.NUL);
       T.CSI_Count := 0;
       T.CSI_Intermediates := (others => ASCII.NUL);
       T.CSI_Intermediate_Count := 0;
