@@ -53,7 +53,8 @@ Full grapheme clusters, emoji ZWJ sequences, shaping, and BiDi are postponed.
 The core tracks cursor visibility and DECSCUSR cursor shape. Supported shapes
 are block (`0`, `1`, `2`), underline (`3`, `4`), and bar (`5`, `6`). Blink
 timing is not modeled in the core yet; blinking and steady variants currently
-select the same shape.
+select the same shape. Soft reset, full reset, and initialization return the
+cursor shape to block.
 
 ## Scrollback
 

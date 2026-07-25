@@ -254,6 +254,28 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Feed_Text (ASCII.ESC & "[6 q" & ASCII.ESC & "c", "DECSCUSR RIS feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Block,
+         "RIS should reset cursor shape");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[6 q", "DECSCUSR reinitialize setup feed failed");
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "DECSCUSR reinitialize failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Block,
+         "Initialize should reset cursor shape");
+      Terminal.Core.Release (S);
+   end;
+
    declare
       D : constant Terminal.Core.Diagnostic_Snapshot :=
         Terminal.Core.Diagnostics (T);

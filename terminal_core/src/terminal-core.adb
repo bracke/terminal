@@ -151,6 +151,7 @@ package body Terminal.Core is
       T.Current_Modes := (others => <>);
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
+      T.Current_Cursor_Shape := Cursor_Block;
       T.Saved_Row := 1;
       T.Saved_Col := 1;
       T.Pending_Wrap := False;
@@ -251,6 +252,7 @@ package body Terminal.Core is
       T.Active := Primary;
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
+      T.Current_Cursor_Shape := Cursor_Block;
       T.Saved_Row := 1;
       T.Saved_Col := 1;
       T.Pending_Wrap := False;
