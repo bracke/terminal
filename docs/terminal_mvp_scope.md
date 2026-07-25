@@ -30,8 +30,8 @@
 - DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), DEC private
   cursor-position report (`CSI ? 6 n`), primary DA (`CSI c`), and secondary DA
   (`CSI > c`) responses.
-- DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode and
-  known DEC private modes.
+- DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode,
+  known DEC private modes, and stateless `?1048` save/restore cursor mode.
 - XTWINOPS window pixel-size report (`CSI 14 t`) returns the app-provided
   framebuffer height and width as `CSI 4 ; height ; width t`. Character-cell
   size report (`CSI 16 t`) returns the app-provided renderer cell height and

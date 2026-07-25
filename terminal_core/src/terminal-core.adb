@@ -995,6 +995,8 @@ package body Terminal.Core is
                return (if T.Current_Modes.Cursor_Visible then 1 else 2);
             when 47 | 1047 | 1049 =>
                return (if T.Current_Modes.Alternate_Screen then 1 else 2);
+            when 1048 =>
+               return 2;
             when 1000 =>
                return (if T.Current_Modes.Mouse_Button then 1 else 2);
             when 1002 =>
