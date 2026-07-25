@@ -84,6 +84,7 @@ package body Terminal.App.Vulkan_Submit is
    begin
       if Batch.Items /= null then
          Free_Vertices (Batch.Items);
+         Batch.Items := null;
       end if;
 
       Batch.Count := 0;

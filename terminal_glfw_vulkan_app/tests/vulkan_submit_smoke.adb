@@ -74,6 +74,10 @@ begin
 
    VS.Release (Batch);
    Assert (VS.Vertex_Count (Batch) = 0, "release should clear vertices");
+   Assert (VS.Vertices (Batch) = null, "released batch vertices should be null");
+   Assert (VS.Width (Batch) = 0, "release should clear frame width");
+   Assert (not VS.Text_Atlas_Used (Batch), "release should clear atlas use");
+   VS.Release (Batch);
 
    Frame.Width := 0;
    VS.Build (Frame, Batch, Status);

@@ -43,6 +43,7 @@ package body Terminal.App.Shaders is
    begin
       if Code.Data /= null then
          Free_Words (Code.Data);
+         Code.Data := null;
       end if;
       Code.Count := 0;
    end Release;

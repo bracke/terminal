@@ -21,6 +21,12 @@ begin
    Assert (Shaders.Words (Code) /= null, "word storage should exist");
    Assert (Shaders.Address (Code) /= System.Null_Address, "shader address");
    Shaders.Release (Code);
+   Assert (Shaders.Words (Code) = null, "released shader words should be null");
+   Assert (Shaders.Word_Count (Code) = 0, "released shader word count");
+   Assert
+     (Shaders.Address (Code) = System.Null_Address,
+      "released shader address");
+   Shaders.Release (Code);
 
    Shaders.Load ("missing.spv", Code, Status);
    Assert (Status = Shaders.Not_Found, "missing shader should be explicit");
