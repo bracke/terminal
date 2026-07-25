@@ -962,12 +962,18 @@ package body Terminal.Core is
                T.Current_Style := (others => <>);
             when 1 =>
                T.Current_Style.Bold := True;
+            when 2 =>
+               null;
             when 3 =>
                T.Current_Style.Italic := True;
             when 4 =>
                T.Current_Style.Underline := True;
+            when 5 | 6 =>
+               null;
             when 7 =>
                T.Current_Style.Inverse := True;
+            when 8 | 9 =>
+               null;
             when 21 =>
                T.Current_Style.Bold := False;
             when 22 =>
@@ -976,9 +982,15 @@ package body Terminal.Core is
                T.Current_Style.Italic := False;
             when 24 =>
                T.Current_Style.Underline := False;
+            when 25 =>
+               null;
             when 27 =>
                T.Current_Style.Inverse := False;
+            when 28 =>
+               null;
             when 29 =>
+               null;
+            when 53 | 55 =>
                null;
             when 30 .. 37 =>
                T.Current_Style.Foreground := (Kind => Indexed, Index => P - 30, R => 0, G => 0, B => 0);
