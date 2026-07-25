@@ -1455,7 +1455,7 @@ package body Terminal.Core is
                   when ']' =>
                      T.OSC_Count := 0;
                      T.State := OSC;
-                  when '(' =>
+                  when '(' | ')' | '*' | '+' | '-' | '.' | '/' =>
                      T.State := Charset;
                   when others =>
                      T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;
