@@ -81,6 +81,16 @@ package body Terminal.App.Input_Map is
       end case;
    end Alt_Printable;
 
+   function Is_Paste_Shortcut
+     (Event : GLFW_Vulkan.Input.Key_Event) return Boolean is
+   begin
+      return Event.Action /= Release
+        and then Event.Key = V
+        and then
+          ((Event.Modifiers.Control and then Event.Modifiers.Shift)
+           or else Event.Modifiers.Super);
+   end Is_Paste_Shortcut;
+
    procedure Encode_Key
      (Event : GLFW_Vulkan.Input.Key_Event;
       Modes : Terminal.Core.Mode_Snapshot;

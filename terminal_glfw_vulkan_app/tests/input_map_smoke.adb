@@ -23,7 +23,8 @@ procedure Input_Map_Smoke is
       Action  : GI.Key_Action := GI.Press;
       Shift   : Boolean := False;
       Control : Boolean := False;
-      Alt     : Boolean := False) return GI.Key_Event
+      Alt     : Boolean := False;
+      Super   : Boolean := False) return GI.Key_Event
    is
    begin
       return
@@ -32,7 +33,7 @@ procedure Input_Map_Smoke is
          Scancode  => 0,
          Action    => Action,
          Modifiers =>
-           (Shift => Shift, Control => Control, Alt => Alt, Super => False));
+           (Shift => Shift, Control => Control, Alt => Alt, Super => Super));
    end Key_Event;
 
    function To_Bytes (Text : String) return Byte_Array is
@@ -89,6 +90,20 @@ begin
 
    IM.Encode_Key (Key_Event (GI.A, Action => GI.Release), Modes, Chunk);
    Assert (Chunk.Length = 0, "release should not encode");
+
+   Assert
+     (IM.Is_Paste_Shortcut (Key_Event (GI.V, Shift => True, Control => True)),
+      "ctrl-shift-v should paste");
+   Assert
+     (IM.Is_Paste_Shortcut (Key_Event (GI.V, Super => True)),
+      "super-v should paste");
+   Assert
+     (not IM.Is_Paste_Shortcut (Key_Event (GI.V, Control => True)),
+      "ctrl-v is left to terminal programs");
+   Assert
+     (not IM.Is_Paste_Shortcut
+        (Key_Event (GI.V, Action => GI.Release, Shift => True, Control => True)),
+      "released paste shortcut should be ignored");
 
    IM.Encode_Character ((Code_Point => Wide_Wide_Character'Val (16#00E9#)), Chunk);
    Assert_Bytes (Chunk, (1 => 16#C3#, 2 => 16#A9#), "utf8 e-acute");

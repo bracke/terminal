@@ -1,4 +1,5 @@
 with GLFW_Vulkan;
+with GLFW_Vulkan.Clipboard;
 with GLFW_Vulkan.Events;
 with GLFW_Vulkan.Input;
 with GLFW_Vulkan.Windows;
@@ -187,8 +188,17 @@ package body Terminal.App.Main_Loop is
                   exit when not Has_Event;
                   case Event.Kind is
                      when Terminal.App.Queues.Key =>
-                        Terminal.App.Input_Map.Encode_Key
-                          (Event.Key_Event, Terminal.Core.Modes (T), Chunk);
+                        if Terminal.App.Input_Map.Is_Paste_Shortcut
+                          (Event.Key_Event)
+                        then
+                           Terminal.App.Input_Map.Encode_Paste_Text
+                             (GLFW_Vulkan.Clipboard.Get_Text (W),
+                              Terminal.Core.Modes (T),
+                              Chunk);
+                        else
+                           Terminal.App.Input_Map.Encode_Key
+                             (Event.Key_Event, Terminal.Core.Modes (T), Chunk);
+                        end if;
                      when Terminal.App.Queues.Character =>
                         Terminal.App.Input_Map.Encode_Character
                           (Event.Character_Event, Chunk);

@@ -20,7 +20,9 @@ Crates:
 The app currently creates a GLFW window, creates a `df_vulkan` Vulkan instance
 with GLFW-required extensions, creates a Vulkan window surface, spawns the POSIX
 PTY, runs the queue-driven main loop, and initializes the local `textrender`
-glyph rasterizer/atlas layer. Runtime visible-shell validation remains.
+glyph rasterizer/atlas layer. `Ctrl+Shift+V` and `Super+V` paste the GLFW
+clipboard into the PTY, using bracketed paste mode when the terminal core says
+it is enabled. Runtime visible-shell validation remains.
 
 Build individual crates:
 
