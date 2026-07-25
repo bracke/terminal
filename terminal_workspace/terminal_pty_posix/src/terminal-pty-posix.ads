@@ -1,0 +1,81 @@
+with Terminal.Common.Bytes;
+
+package Terminal.PTY.POSIX is
+   type Session is limited private;
+
+   type Spawn_Status is
+     (Ok,
+      Open_PTY_Failed,
+      GrantPT_Failed,
+      UnlockPT_Failed,
+      PTSName_Failed,
+      Fork_Failed,
+      Exec_Failed,
+      Invalid_Size);
+
+   procedure Spawn_Default_Shell
+     (S      : out Session;
+      Rows   : Positive;
+      Cols   : Positive;
+      Status : out Spawn_Status);
+
+   type Read_Status is
+     (Ok,
+      Would_Block,
+      End_Of_File,
+      Interrupted,
+      Failed,
+      Session_Closed);
+
+   procedure Read
+     (S      : in out Session;
+      Buffer : out Terminal.Common.Bytes.Byte_Array;
+      Last   : out Natural;
+      Status : out Read_Status);
+
+   type Write_Status is
+     (Ok,
+      Partial,
+      Interrupted,
+      Failed,
+      Session_Closed);
+
+   procedure Write
+     (S      : in out Session;
+      Data   : Terminal.Common.Bytes.Byte_Array;
+      Last   : out Natural;
+      Status : out Write_Status);
+
+   type Resize_Status is
+     (Ok,
+      Invalid_Size,
+      Ioctl_Failed,
+      Session_Closed);
+
+   procedure Resize
+     (S      : in out Session;
+      Rows   : Positive;
+      Cols   : Positive;
+      Status : out Resize_Status);
+
+   function Is_Alive (S : Session) return Boolean;
+
+   type Exit_State is
+     (Still_Running,
+      Exited,
+      Signaled,
+      Unknown);
+
+   function Child_State (S : Session) return Exit_State;
+
+   procedure Close (S : in out Session);
+
+private
+   type Session is limited record
+      Master_FD   : Integer := -1;
+      Child_PID   : Integer := -1;
+      Closed      : Boolean := True;
+      Last_Status : Integer := 0;
+   end record;
+end Terminal.PTY.POSIX;
+

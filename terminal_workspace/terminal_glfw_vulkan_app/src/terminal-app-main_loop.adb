@@ -1,0 +1,215 @@
+with GLFW_Vulkan;
+with GLFW_Vulkan.Events;
+with GLFW_Vulkan.Input;
+with GLFW_Vulkan.Windows;
+with Terminal.Core;
+with Terminal.App.Input_Map;
+with Terminal.App.PTY_Reader;
+with Terminal.App.Queues;
+with Terminal.App.Renderer;
+with Terminal.App.Resize;
+with Terminal.App.Vulkan_Context;
+with Terminal.PTY.POSIX;
+
+package body Terminal.App.Main_Loop is
+   use type GLFW_Vulkan.Init_Status;
+   use type GLFW_Vulkan.Windows.Create_Status;
+   use type Terminal.App.Renderer.Init_Status;
+   use type Terminal.App.Vulkan_Context.Init_Status;
+   use type Terminal.Core.Initialize_Status;
+   use type Terminal.Core.Feed_Status;
+   use type Terminal.Core.Resize_Status;
+   use type Terminal.PTY.POSIX.Spawn_Status;
+   use type Terminal.PTY.POSIX.Resize_Status;
+   use type Terminal.PTY.POSIX.Write_Status;
+
+   Input_Queue : access Terminal.App.Queues.Input_Event_Queue := null;
+
+   procedure On_Key (Event : GLFW_Vulkan.Input.Key_Event) is
+   begin
+      if Input_Queue /= null then
+         Input_Queue.Push
+           ((Kind            => Terminal.App.Queues.Key,
+             Width           => 0,
+             Height          => 0,
+             Bytes           => (others => <>),
+             Key_Event       => Event,
+             Character_Event => (others => <>)));
+      end if;
+   end On_Key;
+
+   procedure On_Character (Event : GLFW_Vulkan.Input.Character_Event) is
+   begin
+      if Input_Queue /= null then
+         Input_Queue.Push
+           ((Kind            => Terminal.App.Queues.Character,
+             Width           => 0,
+             Height          => 0,
+             Bytes           => (others => <>),
+             Key_Event       => (others => <>),
+             Character_Event => Event));
+      end if;
+   end On_Character;
+
+   procedure Run is
+      Ctx : GLFW_Vulkan.Context;
+      W   : GLFW_Vulkan.Windows.Window;
+      Init_Status : GLFW_Vulkan.Init_Status;
+      Window_Status : GLFW_Vulkan.Windows.Create_Status;
+      T : Terminal.Core.Terminal;
+      Core_Status : Terminal.Core.Initialize_Status;
+      S : aliased Terminal.PTY.POSIX.Session;
+      Spawn_Status : Terminal.PTY.POSIX.Spawn_Status;
+      PTY_Q : aliased Terminal.App.Queues.PTY_Output_Queue;
+      In_Q  : aliased Terminal.App.Queues.Input_Event_Queue;
+      R     : Terminal.App.Renderer.Renderer;
+      Vk_Ctx : Terminal.App.Vulkan_Context.Context;
+      Vk_Status : Terminal.App.Vulkan_Context.Init_Status;
+      Renderer_Status : Terminal.App.Renderer.Init_Status;
+      FB_Width  : Natural := 0;
+      FB_Height : Natural := 0;
+      Last_Rows : Positive := 24;
+      Last_Cols : Positive := 80;
+   begin
+      GLFW_Vulkan.Initialize (Ctx, Init_Status);
+      if Init_Status /= GLFW_Vulkan.Ok then
+         return;
+      end if;
+
+      GLFW_Vulkan.Windows.Create (Ctx, W, 960, 600, "Ada Terminal", Window_Status);
+      if Window_Status /= GLFW_Vulkan.Windows.Ok then
+         GLFW_Vulkan.Finalize (Ctx);
+         return;
+      end if;
+
+      Terminal.App.Vulkan_Context.Initialize (Vk_Ctx, W, Vk_Status);
+      if Vk_Status /= Terminal.App.Vulkan_Context.Ok then
+         GLFW_Vulkan.Windows.Destroy (W);
+         GLFW_Vulkan.Finalize (Ctx);
+         return;
+      end if;
+
+      Terminal.App.Renderer.Initialize (R, Vk_Ctx, Renderer_Status);
+      Terminal.Core.Initialize (T, 24, 80, 10_000, Core_Status);
+      Terminal.PTY.POSIX.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
+
+      if Core_Status /= Terminal.Core.Ok
+        or else Spawn_Status /= Terminal.PTY.POSIX.Ok
+        or else Renderer_Status /= Terminal.App.Renderer.Ok
+      then
+         Terminal.PTY.POSIX.Close (S);
+         Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
+         GLFW_Vulkan.Windows.Destroy (W);
+         GLFW_Vulkan.Finalize (Ctx);
+         return;
+      end if;
+
+      Input_Queue := In_Q'Unchecked_Access;
+      GLFW_Vulkan.Input.Set_Key_Callback (W, On_Key'Access);
+      GLFW_Vulkan.Input.Set_Character_Callback (W, On_Character'Access);
+
+      declare
+         Reader_Task : Terminal.App.PTY_Reader.Reader
+           (S'Unchecked_Access, PTY_Q'Unchecked_Access);
+      begin
+         while not GLFW_Vulkan.Windows.Should_Close (W) loop
+            declare
+               Chunk      : Terminal.App.Queues.Byte_Chunk;
+               Has_Chunk  : Boolean;
+               Event      : Terminal.App.Queues.Input_Event;
+               Has_Event  : Boolean;
+               Feed       : Terminal.Core.Feed_Status;
+               Write_Last : Natural;
+               Write_Stat : Terminal.PTY.POSIX.Write_Status;
+               Dirty      : Boolean := False;
+            begin
+               GLFW_Vulkan.Events.Wait_Timeout (0.016);
+
+               loop
+                  PTY_Q.Pop (Chunk, Has_Chunk);
+                  exit when not Has_Chunk;
+                  if Chunk.Length > 0 then
+                     Terminal.Core.Feed (T, Chunk.Data (1 .. Chunk.Length), Feed);
+                     Dirty := True;
+                  end if;
+               end loop;
+
+               loop
+                  In_Q.Pop (Event, Has_Event);
+                  exit when not Has_Event;
+                  case Event.Kind is
+                     when Terminal.App.Queues.Key =>
+                        Terminal.App.Input_Map.Encode_Key
+                          (Event.Key_Event, Terminal.Core.Modes (T), Chunk);
+                     when Terminal.App.Queues.Character =>
+                        Terminal.App.Input_Map.Encode_Character
+                          (Event.Character_Event, Chunk);
+                     when Terminal.App.Queues.Bytes =>
+                        Chunk := Event.Bytes;
+                     when Terminal.App.Queues.Close_Request =>
+                        GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                        Chunk := (others => <>);
+                     when Terminal.App.Queues.Resize_Request =>
+                        Chunk := (others => <>);
+                  end case;
+
+                  if Chunk.Length > 0 then
+                     Terminal.PTY.POSIX.Write
+                       (S, Chunk.Data (1 .. Chunk.Length), Write_Last, Write_Stat);
+                  end if;
+               end loop;
+
+               GLFW_Vulkan.Windows.Framebuffer_Size (W, FB_Width, FB_Height);
+               if FB_Width > 0 and then FB_Height > 0 then
+                  declare
+                     New_Rows : Positive;
+                     New_Cols : Positive;
+                     Core_Resize : Terminal.Core.Resize_Status;
+                     PTY_Resize  : Terminal.PTY.POSIX.Resize_Status;
+                  begin
+                     Terminal.App.Resize.Pixels_To_Cells
+                       (FB_Width,
+                        FB_Height,
+                        Terminal.App.Renderer.Cell_Width (R),
+                        Terminal.App.Renderer.Cell_Height (R),
+                        New_Rows,
+                        New_Cols);
+                     if New_Rows /= Last_Rows or else New_Cols /= Last_Cols then
+                        Terminal.Core.Resize (T, New_Rows, New_Cols, Core_Resize);
+                        Terminal.PTY.POSIX.Resize (S, New_Rows, New_Cols, PTY_Resize);
+                        if Core_Resize = Terminal.Core.Ok
+                          and then PTY_Resize = Terminal.PTY.POSIX.Ok
+                        then
+                           Last_Rows := New_Rows;
+                           Last_Cols := New_Cols;
+                           Dirty := True;
+                        end if;
+                     end if;
+                  end;
+               end if;
+
+               if Dirty then
+                  declare
+                     Snap : Terminal.Core.Render_Snapshot :=
+                       Terminal.Core.Snapshot (T);
+                     Render_Status : Terminal.App.Renderer.Render_Status;
+                  begin
+                     Terminal.App.Renderer.Render (R, Snap, Render_Status);
+                     Terminal.Core.Release (Snap);
+                     Terminal.Core.Clear_Damage (T);
+                  end;
+               end if;
+            end;
+         end loop;
+
+         Reader_Task.Stop;
+         Terminal.PTY.POSIX.Close (S);
+      end;
+
+      Input_Queue := null;
+      Terminal.App.Renderer.Finalize (R);
+      Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
+      GLFW_Vulkan.Windows.Destroy (W);
+      GLFW_Vulkan.Finalize (Ctx);
+   end Run;
+end Terminal.App.Main_Loop;

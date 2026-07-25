@@ -1,0 +1,11 @@
+name = "terminal_pty_posix"
+description = "Linux POSIX PTY backend for the Ada terminal"
+version = "0.1.0-dev"
+licenses = "MIT"
+
+[[depends-on]]
+terminal_common = "*"
+aunit = "*"
+
+[[pins]]
+terminal_common = { path = "../terminal_common" }

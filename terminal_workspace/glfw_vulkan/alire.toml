@@ -1,0 +1,9 @@
+name = "glfw_vulkan"
+description = "Reusable GLFW windowing helpers for Vulkan Ada applications"
+version = "0.1.0-dev"
+licenses = "MIT"
+
+[[depends-on]]
+df_vulkan = "*"
+libglfw3 = "*"
+

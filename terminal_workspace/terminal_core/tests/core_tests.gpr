@@ -1,0 +1,20 @@
+with "../terminal_core.gpr";
+with "aunit";
+
+project Core_Tests is
+   for Source_Dirs use (".");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Main use
+     ("core_smoke.adb",
+      "core_sgr_smoke.adb",
+      "core_modes_smoke.adb",
+      "core_osc_smoke.adb",
+      "core_utf8_smoke.adb",
+      "core_alternate_smoke.adb",
+      "core_scrollback_smoke.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata");
+   end Compiler;
+end Core_Tests;

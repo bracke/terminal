@@ -1,0 +1,5 @@
+name = "terminal_common"
+description = "Shared byte-oriented terminal types"
+version = "0.1.0-dev"
+licenses = "MIT"
+

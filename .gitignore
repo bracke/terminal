@@ -1,0 +1,25 @@
+# Alire generated state
+**/alire/
+**/config/
+
+# Build outputs
+**/obj/
+**/lib/
+**/bin/
+
+# Ada/GNAT generated files
+*.ali
+*.o
+*.a
+*.so
+*.lexch
+*.bexch
+*.cswi
+*.stdout
+*.stderr
+*.d
+
+# Editor and OS noise
+*~
+*.swp
+.DS_Store

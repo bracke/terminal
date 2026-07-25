@@ -1,0 +1,14 @@
+name = "terminal_core"
+description = "Platform-independent terminal emulator core"
+version = "0.1.0-dev"
+licenses = "MIT"
+
+[[depends-on]]
+terminal_common = "*"
+
+[[pins]]
+terminal_common = { path = "../terminal_common" }
+
+[[depends-on]]
+aunit = "*"
+
