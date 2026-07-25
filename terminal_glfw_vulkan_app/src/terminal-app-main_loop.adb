@@ -289,6 +289,7 @@ package body Terminal.App.Main_Loop is
         (T,
          Terminal.App.Renderer.Cell_Width (R),
          Terminal.App.Renderer.Cell_Height (R));
+      Terminal.Core.Set_Window_Pixel_Size (T, FB_Width, FB_Height);
       Terminal.PTY.POSIX.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
 
       if Core_Status /= Terminal.Core.Ok
@@ -621,6 +622,7 @@ package body Terminal.App.Main_Loop is
                  (T,
                   Terminal.App.Renderer.Cell_Width (R),
                   Terminal.App.Renderer.Cell_Height (R));
+               Terminal.Core.Set_Window_Pixel_Size (T, FB_Width, FB_Height);
                if FB_Width > 0 and then FB_Height > 0 then
                   declare
                      New_Rows : Positive;

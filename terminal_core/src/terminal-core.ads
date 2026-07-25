@@ -143,6 +143,11 @@ package Terminal.Core is
       Width  : Positive;
       Height : Positive);
 
+   procedure Set_Window_Pixel_Size
+     (T      : in out Terminal;
+      Width  : Natural;
+      Height : Natural);
+
    function Snapshot (T : Terminal) return Render_Snapshot;
    procedure Release (S : in out Render_Snapshot);
    function Modes (T : Terminal) return Mode_Snapshot;
@@ -205,6 +210,8 @@ private
       Cols             : Positive := 1;
       Cell_Pixel_Width : Natural := 0;
       Cell_Pixel_Height : Natural := 0;
+      Window_Pixel_Width : Natural := 0;
+      Window_Pixel_Height : Natural := 0;
       Scrollback_Limit : Natural := 10_000;
       Scrollback_Rows  : Natural := 0;
 

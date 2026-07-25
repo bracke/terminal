@@ -227,4 +227,26 @@ begin
         (Terminal.Core.Pending_Response_Length (T) = 0,
          "XTWINOPS cell size should drain");
    end;
+
+   Terminal.Core.Set_Window_Pixel_Size (T, Width => 640, Height => 480);
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[14t"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS window size feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 12,
+      "XTWINOPS window size response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[4;480;640t"),
+         "XTWINOPS window size");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "XTWINOPS window size should drain");
+   end;
 end Core_Response_Smoke;

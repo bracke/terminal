@@ -906,6 +906,19 @@ package body Terminal.Core is
    is
    begin
       if T.CSI_Private = ASCII.NUL
+        and then Number = 14
+        and then T.Window_Pixel_Width > 0
+        and then T.Window_Pixel_Height > 0
+      then
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '[');
+         Append_Response_Char (T, '4');
+         Append_Response_Char (T, ';');
+         Append_Response_Natural (T, T.Window_Pixel_Height);
+         Append_Response_Char (T, ';');
+         Append_Response_Natural (T, T.Window_Pixel_Width);
+         Append_Response_Char (T, 't');
+      elsif T.CSI_Private = ASCII.NUL
         and then Number = 16
         and then T.Cell_Pixel_Width > 0
         and then T.Cell_Pixel_Height > 0
@@ -2061,6 +2074,16 @@ package body Terminal.Core is
       T.Cell_Pixel_Width := Width;
       T.Cell_Pixel_Height := Height;
    end Set_Cell_Pixel_Size;
+
+   procedure Set_Window_Pixel_Size
+     (T      : in out Terminal;
+      Width  : Natural;
+      Height : Natural)
+   is
+   begin
+      T.Window_Pixel_Width := Width;
+      T.Window_Pixel_Height := Height;
+   end Set_Window_Pixel_Size;
 
    function Modes (T : Terminal) return Mode_Snapshot is
    begin
