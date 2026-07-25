@@ -33,12 +33,15 @@
   (`CSI > c`) responses.
 - DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode,
   known DEC private modes, and stateless `?1048` save/restore cursor mode.
-- XTWINOPS window pixel-size report (`CSI 14 t`) returns the app-provided
-  framebuffer height and width as `CSI 4 ; height ; width t`. Character-cell
-  size report (`CSI 16 t`) returns the app-provided renderer cell height and
-  width as `CSI 6 ; height ; width t`. Text-area size report (`CSI 18 t`)
-  returns current rows and columns as `CSI 8 ; rows ; cols t`. Window-title
-  report (`CSI 21 t`) returns the bounded OSC title as `OSC l title ST`.
+- XTWINOPS window-state report (`CSI 11 t`) returns normal state as
+  `CSI 1 t`, and window-position report (`CSI 13 t`) returns unknown position
+  as `CSI 3 ; 0 ; 0 t`. Window pixel-size report (`CSI 14 t`) returns the
+  app-provided framebuffer height and width as `CSI 4 ; height ; width t`.
+  Character-cell size report (`CSI 16 t`) returns the app-provided renderer
+  cell height and width as `CSI 6 ; height ; width t`. Text-area size report
+  (`CSI 18 t`) returns current rows and columns as `CSI 8 ; rows ; cols t`.
+  Window-title report (`CSI 21 t`) returns the bounded OSC title as
+  `OSC l title ST`.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
 - Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.

@@ -208,6 +208,50 @@ begin
          "XTWINOPS text area should drain");
    end;
 
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[11t"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS window state feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 4,
+      "XTWINOPS window state response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[1t"),
+         "XTWINOPS window state");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "XTWINOPS window state should drain");
+   end;
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[13t"), Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "XTWINOPS window position feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 8,
+      "XTWINOPS window position response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[3;0;0t"),
+         "XTWINOPS window position");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "XTWINOPS window position should drain");
+   end;
+
    Terminal.Core.Set_Cell_Pixel_Size (T, Width => 8, Height => 15);
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[16t"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS cell size feed failed");

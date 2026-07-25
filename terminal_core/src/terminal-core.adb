@@ -939,7 +939,21 @@ package body Terminal.Core is
       Number : Natural)
    is
    begin
-      if T.CSI_Private = ASCII.NUL
+      if T.CSI_Private = ASCII.NUL and then Number = 11 then
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '[');
+         Append_Response_Char (T, '1');
+         Append_Response_Char (T, 't');
+      elsif T.CSI_Private = ASCII.NUL and then Number = 13 then
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '[');
+         Append_Response_Char (T, '3');
+         Append_Response_Char (T, ';');
+         Append_Response_Char (T, '0');
+         Append_Response_Char (T, ';');
+         Append_Response_Char (T, '0');
+         Append_Response_Char (T, 't');
+      elsif T.CSI_Private = ASCII.NUL
         and then Number = 14
         and then T.Window_Pixel_Width > 0
         and then T.Window_Pixel_Height > 0
