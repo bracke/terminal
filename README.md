@@ -22,7 +22,8 @@ with GLFW-required extensions, creates a Vulkan window surface, spawns the POSIX
 PTY, runs the queue-driven main loop, and initializes the local `textrender`
 glyph rasterizer/atlas layer. `Ctrl+Shift+V` and `Super+V` paste the GLFW
 clipboard into the PTY, using bracketed paste mode when the terminal core says
-it is enabled. Runtime visible-shell validation remains.
+it is enabled. Runtime visible-shell validation is tracked in
+`docs/m1_runtime_validation.md`.
 
 Build individual crates:
 
@@ -68,6 +69,7 @@ alr exec -- gprbuild -P tests/app_tests.gpr
 tests/bin/vulkan_submit_smoke
 tests/bin/vulkan_presenter_smoke
 tests/bin/vulkan_device_smoke
+tests/bin/gui_present_smoke
 tests/bin/shader_loader_smoke
 tests/bin/pty_core_integration_smoke
 tests/bin/pty_m1_commands_smoke

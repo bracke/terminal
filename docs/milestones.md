@@ -48,7 +48,8 @@
   spawned child is no longer alive after `Close`.
 - Show the shell prompt.
 - Send printable keyboard input and Enter to the PTY.
-- Validate `echo`, `cat`, `ls --color`, and `clear`.
+- Validate `echo`, `cat`, `ls --color`, and `clear`; record the interactive
+  GUI result in `docs/m1_runtime_validation.md`.
 - Propagate row/column resize to the core and PTY via `TIOCSWINSZ`.
 - Close the window cleanly.
 
