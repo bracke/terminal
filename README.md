@@ -9,6 +9,9 @@ alr build
 ./bin/terminal
 ```
 
+System build/runtime prerequisites include GLFW, Vulkan loader/driver support,
+and HarfBuzz (`libharfbuzz.so`) for app-layer text shaping.
+
 Crates:
 
 - `glfw_vulkan`: reusable GLFW window/event/surface helper crate for Vulkan apps.

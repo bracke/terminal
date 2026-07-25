@@ -16,6 +16,6 @@ project Terminal_GLFW_Vulkan_App is
    end Compiler;
 
    package Linker is
-      for Switches ("Ada") use ("-lglfw", "-lvulkan");
+      for Switches ("Ada") use ("-lglfw", "-lvulkan", "-lharfbuzz");
    end Linker;
 end Terminal_GLFW_Vulkan_App;

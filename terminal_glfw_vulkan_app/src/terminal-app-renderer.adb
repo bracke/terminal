@@ -531,6 +531,7 @@ package body Terminal.App.Renderer is
    is
       Font_Path   : constant String := Terminal.App.Fonts.Default_Font_Path;
       Text_Status : Textrender.Status_Code;
+      Shape_Backend_Status : Terminal.App.Text_Shaper.Backend_Status;
    begin
       R.CW := 8;
       R.CH := 16;
@@ -570,6 +571,11 @@ package body Terminal.App.Renderer is
          return;
       end if;
 
+      Terminal.App.Text_Shaper.Configure_Font
+        (Path       => Font_Path,
+         Pixel_Size => Pixel_Size,
+         Status     => Shape_Backend_Status);
+
       declare
          Measured_CW : constant Positive :=
            Measured_Cell_Width (R.Text, R.CW);
@@ -592,6 +598,11 @@ package body Terminal.App.Renderer is
                Status := Failed;
                return;
             end if;
+
+            Terminal.App.Text_Shaper.Configure_Font
+              (Path       => Font_Path,
+               Pixel_Size => Pixel_Size,
+               Status     => Shape_Backend_Status);
          end if;
       end;
 

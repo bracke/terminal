@@ -1,6 +1,51 @@
+with Terminal.App.Fonts;
+with Terminal.App.HarfBuzz;
+
 package body Terminal.App.Text_Shaper is
    package RM renames Terminal.App.Render_Model;
+   package HB renames Terminal.App.HarfBuzz;
    use type RM.Text_Run_Kind;
+   use type HB.Load_Status;
+   use type HB.Shape_Status;
+
+   Default_Face         : HB.Font_Face;
+   Default_Face_Loaded  : Boolean := False;
+   Default_Face_Tried   : Boolean := False;
+
+   procedure Configure_Font
+     (Path        : String;
+      Pixel_Size  : Positive;
+      Status      : out Backend_Status)
+   is
+      Load_Result : HB.Load_Status;
+   begin
+      HB.Load (Default_Face, Path, Pixel_Size, Load_Result);
+      Default_Face_Tried := True;
+      Default_Face_Loaded := Load_Result = HB.Loaded;
+
+      case Load_Result is
+         when HB.Loaded =>
+            Status := Backend_Ok;
+         when HB.Invalid_Path =>
+            Status := Backend_Unavailable;
+         when HB.Load_Failed =>
+            Status := Backend_Load_Failed;
+      end case;
+   end Configure_Font;
+
+   function Backend_Available return Boolean is
+     (Default_Face_Loaded and then HB.Is_Loaded (Default_Face));
+
+   procedure Ensure_Default_Backend is
+      Status : Backend_Status;
+   begin
+      if not Default_Face_Tried then
+         Configure_Font
+           (Path       => Terminal.App.Fonts.Default_Font_Path,
+            Pixel_Size => 16,
+            Status     => Status);
+      end if;
+   end Ensure_Default_Backend;
 
    function Is_Combining_Or_Format (C : Natural) return Boolean is
      ((C in 16#0300# .. 16#036F#)
@@ -178,6 +223,7 @@ package body Terminal.App.Text_Shaper is
       Status : out Shape_Status)
    is
       Kind : constant Run_Kind := Classify (Run);
+      HB_Status : HB.Shape_Status;
    begin
       Run.Run_Kind := Kind;
       Run.Direction := Direction_Of (Run);
@@ -189,30 +235,43 @@ package body Terminal.App.Text_Shaper is
          Run.Shape_Status := RM.Invalid_Run;
          Run.Fallback_Glyphs := True;
          Status := RM.Invalid_Run;
-      elsif Requires_Backend (Kind) then
-         Run.Shape_Status := RM.Needs_Shaping_Backend;
-         Run.Fallback_Glyphs := True;
-         Status := RM.Needs_Shaping_Backend;
       else
-         declare
-            Advance : constant Float :=
-              Run.Cell_Width / Float (Run.Codepoint_Count);
-         begin
-            for I in 1 .. Run.Codepoint_Count loop
-               Run.Shaped_Glyphs (I) :=
-                 (Glyph_ID     => Run.Codepoints (I),
-                  Codepoint    => Run.Codepoints (I),
-                  Source_Index => I,
-                  X_Offset     => 0.0,
-                  Y_Offset     => 0.0,
-                  X_Advance    => Advance,
-                  Y_Advance    => 0.0);
-            end loop;
-         end;
-         Run.Shape_Status := RM.Shape_Ok;
-         Run.Fallback_Glyphs := False;
-         Run.Shaped_Glyph_Count := Run.Codepoint_Count;
-         Status := RM.Shape_Ok;
+         Ensure_Default_Backend;
+         if Backend_Available then
+            HB.Shape (Default_Face, Run, HB_Status);
+         else
+            HB_Status := HB.Not_Loaded;
+         end if;
+
+         if HB_Status = HB.Shaped then
+            Run.Shape_Status := RM.Shape_Ok;
+            Run.Fallback_Glyphs := False;
+            Status := RM.Shape_Ok;
+         elsif Requires_Backend (Kind) then
+            Run.Shape_Status := RM.Needs_Shaping_Backend;
+            Run.Fallback_Glyphs := True;
+            Status := RM.Needs_Shaping_Backend;
+         else
+            declare
+               Advance : constant Float :=
+                 Run.Cell_Width / Float (Run.Codepoint_Count);
+            begin
+               for I in 1 .. Run.Codepoint_Count loop
+                  Run.Shaped_Glyphs (I) :=
+                    (Glyph_ID     => Run.Codepoints (I),
+                     Codepoint    => Run.Codepoints (I),
+                     Source_Index => I,
+                     X_Offset     => 0.0,
+                     Y_Offset     => 0.0,
+                     X_Advance    => Advance,
+                     Y_Advance    => 0.0);
+               end loop;
+            end;
+            Run.Shape_Status := RM.Shape_Ok;
+            Run.Fallback_Glyphs := False;
+            Run.Shaped_Glyph_Count := Run.Codepoint_Count;
+            Status := RM.Shape_Ok;
+         end if;
       end if;
    end Prepare;
 end Terminal.App.Text_Shaper;

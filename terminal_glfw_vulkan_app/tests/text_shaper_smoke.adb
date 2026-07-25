@@ -1,5 +1,5 @@
 with AUnit.Assertions;
-
+with Terminal.App.Fonts;
 with Terminal.App.Render_Model;
 with Terminal.App.Text_Shaper;
 
@@ -7,6 +7,7 @@ procedure Text_Shaper_Smoke is
    use AUnit.Assertions;
    package RM renames Terminal.App.Render_Model;
    package TS renames Terminal.App.Text_Shaper;
+   use type TS.Backend_Status;
    use type RM.Text_Run_Direction;
    use type RM.Text_Run_Kind;
    use type RM.Text_Run_Script;
@@ -78,7 +79,16 @@ procedure Text_Shaper_Smoke is
    Deva      : RM.Text_Run_Command := Run (16#0915#);
    Emoji     : RM.Text_Run_Command := Run (16#1F642#);
    Status    : TS.Shape_Status;
+   Backend   : TS.Backend_Status;
 begin
+   TS.Configure_Font
+     (Path       => Terminal.App.Fonts.Default_Font_Path,
+      Pixel_Size => 16,
+      Status     => Backend);
+   Assert
+     (Backend = TS.Backend_Ok and then TS.Backend_Available,
+      "HarfBuzz shaping backend should load the default font");
+
    Assert (TS.Classify (Simple) = RM.Simple_Glyph, "simple glyph class");
    TS.Prepare (Simple, Status);
    Assert (Status = RM.Shape_Ok, "simple glyph status");
@@ -93,13 +103,13 @@ begin
      (Simple.Shaped_Glyphs (1).Codepoint = Character'Pos ('A'),
       "simple glyph shaped codepoint");
    Assert
-     (Simple.Shaped_Glyphs (1).Glyph_ID = Character'Pos ('A'),
-      "simple glyph codepoint-backed glyph id");
+     (Simple.Shaped_Glyphs (1).Glyph_ID > 0,
+      "simple glyph should have a real font glyph id");
    Assert
      (Simple.Shaped_Glyphs (1).Source_Index = 1,
       "simple glyph source index");
    Assert
-     (Simple.Shaped_Glyphs (1).X_Advance = Simple.Cell_Width,
+     (Simple.Shaped_Glyphs (1).X_Advance > 0.0,
       "simple glyph advance");
    Assert (not Simple.Fallback_Glyphs, "simple glyph should not need fallback");
 
@@ -114,13 +124,13 @@ begin
      (Text.Shaped_Glyphs (2).Codepoint = Character'Pos ('b'),
       "simple text second glyph codepoint");
    Assert
-     (Text.Shaped_Glyphs (2).Glyph_ID = Character'Pos ('b'),
-      "simple text second codepoint-backed glyph id");
+     (Text.Shaped_Glyphs (2).Glyph_ID > 0,
+      "simple text second real font glyph id");
    Assert
      (Text.Shaped_Glyphs (2).Source_Index = 2,
       "simple text second source index");
    Assert
-     (Text.Shaped_Glyphs (2).X_Advance = 10.0,
+     (Text.Shaped_Glyphs (2).X_Advance > 0.0,
       "simple text per-cell advance");
    Assert (not Text.Fallback_Glyphs, "simple text fallback flag");
 
@@ -129,63 +139,63 @@ begin
       "ligature text class");
    TS.Prepare (Ligature, Status);
    Assert
-     (Status = RM.Needs_Shaping_Backend,
-      "ligature text needs shaping");
+     (Status = RM.Shape_Ok,
+      "ligature text should shape through HarfBuzz");
    Assert
-     (Ligature.Shaped_Glyph_Count = 0,
-      "ligature text should not invent shaped glyphs");
+     (Ligature.Shaped_Glyph_Count > 0,
+      "ligature text shaped glyph count");
    Assert
      (Ligature.Direction = RM.Direction_Left_To_Right,
       "ligature text direction");
    Assert (Ligature.Script = RM.Script_Latin, "ligature text script");
-   Assert (Ligature.Fallback_Glyphs, "ligature text fallback flag");
+   Assert (not Ligature.Fallback_Glyphs, "ligature text fallback flag");
 
    Assert
      (TS.Classify (Combining) = RM.Combining_Cluster,
       "combining cluster class");
    TS.Prepare (Combining, Status);
    Assert
-     (Status = RM.Needs_Shaping_Backend,
-      "combining cluster needs shaping");
+     (Status = RM.Shape_Ok,
+      "combining cluster should shape through HarfBuzz");
    Assert
      (Combining.Run_Kind = RM.Combining_Cluster,
       "combining cluster stored class");
    Assert
-     (Combining.Shape_Status = RM.Needs_Shaping_Backend,
+     (Combining.Shape_Status = RM.Shape_Ok,
       "combining cluster stored status");
    Assert
      (Combining.Direction = RM.Direction_Left_To_Right,
       "combining cluster direction");
    Assert (Combining.Script = RM.Script_Latin, "combining cluster script");
    Assert
-     (Combining.Shaped_Glyph_Count = 0,
-      "combining cluster should not invent shaped glyphs");
-   Assert (Combining.Fallback_Glyphs, "combining cluster fallback");
+     (Combining.Shaped_Glyph_Count > 0,
+      "combining cluster shaped glyph count");
+   Assert (not Combining.Fallback_Glyphs, "combining cluster fallback");
 
    Assert
      (TS.Classify (Joined) = RM.Joined_Emoji_Cluster,
       "joined emoji class");
    TS.Prepare (Joined, Status);
-   Assert (Status = RM.Needs_Shaping_Backend, "joined emoji needs shaping");
+   Assert (Status = RM.Shape_Ok, "joined emoji should shape through HarfBuzz");
    Assert
-     (Joined.Shaped_Glyph_Count = 0,
-      "joined emoji should wait for a shaping backend");
+     (Joined.Shaped_Glyph_Count > 0,
+      "joined emoji shaped glyph count");
 
    Assert
      (TS.Classify (Modified) = RM.Emoji_Modified_Cluster,
       "emoji modifier class");
    TS.Prepare (Modified, Status);
-   Assert (Status = RM.Needs_Shaping_Backend, "modifier needs shaping");
+   Assert (Status = RM.Shape_Ok, "modifier should shape through HarfBuzz");
 
    Assert (TS.Classify (RTL) = RM.Bidi_Text, "RTL class");
    TS.Prepare (RTL, Status);
-   Assert (Status = RM.Needs_Shaping_Backend, "RTL needs shaping");
+   Assert (Status = RM.Shape_Ok, "RTL should shape through HarfBuzz");
    Assert (RTL.Direction = RM.Direction_Right_To_Left, "RTL direction");
    Assert (RTL.Script = RM.Script_Hebrew, "RTL script");
 
    Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
    TS.Prepare (Arabic, Status);
-   Assert (Status = RM.Needs_Shaping_Backend, "Arabic needs shaping");
+   Assert (Status = RM.Shape_Ok, "Arabic should shape through HarfBuzz");
    Assert
      (Arabic.Direction = RM.Direction_Right_To_Left,
       "Arabic direction");
@@ -193,7 +203,9 @@ begin
 
    Assert (TS.Classify (Deva) = RM.Complex_Script, "complex script class");
    TS.Prepare (Deva, Status);
-   Assert (Status = RM.Needs_Shaping_Backend, "complex script needs shaping");
+   Assert
+     (Status = RM.Shape_Ok,
+      "complex script should shape through HarfBuzz");
    Assert
      (Deva.Direction = RM.Direction_Left_To_Right,
       "complex script direction");

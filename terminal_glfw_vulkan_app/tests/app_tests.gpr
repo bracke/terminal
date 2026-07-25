@@ -29,6 +29,6 @@ project App_Tests is
    end Compiler;
 
    package Linker is
-      for Switches ("Ada") use ("-lglfw", "-lvulkan");
+      for Switches ("Ada") use ("-lglfw", "-lvulkan", "-lharfbuzz");
    end Linker;
 end App_Tests;

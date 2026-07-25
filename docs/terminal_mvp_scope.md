@@ -111,19 +111,19 @@ attachments in the same cell, while invisible joiner, format-control, bidi,
 variation-selector, tag, and joined emoji attachments remain non-drawing in the
 current glyph fallback path. The app renderer also emits bounded text-run
 commands that preserve the full stored cluster for each drawable cell, and the
-`Terminal.App.Text_Shaper` adapter classifies which runs require a shaping
-backend and stores run kind, shape status, direction, and script directly on
-each text-run command. Compatible adjacent cells in a row are coalesced up to
-the bounded text-run capacity, so ordinary text is available as a run rather
-than only as one cell at a time. Coalescing splits at style, cluster width,
-cursor, inferred script, and inferred direction boundaries. The adapter emits
-bounded shaped-glyph output for simple glyph/text runs using the `textrender`
-codepoint key as `Glyph_ID`, but ligature candidates and complex runs keep an
-empty shaped-glyph output until a backend is available. The submit/presenter/device
-layers carry those runs without parsing terminal data. Full BiDi reordering,
-OpenType shaping, emoji ZWJ glyph composition, complex-script cluster shaping,
-ligature substitution, and real font glyph IDs still require a shaping backend
-behind those text-run commands. Renderer, submit, presenter, and device
+`Terminal.App.Text_Shaper` adapter classifies run kind, direction, and script
+directly on each text-run command. Compatible adjacent cells in a row are
+coalesced up to the bounded text-run capacity, so ordinary text is available as
+a run rather than only as one cell at a time. Coalescing splits at style,
+cluster width, cursor, inferred script, and inferred direction boundaries.
+The app-layer HarfBuzz adapter shapes those runs against the selected font file
+and returns real font glyph IDs, source clusters, advances, and offsets in the
+bounded shaped-glyph output. If HarfBuzz cannot load or shape the selected font
+or run, the command remains explicitly marked as `Needs_Shaping_Backend`.
+The submit/presenter/device layers carry those runs without parsing terminal
+data. Full paragraph BiDi reordering, font fallback during shaping, color emoji
+glyph rendering, and visible rasterization of shaped font glyph IDs are still
+outside the current draw path. Renderer, submit, presenter, and device
 diagnostics expose aggregate shaped-glyph counts for that path.
 
 ## Cursor

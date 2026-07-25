@@ -541,7 +541,7 @@ begin
          "emoji cluster text run class");
       Assert
         (Frame.Text_Runs (2).Shape_Status =
-           Terminal.App.Render_Model.Needs_Shaping_Backend,
+           Terminal.App.Render_Model.Shape_Ok,
          "emoji cluster text run shape status");
       Assert
         (Frame.Text_Runs (2).Direction =
@@ -552,11 +552,11 @@ begin
            Terminal.App.Render_Model.Script_Emoji,
          "emoji cluster text run script");
       Assert
-        (Frame.Text_Runs (2).Shaped_Glyph_Count = 0,
-         "emoji cluster should not invent shaped glyphs");
+        (Frame.Text_Runs (2).Shaped_Glyph_Count > 0,
+         "emoji cluster should have shaped glyphs");
       Assert
-        (Frame.Text_Runs (2).Fallback_Glyphs,
-         "emoji cluster text run should allow the current glyph fallback");
+        (not Frame.Text_Runs (2).Fallback_Glyphs,
+         "emoji cluster text run should not need glyph fallback");
       Assert (not Saw_ZWJ, "emoji cluster render should skip ZWJ");
       Assert (not Saw_Joined, "emoji cluster render should skip joined scalar");
       Assert
@@ -570,7 +570,7 @@ begin
            (Diag.Last_Text_Run_Count = Frame.Text_Run_Count,
             "renderer diagnostics should report text run count");
          Assert
-           (Diag.Last_Shaping_Fallback_Count = 1,
+           (Diag.Last_Shaping_Fallback_Count = 0,
             "renderer diagnostics should report complex text fallback count");
       end;
    end;
@@ -671,7 +671,7 @@ begin
          "ligature text run class");
       Assert
         (Frame.Text_Runs (1).Shape_Status =
-           Terminal.App.Render_Model.Needs_Shaping_Backend,
+           Terminal.App.Render_Model.Shape_Ok,
          "ligature text run shape status");
       Assert
         (Frame.Text_Runs (1).Direction =
@@ -682,13 +682,13 @@ begin
            Terminal.App.Render_Model.Script_Latin,
          "ligature text run script");
       Assert
-        (Frame.Text_Runs (1).Shaped_Glyph_Count = 0,
-         "ligature text should wait for shaping backend");
+        (Frame.Text_Runs (1).Shaped_Glyph_Count > 0,
+         "ligature text shaped glyph count");
       Assert
-        (Frame.Text_Runs (1).Fallback_Glyphs,
-         "ligature text should use glyph fallback");
+        (not Frame.Text_Runs (1).Fallback_Glyphs,
+         "ligature text should not use glyph fallback");
       Assert
-        (Diag.Last_Shaping_Fallback_Count = 1,
+        (Diag.Last_Shaping_Fallback_Count = 0,
          "ligature fallback diagnostic count");
    end;
 
