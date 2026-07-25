@@ -1,20 +1,33 @@
 with AUnit.Assertions;
 
+with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
 
 procedure Renderer_Metrics_Smoke is
    use AUnit.Assertions;
+   use Terminal.Common.Bytes;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
 
    R      : Terminal.App.Renderer.Renderer;
    Status : Terminal.App.Renderer.Init_Status;
    T      : Terminal.Core.Terminal;
    Core_Status : Terminal.Core.Initialize_Status;
+   Feed_Status : Terminal.Core.Feed_Status;
    Render_Status : Terminal.App.Renderer.Render_Status;
+
+   function To_Bytes (Text : String) return Byte_Array is
+      Result : Byte_Array (1 .. Text'Length);
+   begin
+      for I in Text'Range loop
+         Result (I - Text'First + 1) := Byte (Character'Pos (Text (I)));
+      end loop;
+      return Result;
+   end To_Bytes;
 begin
    Terminal.App.Renderer.Initialize_Headless (R, Status);
    Assert (Status = Terminal.App.Renderer.Ok, "renderer initialize failed");
@@ -92,6 +105,32 @@ begin
       Assert
         (Frame.Rectangles (2).Y = Float (Terminal.App.Renderer.Content_Margin),
          "first cell should keep the vertical content margin");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "bold core initialize failed");
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[1mA"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "bold feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "bold render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Glyph_Count = 2, "bold glyph should be drawn twice");
+      Assert
+        (Frame.Glyphs (2).X = Frame.Glyphs (1).X + 1.0,
+         "bold duplicate glyph should be offset by one pixel");
+      Assert
+        (Frame.Glyphs (2).Y = Frame.Glyphs (1).Y,
+         "bold duplicate glyph should keep baseline placement");
    end;
 
    Terminal.App.Renderer.Finalize (R);

@@ -331,7 +331,7 @@ package body Terminal.App.Renderer is
       Rect_Max := Cell_Count * 2 + 2;
       begin
          R.Rectangles := new RM.Rectangle_Array (1 .. Rect_Max);
-         R.Glyphs := new RM.Glyph_Array (1 .. Cell_Count);
+         R.Glyphs := new RM.Glyph_Array (1 .. Cell_Count * 2);
       exception
          when Storage_Error =>
             Release_Frame (R);
@@ -423,11 +423,20 @@ package body Terminal.App.Renderer is
                                    Cell_X => X,
                                    Cell_Y => Y);
                               Add_Glyph
-                                 (R,
-                                  Placement => Placement,
-                                  Metric    => Metric,
-                                 Color     => FG,
-                                 Codepoint => Natural (Cell.Text.Code_Point));
+                                  (R,
+                                   Placement => Placement,
+                                   Metric    => Metric,
+                                   Color     => FG,
+                                   Codepoint => Natural (Cell.Text.Code_Point));
+                              if Cell.Style.Bold then
+                                 Placement.X := Placement.X + 1.0;
+                                 Add_Glyph
+                                    (R,
+                                     Placement => Placement,
+                                     Metric    => Metric,
+                                     Color     => FG,
+                                     Codepoint => Natural (Cell.Text.Code_Point));
+                              end if;
                            end if;
                         when others =>
                            Set_Render_Status (R, Status, Glyph_Load_Failed);
