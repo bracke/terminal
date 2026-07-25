@@ -410,4 +410,22 @@ package body Terminal.App.Input_Map is
       Code := Code + 32 + Mouse_Modifier_Code (Modifiers);
       Append_Mouse (Chunk, Modes, Code, Row, Col, False);
    end Encode_Mouse_Motion;
+
+   procedure Encode_Mouse_Wheel
+     (Event : GLFW_Vulkan.Input.Scroll_Event;
+      Modes : Terminal.Core.Mode_Snapshot;
+      Row   : Positive;
+      Col   : Positive;
+      Chunk : out Terminal.App.Queues.Byte_Chunk)
+   is
+      Code : Natural;
+   begin
+      Chunk := (others => <>);
+      if not Mouse_Reporting_Enabled (Modes) or else Event.Y_Offset = 0.0 then
+         return;
+      end if;
+
+      Code := (if Event.Y_Offset > 0.0 then 64 else 65);
+      Append_Mouse (Chunk, Modes, Code, Row, Col, False);
+   end Encode_Mouse_Wheel;
 end Terminal.App.Input_Map;

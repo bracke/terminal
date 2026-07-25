@@ -47,11 +47,19 @@ package GLFW_Vulkan.Input is
       Y : Float := 0.0;
    end record;
 
+   type Scroll_Event is record
+      X_Offset : Float := 0.0;
+      Y_Offset : Float := 0.0;
+      X        : Float := 0.0;
+      Y        : Float := 0.0;
+   end record;
+
    type Key_Callback is access procedure (Event : Key_Event);
    type Character_Callback is access procedure (Event : Character_Event);
    type Mouse_Button_Callback is access procedure (Event : Mouse_Button_Event);
    type Cursor_Position_Callback is access procedure
      (Event : Cursor_Position_Event);
+   type Scroll_Callback is access procedure (Event : Scroll_Event);
 
    procedure Set_Key_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
@@ -68,4 +76,8 @@ package GLFW_Vulkan.Input is
    procedure Set_Cursor_Position_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
       Callback : Cursor_Position_Callback);
+
+   procedure Set_Scroll_Callback
+     (W        : in out GLFW_Vulkan.Windows.Window;
+      Callback : Scroll_Callback);
 end GLFW_Vulkan.Input;

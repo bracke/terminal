@@ -54,6 +54,11 @@ procedure Input_Map_Smoke is
          Y         => 0.0);
    end Mouse_Event;
 
+   function Scroll_Event (Y_Offset : Float) return GI.Scroll_Event is
+   begin
+      return (X_Offset => 0.0, Y_Offset => Y_Offset, X => 0.0, Y => 0.0);
+   end Scroll_Event;
+
    function To_Bytes (Text : String) return Byte_Array is
       Result : Byte_Array (1 .. Text'Length);
    begin
@@ -250,4 +255,20 @@ begin
        3 => Byte (Character'Pos ('M')), 4 => Byte (2 + 16 + 32),
        5 => Byte (5 + 32), 6 => Byte (4 + 32)),
       "legacy right ctrl press");
+
+   Modes.Mouse_SGR := True;
+   IM.Encode_Mouse_Wheel (Scroll_Event (1.0), Modes, 4, 5, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[<64;5;4M"),
+      "sgr wheel up");
+
+   IM.Encode_Mouse_Wheel (Scroll_Event (-1.0), Modes, 4, 5, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[<65;5;4M"),
+      "sgr wheel down");
+
+   IM.Encode_Mouse_Wheel (Scroll_Event (0.0), Modes, 4, 5, Chunk);
+   Assert (Chunk.Length = 0, "zero scroll should not encode");
 end Input_Map_Smoke;

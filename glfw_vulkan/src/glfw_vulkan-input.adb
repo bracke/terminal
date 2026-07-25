@@ -11,6 +11,7 @@ package body GLFW_Vulkan.Input is
    Global_Char_Callback : Character_Callback := null;
    Global_Mouse_Button_Callback : Mouse_Button_Callback := null;
    Global_Cursor_Position_Callback : Cursor_Position_Callback := null;
+   Global_Scroll_Callback : Scroll_Callback := null;
 
    function Has_Mod (Mods : Interfaces.C.int; Flag : Interfaces.C.int) return Boolean is
      (((Mods / Flag) mod 2) = 1);
@@ -134,6 +135,12 @@ package body GLFW_Vulkan.Input is
       Y_Pos  : Interfaces.C.double)
      with Convention => C;
 
+   procedure Dispatch_Scroll
+     (Window   : Raw.GLFW_Window_Handle;
+      X_Offset : Interfaces.C.double;
+      Y_Offset : Interfaces.C.double)
+     with Convention => C;
+
    procedure Dispatch_Key
      (Window   : Raw.GLFW_Window_Handle;
       Raw_Key  : Interfaces.C.int;
@@ -210,6 +217,24 @@ package body GLFW_Vulkan.Input is
       end if;
    end Dispatch_Cursor_Position;
 
+   procedure Dispatch_Scroll
+     (Window   : Raw.GLFW_Window_Handle;
+      X_Offset : Interfaces.C.double;
+      Y_Offset : Interfaces.C.double)
+   is
+      X_Pos : Interfaces.C.double := 0.0;
+      Y_Pos : Interfaces.C.double := 0.0;
+   begin
+      if Global_Scroll_Callback /= null then
+         Raw.Get_Cursor_Pos (Window, X_Pos, Y_Pos);
+         Global_Scroll_Callback.all
+           ((X_Offset => Float (X_Offset),
+             Y_Offset => Float (Y_Offset),
+             X        => Float (X_Pos),
+             Y        => Float (Y_Pos)));
+      end if;
+   end Dispatch_Scroll;
+
    procedure Set_Key_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
       Callback : Key_Callback)
@@ -261,4 +286,17 @@ package body GLFW_Vulkan.Input is
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Cursor_Position'Access);
    end Set_Cursor_Position_Callback;
+
+   procedure Set_Scroll_Callback
+     (W        : in out GLFW_Vulkan.Windows.Window;
+      Callback : Scroll_Callback)
+   is
+      Previous : Raw.Scroll_Callback_Access;
+      pragma Unreferenced (Previous);
+   begin
+      Global_Scroll_Callback := Callback;
+      Previous := Raw.Set_Scroll_Callback
+        (GLFW_Vulkan.Windows.Internal.Handle (W),
+         Dispatch_Scroll'Access);
+   end Set_Scroll_Callback;
 end GLFW_Vulkan.Input;

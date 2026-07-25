@@ -122,6 +122,12 @@ package GLFW_Vulkan.Raw is
       Y_Pos  : Interfaces.C.double)
      with Convention => C;
 
+   type Scroll_Callback_Access is access procedure
+     (Window   : GLFW_Window_Handle;
+      X_Offset : Interfaces.C.double;
+      Y_Offset : Interfaces.C.double)
+     with Convention => C;
+
    function Set_Key_Callback
      (Window   : GLFW_Window_Handle;
       Callback : Key_Callback_Access) return Key_Callback_Access
@@ -142,6 +148,11 @@ package GLFW_Vulkan.Raw is
      (Window   : GLFW_Window_Handle;
       Callback : Cursor_Pos_Callback_Access) return Cursor_Pos_Callback_Access
      with Import, Convention => C, External_Name => "glfwSetCursorPosCallback";
+
+   function Set_Scroll_Callback
+     (Window   : GLFW_Window_Handle;
+      Callback : Scroll_Callback_Access) return Scroll_Callback_Access
+     with Import, Convention => C, External_Name => "glfwSetScrollCallback";
 
    procedure Get_Cursor_Pos
      (Window : GLFW_Window_Handle;

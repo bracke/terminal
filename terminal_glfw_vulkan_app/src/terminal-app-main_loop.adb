@@ -48,7 +48,8 @@ package body Terminal.App.Main_Loop is
              Key_Event       => Event,
              Character_Event => (others => <>),
              Button_Event    => (others => <>),
-             Cursor_Event    => (others => <>)));
+             Cursor_Event    => (others => <>),
+             Scroll_Event    => (others => <>)));
       end if;
    end On_Key;
 
@@ -63,7 +64,8 @@ package body Terminal.App.Main_Loop is
              Key_Event       => (others => <>),
              Character_Event => Event,
              Button_Event    => (others => <>),
-             Cursor_Event    => (others => <>)));
+             Cursor_Event    => (others => <>),
+             Scroll_Event    => (others => <>)));
       end if;
    end On_Character;
 
@@ -78,7 +80,8 @@ package body Terminal.App.Main_Loop is
              Key_Event       => (others => <>),
              Character_Event => (others => <>),
              Button_Event    => Event,
-             Cursor_Event    => (others => <>)));
+             Cursor_Event    => (others => <>),
+             Scroll_Event    => (others => <>)));
       end if;
    end On_Mouse_Button;
 
@@ -95,9 +98,26 @@ package body Terminal.App.Main_Loop is
              Key_Event       => (others => <>),
              Character_Event => (others => <>),
              Button_Event    => (others => <>),
-             Cursor_Event    => Event));
+             Cursor_Event    => Event,
+             Scroll_Event    => (others => <>)));
       end if;
    end On_Cursor_Position;
+
+   procedure On_Scroll (Event : GLFW_Vulkan.Input.Scroll_Event) is
+   begin
+      if Input_Queue /= null then
+         Input_Queue.Push
+           ((Kind            => Terminal.App.Queues.Scroll,
+             Width           => 0,
+             Height          => 0,
+             Bytes           => (others => <>),
+             Key_Event       => (others => <>),
+             Character_Event => (others => <>),
+             Button_Event    => (others => <>),
+             Cursor_Event    => (others => <>),
+             Scroll_Event    => Event));
+      end if;
+   end On_Scroll;
 
    function Same_Title
      (Left  : Terminal.Core.Title_Text;
@@ -158,6 +178,8 @@ package body Terminal.App.Main_Loop is
          when others                   => return 0;
       end case;
    end Mouse_Button_Code;
+
+   Scroll_Lines_Per_Wheel : constant Positive := 3;
 
    procedure Run is
       Ctx : GLFW_Vulkan.Context;
@@ -267,6 +289,7 @@ package body Terminal.App.Main_Loop is
       GLFW_Vulkan.Input.Set_Mouse_Button_Callback (W, On_Mouse_Button'Access);
       GLFW_Vulkan.Input.Set_Cursor_Position_Callback
         (W, On_Cursor_Position'Access);
+      GLFW_Vulkan.Input.Set_Scroll_Callback (W, On_Scroll'Access);
 
       declare
          Reader_Task : Terminal.App.PTY_Reader.Reader
@@ -465,6 +488,47 @@ package body Terminal.App.Main_Loop is
                            elsif Terminal.App.Selection.Is_Active (Selection) then
                               Terminal.App.Selection.Update_Selection
                                 (Selection, Pos);
+                              Dirty := True;
+                              Need_Redraw := True;
+                           end if;
+                        end;
+                     when Terminal.App.Queues.Scroll =>
+                        Chunk := (others => <>);
+                        declare
+                           Pos : constant Terminal.App.Selection.Cell_Position :=
+                             Terminal.App.Selection.Cell_From_Pixels
+                               (Event.Scroll_Event.X,
+                                Event.Scroll_Event.Y,
+                                Terminal.App.Renderer.Cell_Width (R),
+                                Terminal.App.Renderer.Cell_Height (R),
+                                Terminal.App.Renderer.Content_Margin,
+                                Last_Rows,
+                                Last_Cols);
+                           Modes : constant Terminal.Core.Mode_Snapshot :=
+                             Terminal.Core.Modes (T);
+                        begin
+                           if Terminal.App.Input_Map.Mouse_Reporting_Enabled
+                             (Modes)
+                           then
+                              Terminal.App.Input_Map.Encode_Mouse_Wheel
+                                (Event.Scroll_Event,
+                                 Modes,
+                                 Pos.Row,
+                                 Pos.Col,
+                                 Chunk);
+                           elsif Event.Scroll_Event.Y_Offset > 0.0 then
+                              Scroll_Offset :=
+                                Terminal.App.Scrollback_View.Clamp_Offset
+                                  (T, Scroll_Offset + Scroll_Lines_Per_Wheel);
+                              Dirty := True;
+                              Need_Redraw := True;
+                           elsif Event.Scroll_Event.Y_Offset < 0.0 then
+                              if Scroll_Offset > Scroll_Lines_Per_Wheel then
+                                 Scroll_Offset :=
+                                   Scroll_Offset - Scroll_Lines_Per_Wheel;
+                              else
+                                 Scroll_Offset := 0;
+                              end if;
                               Dirty := True;
                               Need_Redraw := True;
                            end if;

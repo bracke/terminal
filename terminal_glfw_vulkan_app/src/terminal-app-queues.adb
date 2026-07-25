@@ -65,7 +65,8 @@ package body Terminal.App.Queues is
                Character_Event =>
                  (Code_Point => Wide_Wide_Character'Val (0)),
                Button_Event    => (others => <>),
-               Cursor_Event    => (others => <>));
+               Cursor_Event    => (others => <>),
+               Scroll_Event    => (others => <>));
             Available := False;
             return;
          end if;
