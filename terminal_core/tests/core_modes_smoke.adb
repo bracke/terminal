@@ -5,6 +5,7 @@ with Terminal.Core;
 procedure Core_Modes_Smoke is
    use AUnit.Assertions;
    use Terminal.Common.Bytes;
+   use type Terminal.Core.Cell_Kind;
    use type Terminal.Common.Code_Point;
    use type Terminal.Core.Color_Kind;
    use type Terminal.Core.Cursor_Shape;
@@ -210,6 +211,38 @@ begin
       Assert
         (S.Cursor.Row = 1 and then S.Cursor.Col = 1,
          "resetting origin mode should home to absolute row one");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 5, 3, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "DECSTBM invalid initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[2;4r"
+      & ASCII.ESC & "[3;3r"
+      & ASCII.ESC & "[2;1HA"
+      & ASCII.ESC & "[3;1HB"
+      & ASCII.ESC & "[4;1HC"
+      & ASCII.ESC & "[4;1H"
+      & ASCII.LF,
+      "DECSTBM invalid feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 2, 1).Text.Code_Point = 16#42#,
+         "invalid one-row margin should leave prior region row 2 scrolling");
+      Assert
+        (Terminal.Core.Cell_At (S, 3, 1).Text.Code_Point = 16#43#,
+         "invalid one-row margin should leave prior region row 3 scrolling");
+      Assert
+        (Terminal.Core.Cell_At (S, 4, 1).Kind = Terminal.Core.Empty,
+         "invalid one-row margin should leave prior region bottom cleared");
+      Assert
+        (D.Unsupported_Sequence = 1,
+         "invalid one-row margin should be diagnosed");
       Terminal.Core.Release (S);
    end;
 

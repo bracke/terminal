@@ -1639,7 +1639,7 @@ package body Terminal.Core is
          when 'r' =>
             R := Param (T, 1, 1);
             C := Param (T, 2, T.Rows);
-            if R >= 1 and then C >= R and then C <= T.Rows then
+            if R >= 1 and then C > R and then C <= T.Rows then
                T.Top_Margin := R;
                T.Bottom_Margin := C;
                Move_Cursor (T, 1, 1);
