@@ -83,6 +83,9 @@ begin
      (Simple.Shaped_Glyphs (1).Codepoint = Character'Pos ('A'),
       "simple glyph shaped codepoint");
    Assert
+     (Simple.Shaped_Glyphs (1).Glyph_ID = Character'Pos ('A'),
+      "simple glyph codepoint-backed glyph id");
+   Assert
      (Simple.Shaped_Glyphs (1).Source_Index = 1,
       "simple glyph source index");
    Assert
@@ -98,6 +101,9 @@ begin
    Assert
      (Text.Shaped_Glyphs (2).Codepoint = Character'Pos ('b'),
       "simple text second glyph codepoint");
+   Assert
+     (Text.Shaped_Glyphs (2).Glyph_ID = Character'Pos ('b'),
+      "simple text second codepoint-backed glyph id");
    Assert
      (Text.Shaped_Glyphs (2).Source_Index = 2,
       "simple text second source index");

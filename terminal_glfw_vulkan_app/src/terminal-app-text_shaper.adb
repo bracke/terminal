@@ -119,7 +119,7 @@ package body Terminal.App.Text_Shaper is
          begin
             for I in 1 .. Run.Codepoint_Count loop
                Run.Shaped_Glyphs (I) :=
-                 (Glyph_ID     => 0,
+                 (Glyph_ID     => Run.Codepoints (I),
                   Codepoint    => Run.Codepoints (I),
                   Source_Index => I,
                   X_Offset     => 0.0,

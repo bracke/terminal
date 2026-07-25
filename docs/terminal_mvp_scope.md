@@ -116,13 +116,14 @@ backend and stores that run kind and shape status directly on each text-run
 command. Compatible adjacent cells in a row are coalesced up to the bounded
 text-run capacity, so ordinary text is available as a run rather than only as
 one cell at a time. The adapter emits bounded shaped-glyph output for simple
-glyph/text runs, but ligature candidates and complex runs keep an empty
-shaped-glyph output until a backend is available. The submit/presenter/device
-layers carry those runs without parsing terminal data. BiDi layout, OpenType
-shaping, emoji ZWJ glyph composition, complex-script cluster shaping, and
-ligature substitution still require a real shaping backend behind those
-text-run commands. Renderer, submit, presenter, and device diagnostics expose
-aggregate shaped-glyph counts for that path.
+glyph/text runs using the `textrender` codepoint key as `Glyph_ID`, but
+ligature candidates and complex runs keep an empty shaped-glyph output until a
+backend is available. The submit/presenter/device layers carry those runs
+without parsing terminal data. BiDi layout, OpenType shaping, emoji ZWJ glyph
+composition, complex-script cluster shaping, ligature substitution, and real
+font glyph IDs still require a shaping backend behind those text-run commands.
+Renderer, submit, presenter, and device diagnostics expose aggregate
+shaped-glyph counts for that path.
 
 ## Cursor
 
