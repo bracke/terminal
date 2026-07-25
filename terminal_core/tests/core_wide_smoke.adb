@@ -69,6 +69,16 @@ procedure Core_Wide_Smoke is
          Message);
    end Assert_Char;
 begin
+   Assert
+     (Terminal.Core.Is_Renderable_Attachment (16#0301#),
+      "combining acute should be renderable as an attachment");
+   Assert
+     (not Terminal.Core.Is_Renderable_Attachment (16#200D#),
+      "ZWJ should remain a non-rendering attachment");
+   Assert
+     (not Terminal.Core.Is_Renderable_Attachment (16#FE0F#),
+      "variation selector should remain a non-rendering attachment");
+
    Terminal.Core.Initialize (T, 1, 6, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize wide placement failed");
    Feed_A_Wide_B;

@@ -98,9 +98,10 @@ variation selectors are attached to the previous cell without advancing the
 cursor; overflow is reported through diagnostics. Selection and clipboard copy
 preserve stored cluster scalars. Rendering submits the base scalar and overlays
 renderable combining-mark attachments in the same cell, while invisible joiner,
-format-control, bidi, and variation-selector attachments remain non-drawing.
-Full cluster shaping, emoji ZWJ composition, and BiDi layout require additional
-text-pipeline support beyond the current glyph overlay path.
+format-control, bidi, and variation-selector attachments remain non-drawing;
+the core exposes this renderability classification with the snapshot-facing text
+model. Full cluster shaping, emoji ZWJ composition, and BiDi layout require
+additional text-pipeline support beyond the current glyph overlay path.
 
 ## Cursor
 

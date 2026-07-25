@@ -433,46 +433,6 @@ package body Terminal.App.Renderer is
         and then Natural (Cell.Text.Code_Point) /= 0;
    end Is_Drawable;
 
-   function Is_Renderable_Attachment
-     (CP : Terminal.Common.Code_Point) return Boolean
-   is
-      V : constant Natural := Natural (CP);
-   begin
-      return
-        (V in 16#0300# .. 16#036F#)
-        or else (V in 16#0483# .. 16#0489#)
-        or else (V in 16#0591# .. 16#05BD#)
-        or else V = 16#05BF#
-        or else (V in 16#05C1# .. 16#05C2#)
-        or else (V in 16#05C4# .. 16#05C5#)
-        or else V = 16#05C7#
-        or else (V in 16#0610# .. 16#061A#)
-        or else (V in 16#064B# .. 16#065F#)
-        or else V = 16#0670#
-        or else (V in 16#06D6# .. 16#06ED#)
-        or else V = 16#0711#
-        or else (V in 16#0730# .. 16#074A#)
-        or else (V in 16#07A6# .. 16#07B0#)
-        or else (V in 16#07EB# .. 16#07F3#)
-        or else (V in 16#0816# .. 16#0819#)
-        or else (V in 16#081B# .. 16#0823#)
-        or else (V in 16#0825# .. 16#0827#)
-        or else (V in 16#0829# .. 16#082D#)
-        or else (V in 16#0859# .. 16#085B#)
-        or else (V in 16#08D3# .. 16#08FF#)
-        or else (V in 16#0900# .. 16#0903#)
-        or else V = 16#093A#
-        or else V = 16#093C#
-        or else (V in 16#0941# .. 16#0948#)
-        or else V = 16#094D#
-        or else (V in 16#0951# .. 16#0957#)
-        or else (V in 16#0962# .. 16#0963#)
-        or else (V in 16#1AB0# .. 16#1AFF#)
-        or else (V in 16#1DC0# .. 16#1DFF#)
-        or else (V in 16#20D0# .. 16#20FF#)
-        or else (V in 16#FE20# .. 16#FE2F#);
-   end Is_Renderable_Attachment;
-
    procedure Draw_Glyph
      (R         : in out Renderer;
       Codepoint : Terminal.Common.Code_Point;
@@ -659,7 +619,9 @@ package body Terminal.App.Renderer is
                      end if;
 
                      for I in 1 .. Cell.Text.Attachment_Count loop
-                        if Is_Renderable_Attachment (Cell.Text.Attachments (I)) then
+                        if Terminal.Core.Is_Renderable_Attachment
+                          (Cell.Text.Attachments (I))
+                        then
                            Draw_Glyph
                              (R,
                               Codepoint => Cell.Text.Attachments (I),

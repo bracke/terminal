@@ -182,6 +182,9 @@ package Terminal.Core is
       Row : Positive;
       Col : Positive) return Cell;
 
+   function Is_Renderable_Attachment
+     (CP : Common.Code_Point) return Boolean;
+
 private
    type Parser_State is
      (Ground,
