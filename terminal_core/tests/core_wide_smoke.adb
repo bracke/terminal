@@ -403,6 +403,36 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize flag emoji width failed");
+   Feed_Bytes
+     ((1  => Byte (Character'Pos ('a')),
+       2  => 16#F0#, 3  => 16#9F#, 4  => 16#87#, 5  => 16#A9#,
+       6  => 16#F0#, 7  => 16#9F#, 8  => 16#87#, 9  => 16#B0#,
+       10 => Byte (Character'Pos ('b'))),
+      "flag emoji width feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Flag : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Continuation : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert_Char (S, 1, 16#61#, "flag emoji width prefix");
+      Assert (Flag.Text.Code_Point = 16#1F1E9#, "flag emoji base");
+      Assert (Flag.Text.Width = Terminal.Core.Width_Two, "flag emoji width");
+      Assert (Flag.Text.Attachment_Count = 1, "flag emoji attachment count");
+      Assert
+        (Flag.Text.Attachments (1) = 16#1F1F0#,
+         "flag emoji second regional indicator");
+      Assert
+        (Continuation.Kind = Terminal.Core.Wide_Continuation,
+         "flag emoji continuation");
+      Assert_Char (S, 4, 16#62#, "flag emoji width suffix");
+      Assert (S.Cursor.Col = 5, "flag emoji width cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize emoji ZWJ cluster failed");
    Feed_Bytes
      ((1  => Byte (Character'Pos ('a')),

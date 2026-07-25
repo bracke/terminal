@@ -98,16 +98,17 @@ format controls, bidi marks, and variation selectors are attached to the
 previous cell without advancing the cursor. VS16 promotes common
 emoji-presentation base scalars to width two when there is room to add the
 continuation cell in the same row. Keycap bases (`0` through `9`, `#`, and `*`)
-plus enclosing keycap mark are also promoted to width two. When a cluster ends
-in ZWJ, the next spacing scalar is attached to that cluster, preserving emoji
-ZWJ sequences without consuming more grid cells; overflow is reported through
-diagnostics. Selection and clipboard copy preserve stored cluster scalars.
-Rendering submits the base scalar and overlays renderable combining-mark
-attachments in the same cell, while invisible joiner, format-control, bidi,
-variation-selector, and joined emoji attachments remain non-drawing until a
-shaped text run path is available; the core exposes this renderability
-classification with the snapshot-facing text model. BiDi layout requires
-additional text-pipeline support beyond the current glyph overlay path.
+plus enclosing keycap mark are also promoted to width two. Regional-indicator
+pairs are kept as one two-cell flag cluster instead of two separate wide cells.
+When a cluster ends in ZWJ, the next spacing scalar is attached to that cluster,
+preserving emoji ZWJ sequences without consuming more grid cells; overflow is
+reported through diagnostics. Selection and clipboard copy preserve stored
+cluster scalars. Rendering submits the base scalar and overlays renderable
+combining-mark attachments in the same cell, while invisible joiner,
+format-control, bidi, variation-selector, and joined emoji attachments remain
+non-drawing until a shaped text run path is available; the core exposes this
+renderability classification with the snapshot-facing text model. BiDi layout
+requires additional text-pipeline support beyond the current glyph overlay path.
 
 ## Cursor
 

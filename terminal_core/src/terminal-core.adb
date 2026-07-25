@@ -617,6 +617,12 @@ package body Terminal.Core is
         or else (V in 16#30# .. 16#39#);
    end Is_Keycap_Base;
 
+   function Is_Regional_Indicator (CP : Common.Code_Point) return Boolean is
+      V : constant Natural := Natural (CP);
+   begin
+      return V in 16#1F1E6# .. 16#1F1FF#;
+   end Is_Regional_Indicator;
+
    function Is_Zero_Width (CP : Common.Code_Point) return Boolean is
       V : constant Natural := Natural (CP);
    begin
@@ -995,7 +1001,9 @@ package body Terminal.Core is
          end if;
       end Attach_To_Previous_Cell;
 
-      function Previous_Cluster_Ends_With_ZWJ return Boolean is
+      function Previous_Cluster_Accepts_Spacing
+        (Spacing_CP : Common.Code_Point) return Boolean
+      is
          Cell_Index : constant Natural := Previous_Cell_Index;
          Count      : Cluster_Attachment_Count;
       begin
@@ -1007,9 +1015,14 @@ package body Terminal.Core is
 
          Count := Cells (Cell_Index).Text.Attachment_Count;
          return
-           Count > 0
-           and then Cells (Cell_Index).Text.Attachments (Count) = 16#200D#;
-      end Previous_Cluster_Ends_With_ZWJ;
+           (Count > 0
+            and then Cells (Cell_Index).Text.Attachments (Count) = 16#200D#)
+           or else
+             (Count = 0
+              and then Is_Regional_Indicator
+                (Cells (Cell_Index).Text.Code_Point)
+              and then Is_Regional_Indicator (Spacing_CP));
+      end Previous_Cluster_Accepts_Spacing;
    begin
       if Cells = null then
          return;
@@ -1018,7 +1031,7 @@ package body Terminal.Core is
             null;
          end if;
          return;
-      elsif Previous_Cluster_Ends_With_ZWJ then
+      elsif Previous_Cluster_Accepts_Spacing (CP) then
          if not Attach_To_Previous_Cell (CP) then
             null;
          end if;
