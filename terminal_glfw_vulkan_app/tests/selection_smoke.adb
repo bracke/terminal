@@ -99,6 +99,33 @@ begin
       S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
       Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 2));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 2));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         To_String ((1 => 16#E4#, 2 => 16#B8#, 3 => 16#80#)),
+         "selecting only a wide head should copy the glyph");
+
+      Terminal.App.Selection.Apply_To_Snapshot (S, Sel);
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Style.Inverse,
+         "wide head should highlight when selected");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Style.Inverse,
+         "wide continuation should highlight when head is selected");
+      Assert
+        (not Terminal.Core.Cell_At (S, 1, 4).Style.Inverse,
+         "wide selection should not affect following cell");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Begin_Selection
         (Sel, (Row => 1, Col => 3));
       Terminal.App.Selection.Finish_Selection
         (Sel, (Row => 1, Col => 3));

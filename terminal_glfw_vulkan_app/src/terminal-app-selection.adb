@@ -184,19 +184,6 @@ package body Terminal.App.Selection is
         or else Is_Wide_Continuation (Snapshot, Row, Col);
    end Is_Text_For_Selection;
 
-   function UTF8_Length (Code : Terminal.Common.Code_Point) return Natural is
-   begin
-      if Code <= 16#7F# then
-         return 1;
-      elsif Code <= 16#7FF# then
-         return 2;
-      elsif Code <= 16#FFFF# then
-         return 3;
-      else
-         return 4;
-      end if;
-   end UTF8_Length;
-
    procedure Append_Byte
      (Result : in out String;
       Last   : in out Natural;
