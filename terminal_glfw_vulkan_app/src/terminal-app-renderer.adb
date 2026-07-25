@@ -501,8 +501,7 @@ package body Terminal.App.Renderer is
                           Float (Content_Margin + (First - 1) * R.CW),
                         Y         =>
                           Float (Content_Margin + (Row - 1) * R.CH),
-                        Width     =>
-                          Float ((Last - First + Cell_Column_Span (Cell)) * R.CW),
+                        Width     => Float (R.CW),
                         Height    => Float (R.CH),
                         Color     =>
                           (if Is_Block_Cursor (Snapshot, Row, First)

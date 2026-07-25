@@ -81,6 +81,9 @@ diagnostics, and device upload diagnostics also carry aggregate shaped-glyph
 counts so the shaped-text path remains observable across the whole render path.
 Cells covered by a successfully shaped run are suppressed from the per-cell
 fallback draw path for the full run span.
+`Text_Run_Command.Cell_Width` is one terminal grid cell; `Cell_Span` carries the
+number of covered cells. HarfBuzz scaling and renderer placement derive the full
+run width from those two fields.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions

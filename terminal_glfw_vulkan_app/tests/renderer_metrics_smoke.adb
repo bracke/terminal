@@ -614,6 +614,10 @@ begin
       Assert
         (Frame.Text_Runs (1).Cell_Span = 3,
          "simple text run should span all cells");
+      Assert_Close
+        (Frame.Text_Runs (1).Cell_Width,
+         Float (Terminal.App.Renderer.Cell_Width (R)),
+         "simple text run cell width should be one grid cell");
       Assert
         (Frame.Glyph_Count = Natural (Frame.Text_Runs (1).Shaped_Glyph_Count),
          "simple shaped text should not draw covered fallback cells");
@@ -777,6 +781,10 @@ begin
       Assert
         (Frame.Text_Runs (1).Cell_Span = 2,
          "RTL text run should span both cells");
+      Assert_Close
+        (Frame.Text_Runs (1).Cell_Width,
+         Float (Terminal.App.Renderer.Cell_Width (R)),
+         "RTL text run cell width should be one grid cell");
       Assert
         (Frame.Glyph_Count >= 2,
          "RTL shaped run should draw at least two glyphs");
