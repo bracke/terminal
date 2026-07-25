@@ -23,6 +23,15 @@ procedure Selection_Smoke is
       end loop;
       return Result;
    end To_Bytes;
+
+   function To_String (Data : Byte_Array) return String is
+      Result : String (1 .. Data'Length);
+   begin
+      for I in Data'Range loop
+         Result (I - Data'First + 1) := Character'Val (Natural (Data (I)));
+      end loop;
+      return Result;
+   end To_String;
 begin
    declare
       Pos : constant Terminal.App.Selection.Cell_Position :=
@@ -72,6 +81,59 @@ begin
         (not Terminal.Core.Cell_At (S, 1, 1).Style.Inverse,
          "unselected cell should not be inverted");
 
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 5, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "wide selection initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#E4#, 3 => 16#B8#, 4 => 16#80#,
+       5 => Byte (Character'Pos ('b'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "wide selection feed failed");
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 3));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 3));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         To_String ((1 => 16#E4#, 2 => 16#B8#, 3 => 16#80#)),
+         "selecting only a wide continuation should copy the whole glyph");
+
+      Terminal.App.Selection.Apply_To_Snapshot (S, Sel);
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Style.Inverse,
+         "wide head should highlight when continuation is selected");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Style.Inverse,
+         "wide continuation should highlight when selected");
+      Assert
+        (not Terminal.Core.Cell_At (S, 1, 1).Style.Inverse,
+         "wide selection should not affect previous cell");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 2));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 3));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         To_String ((1 => 16#E4#, 2 => 16#B8#, 3 => 16#80#)),
+         "selecting both halves of a wide glyph should copy it once");
       Terminal.Core.Release (S);
    end;
 end Selection_Smoke;

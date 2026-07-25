@@ -2,6 +2,7 @@ with Terminal.Common;
 
 package body Terminal.App.Selection is
    use type Terminal.Core.Cell_Kind;
+   use type Terminal.Core.Cell_Width;
    use type Terminal.Core.Cell_Array_Access;
    use type Terminal.Common.Code_Point;
 
@@ -126,6 +127,63 @@ package body Terminal.App.Selection is
         and then Before_Or_Equal (Here, End_Pos);
    end Contains;
 
+   function Is_Wide_Head
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      Col      : Positive) return Boolean
+   is
+      Cell : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (Snapshot, Row, Col);
+   begin
+      return Cell.Kind = Terminal.Core.Character
+        and then Cell.Text.Width = Terminal.Core.Width_Two
+        and then Cell.Text.Code_Point /= 0
+        and then Col < Positive (Snapshot.Cols)
+        and then Terminal.Core.Cell_At (Snapshot, Row, Col + 1).Kind =
+          Terminal.Core.Wide_Continuation;
+   end Is_Wide_Head;
+
+   function Is_Wide_Continuation
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      Col      : Positive) return Boolean
+   is
+   begin
+      return Col > 1
+        and then Terminal.Core.Cell_At (Snapshot, Row, Col).Kind =
+          Terminal.Core.Wide_Continuation
+        and then Is_Wide_Head (Snapshot, Row, Col - 1);
+   end Is_Wide_Continuation;
+
+   function Contains_With_Wide
+     (Selection : Selection_State;
+      Snapshot  : Terminal.Core.Render_Snapshot;
+      Row       : Positive;
+      Col       : Positive) return Boolean
+   is
+   begin
+      return Contains (Selection, Row, Col)
+        or else
+          (Is_Wide_Head (Snapshot, Row, Col)
+           and then Contains (Selection, Row, Col + 1))
+        or else
+          (Is_Wide_Continuation (Snapshot, Row, Col)
+           and then Contains (Selection, Row, Col - 1));
+   end Contains_With_Wide;
+
+   function Is_Text_For_Selection
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      Col      : Positive) return Boolean
+   is
+      Cell : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (Snapshot, Row, Col);
+   begin
+      return
+        (Cell.Kind = Terminal.Core.Character and then Cell.Text.Code_Point /= 0)
+        or else Is_Wide_Continuation (Snapshot, Row, Col);
+   end Is_Text_For_Selection;
+
    function UTF8_Length (Code : Terminal.Common.Code_Point) return Natural is
    begin
       if Code <= 16#7F# then
@@ -215,9 +273,7 @@ package body Terminal.App.Selection is
                      Cell : constant Terminal.Core.Cell :=
                        Terminal.Core.Cell_At (Snapshot, Row, Col);
                   begin
-                     if Cell.Kind = Terminal.Core.Character
-                       and then Cell.Text.Code_Point /= 0
-                     then
+                     if Is_Text_For_Selection (Snapshot, Row, Col) then
                         Row_Last := Col;
                      end if;
                   end;
@@ -233,6 +289,14 @@ package body Terminal.App.Selection is
                           and then Cell.Text.Code_Point /= 0
                         then
                            Append_UTF8 (Result, Last, Cell.Text.Code_Point);
+                        elsif Is_Wide_Continuation (Snapshot, Row, Col)
+                          and then not Contains (Selection, Row, Col - 1)
+                        then
+                           Append_UTF8
+                             (Result,
+                              Last,
+                              Terminal.Core.Cell_At
+                                (Snapshot, Row, Col - 1).Text.Code_Point);
                         elsif Cell.Kind = Terminal.Core.Empty then
                            Append_Byte (Result, Last, Character'Pos (' '));
                         end if;
@@ -265,7 +329,7 @@ package body Terminal.App.Selection is
 
       for Row in 1 .. Positive (Snapshot.Rows) loop
          for Col in 1 .. Positive (Snapshot.Cols) loop
-            if Contains (Selection, Row, Col) then
+            if Contains_With_Wide (Selection, Snapshot, Row, Col) then
                Snapshot.Cells
                  ((Row - 1) * Positive (Snapshot.Cols) + Col).Style.Inverse :=
                    not Snapshot.Cells
