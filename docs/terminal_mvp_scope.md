@@ -65,7 +65,9 @@ cursor shape to block.
 
 Primary-screen scrollback is bounded by the initialize-time limit. The alternate
 screen has no scrollback. Full terminal reset (`ESC c`) clears the visible
-buffers and scrollback. The GLFW app supports page-based scrollback viewing
+buffers and scrollback. Xterm ED 3 (`CSI 3 J`) clears the visible screen and
+primary scrollback; ED 2 clears only the visible screen. The GLFW app supports
+page-based scrollback viewing
 with `Shift+Page_Up` and `Shift+Page_Down`; normal typing returns to the live
 bottom.
 

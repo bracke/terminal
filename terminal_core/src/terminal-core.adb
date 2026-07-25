@@ -1296,10 +1296,15 @@ package body Terminal.Core is
                      Clear_Row (T, Row, 1, T.Cols);
                   end loop;
                   Clear_Row (T, T.Cursor_Row, 1, T.Cursor_Col);
-               when 2 | 3 =>
+               when 2 =>
                   for Row in 1 .. T.Rows loop
                      Clear_Row (T, Row, 1, T.Cols);
                   end loop;
+               when 3 =>
+                  for Row in 1 .. T.Rows loop
+                     Clear_Row (T, Row, 1, T.Cols);
+                  end loop;
+                  T.Scrollback_Rows := 0;
                when others =>
                   T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end case;

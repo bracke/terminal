@@ -41,4 +41,38 @@ begin
    Assert
      (Terminal.Core.Scrollback_Row_Count (T) = 0,
       "terminal reset should clear scrollback");
+
+   Terminal.Core.Initialize (T, 2, 4, 2, Init);
+   Assert (Init = Terminal.Core.Ok, "ED scrollback initialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')), 2 => 13, 3 => 10,
+       4 => Byte (Character'Pos ('b')), 5 => 13, 6 => 10,
+       7 => Byte (Character'Pos ('c'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "ED scrollback setup feed failed");
+   Assert
+     (Terminal.Core.Scrollback_Row_Count (T) = 1,
+      "ED scrollback setup count");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#1B#, 2 => Byte (Character'Pos ('[')),
+       3 => Byte (Character'Pos ('2')), 4 => Byte (Character'Pos ('J'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "ED 2 feed failed");
+   Assert
+     (Terminal.Core.Scrollback_Row_Count (T) = 1,
+      "ED 2 should preserve scrollback");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#1B#, 2 => Byte (Character'Pos ('[')),
+       3 => Byte (Character'Pos ('3')), 4 => Byte (Character'Pos ('J'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "ED 3 feed failed");
+   Assert
+     (Terminal.Core.Scrollback_Row_Count (T) = 0,
+      "ED 3 should clear scrollback");
 end Core_Scrollback_Smoke;
