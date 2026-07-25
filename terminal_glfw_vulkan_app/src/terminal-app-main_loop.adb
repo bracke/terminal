@@ -239,6 +239,7 @@ package body Terminal.App.Main_Loop is
       Mouse_Modifiers : GLFW_Vulkan.Input.Modifier_Set;
       Blink_Origin : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
       Last_Blink_Tick : Natural := 0;
+      Blinking_Text_Active : Boolean := False;
    begin
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
       if Init_Status /= GLFW_Vulkan.Ok then
@@ -345,7 +346,9 @@ package body Terminal.App.Main_Loop is
                    (Ada.Real_Time.To_Duration
                       (Ada.Real_Time.Clock - Blink_Origin));
                if Current_Blink_Tick /= Last_Blink_Tick
-                 and then Terminal.Core.Modes (T).Cursor_Blinking
+                 and then
+                   (Terminal.Core.Modes (T).Cursor_Blinking
+                    or else Blinking_Text_Active)
                then
                   Dirty := True;
                   Need_Redraw := True;
@@ -664,6 +667,8 @@ package body Terminal.App.Main_Loop is
                      Can_Present : Boolean := True;
                   begin
                      Terminal.App.Selection.Apply_To_Snapshot (Snap, Selection);
+                     Blinking_Text_Active :=
+                       Terminal.App.Text_Blink.Contains_Blinking_Text (Snap);
                      Terminal.App.Text_Blink.Apply
                        (Snap, Current_Blink_Tick);
                      Terminal.App.Cursor_Blink.Apply

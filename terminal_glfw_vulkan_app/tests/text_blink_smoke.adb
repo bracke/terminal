@@ -22,6 +22,10 @@ begin
    Cells.all (2).Kind := Terminal.Core.Character;
    Cells.all (2).Text.Code_Point := Character'Pos ('b');
 
+   Assert
+     (Terminal.App.Text_Blink.Contains_Blinking_Text (Snapshot),
+      "snapshot reports blinking text");
+
    Terminal.App.Text_Blink.Apply (Snapshot, 0);
    Assert
      (not Cells.all (1).Style.Conceal,
@@ -37,4 +41,10 @@ begin
    Assert
      (not Cells.all (2).Style.Conceal,
       "steady text remains visible on odd ticks");
+
+   Cells.all (1).Style.Blink := False;
+   Cells.all (1).Style.Conceal := False;
+   Assert
+     (not Terminal.App.Text_Blink.Contains_Blinking_Text (Snapshot),
+      "snapshot reports no blinking text after style clears");
 end Text_Blink_Smoke;
