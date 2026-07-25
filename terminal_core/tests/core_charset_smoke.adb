@@ -78,6 +78,63 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 2, 12, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "G2 initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "*0"
+         & "x"
+         & ASCII.ESC & "N"
+         & "x"
+         & "x"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "G2 charset feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "G2 designation should not affect active G0 text");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#2502#,
+         "SS2 should map next byte through G2 DEC charset");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#78#,
+         "SS2 should affect only one byte");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 2, 12, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "G3 initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#1B#,
+       2 => Byte (Character'Pos ('+')),
+       3 => Byte (Character'Pos ('0')),
+       4 => Byte (Character'Pos ('x')),
+       5 => 16#8F#,
+       6 => Byte (Character'Pos ('x')),
+       7 => Byte (Character'Pos ('x'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "G3 charset feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "G3 designation should not affect active G0 text");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#2502#,
+         "SS3 should map next byte through G3 DEC charset");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#78#,
+         "SS3 should affect only one byte");
+      Terminal.Core.Release (S);
+   end;
+
    declare
       D : constant Terminal.Core.Diagnostic_Snapshot :=
         Terminal.Core.Diagnostics (T);

@@ -15,12 +15,12 @@
   (`ESC # 8`), keypad mode toggles, and G-set charset designation for ASCII
   and DEC special graphics. Coding-system designations `ESC % G` and `ESC % @`
   are consumed safely.
-- SO/SI select G1/G0 for 7-bit GL text. DEC special graphics maps the common
-  VT100 line-drawing range to Unicode box-drawing and symbol code points.
-- SS2/SS3 single-shift controls are consumed with the following byte; G2/G3
-  charset mapping is postponed.
+- SO/SI select G1/G0 for 7-bit GL text. SS2/SS3 single-shift one printable
+  byte through G2/G3. DEC special graphics maps the common VT100 line-drawing
+  range to Unicode box-drawing and symbol code points across G0 through G3.
 - Saved cursor state includes row, column, and current SGR style.
-- Saved cursor state also preserves the active G0/G1 charset designation.
+- Saved cursor state also preserves the active G-set and G0 through G3 charset
+  designations.
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL,
   ICH, DCH, ECH, IL, DL, REP, SU, SD, SGR, DECSET/DECRST known modes,
   SM/RM insert mode including bounded parameter lists, DECSTBM margins with at

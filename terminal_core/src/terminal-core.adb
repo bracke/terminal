@@ -174,6 +174,8 @@ package body Terminal.Core is
       T.Saved_Style := T.Current_Style;
       T.Saved_G0_Charset := T.G0_Charset;
       T.Saved_G1_Charset := T.G1_Charset;
+      T.Saved_G2_Charset := T.G2_Charset;
+      T.Saved_G3_Charset := T.G3_Charset;
       T.Saved_Active_Charset := T.Active_Charset;
    end Save_Cursor_State;
 
@@ -185,6 +187,8 @@ package body Terminal.Core is
       T.Current_Style := T.Saved_Style;
       T.G0_Charset := T.Saved_G0_Charset;
       T.G1_Charset := T.Saved_G1_Charset;
+      T.G2_Charset := T.Saved_G2_Charset;
+      T.G3_Charset := T.Saved_G3_Charset;
       T.Active_Charset := T.Saved_Active_Charset;
       T.Pending_Wrap := False;
       Mark_Cursor_Move (T, Old_Row);
@@ -208,10 +212,15 @@ package body Terminal.Core is
       T.Saved_Style := (others => <>);
       T.G0_Charset := ASCII_Charset;
       T.G1_Charset := ASCII_Charset;
+      T.G2_Charset := ASCII_Charset;
+      T.G3_Charset := ASCII_Charset;
       T.Active_Charset := G0;
       T.Charset_Target := G0;
+      T.Single_Shift_Charset := G2;
       T.Saved_G0_Charset := ASCII_Charset;
       T.Saved_G1_Charset := ASCII_Charset;
+      T.Saved_G2_Charset := ASCII_Charset;
+      T.Saved_G3_Charset := ASCII_Charset;
       T.Saved_Active_Charset := G0;
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
@@ -320,10 +329,15 @@ package body Terminal.Core is
       T.Current_Modes := (others => <>);
       T.G0_Charset := ASCII_Charset;
       T.G1_Charset := ASCII_Charset;
+      T.G2_Charset := ASCII_Charset;
+      T.G3_Charset := ASCII_Charset;
       T.Active_Charset := G0;
       T.Charset_Target := G0;
+      T.Single_Shift_Charset := G2;
       T.Saved_G0_Charset := ASCII_Charset;
       T.Saved_G1_Charset := ASCII_Charset;
+      T.Saved_G2_Charset := ASCII_Charset;
+      T.Saved_G3_Charset := ASCII_Charset;
       T.Saved_Active_Charset := G0;
       T.Diag := (others => 0);
       T.Last_Printable := 0;
@@ -1526,10 +1540,15 @@ package body Terminal.Core is
       T.Saved_Col := 1;
       T.G0_Charset := ASCII_Charset;
       T.G1_Charset := ASCII_Charset;
+      T.G2_Charset := ASCII_Charset;
+      T.G3_Charset := ASCII_Charset;
       T.Active_Charset := G0;
       T.Charset_Target := G0;
+      T.Single_Shift_Charset := G2;
       T.Saved_G0_Charset := ASCII_Charset;
       T.Saved_G1_Charset := ASCII_Charset;
+      T.Saved_G2_Charset := ASCII_Charset;
+      T.Saved_G3_Charset := ASCII_Charset;
       T.Saved_Active_Charset := G0;
       T.Pending_Wrap := False;
       T.Top_Margin := 1;
@@ -1893,11 +1912,19 @@ package body Terminal.Core is
    procedure Decode_Printable (T : in out Terminal; B : Common.Bytes.Byte) is
       V : constant Natural := Natural (B);
 
-      function Active_GL_Charset return Charset_Kind is
+      function Charset_For (Slot : Charset_Slot) return Charset_Kind is
       begin
-         return
-           (if T.Active_Charset = G0 then T.G0_Charset else T.G1_Charset);
-      end Active_GL_Charset;
+         case Slot is
+            when G0 =>
+               return T.G0_Charset;
+            when G1 =>
+               return T.G1_Charset;
+            when G2 =>
+               return T.G2_Charset;
+            when G3 =>
+               return T.G3_Charset;
+         end case;
+      end Charset_For;
 
       function Map_DEC_Special_Graphics
         (CP : Common.Code_Point) return Common.Code_Point
@@ -1940,10 +1967,10 @@ package body Terminal.Core is
          end case;
       end Map_DEC_Special_Graphics;
 
-      procedure Put_Mapped_ASCII is
+      procedure Put_Mapped_ASCII (Slot : Charset_Slot) is
          CP : Common.Code_Point := Common.Code_Point (V);
       begin
-         if Active_GL_Charset = DEC_Special_Graphics then
+         if Charset_For (Slot) = DEC_Special_Graphics then
             CP := Map_DEC_Special_Graphics (CP);
          end if;
          Put_Code_Point (T, CP);
@@ -1963,7 +1990,11 @@ package body Terminal.Core is
                Reset_Terminal (T);
             when 16#8D# =>
                Reverse_Index_Control (T);
-            when 16#8E# | 16#8F# =>
+            when 16#8E# =>
+               T.Single_Shift_Charset := G2;
+               T.State := Single_Shift;
+            when 16#8F# =>
+               T.Single_Shift_Charset := G3;
                T.State := Single_Shift;
             when 16#90# | 16#98# | 16#9E# | 16#9F# =>
                Start_Ignored_String (T);
@@ -1982,7 +2013,7 @@ package body Terminal.Core is
    begin
       if T.UTF8_Need = 0 then
          if V < 16#80# then
-            Put_Mapped_ASCII;
+            Put_Mapped_ASCII (T.Active_Charset);
          elsif V in 16#C2# .. 16#DF# then
             T.UTF8_Need := 1;
             T.UTF8_Seen := 0;
@@ -2103,8 +2134,14 @@ package body Terminal.Core is
                Recover_Incomplete_UTF8 (T);
                Reverse_Index_Control (T);
                goto Continue;
-            elsif Natural (B) = 16#8E# or else Natural (B) = 16#8F# then
+            elsif Natural (B) = 16#8E# then
                Recover_Incomplete_UTF8 (T);
+               T.Single_Shift_Charset := G2;
+               T.State := Single_Shift;
+               goto Continue;
+            elsif Natural (B) = 16#8F# then
+               Recover_Incomplete_UTF8 (T);
+               T.Single_Shift_Charset := G3;
                T.State := Single_Shift;
                goto Continue;
             elsif Natural (B) = 16#9D# then
@@ -2192,7 +2229,11 @@ package body Terminal.Core is
                   when 'M' =>
                      Reverse_Index_Control (T);
                      T.State := Ground;
-                  when 'N' | 'O' =>
+                  when 'N' =>
+                     T.Single_Shift_Charset := G2;
+                     T.State := Single_Shift;
+                  when 'O' =>
+                     T.Single_Shift_Charset := G3;
                      T.State := Single_Shift;
                   when 'Z' =>
                      Queue_Device_Attributes (T);
@@ -2209,11 +2250,17 @@ package body Terminal.Core is
                      Start_Ignored_String (T);
                   when '^' | '_' =>
                      Start_Ignored_String (T);
-                  when '(' | '*' | '-' =>
+                  when '(' =>
                      T.Charset_Target := G0;
                      T.State := Charset;
-                  when ')' | '+' | '.' | '/' =>
+                  when ')' | '-' =>
                      T.Charset_Target := G1;
+                     T.State := Charset;
+                  when '*' | '.' =>
+                     T.Charset_Target := G2;
+                     T.State := Charset;
+                  when '+' | '/' =>
+                     T.Charset_Target := G3;
                      T.State := Charset;
                   when '%' =>
                      T.State := Coding_System;
@@ -2315,11 +2362,16 @@ package body Terminal.Core is
                   New_Charset : constant Charset_Kind :=
                     (if Ch = '0' then DEC_Special_Graphics else ASCII_Charset);
                begin
-                  if T.Charset_Target = G0 then
-                     T.G0_Charset := New_Charset;
-                  else
-                     T.G1_Charset := New_Charset;
-                  end if;
+                  case T.Charset_Target is
+                     when G0 =>
+                        T.G0_Charset := New_Charset;
+                     when G1 =>
+                        T.G1_Charset := New_Charset;
+                     when G2 =>
+                        T.G2_Charset := New_Charset;
+                     when G3 =>
+                        T.G3_Charset := New_Charset;
+                  end case;
                end;
                T.State := Ground;
             when Coding_System =>
@@ -2329,6 +2381,17 @@ package body Terminal.Core is
                end if;
                T.State := Ground;
             when Single_Shift =>
+               if Natural (B) < 16#80# then
+                  declare
+                     Saved_Active : constant Charset_Slot := T.Active_Charset;
+                  begin
+                     T.Active_Charset := T.Single_Shift_Charset;
+                     Decode_Printable (T, B);
+                     T.Active_Charset := Saved_Active;
+                  end;
+               else
+                  Decode_Printable (T, B);
+               end if;
                T.State := Ground;
             when Screen_Alignment =>
                if Ch = '8' then

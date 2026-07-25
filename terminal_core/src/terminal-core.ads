@@ -212,7 +212,7 @@ private
 
    type Buffer_Kind is (Primary, Alternate);
    type Charset_Kind is (ASCII_Charset, DEC_Special_Graphics);
-   type Charset_Slot is (G0, G1);
+   type Charset_Slot is (G0, G1, G2, G3);
    Max_Response_Length : constant := Max_Title_Length + 16;
    subtype Response_Index is Positive range 1 .. Max_Response_Length;
    type Response_Buffer is
@@ -248,6 +248,8 @@ private
       Saved_Style   : Style;
       Saved_G0_Charset : Charset_Kind := ASCII_Charset;
       Saved_G1_Charset : Charset_Kind := ASCII_Charset;
+      Saved_G2_Charset : Charset_Kind := ASCII_Charset;
+      Saved_G3_Charset : Charset_Kind := ASCII_Charset;
       Saved_Active_Charset : Charset_Slot := G0;
       Pending_Wrap  : Boolean := False;
       Top_Margin    : Positive := 1;
@@ -256,8 +258,11 @@ private
       Current_Modes : Mode_Snapshot;
       G0_Charset    : Charset_Kind := ASCII_Charset;
       G1_Charset    : Charset_Kind := ASCII_Charset;
+      G2_Charset    : Charset_Kind := ASCII_Charset;
+      G3_Charset    : Charset_Kind := ASCII_Charset;
       Active_Charset : Charset_Slot := G0;
       Charset_Target : Charset_Slot := G0;
+      Single_Shift_Charset : Charset_Slot := G2;
       Diag          : Diagnostic_Snapshot;
       Last_Printable : Common.Code_Point := 0;
       Has_Last_Printable : Boolean := False;
