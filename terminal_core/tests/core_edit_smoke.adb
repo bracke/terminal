@@ -112,4 +112,37 @@ begin
       Assert (Terminal.Core.Scrollback_Row_Count (T) = 0, "DL must not append scrollback");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize REP failed");
+   Feed_Text ("a" & ASCII.ESC & "[3b", "REP count feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Row (S, 1, "aaaa  ", "REP count");
+      Assert (S.Cursor.Col = 5, "REP count cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize REP default failed");
+   Feed_Text ("b" & ASCII.ESC & "[b", "REP default feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Row (S, 1, "bb    ", "REP default");
+      Assert (S.Cursor.Col = 3, "REP default cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize REP empty failed");
+   Feed_Text (ASCII.ESC & "[3b", "REP empty feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Row (S, 1, "      ", "REP empty");
+      Assert (S.Cursor.Col = 1, "REP empty cursor");
+      Terminal.Core.Release (S);
+   end;
 end Core_Edit_Smoke;

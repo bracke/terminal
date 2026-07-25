@@ -109,6 +109,8 @@ package body Terminal.Core is
       T.Bottom_Margin := T.Rows;
       T.Scrollback_Rows := 0;
       T.Current_Style := (others => <>);
+      T.Last_Printable := 0;
+      T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
@@ -203,6 +205,8 @@ package body Terminal.Core is
       T.Current_Style := (others => <>);
       T.Current_Modes := (others => <>);
       T.Diag := (others => 0);
+      T.Last_Printable := 0;
+      T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
@@ -610,6 +614,8 @@ package body Terminal.Core is
         (Kind  => Character,
          Text  => (Code_Point => CP, Width => W),
          Style => T.Current_Style);
+      T.Last_Printable := CP;
+      T.Has_Last_Printable := True;
       Mark_Dirty (T, T.Cursor_Row);
 
       if W = Width_Two then
@@ -806,6 +812,20 @@ package body Terminal.Core is
       T.Pending_Wrap := False;
       Mark_Cursor_Move (T, Old_Row);
    end Move_Backward_Tabs;
+
+   procedure Repeat_Last_Printable
+     (T     : in out Terminal;
+      Count : Positive)
+   is
+   begin
+      if not T.Has_Last_Printable then
+         return;
+      end if;
+
+      for I in 1 .. Count loop
+         Put_Code_Point (T, T.Last_Printable);
+      end loop;
+   end Repeat_Last_Printable;
 
    procedure Set_Mode (T : in out Terminal; Number : Natural; Enable : Boolean) is
    begin
@@ -1105,6 +1125,8 @@ package body Terminal.Core is
             N := Param (T, 1, 1);
             T.Cursor_Col := Positive'Min (T.Cols, T.Cursor_Col + Natural'Max (N, 1));
             Mark_Cursor_Move (T, T.Cursor_Row);
+         when 'b' =>
+            Repeat_Last_Printable (T, Positive'Max (1, Param (T, 1, 1)));
          when 'c' =>
             Queue_Device_Attributes (T);
          when 'd' =>

@@ -194,6 +194,8 @@ private
       Current_Style : Style;
       Current_Modes : Mode_Snapshot;
       Diag          : Diagnostic_Snapshot;
+      Last_Printable : Common.Code_Point := 0;
+      Has_Last_Printable : Boolean := False;
       Window_Title  : Title_Text;
       Responses     : Response_Buffer := (others => 0);
       Response_Length : Natural range 0 .. Max_Response_Length := 0;
