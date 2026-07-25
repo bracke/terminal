@@ -673,6 +673,16 @@ package body Terminal.Core is
       Append_Response_Byte (T, Common.Bytes.Byte (Standard.Character'Pos (Ch)));
    end Append_Response_Char;
 
+   procedure Append_Response_String
+     (T    : in out Terminal;
+      Text : String)
+   is
+   begin
+      for Ch of Text loop
+         Append_Response_Char (T, Ch);
+      end loop;
+   end Append_Response_String;
+
    procedure Append_Response_Natural
      (T : in out Terminal;
       N : Natural)
@@ -708,6 +718,19 @@ package body Terminal.Core is
             T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end case;
    end Queue_Device_Status_Report;
+
+   procedure Queue_Device_Attributes
+     (T : in out Terminal)
+   is
+   begin
+      if T.CSI_Private = ASCII.NUL and then Param (T, 1, 0) = 0 then
+         Append_Response_String (T, ASCII.ESC & "[?62;4;22c");
+      elsif T.CSI_Private = '>' and then Param (T, 1, 0) = 0 then
+         Append_Response_String (T, ASCII.ESC & "[>0;1;0c");
+      else
+         T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+      end if;
+   end Queue_Device_Attributes;
 
    procedure Move_Cursor
      (T   : in out Terminal;
@@ -1081,6 +1104,8 @@ package body Terminal.Core is
             N := Param (T, 1, 1);
             T.Cursor_Col := Positive'Min (T.Cols, T.Cursor_Col + Natural'Max (N, 1));
             Mark_Cursor_Move (T, T.Cursor_Row);
+         when 'c' =>
+            Queue_Device_Attributes (T);
          when 'd' =>
             declare
                Old_Row : constant Positive := T.Cursor_Row;
@@ -1318,8 +1343,11 @@ package body Terminal.Core is
                      T.State := Ground;
                end case;
             when CSI =>
-               if Ch = '?' and then T.CSI_Count = 0 then
-                  T.CSI_Private := '?';
+               if (Ch = '?' or else Ch = '>')
+                 and then T.CSI_Count = 0
+                 and then T.CSI_Private = ASCII.NUL
+               then
+                  T.CSI_Private := Ch;
                elsif Ch in '0' .. '9' then
                   if T.CSI_Count = 0 then
                      T.CSI_Count := 1;

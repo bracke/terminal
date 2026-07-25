@@ -10,7 +10,8 @@
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL, ICH, DCH, ECH,
   IL, DL, SU, SD, SGR, DECSET/DECRST known modes, SM/RM insert mode, and
   DECSTBM margins.
-- DSR status (`CSI 5 n`) and cursor-position report (`CSI 6 n`) responses.
+- DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), primary DA
+  (`CSI c`), and secondary DA (`CSI > c`) responses.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
 - Default tab stops every eight columns, plus `ESC H` tab-set and `CSI g`
   tab-clear handling.

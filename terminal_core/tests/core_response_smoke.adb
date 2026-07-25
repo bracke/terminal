@@ -82,4 +82,43 @@ begin
         (Terminal.Core.Pending_Response_Length (T) = 0,
          "CPR should drain");
    end;
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[c"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "primary DA feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 11,
+      "primary DA response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[?62;4;22c"),
+         "primary DA");
+   end;
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[>c"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "secondary DA feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 9,
+      "secondary DA response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[>0;1;0c"),
+         "secondary DA");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "secondary DA should drain");
+   end;
 end Core_Response_Smoke;
