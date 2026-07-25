@@ -547,6 +547,26 @@ package body Terminal.Core is
       end if;
    end Param;
 
+   procedure Move_Cursor
+     (T   : in out Terminal;
+      Row : Natural;
+      Col : Natural)
+   is
+      Requested_Row : constant Positive := Positive'Max (1, Row);
+      Requested_Col : constant Positive := Positive'Max (1, Col);
+   begin
+      if T.Current_Modes.Origin_Mode then
+         T.Cursor_Row :=
+           Positive'Min
+             (T.Bottom_Margin,
+              T.Top_Margin + Positive'Min (Requested_Row, T.Bottom_Margin - T.Top_Margin + 1) - 1);
+      else
+         T.Cursor_Row := Positive'Min (T.Rows, Requested_Row);
+      end if;
+      T.Cursor_Col := Positive'Min (T.Cols, Requested_Col);
+      T.Pending_Wrap := False;
+   end Move_Cursor;
+
    procedure Set_Mode (T : in out Terminal; Number : Natural; Enable : Boolean) is
    begin
       case Number is
@@ -554,6 +574,7 @@ package body Terminal.Core is
             T.Current_Modes.Application_Cursor := Enable;
          when 6 =>
             T.Current_Modes.Origin_Mode := Enable;
+            Move_Cursor (T, 1, 1);
          when 7 =>
             T.Current_Modes.Autowrap := Enable;
          when 25 =>
@@ -724,8 +745,7 @@ package body Terminal.Core is
          when 'H' | 'f' =>
             R := Param (T, 1, 1);
             C := Param (T, 2, 1);
-            T.Cursor_Row := Positive'Min (T.Rows, Positive'Max (1, R));
-            T.Cursor_Col := Positive'Min (T.Cols, Positive'Max (1, C));
+            Move_Cursor (T, R, C);
          when 'J' =>
             N := Param (T, 1, 0);
             case N is
@@ -804,8 +824,7 @@ package body Terminal.Core is
             if R >= 1 and then C >= R and then C <= T.Rows then
                T.Top_Margin := R;
                T.Bottom_Margin := C;
-               T.Cursor_Row := 1;
-               T.Cursor_Col := 1;
+               Move_Cursor (T, 1, 1);
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
