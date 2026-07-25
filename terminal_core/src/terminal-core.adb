@@ -1030,8 +1030,7 @@ package body Terminal.Core is
                 (Cells (Cell_Index).Text.Code_Point)
               and then Is_Regional_Indicator (Spacing_CP))
            or else
-             (Count = 0
-              and then Is_Emoji_Modifier (Spacing_CP)
+             (Is_Emoji_Modifier (Spacing_CP)
               and then Cells (Cell_Index).Text.Width = Width_Two
               and then Is_Wide (Cells (Cell_Index).Text.Code_Point)
               and then not Is_Regional_Indicator
