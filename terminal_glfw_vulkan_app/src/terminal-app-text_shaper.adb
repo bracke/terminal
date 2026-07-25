@@ -282,7 +282,10 @@ package body Terminal.App.Text_Shaper is
 
       if Primary_Status = HB.Shaped then
          Run := Primary_Result;
-         Status := HB.Shaped;
+         Status :=
+           (if Has_Notdef_Glyph (Primary_Result)
+            then HB.Shape_Failed
+            else HB.Shaped);
       else
          Status := Primary_Status;
       end if;
@@ -398,10 +401,13 @@ package body Terminal.App.Text_Shaper is
          elsif Requires_Backend (Kind) then
             Run.Shape_Status := RM.Needs_Shaping_Backend;
             Run.Fallback_Glyphs := True;
+            Run.Shaped_Glyphs := (others => <>);
+            Run.Shaped_Glyph_Count := 0;
             Status := RM.Needs_Shaping_Backend;
          else
             Run.Shape_Status := RM.Shape_Ok;
             Run.Fallback_Glyphs := True;
+            Run.Shaped_Glyphs := (others => <>);
             Run.Shaped_Glyph_Count := 0;
             Status := RM.Shape_Ok;
          end if;

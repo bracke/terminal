@@ -136,11 +136,14 @@ run, the command remains explicitly marked as
 `textrender` glyph-index rasterization; RTL shaped runs are placed from the
 full coalesced run's right edge with HarfBuzz advance-aware pen movement, while
 LTR runs are placed from the left edge. Fallback runs use the existing codepoint
-glyph path and do not fabricate font glyph indexes from Unicode codepoints. The
+glyph path and do not fabricate font glyph indexes from Unicode codepoints.
+Runs shaped only to `.notdef` glyphs are rejected as shaped output: simple runs
+fall back to codepoint rendering, while complex runs remain backend-needed. The
 submit/presenter/device layers carry those runs without parsing terminal data.
 Full paragraph BiDi reordering and color emoji glyph rendering are still outside
 the current draw path. Renderer, submit, presenter, and device diagnostics
-expose aggregate shaped-glyph counts for that path.
+expose aggregate shaped-glyph counts and renderer fallback-run counts for that
+path.
 
 ## Cursor
 

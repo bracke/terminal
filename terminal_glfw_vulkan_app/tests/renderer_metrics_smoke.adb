@@ -533,8 +533,9 @@ begin
            Terminal.App.Render_Model.Joined_Emoji_Cluster,
          "emoji cluster text run class");
       Assert
-        (Frame.Text_Runs (2).Shape_Status =
-           Terminal.App.Render_Model.Shape_Ok,
+        (Frame.Text_Runs (2).Shape_Status
+           in Terminal.App.Render_Model.Shape_Ok |
+              Terminal.App.Render_Model.Needs_Shaping_Backend,
          "emoji cluster text run shape status");
       Assert
         (Frame.Text_Runs (2).Direction =
@@ -545,11 +546,16 @@ begin
            Terminal.App.Render_Model.Script_Emoji,
          "emoji cluster text run script");
       Assert
-        (Frame.Text_Runs (2).Shaped_Glyph_Count > 0,
-         "emoji cluster should have shaped glyphs");
-      Assert
-        (not Frame.Text_Runs (2).Fallback_Glyphs,
-         "emoji cluster text run should not need glyph fallback");
+        ((Frame.Text_Runs (2).Shape_Status =
+            Terminal.App.Render_Model.Shape_Ok
+          and then not Frame.Text_Runs (2).Fallback_Glyphs
+          and then Frame.Text_Runs (2).Shaped_Glyph_Count > 0)
+         or else
+           (Frame.Text_Runs (2).Shape_Status =
+              Terminal.App.Render_Model.Needs_Shaping_Backend
+            and then Frame.Text_Runs (2).Fallback_Glyphs
+            and then Frame.Text_Runs (2).Shaped_Glyph_Count = 0),
+         "emoji cluster shaped/fallback state");
       Assert (not Saw_ZWJ, "emoji cluster render should skip ZWJ");
       declare
          Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
@@ -558,9 +564,21 @@ begin
          Assert
            (Diag.Last_Text_Run_Count = Frame.Text_Run_Count,
             "renderer diagnostics should report text run count");
-         Assert
-           (Diag.Last_Shaping_Fallback_Count = 0,
-            "renderer diagnostics should report complex text fallback count");
+         if Frame.Text_Runs (2).Fallback_Glyphs then
+            Assert
+              (Diag.Last_Text_Fallback_Run_Count = 1,
+               "renderer diagnostics should report emoji fallback run");
+            Assert
+              (Diag.Last_Shaping_Fallback_Count = 1,
+               "renderer diagnostics should report emoji backend need");
+         else
+            Assert
+              (Diag.Last_Text_Fallback_Run_Count = 0,
+               "renderer diagnostics should report no emoji fallback run");
+            Assert
+              (Diag.Last_Shaping_Fallback_Count = 0,
+               "renderer diagnostics should report no emoji backend need");
+         end if;
       end;
    end;
 
@@ -689,6 +707,51 @@ begin
       Assert
         (Diag.Last_Shaping_Fallback_Count = 0,
          "ligature fallback diagnostic count");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "missing scalar text run core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#F4#, 2 => 16#8F#, 3 => 16#BF#, 4 => 16#BF#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "missing scalar feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "missing scalar render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+      Diag  : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+        Terminal.App.Renderer.Diagnostics (R);
+   begin
+      Assert (Frame.Text_Run_Count = 1, "missing scalar text run count");
+      Assert
+        (Frame.Text_Runs (1).Shape_Status =
+           Terminal.App.Render_Model.Shape_Ok,
+         "missing scalar should remain renderable");
+      Assert
+        (Frame.Text_Runs (1).Fallback_Glyphs,
+         "missing scalar should use codepoint fallback");
+      Assert
+        (Frame.Text_Runs (1).Shaped_Glyph_Count = 0,
+         "missing scalar should not draw notdef shaped glyph");
+      Assert
+        (Diag.Last_Text_Fallback_Run_Count = 1,
+         "renderer diagnostics should count fallback text run");
+      Assert
+        (Diag.Last_Shaping_Fallback_Count = 0,
+         "simple missing scalar should not count as backend-needed");
    end;
 
    Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);

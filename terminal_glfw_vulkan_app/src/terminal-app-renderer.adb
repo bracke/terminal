@@ -268,6 +268,7 @@ package body Terminal.App.Renderer is
       R.Text_Run_Count := 0;
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
+      R.Text_Fallback_Run_Count := 0;
       R.Vertex_Count := 0;
       R.Last_Cell_Count := 0;
       R.Last_Dirty_Rows := 0;
@@ -394,6 +395,9 @@ package body Terminal.App.Renderer is
       R.Shaped_Glyph_Count :=
         R.Shaped_Glyph_Count
         + Natural (R.Text_Runs (R.Text_Run_Count).Shaped_Glyph_Count);
+      if R.Text_Runs (R.Text_Run_Count).Fallback_Glyphs then
+         R.Text_Fallback_Run_Count := R.Text_Fallback_Run_Count + 1;
+      end if;
       if Shape_Status = RM.Needs_Shaping_Backend then
          R.Shaping_Fallback_Count := R.Shaping_Fallback_Count + 1;
       end if;
@@ -886,6 +890,7 @@ package body Terminal.App.Renderer is
       R.Missing_Glyph_Count := 0;
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
+      R.Text_Fallback_Run_Count := 0;
 
       Cell_Count := Snapshot.Rows * Snapshot.Cols;
       Rect_Max := Cell_Count * 4 + 2;
@@ -1112,6 +1117,7 @@ package body Terminal.App.Renderer is
       R.Text_Run_Count := 0;
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
+      R.Text_Fallback_Run_Count := 0;
       R.Vertex_Count := 0;
       R.Missing_Glyph_Count := 0;
       R.Target_Frame_Width := 0;
@@ -1155,6 +1161,7 @@ package body Terminal.App.Renderer is
          Last_Text_Run_Count  => R.Text_Run_Count,
          Last_Shaped_Glyph_Count => R.Shaped_Glyph_Count,
          Last_Shaping_Fallback_Count => R.Shaping_Fallback_Count,
+         Last_Text_Fallback_Run_Count => R.Text_Fallback_Run_Count,
          Last_Vertex_Count    => R.Vertex_Count,
          Missing_Glyph_Count  => R.Missing_Glyph_Count,
          Atlas_Dirty          => R.Atlas_Dirty,

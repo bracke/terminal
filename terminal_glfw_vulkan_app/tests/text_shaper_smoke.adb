@@ -97,7 +97,28 @@ procedure Text_Shaper_Smoke is
    Emoji     : RM.Text_Run_Command := Run (16#1F642#);
    Status    : TS.Shape_Status;
    Backend   : TS.Backend_Status;
+   Missing   : RM.Text_Run_Command := Run (16#10FFFF#);
    Backendless : RM.Text_Run_Command := Run (Character'Pos ('Z'));
+
+   procedure Assert_Shaped_Or_Needs_Backend
+     (Text   : RM.Text_Run_Command;
+      Status : RM.Text_Run_Shape_Status;
+      Label  : String)
+   is
+   begin
+      Assert
+        (Status in RM.Shape_Ok | RM.Needs_Shaping_Backend,
+         Label & " should shape or report explicit backend need");
+      Assert
+        ((Status = RM.Shape_Ok
+          and then not Text.Fallback_Glyphs
+          and then Text.Shaped_Glyph_Count > 0)
+         or else
+           (Status = RM.Needs_Shaping_Backend
+            and then Text.Fallback_Glyphs
+            and then Text.Shaped_Glyph_Count = 0),
+         Label & " shaped/fallback state");
+   end Assert_Shaped_Or_Needs_Backend;
 
    procedure Assert_Complex_Script
      (Text     : in out RM.Text_Run_Command;
@@ -107,11 +128,11 @@ procedure Text_Shaper_Smoke is
    begin
       Assert (TS.Classify (Text) = RM.Complex_Script, Label & " class");
       TS.Prepare (Text, Status);
-      Assert (Status = RM.Shape_Ok, Label & " should shape through HarfBuzz");
       Assert
         (Text.Direction = RM.Direction_Left_To_Right,
          Label & " direction");
       Assert (Text.Script = Script, Label & " script");
+      Assert_Shaped_Or_Needs_Backend (Text, Status, Label);
    end Assert_Complex_Script;
 begin
    TS.Configure_Font
@@ -215,20 +236,30 @@ begin
      (TS.Classify (Joined) = RM.Joined_Emoji_Cluster,
       "joined emoji class");
    TS.Prepare (Joined, Status);
-   Assert (Status = RM.Shape_Ok, "joined emoji should shape through HarfBuzz");
    Assert
-     (Joined.Shaped_Glyph_Count > 0,
-      "joined emoji shaped glyph count");
+     (Status in RM.Shape_Ok | RM.Needs_Shaping_Backend,
+      "joined emoji should shape or report explicit backend need");
+   Assert
+     ((Status = RM.Shape_Ok
+       and then not Joined.Fallback_Glyphs
+       and then Joined.Shaped_Glyph_Count > 0)
+      or else
+        (Status = RM.Needs_Shaping_Backend
+         and then Joined.Fallback_Glyphs
+         and then Joined.Shaped_Glyph_Count = 0),
+      "joined emoji shaped/fallback state");
 
    Assert
      (TS.Classify (Modified) = RM.Emoji_Modified_Cluster,
       "emoji modifier class");
    TS.Prepare (Modified, Status);
-   Assert (Status = RM.Shape_Ok, "modifier should shape through HarfBuzz");
+   Assert
+     (Status in RM.Shape_Ok | RM.Needs_Shaping_Backend,
+      "modifier should shape or report explicit backend need");
 
    Assert (TS.Classify (RTL) = RM.Bidi_Text, "RTL class");
    TS.Prepare (RTL, Status);
-   Assert (Status = RM.Shape_Ok, "RTL should shape through HarfBuzz");
+   Assert_Shaped_Or_Needs_Backend (RTL, Status, "RTL");
    Assert (RTL.Direction = RM.Direction_Right_To_Left, "RTL direction");
    Assert (RTL.Script = RM.Script_Hebrew, "RTL script");
 
@@ -250,7 +281,7 @@ begin
 
    Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
    TS.Prepare (Arabic, Status);
-   Assert (Status = RM.Shape_Ok, "Arabic should shape through HarfBuzz");
+   Assert_Shaped_Or_Needs_Backend (Arabic, Status, "Arabic");
    Assert
      (Arabic.Direction = RM.Direction_Right_To_Left,
       "Arabic direction");
@@ -277,6 +308,17 @@ begin
    TS.Prepare (Emoji, Status);
    Assert (Status = RM.Shape_Ok, "emoji scalar status");
    Assert (Emoji.Script = RM.Script_Emoji, "emoji scalar script");
+
+   TS.Prepare (Missing, Status);
+   Assert
+     (Status = RM.Shape_Ok,
+      "simple missing scalar should fall back to codepoint rendering");
+   Assert
+     (Missing.Fallback_Glyphs,
+      "simple missing scalar should use renderer fallback");
+   Assert
+     (Missing.Shaped_Glyph_Count = 0,
+      "simple missing scalar should not expose notdef as shaped glyph");
 
    TS.Configure_Font ("", 16, Backend);
    Assert
