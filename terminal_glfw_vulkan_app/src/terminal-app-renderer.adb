@@ -537,7 +537,7 @@ package body Terminal.App.Renderer is
                   end if;
                end if;
 
-               if Is_Drawable (Cell) then
+               if Is_Drawable (Cell) and then not Cell.Style.Conceal then
                   declare
                      Metric       : Textrender.Glyph_Metric;
                      Glyph_Status : constant Textrender.Status_Code :=

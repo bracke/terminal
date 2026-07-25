@@ -221,6 +221,35 @@ begin
          "faint glyph should dim default foreground blue");
    end;
 
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "conceal core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "[8;4;9mA"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "conceal feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "conceal render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Glyph_Count = 0, "concealed glyph should not be drawn");
+      Assert
+        (Frame.Rectangle_Count >= 3,
+         "concealed cell should still draw background and cursor rectangles");
+      Assert
+        (Frame.Rectangle_Count < 5,
+         "concealed cell should not draw underline or strikethrough");
+   end;
+
    Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "decoration core initialize failed");
    Terminal.Core.Feed

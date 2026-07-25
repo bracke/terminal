@@ -1151,7 +1151,7 @@ package body Terminal.Core is
             when 7 =>
                T.Current_Style.Inverse := True;
             when 8 =>
-               null;
+               T.Current_Style.Conceal := True;
             when 9 =>
                T.Current_Style.Strikethrough := True;
             when 21 =>
@@ -1168,7 +1168,7 @@ package body Terminal.Core is
             when 27 =>
                T.Current_Style.Inverse := False;
             when 28 =>
-               null;
+               T.Current_Style.Conceal := False;
             when 29 =>
                T.Current_Style.Strikethrough := False;
             when 53 | 55 =>

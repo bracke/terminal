@@ -106,7 +106,7 @@ begin
    Terminal.Core.Initialize (T, 1, 2, 100, Init);
    Assert (Init = Terminal.Core.Ok, "SGR no-op aliases initialize failed");
    Feed_Text
-     (ASCII.ESC & "[5;6;8;25;28;53;55mC",
+     (ASCII.ESC & "[5;6;25;53;55mC",
       "SGR no-op aliases feed failed");
 
    declare
@@ -121,6 +121,27 @@ begin
       Assert
         (D.Unsupported_Sequence = 0,
          "SGR no-op aliases should not increment unsupported diagnostics");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SGR conceal initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[8mA" & ASCII.ESC & "[28mB",
+      "SGR conceal feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert (A.Style.Conceal, "SGR 8 should enable conceal");
+      Assert (not B.Style.Conceal, "SGR 28 should disable conceal");
+      Assert
+        (D.Unsupported_Sequence = 0,
+         "SGR 8/28 should not increment unsupported diagnostics");
       Terminal.Core.Release (S);
    end;
 

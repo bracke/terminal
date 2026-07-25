@@ -34,13 +34,12 @@
 
 ## SGR
 
-Supported: reset, bold, faint/dim, italic, underline, inverse, normal
+Supported: reset, bold, faint/dim, italic, underline, inverse, conceal, normal
 intensity, style-off codes including `21` as bold-off, 8-color
 foreground/background, bright
 16-color variants, indexed `38;5;n` and `48;5;n`, truecolor `38;2;r;g;b` and
 `48;2;r;g;b`, default foreground/background, and strikethrough `9`/`29`.
-Common unsupported style toggles for blink, conceal, and overline are consumed
-as no-ops.
+Common unsupported style toggles for blink and overline are consumed as no-ops.
 Colon-separated SGR forms such as `38:5:n` and `48:2:r:g:b` are accepted as
 aliases for the semicolon forms.
 
