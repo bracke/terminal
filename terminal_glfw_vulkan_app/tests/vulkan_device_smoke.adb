@@ -49,5 +49,11 @@ begin
       Assert
         (Diag.Last_Status = VD.Selection_Not_Ready,
          "device diagnostic should retain failure status");
+      Assert
+        (Diag.Color_Sample_Count = 1,
+         "uninitialized device should report 1x color sampling");
+      Assert
+        (not Diag.Color_MSAA_Created,
+         "uninitialized device should not report an MSAA target");
    end;
 end Vulkan_Device_Smoke;

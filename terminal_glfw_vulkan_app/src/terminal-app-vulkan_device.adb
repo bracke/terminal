@@ -36,6 +36,8 @@ package body Terminal.App.Vulkan_Device is
    use type Vk.Queue_T;
    use type Vk.Render_Pass_T;
    use type Vk.Result_T;
+   use type Vk.Sample_Count_Flags_T;
+   use type Vk.Sample_Count_Flag_Bits_T;
    use type Vk.Sampler_T;
    use type Vk.Semaphore_T;
    use type Vk.Surface_Transform_Flags_KHR_T;
@@ -92,6 +94,11 @@ package body Terminal.App.Vulkan_Device is
      array (Vertex_Attribute_Range) of Vk.Vertex_Input_Attribute_Description_T
      with Convention => C;
    type Dynamic_State_Array is array (Dynamic_State_Range) of Vk.Dynamic_State_T
+     with Convention => C;
+   type Attachment_Array is
+     array (Positive range <>) of Vk.Attachment_Description_T
+     with Convention => C;
+   type Image_View_Array is array (Positive range <>) of Vk.Image_View_T
      with Convention => C;
    type Buffer_Binding_Array is array (Positive range 1 .. 1) of Vk.Buffer_T
      with Convention => C;
@@ -177,6 +184,28 @@ package body Terminal.App.Vulkan_Device is
       return 0.0;
    end To_Float;
 
+   function Sample_Count_Value
+     (Samples : Vk.Sample_Count_Flag_Bits_T)
+      return Natural
+   is
+   begin
+      if Samples = Vk.SAMPLE_COUNT_64_BIT then
+         return 64;
+      elsif Samples = Vk.SAMPLE_COUNT_32_BIT then
+         return 32;
+      elsif Samples = Vk.SAMPLE_COUNT_16_BIT then
+         return 16;
+      elsif Samples = Vk.SAMPLE_COUNT_8_BIT then
+         return 8;
+      elsif Samples = Vk.SAMPLE_COUNT_4_BIT then
+         return 4;
+      elsif Samples = Vk.SAMPLE_COUNT_2_BIT then
+         return 2;
+      else
+         return 1;
+      end if;
+   end Sample_Count_Value;
+
    function Is_Swapchain_Stale (Result : Vk.Result_T) return Boolean is
      (Result = Suboptimal_KHR or else Result = Error_Out_Of_Date_KHR);
 
@@ -209,6 +238,13 @@ package body Terminal.App.Vulkan_Device is
          Swapchain_Extension_Found => False,
          Last_Status            => Status);
    end Reset;
+
+   function Has_Memory_Type
+     (Properties : Vk.Physical_Device_Memory_Properties_T;
+      Bits       : Interfaces.Unsigned_32;
+      Flags      : Vk.Memory_Property_Flags_T;
+      Index      : out Interfaces.Unsigned_32)
+      return Boolean;
 
    function Has_Name
      (Item : Vk.Extension_Properties_T;
@@ -509,6 +545,10 @@ package body Terminal.App.Vulkan_Device is
          Device.Command_Pool := System.Null_Address;
          Device.Vertex_Buffer := System.Null_Address;
          Device.Vertex_Memory := System.Null_Address;
+         Device.Color_MSAA_Image := System.Null_Address;
+         Device.Color_MSAA_Memory := System.Null_Address;
+         Device.Color_MSAA_View := System.Null_Address;
+         Device.Color_Sample_Count := Vk.SAMPLE_COUNT_1_BIT;
          Device.Atlas_Image := System.Null_Address;
          Device.Atlas_Memory := System.Null_Address;
          Device.Atlas_View := System.Null_Address;
@@ -632,6 +672,38 @@ package body Terminal.App.Vulkan_Device is
          end loop;
          Device.Swapchain_View_Count := 0;
       end Destroy_Image_Views;
+
+      procedure Destroy_Color_MSAA_Target (Handle : Vk.Device_T) is
+      begin
+         if Device.Color_MSAA_View /= System.Null_Address then
+            Vk.Destroy_Image_View
+              (Handle, Device.Color_MSAA_View, System.Null_Address);
+            Device.Color_MSAA_View := System.Null_Address;
+         end if;
+
+         if Device.Color_MSAA_Image /= System.Null_Address then
+            Vk.Destroy_Image
+              (Handle, Device.Color_MSAA_Image, System.Null_Address);
+            Device.Color_MSAA_Image := System.Null_Address;
+         end if;
+
+         if Device.Color_MSAA_Memory /= System.Null_Address then
+            Vk.Free_Memory
+              (Handle, Device.Color_MSAA_Memory, System.Null_Address);
+            Device.Color_MSAA_Memory := System.Null_Address;
+         end if;
+
+         Device.Color_Sample_Count := Vk.SAMPLE_COUNT_1_BIT;
+      end Destroy_Color_MSAA_Target;
+
+      function Choose_Color_Sample_Count
+        return Vk.Sample_Count_Flag_Bits_T;
+
+      function Create_Color_MSAA_Target
+        (Handle  : Vk.Device_T;
+         Format  : Vk.Format_T;
+         Samples : Vk.Sample_Count_Flag_Bits_T)
+         return Create_Status;
 
       procedure Destroy_Sync (Handle : Vk.Device_T) is
       begin
@@ -935,7 +1007,7 @@ package body Terminal.App.Vulkan_Device is
            (s_Type => Vk.STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
             p_Next => System.Null_Address,
             flags  => 0,
-            rasterization_Samples => Vk.SAMPLE_COUNT_1_BIT,
+            rasterization_Samples => Device.Color_Sample_Count,
             sample_Shading_Enable => 0,
             min_Sample_Shading => 1.0,
             p_Sample_Mask => System.Null_Address,
@@ -1046,18 +1118,43 @@ package body Terminal.App.Vulkan_Device is
         (Handle : Vk.Device_T)
          return Create_Status
       is
+         Samples : constant Vk.Sample_Count_Flag_Bits_T :=
+           Choose_Color_Sample_Count;
+         MSAA_On : constant Boolean := Samples /= Vk.SAMPLE_COUNT_1_BIT;
          Color_Attachment : aliased Vk.Attachment_Description_T :=
            (flags           => 0,
             format          => Device.Swapchain_Format,
-            samples         => Vk.SAMPLE_COUNT_1_BIT,
+            samples         => Samples,
             load_Op         => Vk.ATTACHMENT_LOAD_OP_CLEAR,
+            store_Op        =>
+              (if MSAA_On
+               then Vk.ATTACHMENT_STORE_OP_DONT_CARE
+               else Vk.ATTACHMENT_STORE_OP_STORE),
+            stencil_Load_Op => Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
+            stencil_Store_Op => Vk.ATTACHMENT_STORE_OP_DONT_CARE,
+            initial_Layout  => Vk.IMAGE_LAYOUT_UNDEFINED,
+            final_Layout    =>
+              (if MSAA_On
+               then Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+               else Image_Layout_Present_Source));
+         Resolve_Attachment : aliased Vk.Attachment_Description_T :=
+           (flags           => 0,
+            format          => Device.Swapchain_Format,
+            samples         => Vk.SAMPLE_COUNT_1_BIT,
+            load_Op         => Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
             store_Op        => Vk.ATTACHMENT_STORE_OP_STORE,
             stencil_Load_Op => Vk.ATTACHMENT_LOAD_OP_DONT_CARE,
             stencil_Store_Op => Vk.ATTACHMENT_STORE_OP_DONT_CARE,
             initial_Layout  => Vk.IMAGE_LAYOUT_UNDEFINED,
             final_Layout    => Image_Layout_Present_Source);
+         Attachments : aliased Attachment_Array (1 .. 2) :=
+           (1 => Color_Attachment,
+            2 => Resolve_Attachment);
          Color_Reference : aliased Vk.Attachment_Reference_T :=
            (attachment => 0,
+            layout     => Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+         Resolve_Reference : aliased Vk.Attachment_Reference_T :=
+           (attachment => 1,
             layout     => Vk.IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
          Subpass : aliased Vk.Subpass_Description_T :=
            (flags                    => 0,
@@ -1066,7 +1163,8 @@ package body Terminal.App.Vulkan_Device is
             p_Input_Attachments      => System.Null_Address,
             color_Attachment_Count   => 1,
             p_Color_Attachments      => Color_Reference'Address,
-            p_Resolve_Attachments    => System.Null_Address,
+            p_Resolve_Attachments    =>
+              (if MSAA_On then Resolve_Reference'Address else System.Null_Address),
             p_Depth_Stencil_Attachment => System.Null_Address,
             preserve_Attachment_Count => 0,
             p_Preserve_Attachments   => System.Null_Address);
@@ -1084,8 +1182,8 @@ package body Terminal.App.Vulkan_Device is
            (s_Type           => Vk.STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
             p_Next           => System.Null_Address,
             flags            => 0,
-            attachment_Count => 1,
-            p_Attachments    => Color_Attachment'Address,
+            attachment_Count => (if MSAA_On then 2 else 1),
+            p_Attachments    => Attachments'Address,
             subpass_Count    => 1,
             p_Subpasses      => Subpass'Address,
             dependency_Count => 1,
@@ -1100,10 +1198,22 @@ package body Terminal.App.Vulkan_Device is
             return Create_Framebuffer_Failed;
          end if;
 
+         Device.Color_Sample_Count := Samples;
+         declare
+            Target_Status : constant Create_Status :=
+              Create_Color_MSAA_Target
+                (Handle, Device.Swapchain_Format, Device.Color_Sample_Count);
+         begin
+            if Target_Status /= Ok then
+               return Target_Status;
+            end if;
+         end;
+
          Result :=
            Vk.Create_Render_Pass
              (Handle, Render_Info'Address, System.Null_Address, Render_Pass'Address);
          if Result /= Vk.SUCCESS or else Render_Pass = System.Null_Address then
+            Destroy_Color_MSAA_Target (Handle);
             return Create_Render_Pass_Failed;
          end if;
 
@@ -1111,19 +1221,27 @@ package body Terminal.App.Vulkan_Device is
 
          for I in 1 .. Device.Swapchain_View_Count loop
             declare
-               Attachment : aliased Vk.Image_View_T := Device.Swapchain_Views (I);
+               Attachments : aliased Image_View_Array (1 .. 2) :=
+                 (1 => System.Null_Address,
+                  2 => System.Null_Address);
                Framebuffer : aliased Vk.Framebuffer_T := System.Null_Address;
                FB_Info : aliased Vk.Framebuffer_Create_Info_T :=
                  (s_Type           => Vk.STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
                   p_Next           => System.Null_Address,
                   flags            => 0,
                   render_Pass      => Device.Render_Pass,
-                  attachment_Count => 1,
-                  p_Attachments    => Attachment'Address,
+                  attachment_Count => (if MSAA_On then 2 else 1),
+                  p_Attachments    => Attachments'Address,
                   width            => Interfaces.Unsigned_32 (Device.Swapchain_Width),
                   height           => Interfaces.Unsigned_32 (Device.Swapchain_Height),
                   layers           => 1);
             begin
+               if MSAA_On then
+                  Attachments (1) := Device.Color_MSAA_View;
+                  Attachments (2) := Device.Swapchain_Views (I);
+               else
+                  Attachments (1) := Device.Swapchain_Views (I);
+               end if;
                Result :=
                  Vk.Create_Framebuffer
                    (Handle, FB_Info'Address, System.Null_Address, Framebuffer'Address);
@@ -1132,6 +1250,7 @@ package body Terminal.App.Vulkan_Device is
                   Vk.Destroy_Render_Pass
                     (Handle, Device.Render_Pass, System.Null_Address);
                   Device.Render_Pass := System.Null_Address;
+                  Destroy_Color_MSAA_Target (Handle);
                   return Create_Framebuffer_Failed;
                end if;
 
@@ -1367,6 +1486,150 @@ package body Terminal.App.Vulkan_Device is
          end if;
       end Choose_Composite_Alpha;
 
+      function Choose_Color_Sample_Count
+        return Vk.Sample_Count_Flag_Bits_T
+      is
+         Properties : aliased Vk.Physical_Device_Properties_T;
+         Counts     : Vk.Sample_Count_Flags_T;
+      begin
+         Vk.Get_Physical_Device_Properties
+           (Choice.Physical_Device, Properties'Address);
+         Counts := Properties.limits.framebuffer_Color_Sample_Counts;
+
+         if (Counts and Vk.SAMPLE_COUNT_8_BIT) /= 0 then
+            return Vk.SAMPLE_COUNT_8_BIT;
+         elsif (Counts and Vk.SAMPLE_COUNT_4_BIT) /= 0 then
+            return Vk.SAMPLE_COUNT_4_BIT;
+         elsif (Counts and Vk.SAMPLE_COUNT_2_BIT) /= 0 then
+            return Vk.SAMPLE_COUNT_2_BIT;
+         else
+            return Vk.SAMPLE_COUNT_1_BIT;
+         end if;
+      end Choose_Color_Sample_Count;
+
+      function Create_Color_MSAA_Target
+        (Handle  : Vk.Device_T;
+         Format  : Vk.Format_T;
+         Samples : Vk.Sample_Count_Flag_Bits_T)
+         return Create_Status
+      is
+         Memory_Properties : aliased Vk.Physical_Device_Memory_Properties_T;
+         Image : aliased Vk.Image_T := System.Null_Address;
+         Image_Memory : aliased Vk.Device_Memory_T := System.Null_Address;
+         Image_View : aliased Vk.Image_View_T := System.Null_Address;
+         Requirements : aliased Vk.Memory_Requirements_T;
+         Memory_Type_Index : Interfaces.Unsigned_32 := 0;
+         Result : Vk.Result_T;
+      begin
+         if Samples = Vk.SAMPLE_COUNT_1_BIT then
+            return Ok;
+         end if;
+
+         declare
+            Image_Info : aliased Vk.Image_Create_Info_T :=
+              (s_Type => Vk.STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+               p_Next => System.Null_Address,
+               flags => 0,
+               image_Type => Vk.IMAGE_TYPE_2D,
+               format => Format,
+               extent =>
+                 (width => Interfaces.Unsigned_32 (Device.Swapchain_Width),
+                  height => Interfaces.Unsigned_32 (Device.Swapchain_Height),
+                  depth => 1),
+               mip_Levels => 1,
+               array_Layers => 1,
+               samples => Samples,
+               tiling => Vk.IMAGE_TILING_OPTIMAL,
+               usage => Vk.IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+               sharing_Mode => Vk.SHARING_MODE_EXCLUSIVE,
+               queue_Family_Index_Count => 0,
+               p_Queue_Family_Indices => System.Null_Address,
+               initial_Layout => Vk.IMAGE_LAYOUT_UNDEFINED);
+         begin
+            Result :=
+              Vk.Create_Image
+                (Handle, Image_Info'Address, System.Null_Address, Image'Address);
+            if Result /= Vk.SUCCESS or else Image = System.Null_Address then
+               return Create_Color_Target_Failed;
+            end if;
+         end;
+
+         Vk.Get_Image_Memory_Requirements
+           (Handle, Image, Requirements'Address);
+         Vk.Get_Physical_Device_Memory_Properties
+           (Choice.Physical_Device, Memory_Properties'Address);
+         if not Has_Memory_Type
+           (Memory_Properties, Requirements.memory_Type_Bits, 0, Memory_Type_Index)
+         then
+            Vk.Destroy_Image (Handle, Image, System.Null_Address);
+            return Create_Color_Target_Failed;
+         end if;
+
+         declare
+            Allocate_Info : aliased Vk.Memory_Allocate_Info_T :=
+              (s_Type => Vk.STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+               p_Next => System.Null_Address,
+               allocation_Size => Requirements.size,
+               memory_Type_Index => Memory_Type_Index);
+         begin
+            Result :=
+              Vk.Allocate_Memory
+                (Handle,
+                 Allocate_Info'Address,
+                 System.Null_Address,
+                 Image_Memory'Address);
+            if Result /= Vk.SUCCESS or else Image_Memory = System.Null_Address then
+               Vk.Destroy_Image (Handle, Image, System.Null_Address);
+               return Create_Color_Target_Failed;
+            end if;
+         end;
+
+         Result := Vk.Bind_Image_Memory (Handle, Image, Image_Memory, 0);
+         if Result /= Vk.SUCCESS then
+            Vk.Free_Memory (Handle, Image_Memory, System.Null_Address);
+            Vk.Destroy_Image (Handle, Image, System.Null_Address);
+            return Create_Color_Target_Failed;
+         end if;
+
+         declare
+            View_Info : aliased Vk.Image_View_Create_Info_T :=
+              (s_Type => Vk.STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+               p_Next => System.Null_Address,
+               flags => 0,
+               image => Image,
+               view_Type => Vk.IMAGE_VIEW_TYPE_2D,
+               format => Format,
+               components =>
+                 (r => Vk.COMPONENT_SWIZZLE_IDENTITY,
+                  g => Vk.COMPONENT_SWIZZLE_IDENTITY,
+                  b => Vk.COMPONENT_SWIZZLE_IDENTITY,
+                  a => Vk.COMPONENT_SWIZZLE_IDENTITY),
+               subresource_Range =>
+                 (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
+                  base_Mip_Level => 0,
+                  level_Count => 1,
+                  base_Array_Layer => 0,
+                  layer_Count => 1));
+         begin
+            Result :=
+              Vk.Create_Image_View
+                (Handle,
+                 View_Info'Address,
+                 System.Null_Address,
+                 Image_View'Address);
+            if Result /= Vk.SUCCESS or else Image_View = System.Null_Address then
+               Vk.Free_Memory (Handle, Image_Memory, System.Null_Address);
+               Vk.Destroy_Image (Handle, Image, System.Null_Address);
+               return Create_Color_Target_Failed;
+            end if;
+         end;
+
+         Device.Color_MSAA_Image := Image;
+         Device.Color_MSAA_Memory := Image_Memory;
+         Device.Color_MSAA_View := Image_View;
+         return Ok;
+      end Create_Color_MSAA_Target;
+
       function Create_Swapchain
         (Handle : Vk.Device_T)
          return Create_Status
@@ -1585,6 +1848,7 @@ package body Terminal.App.Vulkan_Device is
                Vk.Destroy_Render_Pass
                  (Handle, Device.Render_Pass, System.Null_Address);
             end if;
+            Destroy_Color_MSAA_Target (Handle);
             Destroy_Image_Views (Handle);
             if Device.Swapchain /= System.Null_Address then
                Vk.Destroy_Swapchain_KHR
@@ -1609,6 +1873,7 @@ package body Terminal.App.Vulkan_Device is
                Vk.Destroy_Render_Pass
                  (Handle, Device.Render_Pass, System.Null_Address);
             end if;
+            Destroy_Color_MSAA_Target (Handle);
             Destroy_Image_Views (Handle);
             if Device.Swapchain /= System.Null_Address then
                Vk.Destroy_Swapchain_KHR
@@ -1633,6 +1898,7 @@ package body Terminal.App.Vulkan_Device is
                Vk.Destroy_Render_Pass
                  (Handle, Device.Render_Pass, System.Null_Address);
             end if;
+            Destroy_Color_MSAA_Target (Handle);
             Destroy_Image_Views (Handle);
             if Device.Swapchain /= System.Null_Address then
                Vk.Destroy_Swapchain_KHR
@@ -1671,6 +1937,7 @@ package body Terminal.App.Vulkan_Device is
                Vk.Destroy_Render_Pass
                  (Handle, Device.Render_Pass, System.Null_Address);
             end if;
+            Destroy_Color_MSAA_Target (Handle);
             Destroy_Image_Views (Handle);
             if Device.Swapchain /= System.Null_Address then
                Vk.Destroy_Swapchain_KHR
@@ -1700,6 +1967,7 @@ package body Terminal.App.Vulkan_Device is
                Vk.Destroy_Render_Pass
                  (Handle, Device.Render_Pass, System.Null_Address);
             end if;
+            Destroy_Color_MSAA_Target (Handle);
             Destroy_Image_Views (Handle);
             if Device.Swapchain /= System.Null_Address then
                Vk.Destroy_Swapchain_KHR
@@ -1812,6 +2080,21 @@ package body Terminal.App.Vulkan_Device is
                  (Device.Device, Device.Render_Pass, System.Null_Address);
             end if;
 
+            if Device.Color_MSAA_View /= System.Null_Address then
+               Vk.Destroy_Image_View
+                 (Device.Device, Device.Color_MSAA_View, System.Null_Address);
+            end if;
+
+            if Device.Color_MSAA_Image /= System.Null_Address then
+               Vk.Destroy_Image
+                 (Device.Device, Device.Color_MSAA_Image, System.Null_Address);
+            end if;
+
+            if Device.Color_MSAA_Memory /= System.Null_Address then
+               Vk.Free_Memory
+                 (Device.Device, Device.Color_MSAA_Memory, System.Null_Address);
+            end if;
+
             for I in 1 .. Device.Swapchain_View_Count loop
                if Device.Swapchain_Views (I) /= System.Null_Address then
                   Vk.Destroy_Image_View
@@ -1841,6 +2124,10 @@ package body Terminal.App.Vulkan_Device is
       Device.Command_Pool := System.Null_Address;
       Device.Vertex_Buffer := System.Null_Address;
       Device.Vertex_Memory := System.Null_Address;
+      Device.Color_MSAA_Image := System.Null_Address;
+      Device.Color_MSAA_Memory := System.Null_Address;
+      Device.Color_MSAA_View := System.Null_Address;
+      Device.Color_Sample_Count := Vk.SAMPLE_COUNT_1_BIT;
       Device.Atlas_Image := System.Null_Address;
       Device.Atlas_Memory := System.Null_Address;
       Device.Atlas_View := System.Null_Address;
@@ -2840,6 +3127,8 @@ package body Terminal.App.Vulkan_Device is
          Vertex_Buffer_Bytes => Device.Vertex_Buffer_Bytes,
          Uploaded_Vertex_Count => Device.Uploaded_Vertex_Count,
          Rendered_Frame_Count => Device.Rendered_Frame_Count,
+         Color_Sample_Count => Sample_Count_Value (Device.Color_Sample_Count),
+         Color_MSAA_Created => Device.Color_MSAA_View /= System.Null_Address,
          Atlas_Image_Created => Device.Atlas_Image /= System.Null_Address,
          Atlas_View_Created => Device.Atlas_View /= System.Null_Address,
          Atlas_Sampler_Created => Device.Atlas_Sampler /= System.Null_Address,

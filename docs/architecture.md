@@ -78,6 +78,11 @@ about selection or clipboards.
 because that layer currently pulls in a GLFW/OpenGL binding outside this
 terminal's locked Vulkan-only dependency rules.
 
+The app Vulkan presenter follows the high-quality color-target policy used by
+the Guikit/Files Vulkan backend: it prefers the highest supported framebuffer
+color sample count from 8x, 4x, and 2x, falls back to 1x, and resolves an MSAA
+color attachment into the swapchain when multisampling is available.
+
 ## Threading Model
 
 GLFW and Vulkan run on the main thread. Terminal state is mutated only on the

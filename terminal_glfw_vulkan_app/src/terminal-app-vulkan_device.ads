@@ -47,6 +47,7 @@ package Terminal.App.Vulkan_Device is
       Get_Swapchain_Images_Failed,
       Too_Many_Swapchain_Images,
       Create_Image_View_Failed,
+      Create_Color_Target_Failed,
       Create_Render_Pass_Failed,
       Create_Framebuffer_Failed,
       Create_Command_Pool_Failed,
@@ -96,6 +97,8 @@ package Terminal.App.Vulkan_Device is
       Vertex_Buffer_Bytes : Natural := 0;
       Uploaded_Vertex_Count : Natural := 0;
       Rendered_Frame_Count : Natural := 0;
+      Color_Sample_Count : Natural := 1;
+      Color_MSAA_Created : Boolean := False;
       Atlas_Image_Created : Boolean := False;
       Atlas_View_Created : Boolean := False;
       Atlas_Sampler_Created : Boolean := False;
@@ -197,6 +200,10 @@ private
       Command_Pool       : Vk.Command_Pool_T := System.Null_Address;
       Vertex_Buffer      : Vk.Buffer_T := System.Null_Address;
       Vertex_Memory      : Vk.Device_Memory_T := System.Null_Address;
+      Color_MSAA_Image   : Vk.Image_T := System.Null_Address;
+      Color_MSAA_Memory  : Vk.Device_Memory_T := System.Null_Address;
+      Color_MSAA_View    : Vk.Image_View_T := System.Null_Address;
+      Color_Sample_Count : Vk.Sample_Count_Flag_Bits_T := Vk.SAMPLE_COUNT_1_BIT;
       Atlas_Image        : Vk.Image_T := System.Null_Address;
       Atlas_Memory       : Vk.Device_Memory_T := System.Null_Address;
       Atlas_View         : Vk.Image_View_T := System.Null_Address;
