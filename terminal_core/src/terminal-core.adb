@@ -170,6 +170,9 @@ package body Terminal.Core is
       T.Saved_Row := T.Cursor_Row;
       T.Saved_Col := T.Cursor_Col;
       T.Saved_Style := T.Current_Style;
+      T.Saved_G0_Charset := T.G0_Charset;
+      T.Saved_G1_Charset := T.G1_Charset;
+      T.Saved_Active_Charset := T.Active_Charset;
    end Save_Cursor_State;
 
    procedure Restore_Cursor_State (T : in out Terminal) is
@@ -178,6 +181,9 @@ package body Terminal.Core is
       T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
       T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
       T.Current_Style := T.Saved_Style;
+      T.G0_Charset := T.Saved_G0_Charset;
+      T.G1_Charset := T.Saved_G1_Charset;
+      T.Active_Charset := T.Saved_Active_Charset;
       T.Pending_Wrap := False;
       Mark_Cursor_Move (T, Old_Row);
    end Restore_Cursor_State;
@@ -202,6 +208,9 @@ package body Terminal.Core is
       T.G1_Charset := ASCII_Charset;
       T.Active_Charset := G0;
       T.Charset_Target := G0;
+      T.Saved_G0_Charset := ASCII_Charset;
+      T.Saved_G1_Charset := ASCII_Charset;
+      T.Saved_Active_Charset := G0;
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
@@ -307,6 +316,9 @@ package body Terminal.Core is
       T.G1_Charset := ASCII_Charset;
       T.Active_Charset := G0;
       T.Charset_Target := G0;
+      T.Saved_G0_Charset := ASCII_Charset;
+      T.Saved_G1_Charset := ASCII_Charset;
+      T.Saved_Active_Charset := G0;
       T.Diag := (others => 0);
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
@@ -1327,6 +1339,13 @@ package body Terminal.Core is
       T.Current_Cursor_Blinking := False;
       T.Saved_Row := 1;
       T.Saved_Col := 1;
+      T.G0_Charset := ASCII_Charset;
+      T.G1_Charset := ASCII_Charset;
+      T.Active_Charset := G0;
+      T.Charset_Target := G0;
+      T.Saved_G0_Charset := ASCII_Charset;
+      T.Saved_G1_Charset := ASCII_Charset;
+      T.Saved_Active_Charset := G0;
       T.Pending_Wrap := False;
       T.Top_Margin := 1;
       T.Bottom_Margin := T.Rows;

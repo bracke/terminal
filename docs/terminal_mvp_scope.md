@@ -14,6 +14,7 @@
 - SO/SI select G1/G0 for 7-bit GL text. DEC special graphics maps the common
   VT100 line-drawing range to Unicode box-drawing and symbol code points.
 - Saved cursor state includes row, column, and current SGR style.
+- Saved cursor state also preserves the active G0/G1 charset designation.
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL,
   ICH, DCH, ECH, IL, DL, REP, SU, SD, SGR, DECSET/DECRST known modes,
   SM/RM insert mode, DECSTBM margins, and DECSTR soft reset (`CSI ! p`).

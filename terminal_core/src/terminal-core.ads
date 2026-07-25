@@ -231,6 +231,9 @@ private
       Saved_Row     : Positive := 1;
       Saved_Col     : Positive := 1;
       Saved_Style   : Style;
+      Saved_G0_Charset : Charset_Kind := ASCII_Charset;
+      Saved_G1_Charset : Charset_Kind := ASCII_Charset;
+      Saved_Active_Charset : Charset_Slot := G0;
       Pending_Wrap  : Boolean := False;
       Top_Margin    : Positive := 1;
       Bottom_Margin : Positive := 1;

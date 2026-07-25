@@ -86,4 +86,47 @@ begin
         (D.Ignored_Escape = 0,
          "supported charset designations should not increment ignored escape");
    end;
+
+   Terminal.Core.Initialize (T, 2, 12, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "save charset initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "(0"
+         & ASCII.ESC & "7"
+         & ASCII.ESC & "(B"
+         & "x"
+         & ASCII.ESC & "8"
+         & "x"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "save charset feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#2502#,
+         "restored G0 DEC charset should map x to vertical line");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 2, 12, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "soft reset charset initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "(0"
+         & ASCII.ESC & "[!p"
+         & "x"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "soft reset charset feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "DECSTR should restore ASCII charset");
+      Terminal.Core.Release (S);
+   end;
 end Core_Charset_Smoke;
