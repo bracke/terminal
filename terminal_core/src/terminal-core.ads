@@ -117,6 +117,12 @@ package Terminal.Core is
    function Modes (T : Terminal) return Mode_Snapshot;
    function Diagnostics (T : Terminal) return Diagnostic_Snapshot;
    function Scrollback_Row_Count (T : Terminal) return Natural;
+   function Pending_Response_Length (T : Terminal) return Natural;
+
+   procedure Read_Response
+     (T      : in out Terminal;
+      Buffer : out Common.Bytes.Byte_Array;
+      Last   : out Natural);
 
    procedure Clear_Damage (T : in out Terminal);
 
@@ -145,6 +151,10 @@ private
    type Param_Set_Array is array (Param_Index) of Boolean;
 
    type Buffer_Kind is (Primary, Alternate);
+   Max_Response_Length : constant := 128;
+   subtype Response_Index is Positive range 1 .. Max_Response_Length;
+   type Response_Buffer is
+     array (Response_Index) of Common.Bytes.Byte;
 
    type Terminal is limited record
       Initialized      : Boolean := False;
@@ -169,6 +179,8 @@ private
       Current_Style : Style;
       Current_Modes : Mode_Snapshot;
       Diag          : Diagnostic_Snapshot;
+      Responses     : Response_Buffer := (others => 0);
+      Response_Length : Natural range 0 .. Max_Response_Length := 0;
 
       State         : Parser_State := Ground;
       CSI_Private   : Standard.Character := ASCII.NUL;

@@ -183,6 +183,18 @@ package body Terminal.App.Main_Loop is
                   end if;
                end loop;
 
+               while Terminal.Core.Pending_Response_Length (T) > 0 loop
+                  Chunk := (others => <>);
+                  Terminal.Core.Read_Response (T, Chunk.Data, Chunk.Length);
+                  if Chunk.Length > 0 then
+                     Terminal.App.PTY_Write.Write_All (S, Chunk, Write_Stat);
+                     if Write_Stat /= Terminal.App.PTY_Write.Ok then
+                        GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                        exit;
+                     end if;
+                  end if;
+               end loop;
+
                loop
                   In_Q.Pop (Event, Has_Event);
                   exit when not Has_Event;

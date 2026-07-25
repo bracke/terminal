@@ -95,6 +95,7 @@ package body Terminal.Core is
       T.Top_Margin := 1;
       T.Bottom_Margin := T.Rows;
       T.Current_Style := (others => <>);
+      T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Count := 0;
       T.OSC_Count := 0;
@@ -175,6 +176,7 @@ package body Terminal.Core is
       T.Current_Style := (others => <>);
       T.Current_Modes := (others => <>);
       T.Diag := (others => 0);
+      T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Private := ASCII.NUL;
       T.CSI_Params := (others => 0);
@@ -559,6 +561,63 @@ package body Terminal.Core is
       end if;
    end Param;
 
+   procedure Append_Response_Byte
+     (T : in out Terminal;
+      B : Common.Bytes.Byte)
+   is
+   begin
+      if T.Response_Length < Max_Response_Length then
+         T.Response_Length := T.Response_Length + 1;
+         T.Responses (T.Response_Length) := B;
+      else
+         T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+      end if;
+   end Append_Response_Byte;
+
+   procedure Append_Response_Char
+     (T  : in out Terminal;
+      Ch : Standard.Character)
+   is
+   begin
+      Append_Response_Byte (T, Common.Bytes.Byte (Standard.Character'Pos (Ch)));
+   end Append_Response_Char;
+
+   procedure Append_Response_Natural
+     (T : in out Terminal;
+      N : Natural)
+   is
+      Text : constant String := Natural'Image (N);
+   begin
+      for I in Text'Range loop
+         if Text (I) /= ' ' then
+            Append_Response_Char (T, Text (I));
+         end if;
+      end loop;
+   end Append_Response_Natural;
+
+   procedure Queue_Device_Status_Report
+     (T    : in out Terminal;
+      Kind : Natural)
+   is
+   begin
+      case Kind is
+         when 5 =>
+            Append_Response_Char (T, ASCII.ESC);
+            Append_Response_Char (T, '[');
+            Append_Response_Char (T, '0');
+            Append_Response_Char (T, 'n');
+         when 6 =>
+            Append_Response_Char (T, ASCII.ESC);
+            Append_Response_Char (T, '[');
+            Append_Response_Natural (T, T.Cursor_Row);
+            Append_Response_Char (T, ';');
+            Append_Response_Natural (T, T.Cursor_Col);
+            Append_Response_Char (T, 'R');
+         when others =>
+            T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+      end case;
+   end Queue_Device_Status_Report;
+
    procedure Move_Cursor
      (T   : in out Terminal;
       Row : Natural;
@@ -890,6 +949,8 @@ package body Terminal.Core is
             Move_Backward_Tabs (T, Positive'Max (1, Param (T, 1, 1)));
          when 'm' =>
             Apply_SGR (T);
+         when 'n' =>
+            Queue_Device_Status_Report (T, Param (T, 1, 0));
          when 's' =>
             T.Saved_Row := T.Cursor_Row;
             T.Saved_Col := T.Cursor_Col;
@@ -1287,6 +1348,34 @@ package body Terminal.Core is
    begin
       return T.Scrollback_Rows;
    end Scrollback_Row_Count;
+
+   function Pending_Response_Length (T : Terminal) return Natural is
+   begin
+      return T.Response_Length;
+   end Pending_Response_Length;
+
+   procedure Read_Response
+     (T      : in out Terminal;
+      Buffer : out Common.Bytes.Byte_Array;
+      Last   : out Natural)
+   is
+      Count : constant Natural :=
+        Natural'Min (Buffer'Length, T.Response_Length);
+   begin
+      Last := Count;
+      if Count > 0 then
+         for I in 1 .. Count loop
+            Buffer (Buffer'First + I - 1) := T.Responses (I);
+         end loop;
+
+         if Count < T.Response_Length then
+            for I in 1 .. T.Response_Length - Count loop
+               T.Responses (I) := T.Responses (I + Count);
+            end loop;
+         end if;
+         T.Response_Length := T.Response_Length - Count;
+      end if;
+   end Read_Response;
 
    procedure Clear_Damage (T : in out Terminal) is
    begin
