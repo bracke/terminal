@@ -15,6 +15,7 @@ project App_Tests is
       "pty_core_integration_smoke.adb",
       "pty_m1_commands_smoke.adb",
       "input_map_smoke.adb",
+      "scrollback_view_smoke.adb",
       "queue_smoke.adb",
       "resize_smoke.adb");
 

@@ -11,6 +11,7 @@ with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.App.Renderer;
 with Terminal.App.Resize;
+with Terminal.App.Scrollback_View;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
 with Terminal.PTY.POSIX;
@@ -29,6 +30,8 @@ package body Terminal.App.Main_Loop is
    use type Terminal.PTY.POSIX.Spawn_Status;
    use type Terminal.PTY.POSIX.Resize_Status;
    use type Terminal.App.PTY_Write.Write_All_Status;
+   use type GLFW_Vulkan.Input.Key;
+   use type GLFW_Vulkan.Input.Key_Action;
 
    Input_Queue : access Terminal.App.Queues.Input_Event_Queue := null;
 
@@ -95,6 +98,17 @@ package body Terminal.App.Main_Loop is
       Last_Title := New_Title;
    end Apply_Title;
 
+   function Is_Scrollback_Key
+     (Event : GLFW_Vulkan.Input.Key_Event) return Boolean
+   is
+   begin
+      return Event.Action /= GLFW_Vulkan.Input.Release
+        and then Event.Modifiers.Shift
+        and then
+          (Event.Key = GLFW_Vulkan.Input.Page_Up
+           or else Event.Key = GLFW_Vulkan.Input.Page_Down);
+   end Is_Scrollback_Key;
+
    procedure Run is
       Ctx : GLFW_Vulkan.Context;
       W   : GLFW_Vulkan.Windows.Window;
@@ -117,6 +131,7 @@ package body Terminal.App.Main_Loop is
       Last_Rows : Positive := 24;
       Last_Cols : Positive := 80;
       Need_Redraw : Boolean := True;
+      Scroll_Offset : Natural := 0;
       Last_Title : Terminal.Core.Title_Text;
    begin
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
@@ -217,6 +232,9 @@ package body Terminal.App.Main_Loop is
                   exit when not Has_Chunk;
                   if Chunk.Length > 0 then
                      Terminal.Core.Feed (T, Chunk.Data (1 .. Chunk.Length), Feed);
+                     Scroll_Offset :=
+                       Terminal.App.Scrollback_View.Clamp_Offset
+                         (T, Scroll_Offset);
                      Dirty := True;
                   end if;
                end loop;
@@ -239,18 +257,34 @@ package body Terminal.App.Main_Loop is
                   exit when not Has_Event;
                   case Event.Kind is
                      when Terminal.App.Queues.Key =>
-                        if Terminal.App.Input_Map.Is_Paste_Shortcut
+                        if Is_Scrollback_Key (Event.Key_Event) then
+                           if Event.Key_Event.Key = GLFW_Vulkan.Input.Page_Up then
+                              Scroll_Offset :=
+                                Terminal.App.Scrollback_View.Clamp_Offset
+                                  (T, Scroll_Offset + Last_Rows);
+                           elsif Scroll_Offset > Last_Rows then
+                              Scroll_Offset := Scroll_Offset - Last_Rows;
+                           else
+                              Scroll_Offset := 0;
+                           end if;
+                           Dirty := True;
+                           Need_Redraw := True;
+                           Chunk := (others => <>);
+                        elsif Terminal.App.Input_Map.Is_Paste_Shortcut
                           (Event.Key_Event)
                         then
+                           Scroll_Offset := 0;
                            Terminal.App.Input_Map.Encode_Paste_Text
                              (GLFW_Vulkan.Clipboard.Get_Text (W),
                               Terminal.Core.Modes (T),
                               Chunk);
                         else
+                           Scroll_Offset := 0;
                            Terminal.App.Input_Map.Encode_Key
                              (Event.Key_Event, Terminal.Core.Modes (T), Chunk);
                         end if;
                      when Terminal.App.Queues.Character =>
+                        Scroll_Offset := 0;
                         Terminal.App.Input_Map.Encode_Character
                           (Event.Character_Event, Chunk);
                      when Terminal.App.Queues.Bytes =>
@@ -296,6 +330,9 @@ package body Terminal.App.Main_Loop is
                         then
                            Last_Rows := New_Rows;
                            Last_Cols := New_Cols;
+                           Scroll_Offset :=
+                             Terminal.App.Scrollback_View.Clamp_Offset
+                               (T, Scroll_Offset);
                            Dirty := True;
                            Need_Redraw := True;
                         end if;
@@ -306,7 +343,8 @@ package body Terminal.App.Main_Loop is
                if Dirty then
                   declare
                      Snap : Terminal.Core.Render_Snapshot :=
-                       Terminal.Core.Snapshot (T);
+                       Terminal.App.Scrollback_View.Snapshot
+                         (T, Scroll_Offset);
                      Render_Status : Terminal.App.Renderer.Render_Status;
                      Present_Status : Terminal.App.Vulkan_Presenter.Present_Status;
                      Can_Present : Boolean := True;

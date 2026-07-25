@@ -51,7 +51,9 @@ Full grapheme clusters, emoji ZWJ sequences, shaping, and BiDi are postponed.
 
 Primary-screen scrollback is bounded by the initialize-time limit. The alternate
 screen has no scrollback. Full terminal reset (`ESC c`) clears the visible
-buffers and scrollback.
+buffers and scrollback. The GLFW app supports page-based scrollback viewing
+with `Shift+Page_Up` and `Shift+Page_Down`; normal typing returns to the live
+bottom.
 
 ## TERM and Environment
 

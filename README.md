@@ -23,7 +23,8 @@ PTY, runs the queue-driven main loop, and initializes the local `textrender`
 glyph rasterizer/atlas layer. `Ctrl+Shift+V` and `Super+V` paste the GLFW
 clipboard into the PTY, using bracketed paste mode when the terminal core says
 it is enabled. Runtime visible-shell validation is tracked in
-`docs/m1_runtime_validation.md`.
+`docs/m1_runtime_validation.md`. `Shift+Page_Up` and `Shift+Page_Down` page
+through bounded primary-screen scrollback.
 
 Build individual crates:
 
@@ -74,6 +75,7 @@ tests/bin/shader_loader_smoke
 tests/bin/pty_core_integration_smoke
 tests/bin/pty_m1_commands_smoke
 tests/bin/input_map_smoke
+tests/bin/scrollback_view_smoke
 tests/bin/queue_smoke
 tests/bin/resize_smoke
 ```
