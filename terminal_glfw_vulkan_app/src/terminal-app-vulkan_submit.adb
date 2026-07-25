@@ -98,6 +98,7 @@ package body Terminal.App.Vulkan_Submit is
       Batch.Rectangle_Vertex_Total := 0;
       Batch.Glyph_Vertex_Total := 0;
       Batch.Text_Run_Total := 0;
+      Batch.Shaped_Glyph_Total := 0;
       Batch.Frame_Width := 0;
       Batch.Frame_Height := 0;
       Batch.Uses_Text_Atlas := False;
@@ -145,6 +146,9 @@ package body Terminal.App.Vulkan_Submit is
             Batch.Text_Runs := new RM.Text_Run_Array (1 .. Frame.Text_Run_Count);
             for I in 1 .. Frame.Text_Run_Count loop
                Batch.Text_Runs (I) := Frame.Text_Runs (I);
+               Batch.Shaped_Glyph_Total :=
+                 Batch.Shaped_Glyph_Total
+                 + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
             end loop;
             Batch.Text_Run_Total := Frame.Text_Run_Count;
          end if;
@@ -157,6 +161,9 @@ package body Terminal.App.Vulkan_Submit is
          Batch.Text_Runs := new RM.Text_Run_Array (1 .. Frame.Text_Run_Count);
          for I in 1 .. Frame.Text_Run_Count loop
             Batch.Text_Runs (I) := Frame.Text_Runs (I);
+            Batch.Shaped_Glyph_Total :=
+              Batch.Shaped_Glyph_Total
+              + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
          end loop;
          Batch.Text_Run_Total := Frame.Text_Run_Count;
       end if;
@@ -246,6 +253,9 @@ package body Terminal.App.Vulkan_Submit is
 
    function Text_Run_Count (Batch : Submission_Batch) return Natural is
      (Batch.Text_Run_Total);
+
+   function Shaped_Glyph_Count (Batch : Submission_Batch) return Natural is
+     (Batch.Shaped_Glyph_Total);
 
    function Width (Batch : Submission_Batch) return Natural is
      (Batch.Frame_Width);

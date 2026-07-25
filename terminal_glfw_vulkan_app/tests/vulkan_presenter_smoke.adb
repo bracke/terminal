@@ -40,5 +40,8 @@ begin
       Assert
         (Diag.Last_Text_Run_Count = 0,
          "rejected present should clear text run count");
+      Assert
+        (Diag.Last_Shaped_Glyph_Count = 0,
+         "rejected present should clear shaped glyph count");
    end;
 end Vulkan_Presenter_Smoke;

@@ -569,6 +569,7 @@ package body Terminal.App.Vulkan_Device is
          Device.Vertex_Buffer_Bytes := 0;
          Device.Uploaded_Vertex_Count := 0;
          Device.Uploaded_Text_Run_Count := 0;
+         Device.Uploaded_Shaped_Glyph_Count := 0;
          Device.Swapchain_Width := 0;
          Device.Swapchain_Height := 0;
          Device.Last_Status := Status_Value;
@@ -2149,6 +2150,7 @@ package body Terminal.App.Vulkan_Device is
       Device.Vertex_Buffer_Bytes := 0;
       Device.Uploaded_Vertex_Count := 0;
       Device.Uploaded_Text_Run_Count := 0;
+      Device.Uploaded_Shaped_Glyph_Count := 0;
       Device.Rendered_Frame_Count := 0;
       Device.Current_Frame := 1;
       Device.Atlas_Width := 0;
@@ -2205,6 +2207,7 @@ package body Terminal.App.Vulkan_Device is
       Device.Vertex_Buffer_Bytes := 0;
       Device.Uploaded_Vertex_Count := 0;
       Device.Uploaded_Text_Run_Count := 0;
+      Device.Uploaded_Shaped_Glyph_Count := 0;
    end Destroy_Vertex_Buffer;
 
    procedure Destroy_Atlas_Image (Device : in out Logical_Device) is
@@ -2872,6 +2875,7 @@ package body Terminal.App.Vulkan_Device is
       Vk.Unmap_Memory (Device.Device, Device.Vertex_Memory);
       Device.Uploaded_Vertex_Count := Count;
       Device.Uploaded_Text_Run_Count := VS.Text_Run_Count (Batch);
+      Device.Uploaded_Shaped_Glyph_Count := VS.Shaped_Glyph_Count (Batch);
       Status := Ok;
    end Upload;
 
@@ -3131,6 +3135,7 @@ package body Terminal.App.Vulkan_Device is
          Vertex_Buffer_Bytes => Device.Vertex_Buffer_Bytes,
          Uploaded_Vertex_Count => Device.Uploaded_Vertex_Count,
          Uploaded_Text_Run_Count => Device.Uploaded_Text_Run_Count,
+         Uploaded_Shaped_Glyph_Count => Device.Uploaded_Shaped_Glyph_Count,
          Rendered_Frame_Count => Device.Rendered_Frame_Count,
          Color_Sample_Count => Sample_Count_Value (Device.Color_Sample_Count),
          Color_MSAA_Created => Device.Color_MSAA_View /= System.Null_Address,

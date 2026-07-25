@@ -54,8 +54,17 @@ procedure Vulkan_Submit_Smoke is
          Codepoint_Count => 4,
          Run_Kind        => RM.Joined_Emoji_Cluster,
          Shape_Status    => RM.Needs_Shaping_Backend,
-         Shaped_Glyphs   => (others => <>),
-         Shaped_Glyph_Count => 0,
+         Shaped_Glyphs   =>
+           (1 =>
+              (Glyph_ID     => 42,
+               Codepoint    => 16#1F469#,
+               Source_Index => 1,
+               X_Offset     => 0.0,
+               Y_Offset     => 0.0,
+               X_Advance    => 18.0,
+               Y_Advance    => 0.0),
+            others => <>),
+         Shaped_Glyph_Count => 1,
          Fallback_Glyphs => True)];
 
    Frame : RM.Frame_Commands :=
@@ -84,6 +93,7 @@ begin
    Assert (VS.Rectangle_Vertex_Count (Batch) = 6, "rectangle vertex count");
    Assert (VS.Glyph_Vertex_Count (Batch) = 6, "glyph vertex count");
    Assert (VS.Text_Run_Count (Batch) = 1, "text run count");
+   Assert (VS.Shaped_Glyph_Count (Batch) = 1, "shaped glyph count");
    Assert (VS.Text_Runs (Batch) /= null, "text runs not copied");
    Assert
      (VS.Text_Runs (Batch) (1).Codepoint_Count = 4,
@@ -98,8 +108,11 @@ begin
      (VS.Text_Runs (Batch) (1).Shape_Status = RM.Needs_Shaping_Backend,
       "text run shape status");
    Assert
-     (VS.Text_Runs (Batch) (1).Shaped_Glyph_Count = 0,
+     (VS.Text_Runs (Batch) (1).Shaped_Glyph_Count = 1,
       "text run shaped glyph count");
+   Assert
+     (VS.Text_Runs (Batch) (1).Shaped_Glyphs (1).Glyph_ID = 42,
+      "text run shaped glyph id");
    Assert
      (VS.Text_Runs (Batch) (1).Fallback_Glyphs,
       "text run fallback flag");
@@ -127,6 +140,9 @@ begin
    Assert (VS.Vertex_Count (Batch) = 0, "release should clear vertices");
    Assert (VS.Vertices (Batch) = null, "released batch vertices should be null");
    Assert (VS.Text_Run_Count (Batch) = 0, "release should clear text run count");
+   Assert
+     (VS.Shaped_Glyph_Count (Batch) = 0,
+      "release should clear shaped glyph count");
    Assert (VS.Text_Runs (Batch) = null, "release should clear text runs");
    Assert (VS.Width (Batch) = 0, "release should clear frame width");
    Assert (not VS.Text_Atlas_Used (Batch), "release should clear atlas use");

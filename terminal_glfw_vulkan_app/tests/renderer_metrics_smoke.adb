@@ -604,6 +604,14 @@ begin
       Assert
         (Frame.Text_Runs (1).Shaped_Glyph_Count = 3,
          "simple text shaped glyph count");
+      declare
+         Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+      begin
+         Assert
+           (Diag.Last_Shaped_Glyph_Count = 3,
+            "simple text renderer shaped glyph diagnostic count");
+      end;
       Assert
         (not Frame.Text_Runs (1).Fallback_Glyphs,
          "simple text should not need glyph fallback");

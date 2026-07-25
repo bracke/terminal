@@ -71,7 +71,9 @@ glyphs for simple glyph/text runs, marks common ASCII ligature sequences and
 complex text as `Needs_Shaping_Backend`, and leaves those complex shaped-glyph
 buffers empty. `Fallback_Glyphs` marks runs that are still represented by the
 existing glyph fallback path, and renderer diagnostics count those fallback
-runs.
+runs. Submit batches, presenter diagnostics, and device upload diagnostics also
+carry aggregate shaped-glyph counts so the future shaping backend remains
+observable across the whole render path.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions

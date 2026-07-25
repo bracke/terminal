@@ -28,6 +28,7 @@ package Terminal.App.Renderer is
       Last_Rectangle_Count : Natural := 0;
       Last_Glyph_Count    : Natural := 0;
       Last_Text_Run_Count : Natural := 0;
+      Last_Shaped_Glyph_Count : Natural := 0;
       Last_Shaping_Fallback_Count : Natural := 0;
       Last_Vertex_Count   : Natural := 0;
       Missing_Glyph_Count : Natural := 0;
@@ -77,6 +78,7 @@ private
       Rectangle_Count : Natural := 0;
       Glyph_Count : Natural := 0;
       Text_Run_Count : Natural := 0;
+      Shaped_Glyph_Count : Natural := 0;
       Shaping_Fallback_Count : Natural := 0;
       Vertex_Count : Natural := 0;
       Missing_Glyph_Count : Natural := 0;

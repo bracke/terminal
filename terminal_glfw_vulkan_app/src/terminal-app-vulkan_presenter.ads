@@ -76,6 +76,7 @@ package Terminal.App.Vulkan_Presenter is
       Last_Status       : Present_Status := Not_Initialized;
       Last_Vertex_Count : Natural := 0;
       Last_Text_Run_Count : Natural := 0;
+      Last_Shaped_Glyph_Count : Natural := 0;
       Last_Frame_Width  : Natural := 0;
       Last_Frame_Height : Natural := 0;
       Last_Atlas_Bytes  : Natural := 0;
@@ -111,6 +112,7 @@ private
       Last_Status       : Present_Status := Not_Initialized;
       Last_Vertex_Count : Natural := 0;
       Last_Text_Run_Count : Natural := 0;
+      Last_Shaped_Glyph_Count : Natural := 0;
       Last_Frame_Width  : Natural := 0;
       Last_Frame_Height : Natural := 0;
       Last_Atlas_Bytes  : Natural := 0;

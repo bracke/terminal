@@ -121,7 +121,8 @@ shaped-glyph output until a backend is available. The submit/presenter/device
 layers carry those runs without parsing terminal data. BiDi layout, OpenType
 shaping, emoji ZWJ glyph composition, complex-script cluster shaping, and
 ligature substitution still require a real shaping backend behind those
-text-run commands.
+text-run commands. Renderer, submit, presenter, and device diagnostics expose
+aggregate shaped-glyph counts for that path.
 
 ## Cursor
 

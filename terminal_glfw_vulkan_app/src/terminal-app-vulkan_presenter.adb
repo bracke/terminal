@@ -72,6 +72,7 @@ package body Terminal.App.Vulkan_Presenter is
       P.Last_Status := Status;
       P.Last_Vertex_Count := 0;
       P.Last_Text_Run_Count := 0;
+      P.Last_Shaped_Glyph_Count := 0;
       P.Last_Frame_Width := 0;
       P.Last_Frame_Height := 0;
       P.Last_Atlas_Bytes := 0;
@@ -93,6 +94,7 @@ package body Terminal.App.Vulkan_Presenter is
       P.Last_Status := Not_Initialized;
       P.Last_Vertex_Count := 0;
       P.Last_Text_Run_Count := 0;
+      P.Last_Shaped_Glyph_Count := 0;
       P.Last_Frame_Width := 0;
       P.Last_Frame_Height := 0;
       P.Last_Atlas_Bytes := 0;
@@ -323,6 +325,7 @@ package body Terminal.App.Vulkan_Presenter is
       P.Accepted_Frames := P.Accepted_Frames + 1;
       P.Last_Vertex_Count := VS.Vertex_Count (Batch);
       P.Last_Text_Run_Count := VS.Text_Run_Count (Batch);
+      P.Last_Shaped_Glyph_Count := VS.Shaped_Glyph_Count (Batch);
       P.Last_Frame_Width := VS.Width (Batch);
       P.Last_Frame_Height := VS.Height (Batch);
       P.Last_Atlas_Bytes := VS.Atlas_Bytes (Batch);
@@ -351,6 +354,7 @@ package body Terminal.App.Vulkan_Presenter is
          Last_Status       => P.Last_Status,
          Last_Vertex_Count => P.Last_Vertex_Count,
          Last_Text_Run_Count => P.Last_Text_Run_Count,
+         Last_Shaped_Glyph_Count => P.Last_Shaped_Glyph_Count,
          Last_Frame_Width  => P.Last_Frame_Width,
          Last_Frame_Height => P.Last_Frame_Height,
          Last_Atlas_Bytes  => P.Last_Atlas_Bytes,

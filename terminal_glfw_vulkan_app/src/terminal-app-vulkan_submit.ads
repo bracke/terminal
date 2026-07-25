@@ -47,6 +47,7 @@ package Terminal.App.Vulkan_Submit is
      (Batch : Submission_Batch)
       return Terminal.App.Render_Model.Text_Run_Array_Access;
    function Text_Run_Count (Batch : Submission_Batch) return Natural;
+   function Shaped_Glyph_Count (Batch : Submission_Batch) return Natural;
    function Width (Batch : Submission_Batch) return Natural;
    function Height (Batch : Submission_Batch) return Natural;
    function Text_Atlas_Used (Batch : Submission_Batch) return Boolean;
@@ -65,6 +66,7 @@ private
       Text_Runs              : Terminal.App.Render_Model.Text_Run_Array_Access :=
         null;
       Text_Run_Total         : Natural := 0;
+      Shaped_Glyph_Total     : Natural := 0;
       Frame_Width            : Natural := 0;
       Frame_Height           : Natural := 0;
       Uses_Text_Atlas        : Boolean := False;
