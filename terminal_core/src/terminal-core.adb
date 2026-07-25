@@ -158,6 +158,13 @@ package body Terminal.Core is
       Mark_Cursor_Move (T, Old_Row);
    end Reverse_Index_Control;
 
+   procedure Horizontal_Tab_Set (T : in out Terminal) is
+   begin
+      if T.Tab_Stops /= null then
+         T.Tab_Stops (T.Cursor_Col) := True;
+      end if;
+   end Horizontal_Tab_Set;
+
    procedure Save_Cursor_State (T : in out Terminal) is
    begin
       T.Saved_Row := T.Cursor_Row;
@@ -1506,6 +1513,10 @@ package body Terminal.Core is
                Recover_Incomplete_UTF8 (T);
                Next_Line_Control (T);
                goto Continue;
+            elsif Natural (B) = 16#88# then
+               Recover_Incomplete_UTF8 (T);
+               Horizontal_Tab_Set (T);
+               goto Continue;
             elsif Natural (B) = 16#8D# then
                Recover_Incomplete_UTF8 (T);
                Reverse_Index_Control (T);
@@ -1560,9 +1571,7 @@ package body Terminal.Core is
                      Next_Line_Control (T);
                      T.State := Ground;
                   when 'H' =>
-                     if T.Tab_Stops /= null then
-                        T.Tab_Stops (T.Cursor_Col) := True;
-                     end if;
+                     Horizontal_Tab_Set (T);
                      T.State := Ground;
                   when 'M' =>
                      Reverse_Index_Control (T);

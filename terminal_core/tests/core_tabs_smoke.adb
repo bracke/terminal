@@ -72,4 +72,17 @@ begin
 
    Feed_Text (ASCII.ESC & "c" & (1 => ASCII.HT), "reset tabs feed failed");
    Assert_Cursor_Col (9, "reset should restore default tab stops");
+
+   Terminal.Core.Initialize (T, 1, 20, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "C1 HTS initialize failed");
+   Feed_Text (ASCII.ESC & "[5G", "C1 HTS setup cursor feed failed");
+   Terminal.Core.Feed (T, (1 => 16#88#), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 HTS feed failed");
+   Assert_Cursor_Col (5, "C1 HTS should not move the cursor");
+
+   Feed_Text (ASCII.ESC & "[G" & (1 => ASCII.HT), "C1 HTS custom tab feed failed");
+   Assert_Cursor_Col (5, "HT should move to C1 HTS tab stop");
+   Assert
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
+      "C1 HTS should not count as malformed UTF-8");
 end Core_Tabs_Smoke;

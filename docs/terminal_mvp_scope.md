@@ -5,8 +5,8 @@
 - Byte-oriented feed API.
 - UTF-8 decoding with replacement for malformed input.
 - C0: BEL, BS, HT, LF, CR, ESC.
-- C1: IND (`0x84`), NEL (`0x85`), RI (`0x8D`), CSI (`0x9B`), OSC (`0x9D`),
-  and ST (`0x9C`) are recognized as byte-oriented controls.
+- C1: IND (`0x84`), NEL (`0x85`), HTS (`0x88`), RI (`0x8D`), CSI (`0x9B`),
+  OSC (`0x9D`), and ST (`0x9C`) are recognized as byte-oriented controls.
 - ESC: reset, save/restore cursor, index, next line, reverse index, CSI, OSC,
   DEC screen alignment test (`ESC # 8`), keypad mode toggles, and G-set
   charset-designation consume/ignore.
