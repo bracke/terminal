@@ -118,6 +118,16 @@ package body Terminal.App.Renderer is
         and then Snapshot.Cursor.Col = Col;
    end Is_Cursor_Cell;
 
+   function Cursor_Block_Height (R : Renderer) return Positive is
+   begin
+      return Positive'Min (R.CH, Pixel_Size);
+   end Cursor_Block_Height;
+
+   function Cursor_Block_Y (R : Renderer; Cell_Y : Float) return Float is
+   begin
+      return Cell_Y + Float (R.CH - Cursor_Block_Height (R)) / 2.0;
+   end Cursor_Block_Y;
+
    procedure Set_Render_Status
      (R      : in out Renderer;
       Status : out Render_Status;
@@ -358,8 +368,7 @@ package body Terminal.App.Renderer is
                Cursor_Cell : constant Boolean := Is_Cursor_Cell (Snapshot, Row, Col);
                FG : constant RM.Pixel_Color :=
                  (if Cursor_Cell then Cursor_FG else Foreground (Cell));
-               BG : constant RM.Pixel_Color :=
-                 (if Cursor_Cell then Cursor_BG else Background (Cell));
+               BG : constant RM.Pixel_Color := Background (Cell);
             begin
                if Cell.Kind /= Terminal.Core.Wide_Continuation then
                   Add_Rectangle
@@ -369,6 +378,15 @@ package body Terminal.App.Renderer is
                      Width  => Float (Cell_W),
                      Height => Float (R.CH),
                      Color  => BG);
+                  if Cursor_Cell then
+                     Add_Rectangle
+                       (R,
+                        X      => X,
+                        Y      => Cursor_Block_Y (R, Y),
+                        Width  => Float (Cell_W),
+                        Height => Float (Cursor_Block_Height (R)),
+                        Color  => Cursor_BG);
+                  end if;
                end if;
 
                if Is_Drawable (Cell) then
