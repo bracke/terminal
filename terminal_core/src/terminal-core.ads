@@ -192,6 +192,7 @@ private
    subtype Param_Index is Positive range 1 .. 16;
    type Param_Array is array (Param_Index) of Natural;
    type Param_Set_Array is array (Param_Index) of Boolean;
+   type Param_Separator_Array is array (Param_Index) of Standard.Character;
    subtype CSI_Intermediate_Index is Positive range 1 .. 4;
    type CSI_Intermediate_Array is
      array (CSI_Intermediate_Index) of Standard.Character;
@@ -255,6 +256,7 @@ private
       CSI_Private   : Standard.Character := ASCII.NUL;
       CSI_Params    : Param_Array := (others => 0);
       CSI_Set       : Param_Set_Array := (others => False);
+      CSI_Separators : Param_Separator_Array := (others => ASCII.NUL);
       CSI_Count     : Natural := 0;
       CSI_Intermediates : CSI_Intermediate_Array := (others => ASCII.NUL);
       CSI_Intermediate_Count : Natural := 0;

@@ -163,6 +163,32 @@ begin
      (Terminal.Core.Diagnostics (T).Unsupported_Sequence = 1,
       "malformed SGR underline color should be diagnosed");
 
+   Terminal.Core.Initialize (T, 1, 3, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SGR underline style initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[4:2mA"
+      & ASCII.ESC & "[4:0mB"
+      & ASCII.ESC & "[4:5mC",
+      "SGR underline style feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      C : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 3);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert (A.Style.Underline, "SGR 4:2 should enable underline");
+      Assert (not A.Style.Faint, "SGR 4:2 should not enable faint");
+      Assert (not B.Style.Underline, "SGR 4:0 should disable underline");
+      Assert (C.Style.Underline, "SGR 4:5 should enable underline");
+      Assert
+        (D.Unsupported_Sequence = 0,
+         "SGR underline styles should not increment diagnostics");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 2, 100, Init);
    Assert (Init = Terminal.Core.Ok, "SGR rapid blink initialize failed");
    Feed_Text

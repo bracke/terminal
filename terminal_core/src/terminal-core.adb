@@ -328,6 +328,7 @@ package body Terminal.Core is
       T.CSI_Private := ASCII.NUL;
       T.CSI_Params := (others => 0);
       T.CSI_Set := (others => False);
+      T.CSI_Separators := (others => ASCII.NUL);
       T.CSI_Count := 0;
       T.CSI_Intermediates := (others => ASCII.NUL);
       T.CSI_Intermediate_Count := 0;
@@ -812,6 +813,7 @@ package body Terminal.Core is
       T.CSI_Private := ASCII.NUL;
       T.CSI_Params := (others => 0);
       T.CSI_Set := (others => False);
+      T.CSI_Separators := (others => ASCII.NUL);
       T.CSI_Count := 0;
       T.CSI_Intermediates := (others => ASCII.NUL);
       T.CSI_Intermediate_Count := 0;
@@ -829,6 +831,18 @@ package body Terminal.Core is
          return Default;
       end if;
    end Param;
+
+   function Param_Separator
+     (T : Terminal;
+      N : Positive) return Standard.Character
+   is
+   begin
+      if N <= T.CSI_Count then
+         return T.CSI_Separators (N);
+      else
+         return ASCII.NUL;
+      end if;
+   end Param_Separator;
 
    procedure Append_Response_Byte
      (T : in out Terminal;
@@ -1233,7 +1247,22 @@ package body Terminal.Core is
             when 3 =>
                T.Current_Style.Italic := True;
             when 4 =>
-               T.Current_Style.Underline := True;
+               if I + 1 <= T.CSI_Count
+                 and then Param_Separator (T, I + 1) = ':'
+               then
+                  case Param (T, I + 1, 1) is
+                     when 0 =>
+                        T.Current_Style.Underline := False;
+                     when 1 .. 5 =>
+                        T.Current_Style.Underline := True;
+                     when others =>
+                        T.Diag.Unsupported_Sequence :=
+                          T.Diag.Unsupported_Sequence + 1;
+                  end case;
+                  I := I + 1;
+               else
+                  T.Current_Style.Underline := True;
+               end if;
             when 5 | 6 =>
                T.Current_Style.Blink := True;
             when 7 =>
@@ -1998,6 +2027,7 @@ package body Terminal.Core is
                elsif Ch = ';' or else Ch = ':' then
                   if T.CSI_Count < Parser.Max_CSI_Params then
                      T.CSI_Count := T.CSI_Count + 1;
+                     T.CSI_Separators (T.CSI_Count) := Ch;
                   else
                      T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
                      Overflowed := True;
