@@ -578,6 +578,36 @@ package body Terminal.Core is
         or else (V in 16#20000# .. 16#3FFFD#);
    end Is_Wide;
 
+   function Is_Emoji_Variation_Base (CP : Common.Code_Point) return Boolean is
+      V : constant Natural := Natural (CP);
+   begin
+      return
+        V = 16#00A9#
+        or else V = 16#00AE#
+        or else V = 16#203C#
+        or else V = 16#2049#
+        or else V = 16#2122#
+        or else V = 16#2139#
+        or else (V in 16#2194# .. 16#21AA#)
+        or else (V in 16#231A# .. 16#231B#)
+        or else V = 16#2328#
+        or else V = 16#23CF#
+        or else (V in 16#23E9# .. 16#23F3#)
+        or else (V in 16#23F8# .. 16#23FA#)
+        or else V = 16#24C2#
+        or else (V in 16#25AA# .. 16#25AB#)
+        or else V = 16#25B6#
+        or else V = 16#25C0#
+        or else (V in 16#25FB# .. 16#25FE#)
+        or else (V in 16#2600# .. 16#27BF#)
+        or else (V in 16#2934# .. 16#2935#)
+        or else (V in 16#2B05# .. 16#2B55#)
+        or else V = 16#3030#
+        or else V = 16#303D#
+        or else V = 16#3297#
+        or else V = 16#3299#;
+   end Is_Emoji_Variation_Base;
+
    function Is_Zero_Width (CP : Common.Code_Point) return Boolean is
       V : constant Natural := Natural (CP);
    begin
@@ -886,6 +916,39 @@ package body Terminal.Core is
         (Attached_CP : Common.Code_Point) return Boolean
       is
          Cell_Index : constant Natural := Previous_Cell_Index;
+
+         procedure Promote_VS16_Emoji_Width is
+            Col : constant Positive :=
+              Positive (((Cell_Index - 1) mod T.Cols) + 1);
+            Next_Col : constant Positive := Col + 1;
+         begin
+            if Attached_CP /= 16#FE0F#
+              or else Col = T.Cols
+              or else Cells (Cell_Index).Text.Width /= Width_One
+              or else not Is_Emoji_Variation_Base
+                (Cells (Cell_Index).Text.Code_Point)
+            then
+               return;
+            end if;
+
+            Clear_Wide_Overlap (T, T.Cursor_Row, Next_Col, Width_One);
+            Cells (Cell_Index).Text.Width := Width_Two;
+            Cells (Index (T, T.Cursor_Row, Next_Col)) :=
+              (Kind  => Wide_Continuation,
+               Text  => (Code_Point => 0,
+                         Width      => Width_Zero,
+                         others     => <>),
+               Style => Cells (Cell_Index).Style);
+
+            if T.Cursor_Col = Next_Col then
+               if Next_Col = T.Cols then
+                  T.Pending_Wrap := True;
+               else
+                  T.Cursor_Col := Next_Col + 1;
+                  T.Pending_Wrap := False;
+               end if;
+            end if;
+         end Promote_VS16_Emoji_Width;
       begin
          if Cell_Index = 0 then
             return False;
@@ -904,6 +967,7 @@ package body Terminal.Core is
               Cells (Cell_Index).Text.Attachment_Count + 1;
             Cells (Cell_Index).Text.Attachments
               (Cells (Cell_Index).Text.Attachment_Count) := Attached_CP;
+            Promote_VS16_Emoji_Width;
             Mark_Dirty (T, T.Cursor_Row);
             return True;
          else

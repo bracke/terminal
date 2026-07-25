@@ -342,6 +342,34 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize emoji VS16 width failed");
+   Feed_Bytes
+     ((1 => Byte (Character'Pos ('a')),
+       2 => 16#E2#, 3 => 16#9D#, 4 => 16#A4#,
+       5 => 16#EF#, 6 => 16#B8#, 7 => 16#8F#,
+       8 => Byte (Character'Pos ('b'))),
+      "emoji VS16 width feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Heart : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Continuation : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert_Char (S, 1, 16#61#, "emoji VS16 width prefix");
+      Assert (Heart.Text.Code_Point = 16#2764#, "emoji VS16 base");
+      Assert (Heart.Text.Width = Terminal.Core.Width_Two, "emoji VS16 width");
+      Assert (Heart.Text.Attachment_Count = 1, "emoji VS16 attachment count");
+      Assert (Heart.Text.Attachments (1) = 16#FE0F#, "emoji VS16 attachment");
+      Assert
+        (Continuation.Kind = Terminal.Core.Wide_Continuation,
+         "emoji VS16 continuation");
+      Assert_Char (S, 4, 16#62#, "emoji VS16 width suffix");
+      Assert (S.Cursor.Col = 5, "emoji VS16 width cursor");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize emoji ZWJ cluster failed");
    Feed_Bytes

@@ -95,16 +95,18 @@ cleared when either half is overwritten, erased, or shifted apart. Cells store a
 bounded text cluster: one spacing base scalar plus up to eight attached scalars.
 Common combining-mark ranges, zero-width joiner/non-joiner,
 format controls, bidi marks, and variation selectors are attached to the
-previous cell without advancing the cursor. When a cluster ends in ZWJ, the next
-spacing scalar is also attached to that cluster, preserving emoji ZWJ sequences
-without consuming more grid cells; overflow is reported through diagnostics.
-Selection and clipboard copy preserve stored cluster scalars. Rendering submits
-the base scalar and overlays renderable combining-mark attachments in the same
-cell, while invisible joiner, format-control, bidi, variation-selector, and
-joined emoji attachments remain non-drawing until a shaped text run path is
-available; the core exposes this renderability classification with the
-snapshot-facing text model. BiDi layout requires additional text-pipeline
-support beyond the current glyph overlay path.
+previous cell without advancing the cursor. VS16 promotes common
+emoji-presentation base scalars to width two when there is room to add the
+continuation cell in the same row. When a cluster ends in ZWJ, the next spacing
+scalar is also attached to that cluster, preserving emoji ZWJ sequences without
+consuming more grid cells; overflow is reported through diagnostics. Selection
+and clipboard copy preserve stored cluster scalars. Rendering submits the base
+scalar and overlays renderable combining-mark attachments in the same cell,
+while invisible joiner, format-control, bidi, variation-selector, and joined
+emoji attachments remain non-drawing until a shaped text run path is available;
+the core exposes this renderability classification with the snapshot-facing text
+model. BiDi layout requires additional text-pipeline support beyond the current
+glyph overlay path.
 
 ## Cursor
 
