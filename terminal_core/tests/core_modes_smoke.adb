@@ -43,6 +43,30 @@ begin
    Assert (Feed_Status = Terminal.Core.Ok, "feed failed");
    Assert (Terminal.Core.Modes (T).Bracketed_Paste, "bracketed paste");
 
+   Feed_Text
+     (ASCII.ESC & "[?1000;1002;1003;1006h",
+      "mouse mode set feed failed");
+   declare
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert (M.Mouse_Button, "mouse button reporting");
+      Assert (M.Mouse_Drag, "mouse drag reporting");
+      Assert (M.Mouse_Any_Event, "mouse any-event reporting");
+      Assert (M.Mouse_SGR, "mouse SGR reporting");
+   end;
+
+   Feed_Text
+     (ASCII.ESC & "[?1000;1002;1003;1006l",
+      "mouse mode reset feed failed");
+   declare
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert (not M.Mouse_Button, "mouse button reporting reset");
+      Assert (not M.Mouse_Drag, "mouse drag reporting reset");
+      Assert (not M.Mouse_Any_Event, "mouse any-event reporting reset");
+      Assert (not M.Mouse_SGR, "mouse SGR reporting reset");
+   end;
+
    Terminal.Core.Feed
      (T,
       (1  => 16#1B#, 2  => Byte (Character'Pos ('[')),
@@ -151,6 +175,10 @@ begin
          "DECSTR should reset current foreground");
       Assert (not M.Application_Cursor, "DECSTR should reset app cursor");
       Assert (not M.Bracketed_Paste, "DECSTR should reset bracketed paste");
+      Assert (not M.Mouse_Button, "DECSTR should reset mouse button");
+      Assert (not M.Mouse_Drag, "DECSTR should reset mouse drag");
+      Assert (not M.Mouse_Any_Event, "DECSTR should reset mouse any-event");
+      Assert (not M.Mouse_SGR, "DECSTR should reset mouse SGR");
       Assert (not M.Origin_Mode, "DECSTR should reset origin mode");
       Assert (M.Autowrap, "DECSTR should enable autowrap");
       Assert (M.Cursor_Visible, "DECSTR should show cursor");

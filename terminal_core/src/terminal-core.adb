@@ -903,6 +903,14 @@ package body Terminal.Core is
                Mark_Dirty (T, T.Cursor_Row);
                T.Current_Modes.Cursor_Visible := Enable;
             end if;
+         when 1000 =>
+            T.Current_Modes.Mouse_Button := Enable;
+         when 1002 =>
+            T.Current_Modes.Mouse_Drag := Enable;
+         when 1003 =>
+            T.Current_Modes.Mouse_Any_Event := Enable;
+         when 1006 =>
+            T.Current_Modes.Mouse_SGR := Enable;
          when 47 | 1047 =>
             T.Current_Modes.Alternate_Screen := Enable;
             T.Active := (if Enable then Alternate else Primary);
@@ -1052,6 +1060,10 @@ package body Terminal.Core is
       T.Current_Modes :=
         (Application_Cursor => False,
          Bracketed_Paste    => False,
+         Mouse_Button       => False,
+         Mouse_Drag         => False,
+         Mouse_Any_Event    => False,
+         Mouse_SGR          => False,
          Alternate_Screen   => Keep_Alternate,
          Origin_Mode        => False,
          Autowrap           => True,

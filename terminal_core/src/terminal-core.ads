@@ -62,6 +62,10 @@ package Terminal.Core is
    type Mode_Snapshot is record
       Application_Cursor : Boolean := False;
       Bracketed_Paste    : Boolean := False;
+      Mouse_Button       : Boolean := False;
+      Mouse_Drag         : Boolean := False;
+      Mouse_Any_Event    : Boolean := False;
+      Mouse_SGR          : Boolean := False;
       Alternate_Screen   : Boolean := False;
       Origin_Mode        : Boolean := False;
       Autowrap           : Boolean := True;

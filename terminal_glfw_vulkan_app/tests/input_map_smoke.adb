@@ -36,6 +36,24 @@ procedure Input_Map_Smoke is
            (Shift => Shift, Control => Control, Alt => Alt, Super => Super));
    end Key_Event;
 
+   function Mouse_Event
+     (Button  : GI.Mouse_Button;
+      Action  : GI.Key_Action := GI.Press;
+      Shift   : Boolean := False;
+      Control : Boolean := False;
+      Alt     : Boolean := False) return GI.Mouse_Button_Event
+   is
+   begin
+      return
+        (Button    => Button,
+         Raw_Button => 0,
+         Action    => Action,
+         Modifiers =>
+           (Shift => Shift, Control => Control, Alt => Alt, Super => False),
+         X         => 0.0,
+         Y         => 0.0);
+   end Mouse_Event;
+
    function To_Bytes (Text : String) return Byte_Array is
       Result : Byte_Array (1 .. Text'Length);
    begin
@@ -184,4 +202,49 @@ begin
      (Chunk,
       To_Bytes (ASCII.ESC & "[200~abc" & ASCII.ESC & "[201~"),
       "bracketed paste");
+
+   Modes := (others => <>);
+   Assert (not IM.Mouse_Reporting_Enabled (Modes), "mouse reporting disabled");
+   IM.Encode_Mouse_Button (Mouse_Event (GI.Left), Modes, 2, 3, Chunk);
+   Assert (Chunk.Length = 0, "disabled mouse should not encode");
+
+   Modes.Mouse_Button := True;
+   Modes.Mouse_SGR := True;
+   Assert (IM.Mouse_Reporting_Enabled (Modes), "mouse reporting enabled");
+   IM.Encode_Mouse_Button (Mouse_Event (GI.Left), Modes, 2, 3, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[<0;3;2M"),
+      "sgr left press");
+
+   IM.Encode_Mouse_Button
+     (Mouse_Event (GI.Left, Action => GI.Release), Modes, 2, 3, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[<3;3;2m"),
+      "sgr left release");
+
+   Modes.Mouse_Drag := True;
+   IM.Encode_Mouse_Motion
+     ((X => 0.0, Y => 0.0),
+      Modes,
+      2,
+      3,
+      Button_Down => True,
+      Button_Code => 0,
+      Modifiers   => (others => False),
+      Chunk       => Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[<32;3;2M"),
+      "sgr left drag");
+
+   Modes.Mouse_SGR := False;
+   IM.Encode_Mouse_Button (Mouse_Event (GI.Right, Control => True), Modes, 4, 5, Chunk);
+   Assert_Bytes
+     (Chunk,
+      (1 => 16#1B#, 2 => Byte (Character'Pos ('[')),
+       3 => Byte (Character'Pos ('M')), 4 => Byte (2 + 16 + 32),
+       5 => Byte (5 + 32), 6 => Byte (4 + 32)),
+      "legacy right ctrl press");
 end Input_Map_Smoke;

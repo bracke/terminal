@@ -38,6 +38,8 @@
   bracketed-paste byte mappings with a non-GUI smoke test.
 - Cover app-owned visible-grid mouse selection, render highlighting, and UTF-8
   clipboard text extraction with a non-GUI smoke test.
+- Cover app-owned xterm mouse reporting byte mappings for button, release, and
+  drag events with a non-GUI smoke test.
 - Preserve input byte ordering across partial PTY writes with a bounded
   write-all helper used by the main loop and integration smoke.
 - Cover bounded PTY/input queue ordering, drop-newest overflow, and diagnostic
@@ -70,7 +72,7 @@
 
 ## Postponed
 
-Mouse reporting, sixel, kitty graphics, iTerm2 images, OSC 8 hyperlinks, OSC 52
-clipboard escape handling, ligatures, full emoji shaping, BiDi, advanced
-selection, tabs, splits, themes, config, Windows ConPTY, and terminal
-multiplexer behavior.
+Sixel, kitty graphics, iTerm2 images, OSC 8 hyperlinks, OSC 52 clipboard escape
+handling, ligatures, full emoji shaping, BiDi, advanced mouse/selection
+behavior, tabs, splits, themes, config, Windows ConPTY, and terminal multiplexer
+behavior.

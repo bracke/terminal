@@ -60,9 +60,13 @@ bottom.
 The GLFW app supports basic left-button drag selection over the currently
 visible grid. Selected cells are rendered with inverse video, and releasing the
 left button copies the selected visible text to the system clipboard as UTF-8.
-Selection is app-owned and does not mutate terminal core state. Advanced
-selection behavior, mouse reporting, and OSC 52 clipboard escape handling are
-postponed.
+Selection is app-owned and does not mutate terminal core state.
+
+Mouse-aware terminal programs can enable basic xterm mouse reporting through
+DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates
+through `?1006`. When reporting is enabled, the app sends mouse press, release,
+and configured motion events to the PTY instead of starting local selection.
+Advanced selection behavior and OSC 52 clipboard escape handling are postponed.
 
 ## TERM and Environment
 
@@ -78,3 +82,6 @@ The app maps modified navigation keys with xterm-style modifier parameters:
 Shift is `2`, Alt is `3`, Control is `5`, and combinations add those offsets
 through `8`. Modified arrow/Home/End keys use `CSI 1 ; modifier final`;
 modified Insert/Delete/Page keys use `CSI number ; modifier ~`.
+Mouse reporting is app-owned and encoded from GLFW mouse events using xterm
+legacy `CSI M` packets or SGR `CSI < ... M/m` packets according to the current
+core mode snapshot.

@@ -86,6 +86,60 @@ package body Terminal.App.Input_Map is
       end if;
    end Append_CSI_Tilde;
 
+   function Mouse_Button_Code
+     (Button : GLFW_Vulkan.Input.Mouse_Button) return Natural
+   is
+   begin
+      case Button is
+         when Left   => return 0;
+         when Middle => return 1;
+         when Right  => return 2;
+         when others => return 0;
+      end case;
+   end Mouse_Button_Code;
+
+   function Mouse_Modifier_Code
+     (Modifiers : GLFW_Vulkan.Input.Modifier_Set) return Natural
+   is
+      Code : Natural := 0;
+   begin
+      if Modifiers.Shift then
+         Code := Code + 4;
+      end if;
+      if Modifiers.Alt then
+         Code := Code + 8;
+      end if;
+      if Modifiers.Control then
+         Code := Code + 16;
+      end if;
+      return Code;
+   end Mouse_Modifier_Code;
+
+   procedure Append_Mouse
+     (Chunk     : in out Terminal.App.Queues.Byte_Chunk;
+      Modes     : Terminal.Core.Mode_Snapshot;
+      Code      : Natural;
+      Row       : Positive;
+      Col       : Positive;
+      Release   : Boolean)
+   is
+   begin
+      if Modes.Mouse_SGR then
+         Append_String (Chunk, ASCII.ESC & "[<");
+         Append_Natural (Chunk, Code);
+         Append (Chunk, Byte (Character'Pos (';')));
+         Append_Natural (Chunk, Col);
+         Append (Chunk, Byte (Character'Pos (';')));
+         Append_Natural (Chunk, Row);
+         Append (Chunk, Byte (Character'Pos ((if Release then 'm' else 'M'))));
+      elsif Col <= 223 and then Row <= 223 and then Code <= 223 then
+         Append_String (Chunk, ASCII.ESC & "[M");
+         Append (Chunk, Byte (Code + 32));
+         Append (Chunk, Byte (Col + 32));
+         Append (Chunk, Byte (Row + 32));
+      end if;
+   end Append_Mouse;
+
    procedure Encode_UTF8 (CP : Natural; Chunk : in out Terminal.App.Queues.Byte_Chunk) is
    begin
       if CP <= 16#7F# then
@@ -297,4 +351,62 @@ package body Terminal.App.Input_Map is
          Append_String (Chunk, ASCII.ESC & "[201~");
       end if;
    end Encode_Paste_Text;
+
+   function Mouse_Reporting_Enabled
+     (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
+   begin
+      return Modes.Mouse_Button
+        or else Modes.Mouse_Drag
+        or else Modes.Mouse_Any_Event;
+   end Mouse_Reporting_Enabled;
+
+   procedure Encode_Mouse_Button
+     (Event : GLFW_Vulkan.Input.Mouse_Button_Event;
+      Modes : Terminal.Core.Mode_Snapshot;
+      Row   : Positive;
+      Col   : Positive;
+      Chunk : out Terminal.App.Queues.Byte_Chunk)
+   is
+      Release : constant Boolean := Event.Action = GLFW_Vulkan.Input.Release;
+      Code    : Natural;
+   begin
+      Chunk := (others => <>);
+      if not Mouse_Reporting_Enabled (Modes)
+        or else Event.Action = GLFW_Vulkan.Input.Repeat
+      then
+         return;
+      end if;
+
+      Code :=
+        (if Release
+         then 3
+         else Mouse_Button_Code (Event.Button))
+        + Mouse_Modifier_Code (Event.Modifiers);
+      Append_Mouse (Chunk, Modes, Code, Row, Col, Release);
+   end Encode_Mouse_Button;
+
+   procedure Encode_Mouse_Motion
+     (Event       : GLFW_Vulkan.Input.Cursor_Position_Event;
+      Modes       : Terminal.Core.Mode_Snapshot;
+      Row         : Positive;
+      Col         : Positive;
+      Button_Down : Boolean;
+      Button_Code : Natural;
+      Modifiers   : GLFW_Vulkan.Input.Modifier_Set;
+      Chunk       : out Terminal.App.Queues.Byte_Chunk)
+   is
+      Code : Natural;
+   begin
+      Chunk := (others => <>);
+      if Modes.Mouse_Any_Event then
+         Code := (if Button_Down then Button_Code else 3);
+      elsif Modes.Mouse_Drag and then Button_Down then
+         Code := Button_Code;
+      else
+         return;
+      end if;
+
+      Code := Code + 32 + Mouse_Modifier_Code (Modifiers);
+      Append_Mouse (Chunk, Modes, Code, Row, Col, False);
+   end Encode_Mouse_Motion;
 end Terminal.App.Input_Map;

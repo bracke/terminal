@@ -147,6 +147,18 @@ package body Terminal.App.Main_Loop is
            or else Event.Key = GLFW_Vulkan.Input.Page_Down);
    end Is_Scrollback_Key;
 
+   function Mouse_Button_Code
+     (Button : GLFW_Vulkan.Input.Mouse_Button) return Natural
+   is
+   begin
+      case Button is
+         when GLFW_Vulkan.Input.Left   => return 0;
+         when GLFW_Vulkan.Input.Middle => return 1;
+         when GLFW_Vulkan.Input.Right  => return 2;
+         when others                   => return 0;
+      end case;
+   end Mouse_Button_Code;
+
    procedure Run is
       Ctx : GLFW_Vulkan.Context;
       W   : GLFW_Vulkan.Windows.Window;
@@ -172,6 +184,9 @@ package body Terminal.App.Main_Loop is
       Scroll_Offset : Natural := 0;
       Last_Title : Terminal.Core.Title_Text;
       Selection : Terminal.App.Selection.Selection_State;
+      Mouse_Button_Down : Boolean := False;
+      Mouse_Button_Code_Value : Natural := 0;
+      Mouse_Modifiers : GLFW_Vulkan.Input.Modifier_Set;
    begin
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
       if Init_Status /= GLFW_Vulkan.Ok then
@@ -348,18 +363,46 @@ package body Terminal.App.Main_Loop is
                         Chunk := Event.Bytes;
                      when Terminal.App.Queues.Mouse_Button =>
                         Chunk := (others => <>);
-                        if Event.Button_Event.Button = GLFW_Vulkan.Input.Left then
-                           declare
-                              Pos : constant Terminal.App.Selection.Cell_Position :=
-                                Terminal.App.Selection.Cell_From_Pixels
-                                  (Event.Button_Event.X,
-                                   Event.Button_Event.Y,
-                                   Terminal.App.Renderer.Cell_Width (R),
-                                   Terminal.App.Renderer.Cell_Height (R),
-                                   Terminal.App.Renderer.Content_Margin,
-                                   Last_Rows,
-                                   Last_Cols);
-                           begin
+                        declare
+                           Pos : constant Terminal.App.Selection.Cell_Position :=
+                             Terminal.App.Selection.Cell_From_Pixels
+                               (Event.Button_Event.X,
+                                Event.Button_Event.Y,
+                                Terminal.App.Renderer.Cell_Width (R),
+                                Terminal.App.Renderer.Cell_Height (R),
+                                Terminal.App.Renderer.Content_Margin,
+                                Last_Rows,
+                                Last_Cols);
+                           Modes : constant Terminal.Core.Mode_Snapshot :=
+                             Terminal.Core.Modes (T);
+                        begin
+                           if Terminal.App.Input_Map.Mouse_Reporting_Enabled
+                             (Modes)
+                           then
+                              if Terminal.App.Selection.Has_Selection
+                                (Selection)
+                              then
+                                 Terminal.App.Selection.Clear (Selection);
+                                 Dirty := True;
+                                 Need_Redraw := True;
+                              end if;
+                              Terminal.App.Input_Map.Encode_Mouse_Button
+                                (Event.Button_Event, Modes, Pos.Row, Pos.Col, Chunk);
+                              if Event.Button_Event.Action =
+                                GLFW_Vulkan.Input.Press
+                              then
+                                 Mouse_Button_Down := True;
+                                 Mouse_Button_Code_Value :=
+                                   Mouse_Button_Code (Event.Button_Event.Button);
+                                 Mouse_Modifiers := Event.Button_Event.Modifiers;
+                              elsif Event.Button_Event.Action =
+                                GLFW_Vulkan.Input.Release
+                              then
+                                 Mouse_Button_Down := False;
+                                 Mouse_Modifiers := Event.Button_Event.Modifiers;
+                              end if;
+                           elsif Event.Button_Event.Button = GLFW_Vulkan.Input.Left
+                           then
                               if Event.Button_Event.Action =
                                 GLFW_Vulkan.Input.Press
                               then
@@ -388,24 +431,42 @@ package body Terminal.App.Main_Loop is
                                  Dirty := True;
                                  Need_Redraw := True;
                               end if;
-                           end;
-                        end if;
+                           end if;
+                        end;
                      when Terminal.App.Queues.Cursor_Position =>
                         Chunk := (others => <>);
-                        if Terminal.App.Selection.Is_Active (Selection) then
-                           Terminal.App.Selection.Update_Selection
-                             (Selection,
-                              Terminal.App.Selection.Cell_From_Pixels
-                                (Event.Cursor_Event.X,
-                                 Event.Cursor_Event.Y,
-                                 Terminal.App.Renderer.Cell_Width (R),
-                                 Terminal.App.Renderer.Cell_Height (R),
-                                 Terminal.App.Renderer.Content_Margin,
-                                 Last_Rows,
-                                 Last_Cols));
-                           Dirty := True;
-                           Need_Redraw := True;
-                        end if;
+                        declare
+                           Pos : constant Terminal.App.Selection.Cell_Position :=
+                             Terminal.App.Selection.Cell_From_Pixels
+                               (Event.Cursor_Event.X,
+                                Event.Cursor_Event.Y,
+                                Terminal.App.Renderer.Cell_Width (R),
+                                Terminal.App.Renderer.Cell_Height (R),
+                                Terminal.App.Renderer.Content_Margin,
+                                Last_Rows,
+                                Last_Cols);
+                           Modes : constant Terminal.Core.Mode_Snapshot :=
+                             Terminal.Core.Modes (T);
+                        begin
+                           if Terminal.App.Input_Map.Mouse_Reporting_Enabled
+                             (Modes)
+                           then
+                              Terminal.App.Input_Map.Encode_Mouse_Motion
+                                (Event.Cursor_Event,
+                                 Modes,
+                                 Pos.Row,
+                                 Pos.Col,
+                                 Mouse_Button_Down,
+                                 Mouse_Button_Code_Value,
+                                 Mouse_Modifiers,
+                                 Chunk);
+                           elsif Terminal.App.Selection.Is_Active (Selection) then
+                              Terminal.App.Selection.Update_Selection
+                                (Selection, Pos);
+                              Dirty := True;
+                              Need_Redraw := True;
+                           end if;
+                        end;
                      when Terminal.App.Queues.Close_Request =>
                         GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                         Chunk := (others => <>);
