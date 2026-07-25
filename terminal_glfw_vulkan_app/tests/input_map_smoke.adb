@@ -65,6 +65,12 @@ begin
    IM.Encode_Key (Key_Event (GI.Backspace), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#7F#), "backspace");
 
+   IM.Encode_Key (Key_Event (GI.Tab), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#09#), "tab");
+
+   IM.Encode_Key (Key_Event (GI.Tab, Shift => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[Z"), "shift-tab");
+
    IM.Encode_Key (Key_Event (GI.C, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#03#), "ctrl-c");
 

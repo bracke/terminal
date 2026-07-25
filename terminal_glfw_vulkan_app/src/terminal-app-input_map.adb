@@ -158,7 +158,12 @@ package body Terminal.App.Input_Map is
 
       case Event.Key is
          when Enter      => Append (Chunk, 16#0D#);
-         when Tab        => Append (Chunk, 16#09#);
+         when Tab        =>
+            if Event.Modifiers.Shift then
+               Append_String (Chunk, ASCII.ESC & "[Z");
+            else
+               Append (Chunk, 16#09#);
+            end if;
          when Backspace  => Append (Chunk, 16#7F#);
          when Escape     => Append (Chunk, 16#1B#);
          when Up         => Append_String (Chunk, (if Modes.Application_Cursor then ASCII.ESC & "OA" else ASCII.ESC & "[A"));
