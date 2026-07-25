@@ -33,6 +33,35 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 6, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "UTF-8 scalar boundary initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1  => 16#F4#, 2  => 16#8F#, 3  => 16#BF#, 4  => 16#BF#,
+       5  => 16#ED#, 6  => 16#A0#, 7  => 16#80#,
+       8  => 16#F4#, 9  => 16#90#, 10 => 16#80#, 11 => 16#80#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "UTF-8 scalar boundary feed failed");
+   Assert
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 2,
+      "surrogate and above-range UTF-8 should be counted malformed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#10FFFF#,
+         "maximum Unicode scalar should decode");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#FFFD#,
+         "UTF-8 surrogate should be replaced");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#FFFD#,
+         "above-range UTF-8 should be replaced");
+      Assert (S.Cursor.Col = 4, "UTF-8 scalar boundary cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 100, Init);
    Assert (Init = Terminal.Core.Ok, "reinitialize failed");
 
    Terminal.Core.Feed

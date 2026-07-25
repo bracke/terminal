@@ -1861,8 +1861,8 @@ package body Terminal.Core is
          Put_Code_Point (T, CP);
       end Put_Mapped_ASCII;
 
-      procedure Put_Decoded_Code_Point (CP : Common.Code_Point) is
-         V : constant Natural := Natural (CP);
+      procedure Put_Decoded_Code_Point (CP : Natural) is
+         V : constant Natural := CP;
       begin
          case V is
             when 16#84# =>
@@ -1888,7 +1888,7 @@ package body Terminal.Core is
                T.OSC_Count := 0;
                T.State := OSC;
             when others =>
-               Put_Code_Point (T, CP);
+               Put_Code_Point (T, Common.Code_Point (CP));
          end case;
       end Put_Decoded_Code_Point;
    begin
@@ -1898,28 +1898,28 @@ package body Terminal.Core is
          elsif V in 16#C2# .. 16#DF# then
             T.UTF8_Need := 1;
             T.UTF8_Seen := 0;
-            T.UTF8_Accum := Common.Code_Point (V mod 32);
+            T.UTF8_Accum := V mod 32;
             T.UTF8_Min := 16#80#;
          elsif V in 16#E0# .. 16#EF# then
             T.UTF8_Need := 2;
             T.UTF8_Seen := 0;
-            T.UTF8_Accum := Common.Code_Point (V mod 16);
+            T.UTF8_Accum := V mod 16;
             T.UTF8_Min := 16#800#;
          elsif V in 16#F0# .. 16#F4# then
             T.UTF8_Need := 3;
             T.UTF8_Seen := 0;
-            T.UTF8_Accum := Common.Code_Point (V mod 8);
+            T.UTF8_Accum := V mod 8;
             T.UTF8_Min := 16#10000#;
          else
             Emit_UTF8_Replacement (T);
          end if;
       elsif V in 16#80# .. 16#BF# then
-         T.UTF8_Accum := Common.Code_Point (Natural (T.UTF8_Accum) * 64 + (V mod 64));
+         T.UTF8_Accum := T.UTF8_Accum * 64 + (V mod 64);
          T.UTF8_Seen := T.UTF8_Seen + 1;
          if T.UTF8_Seen = T.UTF8_Need then
-            if Natural (T.UTF8_Accum) < T.UTF8_Min
-              or else Natural (T.UTF8_Accum) in 16#D800# .. 16#DFFF#
-              or else Natural (T.UTF8_Accum) > 16#10FFFF#
+            if T.UTF8_Accum < T.UTF8_Min
+              or else T.UTF8_Accum in 16#D800# .. 16#DFFF#
+              or else T.UTF8_Accum > 16#10FFFF#
             then
                Emit_UTF8_Replacement (T);
             else

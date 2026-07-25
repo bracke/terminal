@@ -268,7 +268,7 @@ private
 
       UTF8_Need     : Natural := 0;
       UTF8_Seen     : Natural := 0;
-      UTF8_Accum    : Common.Code_Point := 0;
+      UTF8_Accum    : Natural := 0;
       UTF8_Min      : Natural := 0;
    end record;
 end Terminal.Core;
