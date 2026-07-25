@@ -57,3 +57,10 @@ and sets `COLORTERM=truecolor`. `$SHELL` is used when present and executable,
 otherwise `/bin/sh`. The child creates a new session, opens the PTY slave as
 the controlling terminal, duplicates it to standard input/output/error, and
 execs the shell with `execv`.
+
+## Input Mapping
+
+The app maps modified navigation keys with xterm-style modifier parameters:
+Shift is `2`, Alt is `3`, Control is `5`, and combinations add those offsets
+through `8`. Modified arrow/Home/End keys use `CSI 1 ; modifier final`;
+modified Insert/Delete/Page keys use `CSI number ; modifier ~`.

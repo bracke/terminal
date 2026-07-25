@@ -19,6 +19,73 @@ package body Terminal.App.Input_Map is
       end loop;
    end Append_String;
 
+   function Modifier_Code
+     (Modifiers : GLFW_Vulkan.Input.Modifier_Set) return Natural
+   is
+      Code : Natural := 1;
+   begin
+      if Modifiers.Shift then
+         Code := Code + 1;
+      end if;
+      if Modifiers.Alt then
+         Code := Code + 2;
+      end if;
+      if Modifiers.Control then
+         Code := Code + 4;
+      end if;
+      return Code;
+   end Modifier_Code;
+
+   procedure Append_Natural
+     (Chunk : in out Terminal.App.Queues.Byte_Chunk;
+      Value : Natural)
+   is
+      Text : constant String := Natural'Image (Value);
+   begin
+      for Ch of Text loop
+         if Ch /= ' ' then
+            Append (Chunk, Byte (Character'Pos (Ch)));
+         end if;
+      end loop;
+   end Append_Natural;
+
+   procedure Append_CSI_Final
+     (Chunk     : in out Terminal.App.Queues.Byte_Chunk;
+      Event     : GLFW_Vulkan.Input.Key_Event;
+      Final     : Character;
+      Unmodified : String)
+   is
+      Modifier : constant Natural := Modifier_Code (Event.Modifiers);
+   begin
+      if Modifier = 1 then
+         Append_String (Chunk, Unmodified);
+      else
+         Append_String (Chunk, ASCII.ESC & "[1;");
+         Append_Natural (Chunk, Modifier);
+         Append (Chunk, Byte (Character'Pos (Final)));
+      end if;
+   end Append_CSI_Final;
+
+   procedure Append_CSI_Tilde
+     (Chunk     : in out Terminal.App.Queues.Byte_Chunk;
+      Event     : GLFW_Vulkan.Input.Key_Event;
+      Number    : Natural;
+      Unmodified : String)
+   is
+      Modifier : constant Natural := Modifier_Code (Event.Modifiers);
+   begin
+      if Modifier = 1 then
+         Append_String (Chunk, Unmodified);
+      else
+         Append (Chunk, 16#1B#);
+         Append (Chunk, Byte (Character'Pos ('[')));
+         Append_Natural (Chunk, Number);
+         Append (Chunk, Byte (Character'Pos (';')));
+         Append_Natural (Chunk, Modifier);
+         Append (Chunk, Byte (Character'Pos ('~')));
+      end if;
+   end Append_CSI_Tilde;
+
    procedure Encode_UTF8 (CP : Natural; Chunk : in out Terminal.App.Queues.Byte_Chunk) is
    begin
       if CP <= 16#7F# then
@@ -166,16 +233,28 @@ package body Terminal.App.Input_Map is
             end if;
          when Backspace  => Append (Chunk, 16#7F#);
          when Escape     => Append (Chunk, 16#1B#);
-         when Up         => Append_String (Chunk, (if Modes.Application_Cursor then ASCII.ESC & "OA" else ASCII.ESC & "[A"));
-         when Down       => Append_String (Chunk, (if Modes.Application_Cursor then ASCII.ESC & "OB" else ASCII.ESC & "[B"));
-         when Right      => Append_String (Chunk, (if Modes.Application_Cursor then ASCII.ESC & "OC" else ASCII.ESC & "[C"));
-         when Left       => Append_String (Chunk, (if Modes.Application_Cursor then ASCII.ESC & "OD" else ASCII.ESC & "[D"));
-         when Home       => Append_String (Chunk, ASCII.ESC & "[H");
-         when End_Key    => Append_String (Chunk, ASCII.ESC & "[F");
-         when Page_Up    => Append_String (Chunk, ASCII.ESC & "[5~");
-         when Page_Down  => Append_String (Chunk, ASCII.ESC & "[6~");
-         when Insert     => Append_String (Chunk, ASCII.ESC & "[2~");
-         when Delete     => Append_String (Chunk, ASCII.ESC & "[3~");
+         when Up         =>
+            Append_CSI_Final
+              (Chunk, Event, 'A',
+               (if Modes.Application_Cursor then ASCII.ESC & "OA" else ASCII.ESC & "[A"));
+         when Down       =>
+            Append_CSI_Final
+              (Chunk, Event, 'B',
+               (if Modes.Application_Cursor then ASCII.ESC & "OB" else ASCII.ESC & "[B"));
+         when Right      =>
+            Append_CSI_Final
+              (Chunk, Event, 'C',
+               (if Modes.Application_Cursor then ASCII.ESC & "OC" else ASCII.ESC & "[C"));
+         when Left       =>
+            Append_CSI_Final
+              (Chunk, Event, 'D',
+               (if Modes.Application_Cursor then ASCII.ESC & "OD" else ASCII.ESC & "[D"));
+         when Home       => Append_CSI_Final (Chunk, Event, 'H', ASCII.ESC & "[H");
+         when End_Key    => Append_CSI_Final (Chunk, Event, 'F', ASCII.ESC & "[F");
+         when Page_Up    => Append_CSI_Tilde (Chunk, Event, 5, ASCII.ESC & "[5~");
+         when Page_Down  => Append_CSI_Tilde (Chunk, Event, 6, ASCII.ESC & "[6~");
+         when Insert     => Append_CSI_Tilde (Chunk, Event, 2, ASCII.ESC & "[2~");
+         when Delete     => Append_CSI_Tilde (Chunk, Event, 3, ASCII.ESC & "[3~");
          when F1         => Append_String (Chunk, ASCII.ESC & "OP");
          when F2         => Append_String (Chunk, ASCII.ESC & "OQ");
          when F3         => Append_String (Chunk, ASCII.ESC & "OR");

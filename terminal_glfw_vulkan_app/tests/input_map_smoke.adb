@@ -107,10 +107,40 @@ begin
    IM.Encode_Key (Key_Event (GI.Up), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[A"), "normal up");
 
+   IM.Encode_Key (Key_Event (GI.Up, Shift => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[1;2A"), "shift-up");
+
+   IM.Encode_Key (Key_Event (GI.Right, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[1;5C"), "ctrl-right");
+
+   IM.Encode_Key
+     (Key_Event (GI.Left, Shift => True, Control => True, Alt => True),
+      Modes,
+      Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[1;8D"),
+      "shift-ctrl-alt-left");
+
    Modes.Application_Cursor := True;
    IM.Encode_Key (Key_Event (GI.Up), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "OA"), "application up");
+
+   IM.Encode_Key (Key_Event (GI.Up, Shift => True), Modes, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[1;2A"),
+      "modified application up uses CSI");
    Modes.Application_Cursor := False;
+
+   IM.Encode_Key (Key_Event (GI.Home, Alt => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[1;3H"), "alt-home");
+
+   IM.Encode_Key (Key_Event (GI.Delete, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[3;5~"), "ctrl-delete");
+
+   IM.Encode_Key (Key_Event (GI.Page_Down, Shift => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[6;2~"), "shift-page-down");
 
    IM.Encode_Key (Key_Event (GI.F5), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[15~"), "f5");
