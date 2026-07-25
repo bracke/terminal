@@ -75,6 +75,7 @@ tests/bin/shader_loader_smoke
 tests/bin/pty_core_integration_smoke
 tests/bin/pty_m1_commands_smoke
 tests/bin/input_map_smoke
+tests/bin/selection_smoke
 tests/bin/scrollback_view_smoke
 tests/bin/queue_smoke
 tests/bin/resize_smoke

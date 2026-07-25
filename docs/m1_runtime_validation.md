@@ -30,15 +30,22 @@ tests/bin/gui_present_smoke
 - Text orientation: fixed after earlier upside-down-rendering pass.
 - Cursor vertical placement: adjusted after earlier cursor alignment passes.
 - Terminal content margin: implemented.
-- `echo`: not yet recorded from an interactive GUI run.
-- `cat`: not yet recorded from an interactive GUI run.
-- `ls --color`: not yet recorded from an interactive GUI run.
-- `clear`: not yet recorded from an interactive GUI run.
-- Window resize updates terminal rows/cols: not yet recorded from an
-  interactive GUI run.
-- Resize propagates to PTY with `TIOCSWINSZ`: covered by non-GUI PTY smoke;
-  not yet recorded through the interactive GUI.
-- Window close exits cleanly: not yet recorded from an interactive GUI run.
+- `echo`: passed in an interactive GUI run.
+- `cat`: passed in an interactive GUI run.
+- `ls --color`: passed in an interactive GUI run.
+- `clear`: passed in an interactive GUI run.
+- Window resize updates terminal rows/cols: passed in an interactive GUI run.
+- Resize propagates to PTY with `TIOCSWINSZ`: passed in an interactive GUI run
+  and covered by non-GUI PTY smoke.
+- Window close exits cleanly: passed in an interactive GUI run.
+
+## Recorded GUI Passes
+
+- 2026-07-25: user-reported `./bin/terminal` M1 pass on Linux Wayland with
+  `/bin/bash`; GPU/Vulkan driver not recorded. Covered prompt visibility,
+  printable input, Enter command execution, `echo`, `cat`, `ls --color`,
+  `clear`, resize-to-grid behavior, `stty size` PTY resize propagation, and
+  clean window close.
 
 ## Manual M1 Checklist
 
