@@ -189,4 +189,59 @@ begin
          "selecting both halves of a wide glyph should copy it once");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "emoji cluster selection initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1  => Byte (Character'Pos ('a')),
+       2  => 16#F0#, 3  => 16#9F#, 4  => 16#91#, 5  => 16#A9#,
+       6  => 16#E2#, 7  => 16#80#, 8  => 16#8D#,
+       9  => 16#F0#, 10 => 16#9F#, 11 => 16#91#, 12 => 16#A8#,
+       13 => 16#F0#, 14 => 16#9F#, 15 => 16#8F#, 16 => 16#BD#,
+       17 => Byte (Character'Pos ('b'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "emoji cluster selection feed failed");
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Expected : constant String :=
+        To_String
+          ((1  => 16#F0#, 2  => 16#9F#, 3  => 16#91#, 4  => 16#A9#,
+            5  => 16#E2#, 6  => 16#80#, 7  => 16#8D#,
+            8  => 16#F0#, 9  => 16#9F#, 10 => 16#91#, 11 => 16#A8#,
+            12 => 16#F0#, 13 => 16#9F#, 14 => 16#8F#, 15 => 16#BD#));
+   begin
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 2));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 2));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = Expected,
+         "selecting emoji cluster head should copy full stored cluster");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Expected : constant String :=
+        To_String
+          ((1  => 16#F0#, 2  => 16#9F#, 3  => 16#91#, 4  => 16#A9#,
+            5  => 16#E2#, 6  => 16#80#, 7  => 16#8D#,
+            8  => 16#F0#, 9  => 16#9F#, 10 => 16#91#, 11 => 16#A8#,
+            12 => 16#F0#, 13 => 16#9F#, 14 => 16#8F#, 15 => 16#BD#));
+   begin
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 3));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 3));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = Expected,
+         "selecting emoji cluster continuation should copy full stored cluster");
+      Terminal.Core.Release (S);
+   end;
 end Selection_Smoke;
