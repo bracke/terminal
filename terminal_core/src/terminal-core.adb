@@ -32,6 +32,17 @@ package body Terminal.Core is
       end if;
    end Mark_All_Dirty;
 
+   procedure Mark_Cursor_Move
+     (T       : in out Terminal;
+      Old_Row : Positive)
+   is
+   begin
+      if T.Current_Modes.Cursor_Visible then
+         Mark_Dirty (T, Old_Row);
+         Mark_Dirty (T, T.Cursor_Row);
+      end if;
+   end Mark_Cursor_Move;
+
    function Blank_Cell (Style : Cell_Style) return Cell is
       C : Cell;
    begin
@@ -274,6 +285,7 @@ package body Terminal.Core is
    end Scroll_Down_Region;
 
    procedure New_Line (T : in out Terminal) is
+      Old_Row : constant Positive := T.Cursor_Row;
    begin
       T.Pending_Wrap := False;
       if T.Cursor_Row = T.Bottom_Margin then
@@ -281,7 +293,7 @@ package body Terminal.Core is
       elsif T.Cursor_Row < T.Rows then
          T.Cursor_Row := T.Cursor_Row + 1;
       end if;
-      Mark_Dirty (T, T.Cursor_Row);
+      Mark_Cursor_Move (T, Old_Row);
    end New_Line;
 
    function Is_Wide (CP : Common.Code_Point) return Boolean is
@@ -554,6 +566,7 @@ package body Terminal.Core is
    is
       Requested_Row : constant Positive := Positive'Max (1, Row);
       Requested_Col : constant Positive := Positive'Max (1, Col);
+      Old_Row       : constant Positive := T.Cursor_Row;
    begin
       if T.Current_Modes.Origin_Mode then
          T.Cursor_Row :=
@@ -565,6 +578,7 @@ package body Terminal.Core is
       end if;
       T.Cursor_Col := Positive'Min (T.Cols, Requested_Col);
       T.Pending_Wrap := False;
+      Mark_Cursor_Move (T, Old_Row);
    end Move_Cursor;
 
    function Next_Tab_Column (T : Terminal; Col : Positive) return Positive is
@@ -580,21 +594,25 @@ package body Terminal.Core is
    end Previous_Tab_Column;
 
    procedure Move_Forward_Tabs (T : in out Terminal; Count : Positive) is
+      Old_Row : constant Positive := T.Cursor_Row;
    begin
       for I in 1 .. Count loop
          T.Cursor_Col := Next_Tab_Column (T, T.Cursor_Col);
          exit when T.Cursor_Col = T.Cols;
       end loop;
       T.Pending_Wrap := False;
+      Mark_Cursor_Move (T, Old_Row);
    end Move_Forward_Tabs;
 
    procedure Move_Backward_Tabs (T : in out Terminal; Count : Positive) is
+      Old_Row : constant Positive := T.Cursor_Row;
    begin
       for I in 1 .. Count loop
          T.Cursor_Col := Previous_Tab_Column (T.Cursor_Col);
          exit when T.Cursor_Col = 1;
       end loop;
       T.Pending_Wrap := False;
+      Mark_Cursor_Move (T, Old_Row);
    end Move_Backward_Tabs;
 
    procedure Set_Mode (T : in out Terminal; Number : Natural; Enable : Boolean) is
@@ -608,7 +626,10 @@ package body Terminal.Core is
          when 7 =>
             T.Current_Modes.Autowrap := Enable;
          when 25 =>
-            T.Current_Modes.Cursor_Visible := Enable;
+            if T.Current_Modes.Cursor_Visible /= Enable then
+               Mark_Dirty (T, T.Cursor_Row);
+               T.Current_Modes.Cursor_Visible := Enable;
+            end if;
          when 47 | 1047 =>
             T.Current_Modes.Alternate_Screen := Enable;
             T.Active := (if Enable then Alternate else Primary);
@@ -625,8 +646,13 @@ package body Terminal.Core is
                T.Saved_Row := T.Cursor_Row;
                T.Saved_Col := T.Cursor_Col;
             else
-               T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
-               T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
+               declare
+                  Old_Row : constant Positive := T.Cursor_Row;
+               begin
+                  T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
+                  T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
+                  Mark_Cursor_Move (T, Old_Row);
+               end;
             end if;
             T.Pending_Wrap := False;
          when 1049 =>
@@ -640,8 +666,13 @@ package body Terminal.Core is
                T.Cursor_Row := 1;
                T.Cursor_Col := 1;
             else
-               T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
-               T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
+               declare
+                  Old_Row : constant Positive := T.Cursor_Row;
+               begin
+                  T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
+                  T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
+                  Mark_Cursor_Move (T, Old_Row);
+               end;
             end if;
             T.Pending_Wrap := False;
             if Enable then
@@ -750,28 +781,51 @@ package body Terminal.Core is
                T.Cursor_Col,
                Positive'Min (T.Cols - T.Cursor_Col + 1, Positive'Max (1, Param (T, 1, 1))));
          when 'A' =>
-            N := Param (T, 1, 1);
-            T.Cursor_Row := Positive'Max (1, T.Cursor_Row - Natural'Max (N, 1));
+            declare
+               Old_Row : constant Positive := T.Cursor_Row;
+            begin
+               N := Param (T, 1, 1);
+               T.Cursor_Row := Positive'Max (1, T.Cursor_Row - Natural'Max (N, 1));
+               Mark_Cursor_Move (T, Old_Row);
+            end;
          when 'B' =>
-            N := Param (T, 1, 1);
-            T.Cursor_Row := Positive'Min (T.Rows, T.Cursor_Row + Natural'Max (N, 1));
+            declare
+               Old_Row : constant Positive := T.Cursor_Row;
+            begin
+               N := Param (T, 1, 1);
+               T.Cursor_Row := Positive'Min (T.Rows, T.Cursor_Row + Natural'Max (N, 1));
+               Mark_Cursor_Move (T, Old_Row);
+            end;
          when 'C' =>
             N := Param (T, 1, 1);
             T.Cursor_Col := Positive'Min (T.Cols, T.Cursor_Col + Natural'Max (N, 1));
+            Mark_Cursor_Move (T, T.Cursor_Row);
          when 'D' =>
             N := Param (T, 1, 1);
             T.Cursor_Col := Positive'Max (1, T.Cursor_Col - Natural'Max (N, 1));
+            Mark_Cursor_Move (T, T.Cursor_Row);
          when 'E' =>
-            N := Param (T, 1, 1);
-            T.Cursor_Row := Positive'Min (T.Rows, T.Cursor_Row + Natural'Max (N, 1));
-            T.Cursor_Col := 1;
+            declare
+               Old_Row : constant Positive := T.Cursor_Row;
+            begin
+               N := Param (T, 1, 1);
+               T.Cursor_Row := Positive'Min (T.Rows, T.Cursor_Row + Natural'Max (N, 1));
+               T.Cursor_Col := 1;
+               Mark_Cursor_Move (T, Old_Row);
+            end;
          when 'F' =>
-            N := Param (T, 1, 1);
-            T.Cursor_Row := Positive'Max (1, T.Cursor_Row - Natural'Max (N, 1));
-            T.Cursor_Col := 1;
+            declare
+               Old_Row : constant Positive := T.Cursor_Row;
+            begin
+               N := Param (T, 1, 1);
+               T.Cursor_Row := Positive'Max (1, T.Cursor_Row - Natural'Max (N, 1));
+               T.Cursor_Col := 1;
+               Mark_Cursor_Move (T, Old_Row);
+            end;
          when 'G' =>
             C := Param (T, 1, 1);
             T.Cursor_Col := Positive'Min (T.Cols, Positive'Max (1, C));
+            Mark_Cursor_Move (T, T.Cursor_Row);
          when 'H' | 'f' =>
             R := Param (T, 1, 1);
             C := Param (T, 2, 1);
@@ -840,8 +894,13 @@ package body Terminal.Core is
             T.Saved_Row := T.Cursor_Row;
             T.Saved_Col := T.Cursor_Col;
          when 'u' =>
-            T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
-            T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
+            declare
+               Old_Row : constant Positive := T.Cursor_Row;
+            begin
+               T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
+               T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
+               Mark_Cursor_Move (T, Old_Row);
+            end;
          when 'h' | 'l' =>
             if T.CSI_Private = '?' then
                for I in 1 .. Natural'Max (T.CSI_Count, 1) loop
@@ -876,6 +935,7 @@ package body Terminal.Core is
          when 8 =>
             if T.Cursor_Col > 1 then
                T.Cursor_Col := T.Cursor_Col - 1;
+               Mark_Cursor_Move (T, T.Cursor_Row);
             end if;
             T.Pending_Wrap := False;
          when 9 =>
@@ -884,6 +944,7 @@ package body Terminal.Core is
             New_Line (T);
          when 13 =>
             T.Cursor_Col := 1;
+            Mark_Cursor_Move (T, T.Cursor_Row);
             T.Pending_Wrap := False;
          when 27 =>
             T.State := Escape;
@@ -1000,8 +1061,13 @@ package body Terminal.Core is
                      T.Saved_Col := T.Cursor_Col;
                      T.State := Ground;
                   when '8' =>
-                     T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
-                     T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
+                     declare
+                        Old_Row : constant Positive := T.Cursor_Row;
+                     begin
+                        T.Cursor_Row := Positive'Min (T.Rows, T.Saved_Row);
+                        T.Cursor_Col := Positive'Min (T.Cols, T.Saved_Col);
+                        Mark_Cursor_Move (T, Old_Row);
+                     end;
                      T.State := Ground;
                   when 'D' =>
                      New_Line (T);
@@ -1011,11 +1077,16 @@ package body Terminal.Core is
                      New_Line (T);
                      T.State := Ground;
                   when 'M' =>
-                     if T.Cursor_Row = T.Top_Margin then
-                        Scroll_Down_Region (T, T.Top_Margin, T.Bottom_Margin);
-                     elsif T.Cursor_Row > 1 then
-                        T.Cursor_Row := T.Cursor_Row - 1;
-                     end if;
+                     declare
+                        Old_Row : constant Positive := T.Cursor_Row;
+                     begin
+                        if T.Cursor_Row = T.Top_Margin then
+                           Scroll_Down_Region (T, T.Top_Margin, T.Bottom_Margin);
+                        elsif T.Cursor_Row > 1 then
+                           T.Cursor_Row := T.Cursor_Row - 1;
+                        end if;
+                        Mark_Cursor_Move (T, Old_Row);
+                     end;
                      T.State := Ground;
                   when '[' =>
                      Clear_CSI (T);
