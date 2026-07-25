@@ -30,6 +30,8 @@
 - Spawn `$SHELL` in a Linux PTY.
 - Validate PTY output can be fed into `Terminal.Core` in a non-GUI integration
   smoke and converted into renderer glyph vertices plus atlas metadata.
+- Validate real GLFW/Vulkan presentation in `gui_present_smoke` when a display
+  and Vulkan device are available; the smoke skips cleanly in headless runs.
 - Validate real shell `echo`, `cat`, `ls --color`, SGR color, and
   clear-sequence behavior through a non-GUI PTY/core command smoke.
 - Cover app-owned key, character, cursor-mode, control-key, Alt-key, and
