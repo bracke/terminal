@@ -181,4 +181,25 @@ begin
         (Terminal.Core.Pending_Response_Length (T) = 0,
          "DECRQM should drain");
    end;
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[18t"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS text area feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 9,
+      "XTWINOPS text area response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[8;5;10t"),
+         "XTWINOPS text area");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "XTWINOPS text area should drain");
+   end;
 end Core_Response_Smoke;

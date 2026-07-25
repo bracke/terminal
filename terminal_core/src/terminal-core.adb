@@ -898,6 +898,25 @@ package body Terminal.Core is
       end if;
    end Queue_Device_Attributes;
 
+   procedure Queue_Window_Operation_Report
+     (T      : in out Terminal;
+      Number : Natural)
+   is
+   begin
+      if T.CSI_Private = ASCII.NUL and then Number = 18 then
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '[');
+         Append_Response_Char (T, '8');
+         Append_Response_Char (T, ';');
+         Append_Response_Natural (T, T.Rows);
+         Append_Response_Char (T, ';');
+         Append_Response_Natural (T, T.Cols);
+         Append_Response_Char (T, 't');
+      else
+         T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+      end if;
+   end Queue_Window_Operation_Report;
+
    function Mode_Report_State
      (T       : Terminal;
       Prefix  : Standard.Character;
@@ -1477,6 +1496,8 @@ package body Terminal.Core is
             Queue_Device_Status_Report (T, Param (T, 1, 0));
          when 's' =>
             Save_Cursor_State (T);
+         when 't' =>
+            Queue_Window_Operation_Report (T, Param (T, 1, 0));
          when 'u' =>
             Restore_Cursor_State (T);
          when 'h' | 'l' =>

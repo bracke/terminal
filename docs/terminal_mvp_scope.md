@@ -26,6 +26,8 @@
   (`CSI > c`) responses.
 - DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode and
   known DEC private modes.
+- XTWINOPS text-area size report (`CSI 18 t`) returns current rows and columns
+  as `CSI 8 ; rows ; cols t`.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
 - Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.
