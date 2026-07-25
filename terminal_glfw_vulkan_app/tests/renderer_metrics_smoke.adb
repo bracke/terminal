@@ -611,6 +611,12 @@ begin
       Assert
         (Frame.Text_Runs (1).Shaped_Glyph_Count = 3,
          "simple text shaped glyph count");
+      Assert
+        (Frame.Text_Runs (1).Cell_Span = 3,
+         "simple text run should span all cells");
+      Assert
+        (Frame.Glyph_Count = Natural (Frame.Text_Runs (1).Shaped_Glyph_Count),
+         "simple shaped text should not draw covered fallback cells");
       declare
          Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);

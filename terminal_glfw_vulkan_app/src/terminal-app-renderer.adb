@@ -854,7 +854,9 @@ package body Terminal.App.Renderer is
          if Is_Shaped_Draw_Run (R.Text_Runs (I))
            and then R.Text_Runs (I).Y = Y
            and then X >= R.Text_Runs (I).X
-           and then X < R.Text_Runs (I).X + R.Text_Runs (I).Cell_Width
+           and then X <
+             R.Text_Runs (I).X
+             + R.Text_Runs (I).Cell_Width * Float (R.Text_Runs (I).Cell_Span)
          then
             return True;
          end if;

@@ -79,6 +79,8 @@ shape a run, the run remains explicitly marked as `Needs_Shaping_Backend` and is
 represented by the existing codepoint fallback path. Submit batches, presenter
 diagnostics, and device upload diagnostics also carry aggregate shaped-glyph
 counts so the shaped-text path remains observable across the whole render path.
+Cells covered by a successfully shaped run are suppressed from the per-cell
+fallback draw path for the full run span.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions
