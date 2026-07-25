@@ -71,6 +71,27 @@ begin
    IM.Encode_Key (Key_Event (GI.D, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#04#), "ctrl-d");
 
+   IM.Encode_Key (Key_Event (GI.A, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#01#), "ctrl-a");
+
+   IM.Encode_Key (Key_Event (GI.E, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#05#), "ctrl-e");
+
+   IM.Encode_Key (Key_Event (GI.K, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#0B#), "ctrl-k");
+
+   IM.Encode_Key (Key_Event (GI.L, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#0C#), "ctrl-l");
+
+   IM.Encode_Key (Key_Event (GI.U, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#15#), "ctrl-u");
+
+   IM.Encode_Key (Key_Event (GI.V, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#16#), "ctrl-v");
+
+   IM.Encode_Key (Key_Event (GI.W, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#17#), "ctrl-w");
+
    IM.Encode_Key (Key_Event (GI.X, Alt => True), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "x"), "alt-x");
 
@@ -100,6 +121,10 @@ begin
    Assert
      (not IM.Is_Paste_Shortcut (Key_Event (GI.V, Control => True)),
       "ctrl-v is left to terminal programs");
+
+   IM.Encode_Key (Key_Event (GI.V, Shift => True, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#16#), "ctrl-shift-v encodes if not intercepted");
+
    Assert
      (not IM.Is_Paste_Shortcut
         (Key_Event (GI.V, Action => GI.Release, Shift => True, Control => True)),

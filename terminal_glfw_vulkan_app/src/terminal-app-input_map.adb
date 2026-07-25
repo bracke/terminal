@@ -81,6 +81,39 @@ package body Terminal.App.Input_Map is
       end case;
    end Alt_Printable;
 
+   function Control_Byte (Key : GLFW_Vulkan.Input.Key) return Byte is
+   begin
+      case Key is
+         when A => return 16#01#;
+         when B => return 16#02#;
+         when C => return 16#03#;
+         when D => return 16#04#;
+         when E => return 16#05#;
+         when F => return 16#06#;
+         when G => return 16#07#;
+         when H => return 16#08#;
+         when I => return 16#09#;
+         when J => return 16#0A#;
+         when K => return 16#0B#;
+         when L => return 16#0C#;
+         when M => return 16#0D#;
+         when N => return 16#0E#;
+         when O => return 16#0F#;
+         when P => return 16#10#;
+         when Q => return 16#11#;
+         when R => return 16#12#;
+         when S => return 16#13#;
+         when T => return 16#14#;
+         when U => return 16#15#;
+         when V => return 16#16#;
+         when W => return 16#17#;
+         when X => return 16#18#;
+         when Y => return 16#19#;
+         when Z => return 16#1A#;
+         when others => return 0;
+      end case;
+   end Control_Byte;
+
    function Is_Paste_Shortcut
      (Event : GLFW_Vulkan.Input.Key_Event) return Boolean is
    begin
@@ -104,15 +137,14 @@ package body Terminal.App.Input_Map is
       end if;
 
       if Event.Modifiers.Control then
-         case Event.Key is
-            when C => Append (Chunk, 16#03#);
-            when D => Append (Chunk, 16#04#);
-            when Z => Append (Chunk, 16#1A#);
-            when others => null;
-         end case;
-         if Chunk.Length > 0 then
-            return;
-         end if;
+         declare
+            Ctrl : constant Byte := Control_Byte (Event.Key);
+         begin
+            if Ctrl /= 0 then
+               Append (Chunk, Ctrl);
+               return;
+            end if;
+         end;
       end if;
 
       if Event.Modifiers.Alt then
