@@ -164,9 +164,11 @@ package body Terminal.App.Renderer is
    begin
       if R.Rectangles /= null then
          Free_Rectangles (R.Rectangles);
+         R.Rectangles := null;
       end if;
       if R.Glyphs /= null then
          Free_Glyphs (R.Glyphs);
+         R.Glyphs := null;
       end if;
       R.Rectangle_Count := 0;
       R.Glyph_Count := 0;

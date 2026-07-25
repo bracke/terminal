@@ -182,4 +182,18 @@ begin
    end;
 
    Terminal.App.Renderer.Finalize (R);
+   Terminal.App.Renderer.Finalize (R);
+
+   declare
+      Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+        Terminal.App.Renderer.Diagnostics (R);
+   begin
+      Assert (not Diag.Initialized, "finalized renderer initialized flag");
+      Assert (Diag.Last_Rectangle_Count = 0, "finalized rectangle count");
+      Assert (Diag.Last_Glyph_Count = 0, "finalized glyph count");
+   end;
+
+   Terminal.App.Renderer.Initialize_Headless (R, Status);
+   Assert (Status = Terminal.App.Renderer.Ok, "renderer reinitialize failed");
+   Terminal.App.Renderer.Finalize (R);
 end Renderer_Metrics_Smoke;
