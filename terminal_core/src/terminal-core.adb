@@ -458,6 +458,33 @@ package body Terminal.Core is
       end loop;
    end Clear_Wide_Overlap;
 
+   procedure Normalize_Wide_Row (T : in out Terminal; Row : Positive) is
+      Cells : constant Cell_Array_Access := Active_Cells (T);
+   begin
+      if Cells = null then
+         return;
+      end if;
+
+      for C in 1 .. T.Cols loop
+         if Cells (Index (T, Row, C)).Kind = Wide_Continuation then
+            if C = 1
+              or else Cells (Index (T, Row, C - 1)).Kind /= Character
+              or else Cells (Index (T, Row, C - 1)).Text.Width /= Width_Two
+            then
+               Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
+            end if;
+         elsif Cells (Index (T, Row, C)).Kind = Character
+           and then Cells (Index (T, Row, C)).Text.Width = Width_Two
+         then
+            if C = T.Cols
+              or else Cells (Index (T, Row, C + 1)).Kind /= Wide_Continuation
+            then
+               Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
+            end if;
+         end if;
+      end loop;
+   end Normalize_Wide_Row;
+
    procedure Shift_Row_Right
      (T        : in out Terminal;
       Row      : Positive;
@@ -480,6 +507,7 @@ package body Terminal.Core is
       for C in Col .. Blank_Last loop
          Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
       end loop;
+      Normalize_Wide_Row (T, Row);
       Mark_Dirty (T, Row);
    end Shift_Row_Right;
 
@@ -508,6 +536,7 @@ package body Terminal.Core is
       for C in Blank_First .. T.Cols loop
          Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
       end loop;
+      Normalize_Wide_Row (T, Row);
       Mark_Dirty (T, Row);
    end Shift_Row_Left;
 

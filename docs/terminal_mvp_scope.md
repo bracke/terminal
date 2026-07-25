@@ -40,8 +40,8 @@ and recorded in diagnostics where applicable.
 
 One decoded scalar value maps to one simplified character cell initially. Common
 CJK ranges are treated as width two, with continuation cells cleared when either
-half is overwritten or erased. Combining marks are ignored. Full grapheme
-clusters, emoji ZWJ sequences, shaping, and BiDi are postponed.
+half is overwritten, erased, or shifted apart. Combining marks are ignored.
+Full grapheme clusters, emoji ZWJ sequences, shaping, and BiDi are postponed.
 
 ## Scrollback
 

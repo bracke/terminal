@@ -127,4 +127,51 @@ begin
       Assert_Char (S, 4, 16#62#, "erasing continuation keeps suffix");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize wide DCH head failed");
+   Feed_A_Wide_B;
+   Feed_Text
+     (ASCII.ESC & "[2G" & ASCII.ESC & "[P",
+      "wide DCH head feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Char (S, 1, 16#61#, "DCH head keeps prefix");
+      Assert_Empty (S, 2, "DCH head clears split continuation");
+      Assert_Char (S, 3, 16#62#, "DCH head shifts suffix");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize wide DCH continuation failed");
+   Feed_A_Wide_B;
+   Feed_Text
+     (ASCII.ESC & "[3G" & ASCII.ESC & "[P",
+      "wide DCH continuation feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Char (S, 1, 16#61#, "DCH continuation keeps prefix");
+      Assert_Empty (S, 2, "DCH continuation clears split head");
+      Assert_Char (S, 3, 16#62#, "DCH continuation shifts suffix");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize wide ICH continuation failed");
+   Feed_A_Wide_B;
+   Feed_Text
+     (ASCII.ESC & "[3G" & ASCII.ESC & "[@",
+      "wide ICH continuation feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Char (S, 1, 16#61#, "ICH continuation keeps prefix");
+      Assert_Empty (S, 2, "ICH continuation clears split head");
+      Assert_Empty (S, 3, "ICH continuation inserts blank");
+      Assert_Empty (S, 4, "ICH continuation clears split continuation");
+      Assert_Char (S, 5, 16#62#, "ICH continuation shifts suffix");
+      Terminal.Core.Release (S);
+   end;
 end Core_Wide_Smoke;
