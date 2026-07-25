@@ -70,6 +70,8 @@ package body Terminal.Core is
       C.Kind := Empty;
       C.Text.Code_Point := 0;
       C.Text.Width := Width_One;
+      C.Text.Attachment_Count := 0;
+      C.Text.Attachments := (others => 0);
       C.Style := Style;
       return C;
    end Blank_Cell;
@@ -129,7 +131,7 @@ package body Terminal.Core is
       for I in Cells'Range loop
          Cells (I) :=
            (Kind  => Character,
-            Text  => (Code_Point => 16#45#, Width => Width_One),
+            Text  => (Code_Point => 16#45#, Width => Width_One, others => <>),
             Style => T.Current_Style);
       end loop;
       T.Pending_Wrap := False;
@@ -803,8 +805,46 @@ package body Terminal.Core is
         (if Is_Zero_Width (CP) then Width_Zero
          elsif Is_Wide (CP) then Width_Two
          else Width_One);
+
+      procedure Attach_To_Previous_Cell is
+         Row : constant Positive := T.Cursor_Row;
+         Col : Positive;
+      begin
+         if T.Pending_Wrap then
+            Col := T.Cursor_Col;
+         elsif T.Cursor_Col > 1 then
+            Col := T.Cursor_Col - 1;
+         else
+            return;
+         end if;
+
+         if Cells (Index (T, Row, Col)).Kind = Wide_Continuation and then Col > 1 then
+            Col := Col - 1;
+         end if;
+
+         if Cells (Index (T, Row, Col)).Kind /= Character
+           or else Cells (Index (T, Row, Col)).Text.Code_Point = 0
+         then
+            return;
+         end if;
+
+         if Cells (Index (T, Row, Col)).Text.Attachment_Count <
+           Max_Cluster_Attachments
+         then
+            Cells (Index (T, Row, Col)).Text.Attachment_Count :=
+              Cells (Index (T, Row, Col)).Text.Attachment_Count + 1;
+            Cells (Index (T, Row, Col)).Text.Attachments
+              (Cells (Index (T, Row, Col)).Text.Attachment_Count) := CP;
+            Mark_Dirty (T, Row);
+         else
+            T.Diag.Text_Cluster_Overflow := T.Diag.Text_Cluster_Overflow + 1;
+         end if;
+      end Attach_To_Previous_Cell;
    begin
-      if Cells = null or else W = Width_Zero then
+      if Cells = null then
+         return;
+      elsif W = Width_Zero then
+         Attach_To_Previous_Cell;
          return;
       end if;
 
@@ -830,7 +870,7 @@ package body Terminal.Core is
 
       Cells (Index (T, T.Cursor_Row, T.Cursor_Col)) :=
         (Kind  => Character,
-         Text  => (Code_Point => CP, Width => W),
+         Text  => (Code_Point => CP, Width => W, others => <>),
          Style => T.Current_Style);
       T.Last_Printable := CP;
       T.Has_Last_Printable := True;
@@ -840,7 +880,7 @@ package body Terminal.Core is
          if T.Cursor_Col < T.Cols then
             Cells (Index (T, T.Cursor_Row, T.Cursor_Col + 1)) :=
               (Kind => Wide_Continuation,
-               Text => (Code_Point => 0, Width => Width_Zero),
+               Text => (Code_Point => 0, Width => Width_Zero, others => <>),
                Style => T.Current_Style);
          end if;
          if T.Cursor_Col + 1 >= T.Cols then

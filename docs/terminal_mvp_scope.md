@@ -87,15 +87,18 @@ OSC 0/1/2 update the app window title. OSC 8 hyperlinks and OSC 52 clipboard
 are not implemented. Unknown OSC, escape, and CSI sequences are consumed safely
 and recorded in diagnostics where applicable.
 
-## Unicode Limitations
+## Unicode And Text
 
-One decoded scalar value maps to one simplified character cell initially. Common
-CJK ranges, including supplementary CJK ideograph planes, are treated as width
-two, with continuation cells cleared when either half is overwritten, erased, or
-shifted apart. Common combining-mark ranges, zero-width joiner/non-joiner,
-format controls, bidi marks, and variation selectors are treated as width zero
-and ignored. Full grapheme clusters, emoji ZWJ sequence composition, shaping,
-and BiDi are postponed.
+Common CJK ranges, including supplementary CJK ideograph planes, are treated as
+width two, with continuation cells cleared when either half is overwritten,
+erased, or shifted apart. Cells store a bounded text cluster: one spacing base
+scalar plus up to eight attached zero-width scalars. Common combining-mark
+ranges, zero-width joiner/non-joiner, format controls, bidi marks, and
+variation selectors are attached to the previous cell without advancing the
+cursor; overflow is reported through diagnostics. Selection and clipboard copy
+preserve stored cluster scalars. Rendering still submits the base scalar to the
+current `textrender` path; full cluster shaping, emoji ZWJ composition, and
+BiDi layout require the renderer text pipeline to consume complete clusters.
 
 ## Cursor
 

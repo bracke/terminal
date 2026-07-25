@@ -53,7 +53,9 @@ package body Terminal.App.Diagnostics is
         or else S.Core.Ignored_Escape /= Last_Core.Ignored_Escape
         or else S.Core.Parser_Overflow /= Last_Core.Parser_Overflow
         or else S.Core.Queue_Overflow /= Last_Core.Queue_Overflow
-        or else S.Core.Unsupported_Sequence /= Last_Core.Unsupported_Sequence;
+        or else S.Core.Unsupported_Sequence /= Last_Core.Unsupported_Sequence
+        or else
+          S.Core.Text_Cluster_Overflow /= Last_Core.Text_Cluster_Overflow;
    end Core_Changed;
 
    function Queue_Changed (S : Snapshot) return Boolean is
@@ -120,6 +122,8 @@ package body Terminal.App.Diagnostics is
          & " utf8_bad=" & Natural'Image (S.Core.Malformed_UTF8)
          & " parser_overflow=" & Natural'Image (S.Core.Parser_Overflow)
          & " unsupported=" & Natural'Image (S.Core.Unsupported_Sequence)
+         & " cluster_overflow=" &
+           Natural'Image (S.Core.Text_Cluster_Overflow)
          & " render=" &
            Terminal.App.Renderer.Render_Status'Image
              (S.Renderer.Last_Render_Status)

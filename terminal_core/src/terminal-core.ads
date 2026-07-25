@@ -46,10 +46,17 @@ package Terminal.Core is
 
    type Cell_Kind is (Empty, Character, Wide_Continuation);
    type Cell_Width is (Width_Zero, Width_One, Width_Two);
+   Max_Cluster_Attachments : constant := 8;
+   subtype Cluster_Attachment_Count is Natural range 0 .. Max_Cluster_Attachments;
+   subtype Cluster_Attachment_Index is Positive range 1 .. Max_Cluster_Attachments;
+   type Cluster_Attachment_Array is
+     array (Cluster_Attachment_Index) of Terminal.Common.Code_Point;
 
    type Text_Cluster is record
       Code_Point : Terminal.Common.Code_Point := 0;
       Width      : Cell_Width := Width_One;
+      Attachment_Count : Cluster_Attachment_Count := 0;
+      Attachments : Cluster_Attachment_Array := (others => 0);
    end record;
 
    type Cell is record
@@ -92,6 +99,7 @@ package Terminal.Core is
       Parser_Overflow      : Natural := 0;
       Queue_Overflow       : Natural := 0;
       Unsupported_Sequence : Natural := 0;
+      Text_Cluster_Overflow : Natural := 0;
    end record;
 
    Max_Title_Length : constant := 256;

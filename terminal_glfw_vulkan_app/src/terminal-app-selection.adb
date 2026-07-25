@@ -218,6 +218,18 @@ package body Terminal.App.Selection is
       end if;
    end Append_UTF8;
 
+   procedure Append_Cluster
+     (Result  : in out String;
+      Last    : in out Natural;
+      Cluster : Terminal.Core.Text_Cluster)
+   is
+   begin
+      Append_UTF8 (Result, Last, Cluster.Code_Point);
+      for I in 1 .. Cluster.Attachment_Count loop
+         Append_UTF8 (Result, Last, Cluster.Attachments (I));
+      end loop;
+   end Append_Cluster;
+
    function Selected_Text
      (Snapshot  : Terminal.Core.Render_Snapshot;
       Selection : Selection_State) return String
@@ -225,7 +237,8 @@ package body Terminal.App.Selection is
       Start_Pos : Cell_Position;
       End_Pos   : Cell_Position;
       Max_Length : constant Natural :=
-        Snapshot.Rows * Snapshot.Cols * 4 + Snapshot.Rows;
+        Snapshot.Rows * Snapshot.Cols *
+          (Terminal.Core.Max_Cluster_Attachments + 1) * 4 + Snapshot.Rows;
    begin
       if not Selection.Has_Range
         or else Snapshot.Rows = 0
@@ -275,15 +288,15 @@ package body Terminal.App.Selection is
                         if Cell.Kind = Terminal.Core.Character
                           and then Cell.Text.Code_Point /= 0
                         then
-                           Append_UTF8 (Result, Last, Cell.Text.Code_Point);
+                           Append_Cluster (Result, Last, Cell.Text);
                         elsif Is_Wide_Continuation (Snapshot, Row, Col)
                           and then not Contains (Selection, Row, Col - 1)
                         then
-                           Append_UTF8
+                           Append_Cluster
                              (Result,
                               Last,
                               Terminal.Core.Cell_At
-                                (Snapshot, Row, Col - 1).Text.Code_Point);
+                                (Snapshot, Row, Col - 1).Text);
                         elsif Cell.Kind = Terminal.Core.Empty then
                            Append_Byte (Result, Last, Character'Pos (' '));
                         end if;

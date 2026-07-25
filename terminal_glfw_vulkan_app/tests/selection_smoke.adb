@@ -84,6 +84,32 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 4, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "cluster selection initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#CC#, 3 => 16#81#,
+       4 => Byte (Character'Pos ('b'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "cluster selection feed failed");
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 1));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 1));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         To_String ((1 => 16#61#, 2 => 16#CC#, 3 => 16#81#)),
+         "selection should copy attached combining marks");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 5, 10, Init);
    Assert (Init = Terminal.Core.Ok, "wide selection initialize failed");
    Terminal.Core.Feed

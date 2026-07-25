@@ -175,6 +175,37 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 4, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize cluster overflow failed");
+   Feed_Bytes
+     ((1  => Byte (Character'Pos ('a')),
+       2  => 16#CC#, 3  => 16#80#,
+       4  => 16#CC#, 5  => 16#81#,
+       6  => 16#CC#, 7  => 16#82#,
+       8  => 16#CC#, 9  => 16#83#,
+       10 => 16#CC#, 11 => 16#84#,
+       12 => 16#CC#, 13 => 16#85#,
+       14 => 16#CC#, 15 => 16#86#,
+       16 => 16#CC#, 17 => 16#87#,
+       18 => 16#CC#, 19 => 16#88#),
+      "cluster overflow feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert (A.Text.Code_Point = 16#61#, "cluster overflow base");
+      Assert
+        (A.Text.Attachment_Count = Terminal.Core.Max_Cluster_Attachments,
+         "cluster should keep bounded attachments");
+      Assert
+        (D.Text_Cluster_Overflow = 1,
+         "cluster overflow should be diagnosed");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize zero width failed");
    Feed_Bytes
@@ -190,11 +221,21 @@ begin
 
    declare
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      C : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 3);
    begin
       Assert_Char (S, 1, 16#61#, "zero width keeps a");
       Assert_Char (S, 2, 16#62#, "combining acute should not occupy a cell");
       Assert_Char (S, 3, 16#63#, "ZWJ and VS16 should not occupy cells");
       Assert_Char (S, 4, 16#64#, "enclosing mark should not occupy a cell");
+      Assert (A.Text.Attachment_Count = 1, "acute should attach to a");
+      Assert (A.Text.Attachments (1) = 16#0301#, "a acute attachment");
+      Assert (B.Text.Attachment_Count = 2, "ZWJ and VS16 should attach to b");
+      Assert (B.Text.Attachments (1) = 16#200D#, "b ZWJ attachment");
+      Assert (B.Text.Attachments (2) = 16#FE0F#, "b VS16 attachment");
+      Assert (C.Text.Attachment_Count = 1, "enclosing mark should attach to c");
+      Assert (C.Text.Attachments (1) = 16#20DD#, "c enclosing attachment");
       Assert (S.Cursor.Col = 5, "zero width cursor");
       Assert
         (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
@@ -217,11 +258,23 @@ begin
 
    declare
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      W : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      X : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Y : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 3);
+      Z : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 4);
    begin
       Assert_Char (S, 1, 16#77#, "combining grapheme joiner keeps w");
       Assert_Char (S, 2, 16#78#, "word joiner should not occupy a cell");
       Assert_Char (S, 3, 16#79#, "BOM should not occupy a cell");
       Assert_Char (S, 4, 16#7A#, "variation selector should not occupy a cell");
+      Assert (W.Text.Attachment_Count = 1, "CGJ should attach to w");
+      Assert (W.Text.Attachments (1) = 16#034F#, "w CGJ attachment");
+      Assert (X.Text.Attachment_Count = 1, "word joiner should attach to x");
+      Assert (X.Text.Attachments (1) = 16#2060#, "x word joiner attachment");
+      Assert (Y.Text.Attachment_Count = 1, "BOM should attach to y");
+      Assert (Y.Text.Attachments (1) = 16#FEFF#, "y BOM attachment");
+      Assert (Z.Text.Attachment_Count = 1, "VS17 should attach to z");
+      Assert (Z.Text.Attachments (1) = 16#E0100#, "z VS17 attachment");
       Assert (S.Cursor.Col = 5, "zero width format cursor");
       Assert
         (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
