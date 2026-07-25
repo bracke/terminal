@@ -6,6 +6,7 @@ with Terminal.App.Vulkan_Submit;
 
 procedure Vulkan_Submit_Smoke is
    use AUnit.Assertions;
+   use type Terminal.App.Render_Model.Text_Run_Array_Access;
    use type Terminal.App.Vulkan_Submit.Build_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
    use type Terminal.App.Vulkan_Submit.Vertex_Array_Access;
@@ -32,6 +33,24 @@ procedure Vulkan_Submit_Smoke is
          V1        => 0.40,
          Color     => (R => 0.9, G => 0.9, B => 0.9, A => 1.0),
          Codepoint => Character'Pos ('A'))];
+   Runs : aliased RM.Text_Run_Array :=
+     [1 =>
+        (X               => 10.0,
+         Y               => 0.0,
+         Cell_Width      => 18.0,
+         Cell_Height     => 20.0,
+         Cell_Span       => 2,
+         Color           => (R => 0.9, G => 0.9, B => 0.9, A => 1.0),
+         Bold            => False,
+         Italic          => False,
+         Codepoints      =>
+           (1 => 16#1F469#,
+            2 => 16#200D#,
+            3 => 16#1F468#,
+            4 => 16#1F3FD#,
+            others => 0),
+         Codepoint_Count => 4,
+         Fallback_Glyphs => True)];
 
    Frame : RM.Frame_Commands :=
      (Width           => 100,
@@ -40,8 +59,8 @@ procedure Vulkan_Submit_Smoke is
       Rectangle_Count => 1,
       Glyphs          => Glyphs'Unchecked_Access,
       Glyph_Count     => 1,
-      Text_Runs       => null,
-      Text_Run_Count  => 0,
+      Text_Runs       => Runs'Unchecked_Access,
+      Text_Run_Count  => 1,
       Atlas_Width     => 256,
       Atlas_Height    => 256,
       Atlas_Pixels    => System'To_Address (16#1000#),
@@ -58,6 +77,18 @@ begin
    Assert (VS.Vertex_Count (Batch) = 12, "two quads should produce 12 vertices");
    Assert (VS.Rectangle_Vertex_Count (Batch) = 6, "rectangle vertex count");
    Assert (VS.Glyph_Vertex_Count (Batch) = 6, "glyph vertex count");
+   Assert (VS.Text_Run_Count (Batch) = 1, "text run count");
+   Assert (VS.Text_Runs (Batch) /= null, "text runs not copied");
+   Assert
+     (VS.Text_Runs (Batch) (1).Codepoint_Count = 4,
+      "text run codepoint count");
+   Assert
+     (VS.Text_Runs (Batch) (1).Codepoints (3) = 16#1F468#,
+      "text run joined scalar");
+   Runs (1).Codepoints (3) := 0;
+   Assert
+     (VS.Text_Runs (Batch) (1).Codepoints (3) = 16#1F468#,
+      "batch should own text run copy");
    Assert (VS.Text_Atlas_Used (Batch), "glyph quad should use text atlas");
    Assert (VS.Atlas_Dirty (Batch), "atlas dirty flag not carried");
    Assert (VS.Atlas_Width (Batch) = 256, "atlas width");
@@ -77,6 +108,8 @@ begin
    VS.Release (Batch);
    Assert (VS.Vertex_Count (Batch) = 0, "release should clear vertices");
    Assert (VS.Vertices (Batch) = null, "released batch vertices should be null");
+   Assert (VS.Text_Run_Count (Batch) = 0, "release should clear text run count");
+   Assert (VS.Text_Runs (Batch) = null, "release should clear text runs");
    Assert (VS.Width (Batch) = 0, "release should clear frame width");
    Assert (not VS.Text_Atlas_Used (Batch), "release should clear atlas use");
    VS.Release (Batch);

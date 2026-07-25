@@ -43,6 +43,10 @@ package Terminal.App.Vulkan_Submit is
    function Vertex_Count (Batch : Submission_Batch) return Natural;
    function Rectangle_Vertex_Count (Batch : Submission_Batch) return Natural;
    function Glyph_Vertex_Count (Batch : Submission_Batch) return Natural;
+   function Text_Runs
+     (Batch : Submission_Batch)
+      return Terminal.App.Render_Model.Text_Run_Array_Access;
+   function Text_Run_Count (Batch : Submission_Batch) return Natural;
    function Width (Batch : Submission_Batch) return Natural;
    function Height (Batch : Submission_Batch) return Natural;
    function Text_Atlas_Used (Batch : Submission_Batch) return Boolean;
@@ -58,6 +62,9 @@ private
       Count                  : Natural := 0;
       Rectangle_Vertex_Total : Natural := 0;
       Glyph_Vertex_Total     : Natural := 0;
+      Text_Runs              : Terminal.App.Render_Model.Text_Run_Array_Access :=
+        null;
+      Text_Run_Total         : Natural := 0;
       Frame_Width            : Natural := 0;
       Frame_Height           : Natural := 0;
       Uses_Text_Atlas        : Boolean := False;

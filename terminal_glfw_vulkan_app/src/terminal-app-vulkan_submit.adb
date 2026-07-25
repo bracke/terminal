@@ -5,10 +5,13 @@ package body Terminal.App.Vulkan_Submit is
 
    use type RM.Glyph_Array_Access;
    use type RM.Rectangle_Array_Access;
+   use type RM.Text_Run_Array_Access;
    use type Vertex_Array_Access;
 
    procedure Free_Vertices is new Ada.Unchecked_Deallocation
      (Vertex_Array, Vertex_Array_Access);
+   procedure Free_Text_Runs is new Ada.Unchecked_Deallocation
+     (RM.Text_Run_Array, RM.Text_Run_Array_Access);
 
    function Clip_X (Frame_Width : Natural; X : Float) return Float is
    begin
@@ -86,10 +89,15 @@ package body Terminal.App.Vulkan_Submit is
          Free_Vertices (Batch.Items);
          Batch.Items := null;
       end if;
+      if Batch.Text_Runs /= null then
+         Free_Text_Runs (Batch.Text_Runs);
+         Batch.Text_Runs := null;
+      end if;
 
       Batch.Count := 0;
       Batch.Rectangle_Vertex_Total := 0;
       Batch.Glyph_Vertex_Total := 0;
+      Batch.Text_Run_Total := 0;
       Batch.Frame_Width := 0;
       Batch.Frame_Height := 0;
       Batch.Uses_Text_Atlas := False;
@@ -118,6 +126,7 @@ package body Terminal.App.Vulkan_Submit is
         or else Frame.Height = 0
         or else (Frame.Rectangle_Count > 0 and then Frame.Rectangles = null)
         or else (Frame.Glyph_Count > 0 and then Frame.Glyphs = null)
+        or else (Frame.Text_Run_Count > 0 and then Frame.Text_Runs = null)
       then
          Status := Invalid_Frame;
          return;
@@ -131,11 +140,26 @@ package body Terminal.App.Vulkan_Submit is
          Batch.Text_Atlas_Height := Frame.Atlas_Height;
          Batch.Text_Atlas_Pixels := Frame.Atlas_Pixels;
          Batch.Text_Atlas_Bytes := Frame.Atlas_Bytes;
+         Batch.Dirty_Atlas := Frame.Atlas_Dirty;
+         if Frame.Text_Run_Count > 0 then
+            Batch.Text_Runs := new RM.Text_Run_Array (1 .. Frame.Text_Run_Count);
+            for I in 1 .. Frame.Text_Run_Count loop
+               Batch.Text_Runs (I) := Frame.Text_Runs (I);
+            end loop;
+            Batch.Text_Run_Total := Frame.Text_Run_Count;
+         end if;
          Status := Ok;
          return;
       end if;
 
       Batch.Items := new Vertex_Array (1 .. Max_Vertices);
+      if Frame.Text_Run_Count > 0 then
+         Batch.Text_Runs := new RM.Text_Run_Array (1 .. Frame.Text_Run_Count);
+         for I in 1 .. Frame.Text_Run_Count loop
+            Batch.Text_Runs (I) := Frame.Text_Runs (I);
+         end loop;
+         Batch.Text_Run_Total := Frame.Text_Run_Count;
+      end if;
       Batch.Frame_Width := Frame.Width;
       Batch.Frame_Height := Frame.Height;
       Batch.Text_Atlas_Width := Frame.Atlas_Width;
@@ -214,6 +238,14 @@ package body Terminal.App.Vulkan_Submit is
 
    function Glyph_Vertex_Count (Batch : Submission_Batch) return Natural is
      (Batch.Glyph_Vertex_Total);
+
+   function Text_Runs
+     (Batch : Submission_Batch)
+      return RM.Text_Run_Array_Access is
+     (Batch.Text_Runs);
+
+   function Text_Run_Count (Batch : Submission_Batch) return Natural is
+     (Batch.Text_Run_Total);
 
    function Width (Batch : Submission_Batch) return Natural is
      (Batch.Frame_Width);
