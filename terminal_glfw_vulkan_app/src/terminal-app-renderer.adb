@@ -311,8 +311,10 @@ package body Terminal.App.Renderer is
       Snapshot : Terminal.Core.Render_Snapshot;
       Status   : out Render_Status)
    is
-      Cell_Count : Natural;
-      Rect_Max   : Natural;
+      Cell_Count     : Natural;
+      Rect_Max       : Natural;
+      Content_Width  : Natural;
+      Content_Height : Natural;
    begin
       if not R.Initialized or else not R.Text_Loaded then
          Set_Render_Status (R, Status, Not_Initialized);
@@ -337,8 +339,10 @@ package body Terminal.App.Renderer is
             return;
       end;
       R.Last_Cell_Count := Cell_Count;
-      R.Last_Frame_Width := Snapshot.Cols * R.CW + Content_Margin * 2;
-      R.Last_Frame_Height := Snapshot.Rows * R.CH + Content_Margin * 2;
+      Content_Width := Snapshot.Cols * R.CW + Content_Margin * 2;
+      Content_Height := Snapshot.Rows * R.CH + Content_Margin * 2;
+      R.Last_Frame_Width := Natural'Max (Content_Width, R.Target_Frame_Width);
+      R.Last_Frame_Height := Natural'Max (Content_Height, R.Target_Frame_Height);
 
       if Snapshot.Dirty /= null then
          for Row in 1 .. Snapshot.Rows loop
@@ -464,6 +468,15 @@ package body Terminal.App.Renderer is
       Set_Render_Status (R, Status, Ok);
    end Render;
 
+   procedure Set_Framebuffer_Size
+     (R      : in out Renderer;
+      Width  : Natural;
+      Height : Natural) is
+   begin
+      R.Target_Frame_Width := Width;
+      R.Target_Frame_Height := Height;
+   end Set_Framebuffer_Size;
+
    procedure Finalize (R : in out Renderer) is
    begin
       Release_Frame (R);
@@ -474,6 +487,8 @@ package body Terminal.App.Renderer is
       R.Glyph_Count := 0;
       R.Vertex_Count := 0;
       R.Missing_Glyph_Count := 0;
+      R.Target_Frame_Width := 0;
+      R.Target_Frame_Height := 0;
       R.Atlas_Dirty := False;
       R.Last_Render_Status := Not_Initialized;
    end Finalize;

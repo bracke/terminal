@@ -220,6 +220,8 @@ package body Terminal.App.Main_Loop is
                end loop;
 
                GLFW_Vulkan.Windows.Framebuffer_Size (W, FB_Width, FB_Height);
+               Terminal.App.Renderer.Set_Framebuffer_Size
+                 (R, FB_Width, FB_Height);
                if FB_Width > 0 and then FB_Height > 0 then
                   declare
                      New_Rows : Positive;

@@ -44,6 +44,10 @@ package Terminal.App.Renderer is
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
       Status   : out Render_Status);
+   procedure Set_Framebuffer_Size
+     (R      : in out Renderer;
+      Width  : Natural;
+      Height : Natural);
    procedure Present
      (R         : Renderer;
       Context   : Terminal.App.Vulkan_Context.Context;
@@ -75,6 +79,8 @@ private
       Last_Dirty_Rows : Natural := 0;
       Last_Frame_Width : Natural := 0;
       Last_Frame_Height : Natural := 0;
+      Target_Frame_Width : Natural := 0;
+      Target_Frame_Height : Natural := 0;
       Atlas_Dirty : Boolean := False;
       Last_Render_Status : Render_Status := Not_Initialized;
    end record;

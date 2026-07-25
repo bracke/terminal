@@ -65,5 +65,34 @@ begin
          "cursor block should fit within the terminal cell");
    end;
 
+   Terminal.App.Renderer.Set_Framebuffer_Size (R, 100, 80);
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "render with framebuffer extent failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Width = 100,
+         "frame width should use the target framebuffer width");
+      Assert
+        (Frame.Height = 80,
+         "frame height should use the target framebuffer height");
+      Assert
+        (Frame.Rectangles (2).X = Float (Terminal.App.Renderer.Content_Margin),
+         "first cell should keep the horizontal content margin");
+      Assert
+        (Frame.Rectangles (2).Y = Float (Terminal.App.Renderer.Content_Margin),
+         "first cell should keep the vertical content margin");
+   end;
+
    Terminal.App.Renderer.Finalize (R);
 end Renderer_Metrics_Smoke;
