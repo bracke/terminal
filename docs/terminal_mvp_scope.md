@@ -11,6 +11,7 @@
   IL, DL, SU, SD, SGR, DECSET/DECRST known modes, SM/RM insert mode, and
   DECSTBM margins.
 - DSR status (`CSI 5 n`) and cursor-position report (`CSI 6 n`) responses.
+- Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
 - Autowrap with pending-wrap behavior.
 - Primary and alternate screen buffers.
 - Dirty row tracking.
@@ -25,9 +26,10 @@ foreground/background.
 
 ## Unsupported or Ignored
 
-OSC payloads are bounded and ignored. BEL and ST (`ESC \`) termination are
-recognized. OSC 8 hyperlinks and OSC 52 clipboard are not implemented. Unknown
-escape/CSI sequences are consumed safely and recorded in diagnostics.
+OSC payloads are bounded. BEL and ST (`ESC \`) termination are recognized.
+OSC 0/1/2 update the app window title. OSC 8 hyperlinks and OSC 52 clipboard
+are not implemented. Unknown OSC, escape, and CSI sequences are consumed safely
+and recorded in diagnostics where applicable.
 
 ## Unicode Limitations
 

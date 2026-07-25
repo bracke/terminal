@@ -77,6 +77,14 @@ package Terminal.Core is
       Unsupported_Sequence : Natural := 0;
    end record;
 
+   Max_Title_Length : constant := 256;
+   subtype Title_Length_Range is Natural range 0 .. Max_Title_Length;
+
+   type Title_Text is record
+      Length : Title_Length_Range := 0;
+      Text   : String (1 .. Max_Title_Length) := (others => ' ');
+   end record;
+
    type Cell_Array is array (Positive range <>) of Cell;
    type Dirty_Row_Array is array (Positive range <>) of Boolean;
    subtype Core_Byte_Array is Terminal.Common.Bytes.Byte_Array;
@@ -116,6 +124,7 @@ package Terminal.Core is
    procedure Release (S : in out Render_Snapshot);
    function Modes (T : Terminal) return Mode_Snapshot;
    function Diagnostics (T : Terminal) return Diagnostic_Snapshot;
+   function Title (T : Terminal) return Title_Text;
    function Scrollback_Row_Count (T : Terminal) return Natural;
    function Pending_Response_Length (T : Terminal) return Natural;
 
@@ -155,6 +164,9 @@ private
    subtype Response_Index is Positive range 1 .. Max_Response_Length;
    type Response_Buffer is
      array (Response_Index) of Common.Bytes.Byte;
+   Max_OSC_Payload_Length : constant := 4096;
+   subtype OSC_Index is Positive range 1 .. Max_OSC_Payload_Length;
+   type OSC_Buffer is array (OSC_Index) of Standard.Character;
 
    type Terminal is limited record
       Initialized      : Boolean := False;
@@ -179,6 +191,7 @@ private
       Current_Style : Style;
       Current_Modes : Mode_Snapshot;
       Diag          : Diagnostic_Snapshot;
+      Window_Title  : Title_Text;
       Responses     : Response_Buffer := (others => 0);
       Response_Length : Natural range 0 .. Max_Response_Length := 0;
 
@@ -187,6 +200,7 @@ private
       CSI_Params    : Param_Array := (others => 0);
       CSI_Set       : Param_Set_Array := (others => False);
       CSI_Count     : Natural := 0;
+      OSC_Data      : OSC_Buffer := (others => ASCII.NUL);
       OSC_Count     : Natural := 0;
 
       UTF8_Need     : Natural := 0;

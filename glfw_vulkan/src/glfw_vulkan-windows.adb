@@ -60,6 +60,19 @@ package body GLFW_Vulkan.Windows is
       end if;
    end Set_Should_Close;
 
+   procedure Set_Title
+     (W     : Window;
+      Title : String)
+   is
+      C_Title : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String (Title);
+   begin
+      if W.Handle /= Raw.Null_Window then
+         Raw.Set_Window_Title (W.Handle, C_Title);
+      end if;
+      Interfaces.C.Strings.Free (C_Title);
+   end Set_Title;
+
    procedure Framebuffer_Size
      (W      : Window;
       Width  : out Natural;

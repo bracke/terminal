@@ -58,6 +58,43 @@ package body Terminal.App.Main_Loop is
       end if;
    end On_Character;
 
+   function Same_Title
+     (Left  : Terminal.Core.Title_Text;
+      Right : Terminal.Core.Title_Text) return Boolean
+   is
+   begin
+      if Left.Length /= Right.Length then
+         return False;
+      end if;
+
+      for I in 1 .. Left.Length loop
+         if Left.Text (I) /= Right.Text (I) then
+            return False;
+         end if;
+      end loop;
+
+      return True;
+   end Same_Title;
+
+   procedure Apply_Title
+     (W          : GLFW_Vulkan.Windows.Window;
+      New_Title  : Terminal.Core.Title_Text;
+      Last_Title : in out Terminal.Core.Title_Text)
+   is
+   begin
+      if Same_Title (New_Title, Last_Title) then
+         return;
+      end if;
+
+      if New_Title.Length = 0 then
+         GLFW_Vulkan.Windows.Set_Title (W, "");
+      else
+         GLFW_Vulkan.Windows.Set_Title
+           (W, New_Title.Text (1 .. New_Title.Length));
+      end if;
+      Last_Title := New_Title;
+   end Apply_Title;
+
    procedure Run is
       Ctx : GLFW_Vulkan.Context;
       W   : GLFW_Vulkan.Windows.Window;
@@ -80,6 +117,7 @@ package body Terminal.App.Main_Loop is
       Last_Rows : Positive := 24;
       Last_Cols : Positive := 80;
       Need_Redraw : Boolean := True;
+      Last_Title : Terminal.Core.Title_Text;
    begin
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
       if Init_Status /= GLFW_Vulkan.Ok then
@@ -182,6 +220,7 @@ package body Terminal.App.Main_Loop is
                      Dirty := True;
                   end if;
                end loop;
+               Apply_Title (W, Terminal.Core.Title (T), Last_Title);
 
                while Terminal.Core.Pending_Response_Length (T) > 0 loop
                   Chunk := (others => <>);

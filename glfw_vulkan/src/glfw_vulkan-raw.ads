@@ -60,6 +60,11 @@ package GLFW_Vulkan.Raw is
       Value  : Interfaces.C.int)
      with Import, Convention => C, External_Name => "glfwSetWindowShouldClose";
 
+   procedure Set_Window_Title
+     (Window : GLFW_Window_Handle;
+      Title  : Interfaces.C.Strings.chars_ptr)
+     with Import, Convention => C, External_Name => "glfwSetWindowTitle";
+
    procedure Get_Framebuffer_Size
      (Window : GLFW_Window_Handle;
       Width  : out Interfaces.C.int;

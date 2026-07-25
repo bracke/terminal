@@ -95,9 +95,11 @@ package body Terminal.Core is
       T.Top_Margin := 1;
       T.Bottom_Margin := T.Rows;
       T.Current_Style := (others => <>);
+      T.Window_Title := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Count := 0;
+      T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
@@ -176,12 +178,14 @@ package body Terminal.Core is
       T.Current_Style := (others => <>);
       T.Current_Modes := (others => <>);
       T.Diag := (others => 0);
+      T.Window_Title := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Private := ASCII.NUL;
       T.CSI_Params := (others => 0);
       T.CSI_Set := (others => False);
       T.CSI_Count := 0;
+      T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
@@ -198,6 +202,69 @@ package body Terminal.Core is
       Reset_Terminal (T);
       Status := Ok;
    end Initialize;
+
+   procedure Append_OSC_Byte
+     (T          : in out Terminal;
+      Ch         : Standard.Character;
+      Overflowed : in out Boolean)
+   is
+   begin
+      if T.OSC_Count >= Parser.Max_OSC_Length then
+         T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+         Overflowed := True;
+         T.State := OSC_Overflow;
+      else
+         T.OSC_Count := T.OSC_Count + 1;
+         T.OSC_Data (T.OSC_Count) := Ch;
+      end if;
+   end Append_OSC_Byte;
+
+   procedure Finish_OSC (T : in out Terminal) is
+      Command : Natural := 0;
+      Payload_First : Natural := 0;
+      Title_Length : Natural;
+   begin
+      if T.OSC_Count < 3 then
+         T.State := Ground;
+         return;
+      end if;
+
+      for I in 1 .. T.OSC_Count loop
+         if T.OSC_Data (I) = ';' then
+            Payload_First := I + 1;
+            exit;
+         elsif T.OSC_Data (I) in '0' .. '9' then
+            Command :=
+              Natural'Min
+                (Command * 10
+                 + Standard.Character'Pos (T.OSC_Data (I))
+                 - Standard.Character'Pos ('0'),
+                 Natural'Last / 2);
+         else
+            T.State := Ground;
+            return;
+         end if;
+      end loop;
+
+      if Payload_First = 0 then
+         T.State := Ground;
+         return;
+      end if;
+
+      if Command in 0 .. 2 then
+         Title_Length :=
+           Natural'Min
+             (T.OSC_Count - Payload_First + 1,
+              Max_Title_Length);
+         T.Window_Title := (others => <>);
+         T.Window_Title.Length := Title_Length;
+         for I in 1 .. Title_Length loop
+            T.Window_Title.Text (I) := T.OSC_Data (Payload_First + I - 1);
+         end loop;
+      end if;
+
+      T.State := Ground;
+   end Finish_OSC;
 
    function Scrollback_Index
      (T   : Terminal;
@@ -1094,7 +1161,7 @@ package body Terminal.Core is
                T.State := OSC_Overflow_Escape;
                goto Continue;
             elsif T.State = OSC and then Natural (B) = 7 then
-               T.State := Ground;
+               Finish_OSC (T);
                goto Continue;
             elsif T.State = OSC_Overflow and then Natural (B) = 7 then
                T.State := Ground;
@@ -1190,23 +1257,19 @@ package body Terminal.Core is
                   T.State := Ground;
                end if;
             when OSC =>
-               if T.OSC_Count >= Parser.Max_OSC_Length then
-                  T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
-                  Overflowed := True;
-                  T.State := OSC_Overflow;
-               else
-                  T.OSC_Count := T.OSC_Count + 1;
-               end if;
+               Append_OSC_Byte (T, Ch, Overflowed);
             when OSC_Escape =>
                if Ch = '\' then
-                  T.State := Ground;
-               elsif T.OSC_Count >= Parser.Max_OSC_Length then
-                  T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
-                  Overflowed := True;
-                  T.State := OSC_Overflow;
+                  Finish_OSC (T);
                else
-                  T.OSC_Count := T.OSC_Count + 1;
-                  T.State := OSC;
+                  Append_OSC_Byte (T, ASCII.ESC, Overflowed);
+                  if T.State = OSC_Overflow then
+                     goto Continue;
+                  end if;
+                  Append_OSC_Byte (T, Ch, Overflowed);
+                  if T.State /= OSC_Overflow then
+                     T.State := OSC;
+                  end if;
                end if;
             when OSC_Overflow =>
                null;
@@ -1343,6 +1406,11 @@ package body Terminal.Core is
    begin
       return T.Diag;
    end Diagnostics;
+
+   function Title (T : Terminal) return Title_Text is
+   begin
+      return T.Window_Title;
+   end Title;
 
    function Scrollback_Row_Count (T : Terminal) return Natural is
    begin

@@ -26,6 +26,10 @@ package GLFW_Vulkan.Windows is
      (W     : in out Window;
       Close : Boolean);
 
+   procedure Set_Title
+     (W     : Window;
+      Title : String);
+
    procedure Framebuffer_Size
      (W      : Window;
       Width  : out Natural;
