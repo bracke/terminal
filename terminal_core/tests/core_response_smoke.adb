@@ -150,14 +150,16 @@ begin
      (T,
       To_Bytes
         (ASCII.ESC & "[?2004h"
+         & ASCII.ESC & "[?2026h"
          & ASCII.ESC & "[?2004$p"
+         & ASCII.ESC & "[?2026$p"
          & ASCII.ESC & "[?1000$p"
          & ASCII.ESC & "[?9999$p"
          & ASCII.ESC & "[4$p"),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "DECRQM feed failed");
    Assert
-     (Terminal.Core.Pending_Response_Length (T) = 40,
+     (Terminal.Core.Pending_Response_Length (T) = 51,
       "DECRQM response length");
 
    declare
@@ -170,6 +172,7 @@ begin
          Last,
          To_Bytes
            (ASCII.ESC & "[?2004;1$y"
+            & ASCII.ESC & "[?2026;1$y"
             & ASCII.ESC & "[?1000;2$y"
             & ASCII.ESC & "[?9999;0$y"
             & ASCII.ESC & "[4;2$y"),

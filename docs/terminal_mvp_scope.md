@@ -17,6 +17,8 @@
   SM/RM insert mode, DECSTBM margins, and DECSTR soft reset (`CSI ! p`).
 - DECSCUSR cursor-shape requests (`CSI Ps SP q`) select block, underline, or
   bar cursor shapes in the render snapshot.
+- Xterm synchronized-update private mode (`DECSET`/`DECRST ?2026`) is tracked
+  in mode state and queryable, but does not yet change render scheduling.
 - DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), DEC private
   cursor-position report (`CSI ? 6 n`), primary DA (`CSI c`), and secondary DA
   (`CSI > c`) responses.

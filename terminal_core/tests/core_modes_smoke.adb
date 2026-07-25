@@ -45,6 +45,20 @@ begin
    Assert (Terminal.Core.Modes (T).Bracketed_Paste, "bracketed paste");
 
    Feed_Text
+     (ASCII.ESC & "[?2026h",
+      "synchronized update mode set feed failed");
+   Assert
+     (Terminal.Core.Modes (T).Synchronized_Update,
+      "synchronized update mode");
+
+   Feed_Text
+     (ASCII.ESC & "[?2026l",
+      "synchronized update mode reset feed failed");
+   Assert
+     (not Terminal.Core.Modes (T).Synchronized_Update,
+      "synchronized update mode reset");
+
+   Feed_Text
      (ASCII.ESC & "[?1000h",
       "mouse mode set feed failed");
    declare
@@ -77,6 +91,7 @@ begin
       Assert (M.Mouse_Any_Event, "mouse any-event reporting");
       Assert (M.Focus_Reporting, "focus reporting");
       Assert (M.Mouse_SGR, "mouse SGR reporting");
+      Assert (not M.Synchronized_Update, "synchronized update still off");
    end;
 
    Feed_Text
@@ -90,6 +105,7 @@ begin
       Assert (not M.Mouse_Any_Event, "mouse any-event reporting reset");
       Assert (not M.Focus_Reporting, "focus reporting reset");
       Assert (not M.Mouse_SGR, "mouse SGR reporting reset");
+      Assert (not M.Synchronized_Update, "synchronized update mode reset");
    end;
 
    Terminal.Core.Feed
@@ -171,7 +187,7 @@ begin
      ("z"
       & ASCII.ESC & "[31;1m"
       & ASCII.ESC & "[2;4r"
-      & ASCII.ESC & "[?1;6;7;25;2004h"
+      & ASCII.ESC & "[?1;6;7;25;2004;2026h"
       & ASCII.ESC & "[4h"
       & ASCII.ESC & "[4;5H"
       & ASCII.ESC & "[!p"
@@ -205,6 +221,7 @@ begin
       Assert (not M.Mouse_Any_Event, "DECSTR should reset mouse any-event");
       Assert (not M.Mouse_SGR, "DECSTR should reset mouse SGR");
       Assert (not M.Focus_Reporting, "DECSTR should reset focus reporting");
+      Assert (not M.Synchronized_Update, "DECSTR should reset synchronized update");
       Assert (not M.Origin_Mode, "DECSTR should reset origin mode");
       Assert (M.Autowrap, "DECSTR should enable autowrap");
       Assert (M.Cursor_Visible, "DECSTR should show cursor");

@@ -929,6 +929,8 @@ package body Terminal.Core is
                return (if T.Current_Modes.Mouse_SGR then 1 else 2);
             when 2004 =>
                return (if T.Current_Modes.Bracketed_Paste then 1 else 2);
+            when 2026 =>
+               return (if T.Current_Modes.Synchronized_Update then 1 else 2);
             when others =>
                return 0;
          end case;
@@ -1119,6 +1121,8 @@ package body Terminal.Core is
             end if;
          when 2004 =>
             T.Current_Modes.Bracketed_Paste := Enable;
+         when 2026 =>
+            T.Current_Modes.Synchronized_Update := Enable;
          when others =>
             T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end case;
@@ -1240,6 +1244,7 @@ package body Terminal.Core is
          Mouse_Any_Event    => False,
          Mouse_SGR          => False,
          Focus_Reporting    => False,
+         Synchronized_Update => False,
          Alternate_Screen   => Keep_Alternate,
          Origin_Mode        => False,
          Autowrap           => True,
