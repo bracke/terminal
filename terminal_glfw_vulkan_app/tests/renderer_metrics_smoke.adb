@@ -193,6 +193,68 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "bold indexed core initialize failed");
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[1;31mA"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "bold indexed feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "bold indexed render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Glyph_Count = 2, "bold indexed glyph should be drawn twice");
+      Assert_Close (Frame.Glyphs (1).Color.R, 1.0, "bold red bright red");
+      Assert_Close (Frame.Glyphs (1).Color.G, 0.36, "bold red bright green");
+      Assert_Close (Frame.Glyphs (1).Color.B, 0.32, "bold red bright blue");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "inverse bold indexed core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "[1;31;44;7mA"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "inverse bold indexed feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "inverse bold indexed render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Glyph_Count = 2, "inverse bold glyph should be drawn twice");
+      Assert_Close
+        (Frame.Glyphs (1).Color.R,
+         0.25,
+         "inverse bold should use original background red");
+      Assert_Close
+        (Frame.Glyphs (1).Color.G,
+         0.45,
+         "inverse bold should use original background green");
+      Assert_Close
+        (Frame.Glyphs (1).Color.B,
+         0.86,
+         "inverse bold should use original background blue");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "faint core initialize failed");
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[2mA"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "faint feed failed");

@@ -156,7 +156,13 @@ package body Terminal.App.Renderer is
    function Foreground (Cell : Terminal.Core.Cell) return RM.Pixel_Color is
       Color : RM.Pixel_Color;
    begin
-      if Cell.Style.Inverse then
+      if (not Cell.Style.Inverse)
+        and then Cell.Style.Bold
+        and then Cell.Style.Foreground.Kind = Terminal.Core.Indexed
+        and then Cell.Style.Foreground.Index <= 7
+      then
+         Color := XTerm_Indexed_Color (Cell.Style.Foreground.Index + 8);
+      elsif Cell.Style.Inverse then
          Color := Resolve_Color (Cell.Style.Background, Default_BG);
       else
          Color := Resolve_Color (Cell.Style.Foreground, Default_FG);

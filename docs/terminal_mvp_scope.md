@@ -64,6 +64,8 @@ Underline color selectors `58;5;n`, `58;2;r;g;b`, and reset `59` are recognized
 and ignored because underline color is not stored in the v1 style model.
 The GLFW app renders blink text with app-owned half-second phases; the
 platform-independent core only stores the blink style state.
+The GLFW app renders bold base 8-color foregrounds with the corresponding
+bright foreground color and also overdraws the glyph by one pixel for weight.
 Colon-separated SGR forms such as `38:5:n` and `48:2:r:g:b` are accepted as
 aliases for the semicolon forms.
 
