@@ -400,25 +400,9 @@ package body Terminal.App.Text_Shaper is
             Run.Fallback_Glyphs := True;
             Status := RM.Needs_Shaping_Backend;
          else
-            declare
-               Advance : constant Float :=
-                 Run.Cell_Width / Float (Run.Codepoint_Count);
-            begin
-               for I in 1 .. Run.Codepoint_Count loop
-                  Run.Shaped_Glyphs (I) :=
-                    (Glyph_ID     => Run.Codepoints (I),
-                     Font_Index   => 0,
-                     Codepoint    => Run.Codepoints (I),
-                     Source_Index => I,
-                     X_Offset     => 0.0,
-                     Y_Offset     => 0.0,
-                     X_Advance    => Advance,
-                     Y_Advance    => 0.0);
-               end loop;
-            end;
             Run.Shape_Status := RM.Shape_Ok;
-            Run.Fallback_Glyphs := False;
-            Run.Shaped_Glyph_Count := Run.Codepoint_Count;
+            Run.Fallback_Glyphs := True;
+            Run.Shaped_Glyph_Count := 0;
             Status := RM.Shape_Ok;
          end if;
       end if;

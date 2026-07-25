@@ -97,6 +97,7 @@ procedure Text_Shaper_Smoke is
    Emoji     : RM.Text_Run_Command := Run (16#1F642#);
    Status    : TS.Shape_Status;
    Backend   : TS.Backend_Status;
+   Backendless : RM.Text_Run_Command := Run (Character'Pos ('Z'));
 
    procedure Assert_Complex_Script
      (Text     : in out RM.Text_Run_Command;
@@ -276,4 +277,19 @@ begin
    TS.Prepare (Emoji, Status);
    Assert (Status = RM.Shape_Ok, "emoji scalar status");
    Assert (Emoji.Script = RM.Script_Emoji, "emoji scalar script");
+
+   TS.Configure_Font ("", 16, Backend);
+   Assert
+     (Backend = TS.Backend_Unavailable,
+      "empty shaping font path should disable backend");
+   TS.Prepare (Backendless, Status);
+   Assert
+     (Status = RM.Shape_Ok,
+      "simple text should still be renderable without shaping backend");
+   Assert
+     (Backendless.Fallback_Glyphs,
+      "backendless simple text should use renderer codepoint fallback");
+   Assert
+     (Backendless.Shaped_Glyph_Count = 0,
+      "backendless simple text should not fabricate glyph indexes");
 end Text_Shaper_Smoke;
