@@ -692,6 +692,51 @@ begin
          "ligature fallback diagnostic count");
    end;
 
+   Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "mixed script text run core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#D7#,
+       3 => 16#90#,
+       4 => Byte (Character'Pos ('b'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "mixed script text run feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "mixed script text run render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Text_Run_Count = 3,
+         "mixed script row should split shaping runs");
+      Assert
+        (Frame.Text_Runs (1).Script = Terminal.App.Render_Model.Script_Latin,
+         "mixed script first run script");
+      Assert
+        (Frame.Text_Runs (2).Script = Terminal.App.Render_Model.Script_Hebrew,
+         "mixed script second run script");
+      Assert
+        (Frame.Text_Runs (2).Direction =
+           Terminal.App.Render_Model.Direction_Right_To_Left,
+         "mixed script second run direction");
+      Assert
+        (Frame.Text_Runs (3).Script = Terminal.App.Render_Model.Script_Latin,
+         "mixed script third run script");
+   end;
+
    Terminal.App.Renderer.Finalize (R);
    Terminal.App.Renderer.Finalize (R);
 

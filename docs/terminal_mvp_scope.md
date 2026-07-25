@@ -115,15 +115,16 @@ commands that preserve the full stored cluster for each drawable cell, and the
 backend and stores run kind, shape status, direction, and script directly on
 each text-run command. Compatible adjacent cells in a row are coalesced up to
 the bounded text-run capacity, so ordinary text is available as a run rather
-than only as one cell at a time. The adapter emits bounded shaped-glyph output
-for simple glyph/text runs using the `textrender` codepoint key as `Glyph_ID`,
-but ligature candidates and complex runs keep an empty shaped-glyph output until
-a backend is available. The submit/presenter/device layers carry those runs
-without parsing terminal data. Full BiDi reordering, OpenType shaping, emoji
-ZWJ glyph composition, complex-script cluster shaping, ligature substitution,
-and real font glyph IDs still require a shaping backend behind those text-run
-commands. Renderer, submit, presenter, and device diagnostics expose aggregate
-shaped-glyph counts for that path.
+than only as one cell at a time. Coalescing splits at style, cluster width,
+cursor, inferred script, and inferred direction boundaries. The adapter emits
+bounded shaped-glyph output for simple glyph/text runs using the `textrender`
+codepoint key as `Glyph_ID`, but ligature candidates and complex runs keep an
+empty shaped-glyph output until a backend is available. The submit/presenter/device
+layers carry those runs without parsing terminal data. Full BiDi reordering,
+OpenType shaping, emoji ZWJ glyph composition, complex-script cluster shaping,
+ligature substitution, and real font glyph IDs still require a shaping backend
+behind those text-run commands. Renderer, submit, presenter, and device
+diagnostics expose aggregate shaped-glyph counts for that path.
 
 ## Cursor
 

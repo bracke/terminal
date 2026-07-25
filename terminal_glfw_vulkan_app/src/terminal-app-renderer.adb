@@ -21,6 +21,8 @@ package body Terminal.App.Renderer is
    use type RM.Glyph_Array_Access;
    use type RM.Rectangle_Array_Access;
    use type RM.Text_Run_Array_Access;
+   use type RM.Text_Run_Direction;
+   use type RM.Text_Run_Script;
    use type RM.Text_Run_Shape_Status;
    use type Textrender.Status_Code;
    use type VS.Build_Status;
@@ -404,6 +406,42 @@ package body Terminal.App.Renderer is
       Col      : Positive) return Boolean
    is
       Cell : constant Terminal.Core.Cell := Terminal.Core.Cell_At (Snapshot, Row, Col);
+      Base_Run : RM.Text_Run_Command :=
+        (X                  => 0.0,
+         Y                  => 0.0,
+         Cell_Width         => Float (Cell_Column_Span (Base)),
+         Cell_Height        => 1.0,
+         Cell_Span          => Cell_Column_Span (Base),
+         Color              => Default_FG,
+         Bold               => Base.Style.Bold,
+         Italic             => Base.Style.Italic,
+         Codepoints         => (1 => Natural (Base.Text.Code_Point), others => 0),
+         Codepoint_Count    => 1,
+         Run_Kind           => RM.Invalid_Run,
+         Shape_Status       => RM.Invalid_Run,
+         Direction          => RM.Direction_Neutral,
+         Script             => RM.Script_Common,
+         Shaped_Glyphs      => (others => <>),
+         Shaped_Glyph_Count => 0,
+         Fallback_Glyphs    => True);
+      Candidate_Run : RM.Text_Run_Command :=
+        (X                  => 0.0,
+         Y                  => 0.0,
+         Cell_Width         => Float (Cell_Column_Span (Cell)),
+         Cell_Height        => 1.0,
+         Cell_Span          => Cell_Column_Span (Cell),
+         Color              => Default_FG,
+         Bold               => Cell.Style.Bold,
+         Italic             => Cell.Style.Italic,
+         Codepoints         => (1 => Natural (Cell.Text.Code_Point), others => 0),
+         Codepoint_Count    => 1,
+         Run_Kind           => RM.Invalid_Run,
+         Shape_Status       => RM.Invalid_Run,
+         Direction          => RM.Direction_Neutral,
+         Script             => RM.Script_Common,
+         Shaped_Glyphs      => (others => <>),
+         Shaped_Glyph_Count => 0,
+         Fallback_Glyphs    => True);
    begin
       return Is_Drawable (Cell)
         and then not Cell.Style.Conceal
@@ -413,6 +451,10 @@ package body Terminal.App.Renderer is
         and then Base.Text.Width = Terminal.Core.Width_One
         and then Base.Text.Attachment_Count = 0
         and then Base.Style = Cell.Style
+        and then Terminal.App.Text_Shaper.Direction_Of (Base_Run) =
+          Terminal.App.Text_Shaper.Direction_Of (Candidate_Run)
+        and then Terminal.App.Text_Shaper.Script_Of (Base_Run) =
+          Terminal.App.Text_Shaper.Script_Of (Candidate_Run)
         and then not Is_Block_Cursor (Snapshot, Row, Col);
    end Can_Coalesce_With;
 
