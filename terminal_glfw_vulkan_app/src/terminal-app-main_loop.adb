@@ -17,6 +17,7 @@ with Terminal.App.Render_Policy;
 with Terminal.App.Resize;
 with Terminal.App.Scrollback_View;
 with Terminal.App.Selection;
+with Terminal.App.Text_Blink;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
 with Terminal.PTY.POSIX;
@@ -663,6 +664,8 @@ package body Terminal.App.Main_Loop is
                      Can_Present : Boolean := True;
                   begin
                      Terminal.App.Selection.Apply_To_Snapshot (Snap, Selection);
+                     Terminal.App.Text_Blink.Apply
+                       (Snap, Current_Blink_Tick);
                      Terminal.App.Cursor_Blink.Apply
                        (Snap, Current_Blink_Tick);
                      if not

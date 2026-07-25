@@ -19,6 +19,7 @@ project App_Tests is
       "scrollback_view_smoke.adb",
       "render_policy_smoke.adb",
       "cursor_blink_smoke.adb",
+      "text_blink_smoke.adb",
       "queue_smoke.adb",
       "resize_smoke.adb");
 
