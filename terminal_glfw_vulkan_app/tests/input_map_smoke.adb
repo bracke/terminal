@@ -213,6 +213,12 @@ begin
       (1 => 16#F0#, 2 => 16#9F#, 3 => 16#99#, 4 => 16#82#),
       "utf8 smile");
 
+   IM.Encode_Character ((Code_Point => Wide_Wide_Character'Val (16#D800#)), Chunk);
+   Assert (Chunk.Length = 0, "surrogate input should be dropped");
+
+   IM.Encode_Character ((Code_Point => Wide_Wide_Character'Val (16#110000#)), Chunk);
+   Assert (Chunk.Length = 0, "out-of-range Unicode input should be dropped");
+
    IM.Encode_Paste_Text ("abc", Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes ("abc"), "plain paste");
 

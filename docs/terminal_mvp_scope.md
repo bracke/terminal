@@ -159,3 +159,6 @@ Modified F1-F4 use `CSI 1 ; modifier P/Q/R/S`; modified F5-F12 use
 Mouse reporting is app-owned and encoded from GLFW mouse events using xterm
 legacy `CSI M` packets or SGR `CSI < ... M/m` packets according to the current
 core mode snapshot.
+GLFW character events are encoded as UTF-8 only when they are valid Unicode
+scalar values; surrogate code points and values above `U+10FFFF` are dropped at
+the app boundary.

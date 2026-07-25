@@ -142,7 +142,9 @@ package body Terminal.App.Input_Map is
 
    procedure Encode_UTF8 (CP : Natural; Chunk : in out Terminal.App.Queues.Byte_Chunk) is
    begin
-      if CP <= 16#7F# then
+      if CP in 16#D800# .. 16#DFFF# or else CP > 16#10FFFF# then
+         return;
+      elsif CP <= 16#7F# then
          Append (Chunk, Byte (CP));
       elsif CP <= 16#7FF# then
          Append (Chunk, Byte (16#C0# + CP / 64));
