@@ -346,4 +346,54 @@ begin
          "text after SS2 recovery should render");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 6, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "C1 ST initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#9C#,
+       3 => Byte (Character'Pos ('b'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 ST feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
+         "C1 ST should leave preceding text");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
+         "C1 ST should not render as a cell");
+      Assert
+        (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
+         "C1 ST should not count as malformed UTF-8");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "C1 ST UTF-8 recovery initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#C2#,
+       2 => 16#9C#,
+       3 => Byte (Character'Pos ('x'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 ST UTF-8 recovery feed failed");
+   Assert
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 1,
+      "C1 ST after UTF-8 lead should recover the incomplete sequence");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#FFFD#,
+         "C1 ST recovery should emit replacement first");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#78#,
+         "text after C1 ST recovery should render");
+      Terminal.Core.Release (S);
+   end;
 end Core_UTF8_Smoke;

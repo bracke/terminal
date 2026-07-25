@@ -1899,6 +1899,9 @@ package body Terminal.Core is
             then
                T.State := Ground;
                goto Continue;
+            elsif not In_String_Control (T.State) then
+               Recover_Incomplete_UTF8 (T);
+               goto Continue;
             end if;
          elsif not In_String_Control (T.State) then
             if Natural (B) = 16#9B# then
