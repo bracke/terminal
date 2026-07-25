@@ -6,6 +6,8 @@ procedure Core_Smoke is
    use AUnit.Assertions;
    use Terminal.Common.Bytes;
    use type Terminal.Common.Code_Point;
+   use type Terminal.Core.Cell_Array_Access;
+   use type Terminal.Core.Dirty_Row_Array_Access;
    use type Terminal.Core.Initialize_Status;
    use type Terminal.Core.Feed_Status;
 
@@ -35,6 +37,9 @@ begin
       Assert (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#, "row 1 col 1");
       Assert (Terminal.Core.Cell_At (S, 2, 1).Text.Code_Point = 16#64#, "row 2 col 1");
       Assert (S.Cursor.Row = 2 and then S.Cursor.Col = 4, "cursor after feed");
+      Terminal.Core.Release (S);
+      Assert (S.Cells = null, "released snapshot cells should be null");
+      Assert (S.Dirty = null, "released snapshot dirty rows should be null");
       Terminal.Core.Release (S);
    end;
 end Core_Smoke;

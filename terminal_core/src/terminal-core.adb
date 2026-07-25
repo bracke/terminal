@@ -1543,9 +1543,11 @@ package body Terminal.Core is
    begin
       if S.Cells /= null then
          Free_Cells (S.Cells);
+         S.Cells := null;
       end if;
       if S.Dirty /= null then
          Free_Dirty (S.Dirty);
+         S.Dirty := null;
       end if;
       S.Rows := 0;
       S.Cols := 0;
