@@ -31,5 +31,31 @@ begin
       Assert (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#FFFD#, "overlong replacement");
       Terminal.Core.Release (S);
    end;
-end Core_UTF8_Smoke;
 
+   Terminal.Core.Initialize (T, 1, 6, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "reinitialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#C2#, 2 => 16#1B#, 3 => Byte (Character'Pos ('[')),
+       4 => Byte (Character'Pos ('3')), 5 => Byte (Character'Pos ('G')),
+       6 => Byte (Character'Pos ('x'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "control recovery feed failed");
+   Assert
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 1,
+      "incomplete UTF-8 before ESC should be counted");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#FFFD#,
+         "incomplete UTF-8 before ESC should emit replacement");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#78#,
+         "ESC after incomplete UTF-8 should still move cursor");
+      Assert (S.Cursor.Col = 4, "cursor after recovered CSI");
+      Terminal.Core.Release (S);
+   end;
+end Core_UTF8_Smoke;

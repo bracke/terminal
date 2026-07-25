@@ -978,6 +978,9 @@ package body Terminal.Core is
                T.State := Ground;
                goto Continue;
             elsif T.State /= OSC and then T.State /= OSC_Overflow then
+               if T.State = Ground and then T.UTF8_Need > 0 then
+                  Emit_UTF8_Replacement (T);
+               end if;
                Execute_C0 (T, B);
                goto Continue;
             end if;
