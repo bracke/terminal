@@ -142,6 +142,8 @@ The app maps modified navigation keys with xterm-style modifier parameters:
 Shift is `2`, Alt is `3`, Control is `5`, and combinations add those offsets
 through `8`. Modified arrow/Home/End keys use `CSI 1 ; modifier final`;
 modified Insert/Delete/Page keys use `CSI number ; modifier ~`.
+Modified F1-F4 use `CSI 1 ; modifier P/Q/R/S`; modified F5-F12 use
+`CSI number ; modifier ~` with the normal xterm function-key numbers.
 Mouse reporting is app-owned and encoded from GLFW mouse events using xterm
 legacy `CSI M` packets or SGR `CSI < ... M/m` packets according to the current
 core mode snapshot.

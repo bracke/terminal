@@ -168,6 +168,21 @@ begin
    IM.Encode_Key (Key_Event (GI.F5), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[15~"), "f5");
 
+   IM.Encode_Key (Key_Event (GI.F1, Shift => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[1;2P"), "shift-f1");
+
+   IM.Encode_Key (Key_Event (GI.F4, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[1;5S"), "ctrl-f4");
+
+   IM.Encode_Key (Key_Event (GI.F6, Alt => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[17;3~"), "alt-f6");
+
+   IM.Encode_Key
+     (Key_Event (GI.F12, Shift => True, Control => True, Alt => True),
+      Modes,
+      Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[24;8~"), "shift-ctrl-alt-f12");
+
    IM.Encode_Key (Key_Event (GI.A, Action => GI.Release), Modes, Chunk);
    Assert (Chunk.Length = 0, "release should not encode");
 
