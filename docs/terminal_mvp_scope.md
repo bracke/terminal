@@ -6,7 +6,7 @@
 - UTF-8 decoding with replacement for malformed input.
 - C0: BEL, BS, HT, LF, CR, ESC.
 - ESC: reset, save/restore cursor, index, next line, reverse index, CSI, OSC,
-  and G-set charset-designation consume/ignore.
+  keypad mode toggles, and G-set charset-designation consume/ignore.
 - Saved cursor state includes row, column, and current SGR style.
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL,
   ICH, DCH, ECH, IL, DL, REP, SU, SD, SGR, DECSET/DECRST known modes,

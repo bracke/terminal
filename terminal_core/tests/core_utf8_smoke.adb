@@ -89,4 +89,37 @@ begin
       Assert (S.Cursor.Col = 4, "cursor after charset consume");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 8, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "keypad mode consume initialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#1B#, 3 => Byte (Character'Pos ('=')),
+       4 => Byte (Character'Pos ('b')),
+       5 => 16#1B#, 6 => Byte (Character'Pos ('>')),
+       7 => Byte (Character'Pos ('c'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "keypad mode consume feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
+         "keypad mode consume prefix");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
+         "application keypad mode should not leak");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#63#,
+         "numeric keypad mode should not leak");
+      Assert
+        (D.Ignored_Escape = 0,
+         "keypad mode toggles should not count as ignored escapes");
+      Terminal.Core.Release (S);
+   end;
 end Core_UTF8_Smoke;
