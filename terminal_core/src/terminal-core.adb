@@ -1331,6 +1331,16 @@ package body Terminal.Core is
       N : Natural;
       R : Natural;
       C : Natural;
+
+      function Min_Row return Positive is
+      begin
+         return (if T.Current_Modes.Origin_Mode then T.Top_Margin else 1);
+      end Min_Row;
+
+      function Max_Row return Positive is
+      begin
+         return (if T.Current_Modes.Origin_Mode then T.Bottom_Margin else T.Rows);
+      end Max_Row;
    begin
       if T.CSI_Intermediate_Count > 0 then
          if T.CSI_Intermediate_Count = 1 then
@@ -1403,7 +1413,9 @@ package body Terminal.Core is
                Old_Row : constant Positive := T.Cursor_Row;
             begin
                N := Param (T, 1, 1);
-               T.Cursor_Row := Positive'Max (1, T.Cursor_Row - Natural'Max (N, 1));
+               T.Cursor_Row :=
+                 Positive'Max
+                   (Min_Row, T.Cursor_Row - Natural'Max (N, 1));
                Mark_Cursor_Move (T, Old_Row);
             end;
          when 'B' =>
@@ -1411,7 +1423,9 @@ package body Terminal.Core is
                Old_Row : constant Positive := T.Cursor_Row;
             begin
                N := Param (T, 1, 1);
-               T.Cursor_Row := Positive'Min (T.Rows, T.Cursor_Row + Natural'Max (N, 1));
+               T.Cursor_Row :=
+                 Positive'Min
+                   (Max_Row, T.Cursor_Row + Natural'Max (N, 1));
                Mark_Cursor_Move (T, Old_Row);
             end;
          when 'C' =>
@@ -1427,7 +1441,9 @@ package body Terminal.Core is
                Old_Row : constant Positive := T.Cursor_Row;
             begin
                N := Param (T, 1, 1);
-               T.Cursor_Row := Positive'Min (T.Rows, T.Cursor_Row + Natural'Max (N, 1));
+               T.Cursor_Row :=
+                 Positive'Min
+                   (Max_Row, T.Cursor_Row + Natural'Max (N, 1));
                T.Cursor_Col := 1;
                Mark_Cursor_Move (T, Old_Row);
             end;
@@ -1436,7 +1452,9 @@ package body Terminal.Core is
                Old_Row : constant Positive := T.Cursor_Row;
             begin
                N := Param (T, 1, 1);
-               T.Cursor_Row := Positive'Max (1, T.Cursor_Row - Natural'Max (N, 1));
+               T.Cursor_Row :=
+                 Positive'Max
+                   (Min_Row, T.Cursor_Row - Natural'Max (N, 1));
                T.Cursor_Col := 1;
                Mark_Cursor_Move (T, Old_Row);
             end;
@@ -1541,19 +1559,25 @@ package body Terminal.Core is
          when 'c' =>
             Queue_Device_Attributes (T);
          when 'd' =>
-            declare
-               Old_Row : constant Positive := T.Cursor_Row;
-            begin
-               R := Param (T, 1, 1);
-               T.Cursor_Row := Positive'Min (T.Rows, Positive'Max (1, R));
-               Mark_Cursor_Move (T, Old_Row);
-            end;
+            R := Param (T, 1, 1);
+            if T.Current_Modes.Origin_Mode then
+               Move_Cursor (T, R, T.Cursor_Col);
+            else
+               declare
+                  Old_Row : constant Positive := T.Cursor_Row;
+               begin
+                  T.Cursor_Row := Positive'Min (T.Rows, Positive'Max (1, R));
+                  Mark_Cursor_Move (T, Old_Row);
+               end;
+            end if;
          when 'e' =>
             declare
                Old_Row : constant Positive := T.Cursor_Row;
             begin
                N := Param (T, 1, 1);
-               T.Cursor_Row := Positive'Min (T.Rows, T.Cursor_Row + Natural'Max (N, 1));
+               T.Cursor_Row :=
+                 Positive'Min
+                   (Max_Row, T.Cursor_Row + Natural'Max (N, 1));
                Mark_Cursor_Move (T, Old_Row);
             end;
          when 'm' =>

@@ -163,6 +163,38 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Feed_Text (ASCII.ESC & "[9B", "origin CUD feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert (S.Cursor.Row = 4, "origin CUD should clamp to bottom margin");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[9A", "origin CUU feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert (S.Cursor.Row = 2, "origin CUU should clamp to top margin");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[9e", "origin VPR feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert (S.Cursor.Row = 4, "origin VPR should clamp to bottom margin");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[1d", "origin VPA feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert (S.Cursor.Row = 2, "origin VPA should be relative to top margin");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Feed
      (T,
       (1 => 16#1B#, 2 => Byte (Character'Pos ('[')),
