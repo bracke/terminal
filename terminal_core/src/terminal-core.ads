@@ -65,6 +65,7 @@ package Terminal.Core is
       Col     : Positive := 1;
       Visible : Boolean := True;
       Shape   : Cursor_Shape := Cursor_Block;
+      Blinking : Boolean := False;
    end record;
 
    type Mode_Snapshot is record
@@ -80,6 +81,7 @@ package Terminal.Core is
       Origin_Mode        : Boolean := False;
       Autowrap           : Boolean := True;
       Cursor_Visible     : Boolean := True;
+      Cursor_Blinking    : Boolean := False;
       Insert_Mode        : Boolean := False;
    end record;
 
@@ -209,6 +211,7 @@ private
       Cursor_Row    : Positive := 1;
       Cursor_Col    : Positive := 1;
       Current_Cursor_Shape : Cursor_Shape := Cursor_Block;
+      Current_Cursor_Blinking : Boolean := False;
       Saved_Row     : Positive := 1;
       Saved_Col     : Positive := 1;
       Saved_Style   : Style;

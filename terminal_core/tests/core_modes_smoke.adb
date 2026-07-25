@@ -225,7 +225,9 @@ begin
       Assert (not M.Origin_Mode, "DECSTR should reset origin mode");
       Assert (M.Autowrap, "DECSTR should enable autowrap");
       Assert (M.Cursor_Visible, "DECSTR should show cursor");
+      Assert (not M.Cursor_Blinking, "DECSTR should reset cursor blinking");
       Assert (not M.Insert_Mode, "DECSTR should reset insert mode");
+      Assert (not S.Cursor.Blinking, "DECSTR should reset snapshot cursor blinking");
       Terminal.Core.Release (S);
    end;
 
@@ -238,6 +240,29 @@ begin
       Assert
         (S.Cursor.Shape = Terminal.Core.Cursor_Block,
          "DECSCUSR default should select block cursor");
+      Assert (S.Cursor.Blinking, "DECSCUSR default should select blinking cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[2 q", "DECSCUSR steady block feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Block,
+         "DECSCUSR 2 should select block cursor");
+      Assert (not S.Cursor.Blinking, "DECSCUSR 2 should select steady cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[3 q", "DECSCUSR blinking underline feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Underline,
+         "DECSCUSR 3 should select underline cursor");
+      Assert (S.Cursor.Blinking, "DECSCUSR 3 should select blinking cursor");
       Terminal.Core.Release (S);
    end;
 
@@ -248,6 +273,18 @@ begin
       Assert
         (S.Cursor.Shape = Terminal.Core.Cursor_Underline,
          "DECSCUSR 4 should select underline cursor");
+      Assert (not S.Cursor.Blinking, "DECSCUSR 4 should select steady cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[5 q", "DECSCUSR blinking bar feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Bar,
+         "DECSCUSR 5 should select bar cursor");
+      Assert (S.Cursor.Blinking, "DECSCUSR 5 should select blinking cursor");
       Terminal.Core.Release (S);
    end;
 
@@ -258,6 +295,27 @@ begin
       Assert
         (S.Cursor.Shape = Terminal.Core.Cursor_Bar,
          "DECSCUSR 6 should select bar cursor");
+      Assert (not S.Cursor.Blinking, "DECSCUSR 6 should select steady cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[?12h", "cursor blink mode set feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert (M.Cursor_Blinking, "DECSET ?12 should enable cursor blinking");
+      Assert (S.Cursor.Blinking, "DECSET ?12 should update cursor snapshot");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[?12l", "cursor blink mode reset feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert (not M.Cursor_Blinking, "DECRST ?12 should disable cursor blinking");
+      Assert (not S.Cursor.Blinking, "DECRST ?12 should update cursor snapshot");
       Terminal.Core.Release (S);
    end;
 
@@ -268,6 +326,7 @@ begin
       Assert
         (S.Cursor.Shape = Terminal.Core.Cursor_Block,
          "DECSTR should reset cursor shape");
+      Assert (not S.Cursor.Blinking, "DECSTR should reset cursor blinking");
       Terminal.Core.Release (S);
    end;
 
@@ -278,6 +337,7 @@ begin
       Assert
         (S.Cursor.Shape = Terminal.Core.Cursor_Block,
          "RIS should reset cursor shape");
+      Assert (not S.Cursor.Blinking, "RIS should reset cursor blinking");
       Terminal.Core.Release (S);
    end;
 
@@ -290,6 +350,7 @@ begin
       Assert
         (S.Cursor.Shape = Terminal.Core.Cursor_Block,
          "Initialize should reset cursor shape");
+      Assert (not S.Cursor.Blinking, "Initialize should reset cursor blinking");
       Terminal.Core.Release (S);
    end;
 

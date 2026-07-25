@@ -189,6 +189,7 @@ package body Terminal.Core is
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
       T.Current_Cursor_Shape := Cursor_Block;
+      T.Current_Cursor_Blinking := False;
       T.Saved_Row := 1;
       T.Saved_Col := 1;
       T.Pending_Wrap := False;
@@ -291,6 +292,7 @@ package body Terminal.Core is
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
       T.Current_Cursor_Shape := Cursor_Block;
+      T.Current_Cursor_Blinking := False;
       T.Saved_Row := 1;
       T.Saved_Col := 1;
       T.Pending_Wrap := False;
@@ -932,6 +934,8 @@ package body Terminal.Core is
                return (if T.Current_Modes.Origin_Mode then 1 else 2);
             when 7 =>
                return (if T.Current_Modes.Autowrap then 1 else 2);
+            when 12 =>
+               return (if T.Current_Modes.Cursor_Blinking then 1 else 2);
             when 25 =>
                return (if T.Current_Modes.Cursor_Visible then 1 else 2);
             when 47 | 1047 | 1049 =>
@@ -1075,6 +1079,10 @@ package body Terminal.Core is
             Move_Cursor (T, 1, 1);
          when 7 =>
             T.Current_Modes.Autowrap := Enable;
+         when 12 =>
+            T.Current_Modes.Cursor_Blinking := Enable;
+            T.Current_Cursor_Blinking := Enable;
+            Mark_Dirty (T, T.Cursor_Row);
          when 25 =>
             if T.Current_Modes.Cursor_Visible /= Enable then
                Mark_Dirty (T, T.Cursor_Row);
@@ -1268,10 +1276,12 @@ package body Terminal.Core is
          Origin_Mode        => False,
          Autowrap           => True,
          Cursor_Visible     => True,
+         Cursor_Blinking    => False,
          Insert_Mode        => False);
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
       T.Current_Cursor_Shape := Cursor_Block;
+      T.Current_Cursor_Blinking := False;
       T.Saved_Row := 1;
       T.Saved_Col := 1;
       T.Pending_Wrap := False;
@@ -1299,14 +1309,35 @@ package body Terminal.Core is
               and then Final = 'q'
             then
                case Param (T, 1, 1) is
-                  when 0 | 1 | 2 =>
+                  when 0 | 1 =>
                      T.Current_Cursor_Shape := Cursor_Block;
+                     T.Current_Cursor_Blinking := True;
+                     T.Current_Modes.Cursor_Blinking := True;
                      Mark_Dirty (T, T.Cursor_Row);
-                  when 3 | 4 =>
+                  when 2 =>
+                     T.Current_Cursor_Shape := Cursor_Block;
+                     T.Current_Cursor_Blinking := False;
+                     T.Current_Modes.Cursor_Blinking := False;
+                     Mark_Dirty (T, T.Cursor_Row);
+                  when 3 =>
                      T.Current_Cursor_Shape := Cursor_Underline;
+                     T.Current_Cursor_Blinking := True;
+                     T.Current_Modes.Cursor_Blinking := True;
                      Mark_Dirty (T, T.Cursor_Row);
-                  when 5 | 6 =>
+                  when 4 =>
+                     T.Current_Cursor_Shape := Cursor_Underline;
+                     T.Current_Cursor_Blinking := False;
+                     T.Current_Modes.Cursor_Blinking := False;
+                     Mark_Dirty (T, T.Cursor_Row);
+                  when 5 =>
                      T.Current_Cursor_Shape := Cursor_Bar;
+                     T.Current_Cursor_Blinking := True;
+                     T.Current_Modes.Cursor_Blinking := True;
+                     Mark_Dirty (T, T.Cursor_Row);
+                  when 6 =>
+                     T.Current_Cursor_Shape := Cursor_Bar;
+                     T.Current_Cursor_Blinking := False;
+                     T.Current_Modes.Cursor_Blinking := False;
                      Mark_Dirty (T, T.Cursor_Row);
                   when others =>
                      T.Diag.Unsupported_Sequence :=
@@ -1988,7 +2019,8 @@ package body Terminal.Core is
         (Row     => T.Cursor_Row,
          Col     => T.Cursor_Col,
          Visible => T.Current_Modes.Cursor_Visible,
-         Shape   => T.Current_Cursor_Shape);
+         Shape   => T.Current_Cursor_Shape,
+         Blinking => T.Current_Cursor_Blinking);
       return S;
    end Snapshot;
 
