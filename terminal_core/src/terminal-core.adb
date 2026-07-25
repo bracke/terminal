@@ -861,45 +861,84 @@ package body Terminal.Core is
          elsif Is_Wide (CP) then Width_Two
          else Width_One);
 
-      procedure Attach_To_Previous_Cell is
+      function Previous_Cell_Index return Natural is
          Row : constant Positive := T.Cursor_Row;
-         Col : Positive;
+         Col : Natural;
       begin
          if T.Pending_Wrap then
             Col := T.Cursor_Col;
          elsif T.Cursor_Col > 1 then
             Col := T.Cursor_Col - 1;
          else
-            return;
+            return 0;
          end if;
 
-         if Cells (Index (T, Row, Col)).Kind = Wide_Continuation and then Col > 1 then
+         if Cells (Index (T, Row, Positive (Col))).Kind = Wide_Continuation
+           and then Col > 1
+         then
             Col := Col - 1;
          end if;
 
-         if Cells (Index (T, Row, Col)).Kind /= Character
-           or else Cells (Index (T, Row, Col)).Text.Code_Point = 0
-         then
-            return;
+         return Index (T, Row, Positive (Col));
+      end Previous_Cell_Index;
+
+      function Attach_To_Previous_Cell
+        (Attached_CP : Common.Code_Point) return Boolean
+      is
+         Cell_Index : constant Natural := Previous_Cell_Index;
+      begin
+         if Cell_Index = 0 then
+            return False;
          end if;
 
-         if Cells (Index (T, Row, Col)).Text.Attachment_Count <
+         if Cells (Cell_Index).Kind /= Character
+           or else Cells (Cell_Index).Text.Code_Point = 0
+         then
+            return False;
+         end if;
+
+         if Cells (Cell_Index).Text.Attachment_Count <
            Max_Cluster_Attachments
          then
-            Cells (Index (T, Row, Col)).Text.Attachment_Count :=
-              Cells (Index (T, Row, Col)).Text.Attachment_Count + 1;
-            Cells (Index (T, Row, Col)).Text.Attachments
-              (Cells (Index (T, Row, Col)).Text.Attachment_Count) := CP;
-            Mark_Dirty (T, Row);
+            Cells (Cell_Index).Text.Attachment_Count :=
+              Cells (Cell_Index).Text.Attachment_Count + 1;
+            Cells (Cell_Index).Text.Attachments
+              (Cells (Cell_Index).Text.Attachment_Count) := Attached_CP;
+            Mark_Dirty (T, T.Cursor_Row);
+            return True;
          else
             T.Diag.Text_Cluster_Overflow := T.Diag.Text_Cluster_Overflow + 1;
+            return False;
          end if;
       end Attach_To_Previous_Cell;
+
+      function Previous_Cluster_Ends_With_ZWJ return Boolean is
+         Cell_Index : constant Natural := Previous_Cell_Index;
+         Count      : Cluster_Attachment_Count;
+      begin
+         if Cell_Index = 0
+           or else Cells (Cell_Index).Kind /= Character
+         then
+            return False;
+         end if;
+
+         Count := Cells (Cell_Index).Text.Attachment_Count;
+         return
+           Count > 0
+           and then Cells (Cell_Index).Text.Attachments (Count) = 16#200D#;
+      end Previous_Cluster_Ends_With_ZWJ;
    begin
       if Cells = null then
          return;
       elsif W = Width_Zero then
-         Attach_To_Previous_Cell;
+         if not Attach_To_Previous_Cell (CP) then
+            null;
+         end if;
+         return;
+      elsif Previous_Cluster_Ends_With_ZWJ then
+         if not Attach_To_Previous_Cell (CP) then
+            null;
+         end if;
          return;
       end if;
 

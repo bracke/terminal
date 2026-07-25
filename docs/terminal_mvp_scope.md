@@ -92,16 +92,18 @@ and recorded in diagnostics where applicable.
 Common CJK ranges, supplementary CJK ideograph planes, and common emoji /
 pictograph scalar ranges are treated as width two, with continuation cells
 cleared when either half is overwritten, erased, or shifted apart. Cells store a
-bounded text cluster: one spacing base scalar plus up to eight attached
-zero-width scalars. Common combining-mark ranges, zero-width joiner/non-joiner,
+bounded text cluster: one spacing base scalar plus up to eight attached scalars.
+Common combining-mark ranges, zero-width joiner/non-joiner,
 format controls, bidi marks, and variation selectors are attached to the
-previous cell without advancing the cursor; overflow is reported through
-diagnostics. Selection and clipboard copy preserve stored cluster scalars.
-Rendering submits the base scalar and overlays renderable combining-mark
-attachments in the same cell, while invisible joiner, format-control, bidi, and
-variation-selector attachments remain non-drawing; the core exposes this
-renderability classification with the snapshot-facing text model. Full cluster
-shaping, emoji ZWJ composition, and BiDi layout require additional text-pipeline
+previous cell without advancing the cursor. When a cluster ends in ZWJ, the next
+spacing scalar is also attached to that cluster, preserving emoji ZWJ sequences
+without consuming more grid cells; overflow is reported through diagnostics.
+Selection and clipboard copy preserve stored cluster scalars. Rendering submits
+the base scalar and overlays renderable combining-mark attachments in the same
+cell, while invisible joiner, format-control, bidi, variation-selector, and
+joined emoji attachments remain non-drawing until a shaped text run path is
+available; the core exposes this renderability classification with the
+snapshot-facing text model. BiDi layout requires additional text-pipeline
 support beyond the current glyph overlay path.
 
 ## Cursor

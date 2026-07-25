@@ -341,4 +341,34 @@ begin
       Assert (S.Cursor.Col = 5, "emoji width cursor");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize emoji ZWJ cluster failed");
+   Feed_Bytes
+     ((1  => Byte (Character'Pos ('a')),
+       2  => 16#F0#, 3  => 16#9F#, 4  => 16#91#, 5  => 16#A9#,
+       6  => 16#E2#, 7  => 16#80#, 8  => 16#8D#,
+       9  => 16#F0#, 10 => 16#9F#, 11 => 16#92#, 12 => 16#BB#,
+       13 => Byte (Character'Pos ('b'))),
+      "emoji ZWJ cluster feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Emoji : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Continuation : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert_Char (S, 1, 16#61#, "emoji ZWJ prefix");
+      Assert (Emoji.Text.Code_Point = 16#1F469#, "emoji ZWJ base");
+      Assert (Emoji.Text.Width = Terminal.Core.Width_Two, "emoji ZWJ width");
+      Assert (Emoji.Text.Attachment_Count = 2, "emoji ZWJ attachments");
+      Assert (Emoji.Text.Attachments (1) = 16#200D#, "emoji ZWJ joiner");
+      Assert (Emoji.Text.Attachments (2) = 16#1F4BB#, "emoji ZWJ joined scalar");
+      Assert
+        (Continuation.Kind = Terminal.Core.Wide_Continuation,
+         "emoji ZWJ continuation");
+      Assert_Char (S, 4, 16#62#, "emoji ZWJ suffix");
+      Assert (S.Cursor.Col = 5, "emoji ZWJ cursor");
+      Terminal.Core.Release (S);
+   end;
 end Core_Wide_Smoke;
