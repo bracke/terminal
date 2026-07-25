@@ -1141,7 +1141,7 @@ package body Terminal.Core is
             when 1 =>
                T.Current_Style.Bold := True;
             when 2 =>
-               null;
+               T.Current_Style.Faint := True;
             when 3 =>
                T.Current_Style.Italic := True;
             when 4 =>
@@ -1158,6 +1158,7 @@ package body Terminal.Core is
                T.Current_Style.Bold := False;
             when 22 =>
                T.Current_Style.Bold := False;
+               T.Current_Style.Faint := False;
             when 23 =>
                T.Current_Style.Italic := False;
             when 24 =>

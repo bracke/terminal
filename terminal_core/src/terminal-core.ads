@@ -33,6 +33,7 @@ package Terminal.Core is
       Foreground : Color;
       Background : Color;
       Bold       : Boolean := False;
+      Faint      : Boolean := False;
       Italic     : Boolean := False;
       Underline  : Boolean := False;
       Strikethrough : Boolean := False;

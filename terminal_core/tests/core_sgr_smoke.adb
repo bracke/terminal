@@ -83,7 +83,7 @@ begin
    Terminal.Core.Initialize (T, 1, 2, 100, Init);
    Assert (Init = Terminal.Core.Ok, "SGR aliases initialize failed");
    Feed_Text
-     (ASCII.ESC & "[1mA" & ASCII.ESC & "[21;29mB",
+     (ASCII.ESC & "[1;2mA" & ASCII.ESC & "[21;22;29mB",
       "SGR aliases feed failed");
 
    declare
@@ -94,17 +94,19 @@ begin
         Terminal.Core.Diagnostics (T);
    begin
       Assert (A.Style.Bold, "SGR 1 should make first cell bold");
+      Assert (A.Style.Faint, "SGR 2 should make first cell faint");
       Assert (not B.Style.Bold, "SGR 21 should clear bold");
+      Assert (not B.Style.Faint, "SGR 22 should clear faint");
       Assert
         (D.Unsupported_Sequence = 0,
-         "SGR 21/29 should not increment unsupported diagnostics");
+         "SGR 21/22/29 should not increment unsupported diagnostics");
       Terminal.Core.Release (S);
    end;
 
    Terminal.Core.Initialize (T, 1, 2, 100, Init);
    Assert (Init = Terminal.Core.Ok, "SGR no-op aliases initialize failed");
    Feed_Text
-     (ASCII.ESC & "[2;5;6;8;25;28;53;55mC",
+     (ASCII.ESC & "[5;6;8;25;28;53;55mC",
       "SGR no-op aliases feed failed");
 
    declare

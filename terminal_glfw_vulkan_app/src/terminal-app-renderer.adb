@@ -143,12 +143,29 @@ package body Terminal.App.Renderer is
       end case;
    end Resolve_Color;
 
+   function Dim_Color (Color : RM.Pixel_Color) return RM.Pixel_Color is
+      Scale : constant Float := 0.55;
+   begin
+      return
+        (R => Color.R * Scale,
+         G => Color.G * Scale,
+         B => Color.B * Scale,
+         A => Color.A);
+   end Dim_Color;
+
    function Foreground (Cell : Terminal.Core.Cell) return RM.Pixel_Color is
+      Color : RM.Pixel_Color;
    begin
       if Cell.Style.Inverse then
-         return Resolve_Color (Cell.Style.Background, Default_BG);
+         Color := Resolve_Color (Cell.Style.Background, Default_BG);
       else
-         return Resolve_Color (Cell.Style.Foreground, Default_FG);
+         Color := Resolve_Color (Cell.Style.Foreground, Default_FG);
+      end if;
+
+      if Cell.Style.Faint then
+         return Dim_Color (Color);
+      else
+         return Color;
       end if;
    end Foreground;
 

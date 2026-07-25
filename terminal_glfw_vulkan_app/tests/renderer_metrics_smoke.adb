@@ -192,6 +192,35 @@ begin
          "bold duplicate glyph should keep baseline placement");
    end;
 
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "faint core initialize failed");
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[2mA"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "faint feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "faint render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Glyph_Count >= 1, "faint glyph count");
+      Assert
+        (Frame.Glyphs (1).Color.R < 0.86,
+         "faint glyph should dim default foreground red");
+      Assert
+        (Frame.Glyphs (1).Color.G < 0.88,
+         "faint glyph should dim default foreground green");
+      Assert
+        (Frame.Glyphs (1).Color.B < 0.88,
+         "faint glyph should dim default foreground blue");
+   end;
+
    Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "decoration core initialize failed");
    Terminal.Core.Feed
