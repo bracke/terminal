@@ -331,7 +331,6 @@ package body Terminal.PTY.POSIX is
    procedure Close (S : in out Session) is
       Status : aliased int := 0;
       R : int;
-      pragma Unreferenced (R);
    begin
       if S.Closed then
          return;
@@ -342,8 +341,14 @@ package body Terminal.PTY.POSIX is
       end if;
       if S.Child_PID > 0 then
          R := kill (-int (S.Child_PID), SIGHUP);
-         R := waitpid (int (S.Child_PID), Status'Address, WNOHANG);
-         S.Last_Status := Integer (Status);
+         for Attempt in 1 .. 20 loop
+            R := waitpid (int (S.Child_PID), Status'Address, WNOHANG);
+            exit when R /= 0;
+            delay 0.01;
+         end loop;
+         if R > 0 then
+            S.Last_Status := Integer (Status);
+         end if;
       end if;
       S.Closed := True;
    end Close;

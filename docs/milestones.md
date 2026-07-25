@@ -40,6 +40,8 @@
   clamping with a non-GUI smoke test.
 - Cover POSIX PTY `TIOCSWINSZ` propagation with a non-GUI smoke test that
   resizes an active shell and verifies `stty size`.
+- Cover POSIX PTY close behavior with a non-GUI smoke test that verifies the
+  spawned child is no longer alive after `Close`.
 - Show the shell prompt.
 - Send printable keyboard input and Enter to the PTY.
 - Validate `echo`, `cat`, `ls --color`, and `clear`.

@@ -57,6 +57,7 @@ alr update
 alr exec -- gprbuild -P tests/pty_tests.gpr
 tests/bin/pty_status_smoke
 tests/bin/pty_resize_smoke
+tests/bin/pty_close_smoke
 ```
 
 App smoke tests:
