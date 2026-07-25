@@ -69,7 +69,8 @@ fallback rendering ambiguous. The HarfBuzz adapter returns real font glyph IDs,
 source clusters, advances, and offsets for simple text, ligature candidates,
 combining clusters, emoji ZWJ clusters, RTL runs, and complex-script runs when
 the selected font can be loaded. The terminal renderer draws successful shaped
-runs through `textrender`'s glyph-index rasterization API. If HarfBuzz cannot
+runs through `textrender`'s glyph-index rasterization API, placing RTL runs
+from the run's right edge and LTR runs from the left edge. If HarfBuzz cannot
 load or shape a run, the run remains explicitly marked as
 `Needs_Shaping_Backend` and is represented by the existing codepoint fallback
 path. Submit batches, presenter diagnostics, and device upload diagnostics also

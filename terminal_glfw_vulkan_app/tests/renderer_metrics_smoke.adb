@@ -726,6 +726,56 @@ begin
          "mixed script third run script");
    end;
 
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "RTL shaped run core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1  => Byte (Character'Pos (Character'Val (16#1B#))),
+       2  => Byte (Character'Pos ('[')),
+       3  => Byte (Character'Pos ('?')),
+       4  => Byte (Character'Pos ('2')),
+       5  => Byte (Character'Pos ('5')),
+       6  => Byte (Character'Pos ('l')),
+       7  => 16#D7#,
+       8  => 16#90#,
+       9  => 16#D7#,
+       10 => 16#91#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "RTL shaped run feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "RTL shaped run render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Text_Run_Count = 1, "RTL text should coalesce");
+      Assert
+        (Frame.Text_Runs (1).Direction =
+           Terminal.App.Render_Model.Direction_Right_To_Left,
+         "RTL text run direction");
+      Assert
+        (Frame.Text_Runs (1).Shape_Status =
+           Terminal.App.Render_Model.Shape_Ok,
+         "RTL text run shape status");
+      Assert
+        (Frame.Glyph_Count >= 2,
+         "RTL shaped run should draw at least two glyphs");
+      Assert
+        (Frame.Glyphs (1).X > Frame.Glyphs (2).X,
+         "RTL shaped run should place first shaped glyph to the right");
+   end;
+
    Terminal.App.Renderer.Finalize (R);
    Terminal.App.Renderer.Finalize (R);
 

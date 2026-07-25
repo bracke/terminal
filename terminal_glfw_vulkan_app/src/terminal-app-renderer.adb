@@ -730,7 +730,10 @@ package body Terminal.App.Renderer is
       Run    : RM.Text_Run_Command;
       Status : out Render_Status)
    is
-      Pen_X : Float := Run.X;
+      Pen_X : Float :=
+        (if Run.Direction = RM.Direction_Right_To_Left
+         then Run.X + Run.Cell_Width
+         else Run.X);
    begin
       if Run.Shape_Status /= RM.Shape_Ok
         or else Run.Fallback_Glyphs
@@ -743,6 +746,11 @@ package body Terminal.App.Renderer is
       for I in 1 .. Run.Shaped_Glyph_Count loop
          declare
             Glyph : constant RM.Shaped_Glyph_Command := Run.Shaped_Glyphs (I);
+            Advance_X : constant Float := abs Glyph.X_Advance;
+            Glyph_X   : constant Float :=
+              (if Run.Direction = RM.Direction_Right_To_Left
+               then Pen_X - Advance_X
+               else Pen_X);
             Metric : Textrender.Glyph_Metric;
             Glyph_Status : constant Textrender.Status_Code :=
               Textrender.Get_Glyph_By_Index
@@ -763,7 +771,7 @@ package body Terminal.App.Renderer is
                         Baseline_Y : constant Float :=
                           Run.Y + Textrender.Ascent (R.Text);
                         Placement  : Textrender.Glyph_Placement :=
-                          (X => Pen_X + Glyph.X_Offset + Metric.Bearing_X,
+                          (X => Glyph_X + Glyph.X_Offset + Metric.Bearing_X,
                            Y =>
                              Baseline_Y
                              - Metric.Bearing_Y
@@ -791,7 +799,11 @@ package body Terminal.App.Renderer is
                   return;
             end case;
 
-            Pen_X := Pen_X + Glyph.X_Advance;
+            if Run.Direction = RM.Direction_Right_To_Left then
+               Pen_X := Glyph_X;
+            else
+               Pen_X := Pen_X + Advance_X;
+            end if;
          end;
       end loop;
 
