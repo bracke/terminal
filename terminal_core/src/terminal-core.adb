@@ -567,6 +567,36 @@ package body Terminal.Core is
       T.Pending_Wrap := False;
    end Move_Cursor;
 
+   function Next_Tab_Column (T : Terminal; Col : Positive) return Positive is
+     (Positive'Min (T.Cols, ((Col - 1) / 8 + 1) * 8 + 1));
+
+   function Previous_Tab_Column (Col : Positive) return Positive is
+   begin
+      if Col <= 1 then
+         return 1;
+      else
+         return Positive'Max (1, ((Col - 2) / 8) * 8 + 1);
+      end if;
+   end Previous_Tab_Column;
+
+   procedure Move_Forward_Tabs (T : in out Terminal; Count : Positive) is
+   begin
+      for I in 1 .. Count loop
+         T.Cursor_Col := Next_Tab_Column (T, T.Cursor_Col);
+         exit when T.Cursor_Col = T.Cols;
+      end loop;
+      T.Pending_Wrap := False;
+   end Move_Forward_Tabs;
+
+   procedure Move_Backward_Tabs (T : in out Terminal; Count : Positive) is
+   begin
+      for I in 1 .. Count loop
+         T.Cursor_Col := Previous_Tab_Column (T.Cursor_Col);
+         exit when T.Cursor_Col = 1;
+      end loop;
+      T.Pending_Wrap := False;
+   end Move_Backward_Tabs;
+
    procedure Set_Mode (T : in out Terminal; Number : Natural; Enable : Boolean) is
    begin
       case Number is
@@ -746,6 +776,8 @@ package body Terminal.Core is
             R := Param (T, 1, 1);
             C := Param (T, 2, 1);
             Move_Cursor (T, R, C);
+         when 'I' =>
+            Move_Forward_Tabs (T, Positive'Max (1, Param (T, 1, 1)));
          when 'J' =>
             N := Param (T, 1, 0);
             case N is
@@ -800,6 +832,8 @@ package body Terminal.Core is
                T.Cursor_Row,
                T.Cursor_Col,
                Positive'Min (T.Cols - T.Cursor_Col + 1, Positive'Max (1, Param (T, 1, 1))));
+         when 'Z' =>
+            Move_Backward_Tabs (T, Positive'Max (1, Param (T, 1, 1)));
          when 'm' =>
             Apply_SGR (T);
          when 's' =>
@@ -845,8 +879,7 @@ package body Terminal.Core is
             end if;
             T.Pending_Wrap := False;
          when 9 =>
-            T.Cursor_Col := Positive'Min (T.Cols, ((T.Cursor_Col - 1) / 8 + 1) * 8 + 1);
-            T.Pending_Wrap := False;
+            Move_Forward_Tabs (T, 1);
          when 10 =>
             New_Line (T);
          when 13 =>

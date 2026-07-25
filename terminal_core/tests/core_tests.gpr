@@ -14,7 +14,8 @@ project Core_Tests is
       "core_alternate_smoke.adb",
       "core_scrollback_smoke.adb",
       "core_insert_smoke.adb",
-      "core_edit_smoke.adb");
+      "core_edit_smoke.adb",
+      "core_tabs_smoke.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata");

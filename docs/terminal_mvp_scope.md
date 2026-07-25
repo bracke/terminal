@@ -7,8 +7,9 @@
 - C0: BEL, BS, HT, LF, CR, ESC.
 - ESC: reset, save/restore cursor, index, next line, reverse index, CSI, OSC,
   and charset-selection consume/ignore.
-- CSI: cursor movement, CUP/CHA, ED, EL, ICH, DCH, ECH, IL, DL, SU, SD,
-  SGR, DECSET/DECRST known modes, SM/RM insert mode, and DECSTBM margins.
+- CSI: cursor movement, CUP/CHA, default-tab CHT/CBT, ED, EL, ICH, DCH, ECH,
+  IL, DL, SU, SD, SGR, DECSET/DECRST known modes, SM/RM insert mode, and
+  DECSTBM margins.
 - Autowrap with pending-wrap behavior.
 - Primary and alternate screen buffers.
 - Dirty row tracking.
