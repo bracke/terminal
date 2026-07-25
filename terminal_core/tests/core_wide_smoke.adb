@@ -316,4 +316,29 @@ begin
       Assert (S.Cursor.Col = 5, "supplementary CJK cursor");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize emoji width failed");
+   Feed_Bytes
+     ((1 => Byte (Character'Pos ('a')),
+       2 => 16#F0#, 3 => 16#9F#, 4 => 16#99#, 5 => 16#82#,
+       6 => Byte (Character'Pos ('b'))),
+      "emoji width feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Emoji : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Continuation : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert_Char (S, 1, 16#61#, "emoji width prefix");
+      Assert (Emoji.Text.Code_Point = 16#1F642#, "emoji code point");
+      Assert (Emoji.Text.Width = Terminal.Core.Width_Two, "emoji width");
+      Assert
+        (Continuation.Kind = Terminal.Core.Wide_Continuation,
+         "emoji continuation");
+      Assert_Char (S, 4, 16#62#, "emoji width suffix");
+      Assert (S.Cursor.Col = 5, "emoji width cursor");
+      Terminal.Core.Release (S);
+   end;
 end Core_Wide_Smoke;

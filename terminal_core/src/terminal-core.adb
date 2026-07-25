@@ -560,6 +560,7 @@ package body Terminal.Core is
         or else (V in 16#FE10# .. 16#FE6F#)
         or else (V in 16#FF00# .. 16#FF60#)
         or else (V in 16#FFE0# .. 16#FFE6#)
+        or else (V in 16#1F000# .. 16#1FAFF#)
         or else (V in 16#20000# .. 16#3FFFD#);
    end Is_Wide;
 
