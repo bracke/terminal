@@ -70,8 +70,10 @@ Full grapheme clusters, emoji ZWJ sequences, shaping, and BiDi are postponed.
 The core tracks cursor visibility, cursor blink state, and DECSCUSR cursor
 shape. Supported shapes are block (`0`, `1`, `2`), underline (`3`, `4`), and
 bar (`5`, `6`). DECSCUSR blinking variants and DEC private cursor blink mode
-`?12` update the render snapshot state. Blink timing is not rendered yet. Soft
-reset, full reset, and initialization return the cursor shape to a steady block.
+`?12` update the render snapshot state. The GLFW app renders cursor blinking
+with app-owned half-second phases; the platform-independent core only exposes
+the cursor blink state. Soft reset, full reset, and initialization return the
+cursor shape to a steady block.
 
 ## Scrollback
 

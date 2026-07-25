@@ -1,9 +1,12 @@
+with Ada.Real_Time;
+
 with GLFW_Vulkan;
 with GLFW_Vulkan.Clipboard;
 with GLFW_Vulkan.Events;
 with GLFW_Vulkan.Input;
 with GLFW_Vulkan.Windows;
 with Terminal.Core;
+with Terminal.App.Cursor_Blink;
 with Terminal.App.Diagnostics;
 with Terminal.App.Input_Map;
 with Terminal.App.PTY_Reader;
@@ -19,6 +22,7 @@ with Terminal.App.Vulkan_Presenter;
 with Terminal.PTY.POSIX;
 
 package body Terminal.App.Main_Loop is
+   use type Ada.Real_Time.Time;
    use type GLFW_Vulkan.Init_Status;
    use type GLFW_Vulkan.Windows.Create_Status;
    use type Terminal.App.Renderer.Init_Status;
@@ -232,6 +236,8 @@ package body Terminal.App.Main_Loop is
       Mouse_Button_Down : Boolean := False;
       Mouse_Button_Code_Value : Natural := 0;
       Mouse_Modifiers : GLFW_Vulkan.Input.Modifier_Set;
+      Blink_Origin : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+      Last_Blink_Tick : Natural := 0;
    begin
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
       if Init_Status /= GLFW_Vulkan.Ok then
@@ -329,8 +335,22 @@ package body Terminal.App.Main_Loop is
                Write_Stat : Terminal.App.PTY_Write.Write_All_Status;
                Dirty      : Boolean := Need_Redraw;
                Local_Redraw : Boolean := False;
+               Current_Blink_Tick : Natural := Last_Blink_Tick;
             begin
                GLFW_Vulkan.Events.Wait_Timeout (0.016);
+
+               Current_Blink_Tick :=
+                 Terminal.App.Cursor_Blink.Tick
+                   (Ada.Real_Time.To_Duration
+                      (Ada.Real_Time.Clock - Blink_Origin));
+               if Current_Blink_Tick /= Last_Blink_Tick
+                 and then Terminal.Core.Modes (T).Cursor_Blinking
+               then
+                  Dirty := True;
+                  Need_Redraw := True;
+                  Local_Redraw := True;
+               end if;
+               Last_Blink_Tick := Current_Blink_Tick;
 
                loop
                   PTY_Q.Pop (Chunk, Has_Chunk);
@@ -643,6 +663,8 @@ package body Terminal.App.Main_Loop is
                      Can_Present : Boolean := True;
                   begin
                      Terminal.App.Selection.Apply_To_Snapshot (Snap, Selection);
+                     Terminal.App.Cursor_Blink.Apply
+                       (Snap, Current_Blink_Tick);
                      if not
                        Terminal.App.Vulkan_Presenter.Diagnostics
                          (Presenter).Initialized
