@@ -177,10 +177,36 @@ package body Terminal.App.HarfBuzz is
             return "arab";
          when RM.Script_Devanagari =>
             return "deva";
+         when RM.Script_Bengali =>
+            return "beng";
+         when RM.Script_Gurmukhi =>
+            return "guru";
+         when RM.Script_Gujarati =>
+            return "gujr";
+         when RM.Script_Oriya =>
+            return "orya";
+         when RM.Script_Tamil =>
+            return "taml";
+         when RM.Script_Telugu =>
+            return "telu";
+         when RM.Script_Kannada =>
+            return "knda";
+         when RM.Script_Malayalam =>
+            return "mlym";
+         when RM.Script_Sinhala =>
+            return "sinh";
          when RM.Script_Thai =>
             return "thai";
+         when RM.Script_Lao =>
+            return "laoo";
+         when RM.Script_Myanmar =>
+            return "mymr";
          when RM.Script_Khmer =>
             return "khmr";
+         when RM.Script_Javanese =>
+            return "java";
+         when RM.Script_Cham =>
+            return "cham";
          when RM.Script_CJK =>
             return "hani";
          when RM.Script_Emoji =>
@@ -201,10 +227,36 @@ package body Terminal.App.HarfBuzz is
             return "ar";
          when RM.Script_Devanagari =>
             return "hi";
+         when RM.Script_Bengali =>
+            return "bn";
+         when RM.Script_Gurmukhi =>
+            return "pa";
+         when RM.Script_Gujarati =>
+            return "gu";
+         when RM.Script_Oriya =>
+            return "or";
+         when RM.Script_Tamil =>
+            return "ta";
+         when RM.Script_Telugu =>
+            return "te";
+         when RM.Script_Kannada =>
+            return "kn";
+         when RM.Script_Malayalam =>
+            return "ml";
+         when RM.Script_Sinhala =>
+            return "si";
          when RM.Script_Thai =>
             return "th";
+         when RM.Script_Lao =>
+            return "lo";
+         when RM.Script_Myanmar =>
+            return "my";
          when RM.Script_Khmer =>
             return "km";
+         when RM.Script_Javanese =>
+            return "jv";
+         when RM.Script_Cham =>
+            return "cjm";
          when RM.Script_CJK =>
             return "zh";
          when RM.Script_Emoji | RM.Script_Common | RM.Script_Unknown =>

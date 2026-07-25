@@ -140,7 +140,10 @@ package body Terminal.App.Text_Shaper is
 
    function Is_Complex_Script (C : Natural) return Boolean is
      ((C in 16#0900# .. 16#0D7F#)
+      or else (C in 16#0D80# .. 16#0DFF#)
       or else (C in 16#0E00# .. 16#0E7F#)
+      or else (C in 16#0E80# .. 16#0EFF#)
+      or else (C in 16#1000# .. 16#109F#)
       or else (C in 16#1780# .. 16#17FF#)
       or else (C in 16#A980# .. 16#A9DF#)
       or else (C in 16#AA00# .. 16#AA5F#));
@@ -318,10 +321,36 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Arabic;
             elsif C in 16#0900# .. 16#097F# then
                return RM.Script_Devanagari;
+            elsif C in 16#0980# .. 16#09FF# then
+               return RM.Script_Bengali;
+            elsif C in 16#0A00# .. 16#0A7F# then
+               return RM.Script_Gurmukhi;
+            elsif C in 16#0A80# .. 16#0AFF# then
+               return RM.Script_Gujarati;
+            elsif C in 16#0B00# .. 16#0B7F# then
+               return RM.Script_Oriya;
+            elsif C in 16#0B80# .. 16#0BFF# then
+               return RM.Script_Tamil;
+            elsif C in 16#0C00# .. 16#0C7F# then
+               return RM.Script_Telugu;
+            elsif C in 16#0C80# .. 16#0CFF# then
+               return RM.Script_Kannada;
+            elsif C in 16#0D00# .. 16#0D7F# then
+               return RM.Script_Malayalam;
+            elsif C in 16#0D80# .. 16#0DFF# then
+               return RM.Script_Sinhala;
             elsif C in 16#0E00# .. 16#0E7F# then
                return RM.Script_Thai;
+            elsif C in 16#0E80# .. 16#0EFF# then
+               return RM.Script_Lao;
+            elsif C in 16#1000# .. 16#109F# then
+               return RM.Script_Myanmar;
             elsif C in 16#1780# .. 16#17FF# then
                return RM.Script_Khmer;
+            elsif C in 16#A980# .. 16#A9DF# then
+               return RM.Script_Javanese;
+            elsif C in 16#AA00# .. 16#AA5F# then
+               return RM.Script_Cham;
             elsif Is_Latin (C) then
                return RM.Script_Latin;
             elsif Is_CJK (C) then

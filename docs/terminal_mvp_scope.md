@@ -121,11 +121,14 @@ direction inference instead of treating every bidi control as RTL.
 The app-layer HarfBuzz adapter shapes those runs against the selected font file
 with direction, script, and script-derived language tags, and returns real font
 glyph IDs, source clusters, advances, and offsets in the bounded shaped-glyph
-output. The shaping adapter also tries configured fallback font faces in the
-same order as `textrender` when the primary face shapes a run with `.notdef`
-glyphs. Each shaped glyph stores the selected font index so the renderer can
-rasterize it from the matching primary or fallback face. If HarfBuzz cannot load
-or shape the selected font or run, the command remains explicitly marked as
+output. Script tags are specific for Latin, Hebrew, Arabic, Devanagari,
+Bengali, Gurmukhi, Gujarati, Oriya/Odia, Tamil, Telugu, Kannada, Malayalam,
+Sinhala, Thai, Lao, Myanmar, Khmer, Javanese, Cham, CJK/Han, and emoji/common
+runs. The shaping adapter also tries configured fallback font faces in the same
+order as `textrender` when the primary face shapes a run with `.notdef` glyphs.
+Each shaped glyph stores the selected font index so the renderer can rasterize
+it from the matching primary or fallback face. If HarfBuzz cannot load or shape
+the selected font or run, the command remains explicitly marked as
 `Needs_Shaping_Backend`. The renderer draws successful shaped runs through
 `textrender` glyph-index rasterization; RTL shaped runs are placed from the
 run's right edge, while LTR runs are placed from the left edge. Fallback runs use

@@ -79,11 +79,39 @@ procedure Text_Shaper_Smoke is
    RLM_Text  : RM.Text_Run_Command := Run (16#200F#, Character'Pos ('A'));
    Arabic    : RM.Text_Run_Command := Run (16#0627#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
+   Bengali   : RM.Text_Run_Command := Run (16#0995#);
+   Gurmukhi  : RM.Text_Run_Command := Run (16#0A15#);
+   Gujarati  : RM.Text_Run_Command := Run (16#0A95#);
+   Oriya     : RM.Text_Run_Command := Run (16#0B15#);
+   Tamil     : RM.Text_Run_Command := Run (16#0B95#);
+   Telugu    : RM.Text_Run_Command := Run (16#0C15#);
+   Kannada   : RM.Text_Run_Command := Run (16#0C95#);
+   Malayalam : RM.Text_Run_Command := Run (16#0D15#);
+   Sinhala   : RM.Text_Run_Command := Run (16#0D9A#);
    Thai      : RM.Text_Run_Command := Run (16#0E01#);
+   Lao       : RM.Text_Run_Command := Run (16#0E81#);
+   Myanmar   : RM.Text_Run_Command := Run (16#1000#);
    Khmer     : RM.Text_Run_Command := Run (16#1780#);
+   Javanese  : RM.Text_Run_Command := Run (16#A984#);
+   Cham      : RM.Text_Run_Command := Run (16#AA00#);
    Emoji     : RM.Text_Run_Command := Run (16#1F642#);
    Status    : TS.Shape_Status;
    Backend   : TS.Backend_Status;
+
+   procedure Assert_Complex_Script
+     (Text     : in out RM.Text_Run_Command;
+      Script   : RM.Text_Run_Script;
+      Label    : String)
+   is
+   begin
+      Assert (TS.Classify (Text) = RM.Complex_Script, Label & " class");
+      TS.Prepare (Text, Status);
+      Assert (Status = RM.Shape_Ok, Label & " should shape through HarfBuzz");
+      Assert
+        (Text.Direction = RM.Direction_Left_To_Right,
+         Label & " direction");
+      Assert (Text.Script = Script, Label & " script");
+   end Assert_Complex_Script;
 begin
    TS.Configure_Font
      (Path       => Terminal.App.Fonts.Default_Font_Path,
@@ -227,31 +255,22 @@ begin
       "Arabic direction");
    Assert (Arabic.Script = RM.Script_Arabic, "Arabic script");
 
-   Assert (TS.Classify (Deva) = RM.Complex_Script, "complex script class");
-   TS.Prepare (Deva, Status);
-   Assert
-     (Status = RM.Shape_Ok,
-      "complex script should shape through HarfBuzz");
-   Assert
-     (Deva.Direction = RM.Direction_Left_To_Right,
-      "complex script direction");
-   Assert (Deva.Script = RM.Script_Devanagari, "complex script script");
-
-   Assert (TS.Classify (Thai) = RM.Complex_Script, "Thai script class");
-   TS.Prepare (Thai, Status);
-   Assert (Status = RM.Shape_Ok, "Thai should shape through HarfBuzz");
-   Assert
-     (Thai.Direction = RM.Direction_Left_To_Right,
-      "Thai script direction");
-   Assert (Thai.Script = RM.Script_Thai, "Thai script");
-
-   Assert (TS.Classify (Khmer) = RM.Complex_Script, "Khmer script class");
-   TS.Prepare (Khmer, Status);
-   Assert (Status = RM.Shape_Ok, "Khmer should shape through HarfBuzz");
-   Assert
-     (Khmer.Direction = RM.Direction_Left_To_Right,
-      "Khmer script direction");
-   Assert (Khmer.Script = RM.Script_Khmer, "Khmer script");
+   Assert_Complex_Script (Deva, RM.Script_Devanagari, "Devanagari");
+   Assert_Complex_Script (Bengali, RM.Script_Bengali, "Bengali");
+   Assert_Complex_Script (Gurmukhi, RM.Script_Gurmukhi, "Gurmukhi");
+   Assert_Complex_Script (Gujarati, RM.Script_Gujarati, "Gujarati");
+   Assert_Complex_Script (Oriya, RM.Script_Oriya, "Oriya");
+   Assert_Complex_Script (Tamil, RM.Script_Tamil, "Tamil");
+   Assert_Complex_Script (Telugu, RM.Script_Telugu, "Telugu");
+   Assert_Complex_Script (Kannada, RM.Script_Kannada, "Kannada");
+   Assert_Complex_Script (Malayalam, RM.Script_Malayalam, "Malayalam");
+   Assert_Complex_Script (Sinhala, RM.Script_Sinhala, "Sinhala");
+   Assert_Complex_Script (Thai, RM.Script_Thai, "Thai");
+   Assert_Complex_Script (Lao, RM.Script_Lao, "Lao");
+   Assert_Complex_Script (Myanmar, RM.Script_Myanmar, "Myanmar");
+   Assert_Complex_Script (Khmer, RM.Script_Khmer, "Khmer");
+   Assert_Complex_Script (Javanese, RM.Script_Javanese, "Javanese");
+   Assert_Complex_Script (Cham, RM.Script_Cham, "Cham");
 
    Assert (TS.Classify (Emoji) = RM.Simple_Glyph, "emoji scalar class");
    TS.Prepare (Emoji, Status);
