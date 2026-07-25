@@ -7,6 +7,7 @@ procedure Core_Modes_Smoke is
    use Terminal.Common.Bytes;
    use type Terminal.Common.Code_Point;
    use type Terminal.Core.Color_Kind;
+   use type Terminal.Core.Cursor_Shape;
    use type Terminal.Core.Initialize_Status;
    use type Terminal.Core.Feed_Status;
 
@@ -213,15 +214,45 @@ begin
 
    Terminal.Core.Initialize (T, 5, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "DECSCUSR initialize failed");
-   Feed_Text
-     (ASCII.ESC & "[ q"
-      & ASCII.ESC & "[1 q"
-      & ASCII.ESC & "[2 q"
-      & ASCII.ESC & "[3 q"
-      & ASCII.ESC & "[4 q"
-      & ASCII.ESC & "[5 q"
-      & ASCII.ESC & "[6 q",
-      "DECSCUSR feed failed");
+   Feed_Text (ASCII.ESC & "[ q", "DECSCUSR default feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Block,
+         "DECSCUSR default should select block cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[4 q", "DECSCUSR underline feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Underline,
+         "DECSCUSR 4 should select underline cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[6 q", "DECSCUSR bar feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Bar,
+         "DECSCUSR 6 should select bar cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Feed_Text (ASCII.ESC & "[2 q" & ASCII.ESC & "[!p", "DECSCUSR DECSTR feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Shape = Terminal.Core.Cursor_Block,
+         "DECSTR should reset cursor shape");
+      Terminal.Core.Release (S);
+   end;
 
    declare
       D : constant Terminal.Core.Diagnostic_Snapshot :=
@@ -229,6 +260,6 @@ begin
    begin
       Assert
         (D.Unsupported_Sequence = 0,
-         "valid DECSCUSR shapes should be consumed as no-ops");
+         "valid DECSCUSR shapes should not increment diagnostics");
    end;
 end Core_Modes_Smoke;

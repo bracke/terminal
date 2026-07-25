@@ -12,6 +12,7 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Cell_Kind;
    use type Terminal.Core.Cell_Width;
    use type Terminal.Core.Color_Kind;
+   use type Terminal.Core.Cursor_Shape;
    use type Terminal.Core.Dirty_Row_Array_Access;
    use type RM.Glyph_Array_Access;
    use type RM.Rectangle_Array_Access;
@@ -181,6 +182,27 @@ package body Terminal.App.Renderer is
    begin
       return Cell_Y + Float (R.CH - Cursor_Block_Height (R)) / 2.0;
    end Cursor_Block_Y;
+
+   function Cursor_Bar_Width (R : Renderer) return Positive is
+   begin
+      return Positive'Max (1, Positive'Min (3, R.CW));
+   end Cursor_Bar_Width;
+
+   function Cursor_Underline_Height (R : Renderer) return Positive is
+   begin
+      return Positive'Max (1, Positive'Min (3, R.CH));
+   end Cursor_Underline_Height;
+
+   function Is_Block_Cursor
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      Col      : Positive)
+      return Boolean
+   is
+   begin
+      return Is_Cursor_Cell (Snapshot, Row, Col)
+        and then Snapshot.Cursor.Shape = Terminal.Core.Cursor_Block;
+   end Is_Block_Cursor;
 
    procedure Set_Render_Status
      (R      : in out Renderer;
@@ -453,8 +475,10 @@ package body Terminal.App.Renderer is
                Cell_W : constant Positive :=
                  (if Cell.Text.Width = Terminal.Core.Width_Two then R.CW * 2 else R.CW);
                Cursor_Cell : constant Boolean := Is_Cursor_Cell (Snapshot, Row, Col);
+               Block_Cursor : constant Boolean :=
+                 Is_Block_Cursor (Snapshot, Row, Col);
                FG : constant RM.Pixel_Color :=
-                 (if Cursor_Cell then Cursor_FG else Foreground (Cell));
+                 (if Block_Cursor then Cursor_FG else Foreground (Cell));
                BG : constant RM.Pixel_Color := Background (Cell);
             begin
                if Cell.Kind /= Terminal.Core.Wide_Continuation then
@@ -466,13 +490,33 @@ package body Terminal.App.Renderer is
                      Height => Float (R.CH),
                      Color  => BG);
                   if Cursor_Cell then
-                     Add_Rectangle
-                       (R,
-                        X      => X,
-                        Y      => Cursor_Block_Y (R, Y),
-                        Width  => Float (Cell_W),
-                        Height => Float (Cursor_Block_Height (R)),
-                        Color  => Cursor_BG);
+                     case Snapshot.Cursor.Shape is
+                        when Terminal.Core.Cursor_Block =>
+                           Add_Rectangle
+                             (R,
+                              X      => X,
+                              Y      => Cursor_Block_Y (R, Y),
+                              Width  => Float (Cell_W),
+                              Height => Float (Cursor_Block_Height (R)),
+                              Color  => Cursor_BG);
+                        when Terminal.Core.Cursor_Underline =>
+                           Add_Rectangle
+                             (R,
+                              X      => X,
+                              Y      =>
+                                Y + Float (R.CH - Cursor_Underline_Height (R)),
+                              Width  => Float (Cell_W),
+                              Height => Float (Cursor_Underline_Height (R)),
+                              Color  => Cursor_BG);
+                        when Terminal.Core.Cursor_Bar =>
+                           Add_Rectangle
+                             (R,
+                              X      => X,
+                              Y      => Cursor_Block_Y (R, Y),
+                              Width  => Float (Cursor_Bar_Width (R)),
+                              Height => Float (Cursor_Block_Height (R)),
+                              Color  => Cursor_BG);
+                     end case;
                   end if;
                end if;
 

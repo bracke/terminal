@@ -1086,6 +1086,7 @@ package body Terminal.Core is
          Insert_Mode        => False);
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
+      T.Current_Cursor_Shape := Cursor_Block;
       T.Saved_Row := 1;
       T.Saved_Col := 1;
       T.Pending_Wrap := False;
@@ -1111,9 +1112,21 @@ package body Terminal.Core is
                Soft_Reset (T);
             elsif T.CSI_Intermediates (1) = ' '
               and then Final = 'q'
-              and then Param (T, 1, 1) in 0 .. 6
             then
-               null;
+               case Param (T, 1, 1) is
+                  when 0 | 1 | 2 =>
+                     T.Current_Cursor_Shape := Cursor_Block;
+                     Mark_Dirty (T, T.Cursor_Row);
+                  when 3 | 4 =>
+                     T.Current_Cursor_Shape := Cursor_Underline;
+                     Mark_Dirty (T, T.Cursor_Row);
+                  when 5 | 6 =>
+                     T.Current_Cursor_Shape := Cursor_Bar;
+                     Mark_Dirty (T, T.Cursor_Row);
+                  when others =>
+                     T.Diag.Unsupported_Sequence :=
+                       T.Diag.Unsupported_Sequence + 1;
+               end case;
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
@@ -1665,7 +1678,11 @@ package body Terminal.Core is
       for R in 1 .. T.Rows loop
          S.Dirty (R) := T.Dirty (R);
       end loop;
-      S.Cursor := (Row => T.Cursor_Row, Col => T.Cursor_Col, Visible => T.Current_Modes.Cursor_Visible);
+      S.Cursor :=
+        (Row     => T.Cursor_Row,
+         Col     => T.Cursor_Col,
+         Visible => T.Current_Modes.Cursor_Visible,
+         Shape   => T.Current_Cursor_Shape);
       return S;
    end Snapshot;
 

@@ -54,7 +54,10 @@ package body Terminal.App.Scrollback_View is
       end loop;
 
       Result.Cursor :=
-        (Row => Live.Cursor.Row, Col => Live.Cursor.Col, Visible => False);
+        (Row     => Live.Cursor.Row,
+         Col     => Live.Cursor.Col,
+         Visible => False,
+         Shape   => Live.Cursor.Shape);
       Terminal.Core.Release (Live);
       return Result;
    exception

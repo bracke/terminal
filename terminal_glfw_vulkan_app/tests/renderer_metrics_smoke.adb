@@ -88,6 +88,55 @@ begin
          "cursor block should fit within the terminal cell");
    end;
 
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[4 q"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "underline cursor feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "underline cursor render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Rectangle_Count >= 3, "expected underline cursor rectangle");
+      Assert
+        (Frame.Rectangles (3).Height <= 3.0,
+         "underline cursor should be thin");
+      Assert
+        (Frame.Rectangles (3).Width =
+           Float (Terminal.App.Renderer.Cell_Width (R)),
+         "underline cursor should span the cell");
+   end;
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[6 q"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "bar cursor feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "bar cursor render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Rectangle_Count >= 3, "expected bar cursor rectangle");
+      Assert
+        (Frame.Rectangles (3).Width <= 3.0,
+         "bar cursor should be thin");
+      Assert
+        (Frame.Rectangles (3).Height <= 16.0,
+         "bar cursor should use font-sized height");
+   end;
+
    Terminal.App.Renderer.Set_Framebuffer_Size (R, 100, 80);
    declare
       Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);

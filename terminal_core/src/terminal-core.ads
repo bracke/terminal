@@ -53,10 +53,13 @@ package Terminal.Core is
       Style : Cell_Style;
    end record;
 
+   type Cursor_Shape is (Cursor_Block, Cursor_Underline, Cursor_Bar);
+
    type Cursor_State is record
       Row     : Positive := 1;
       Col     : Positive := 1;
       Visible : Boolean := True;
+      Shape   : Cursor_Shape := Cursor_Block;
    end record;
 
    type Mode_Snapshot is record
@@ -194,6 +197,7 @@ private
       Active        : Buffer_Kind := Primary;
       Cursor_Row    : Positive := 1;
       Cursor_Col    : Positive := 1;
+      Current_Cursor_Shape : Cursor_Shape := Cursor_Block;
       Saved_Row     : Positive := 1;
       Saved_Col     : Positive := 1;
       Saved_Style   : Style;

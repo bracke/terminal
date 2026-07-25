@@ -11,8 +11,8 @@
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL,
   ICH, DCH, ECH, IL, DL, REP, SU, SD, SGR, DECSET/DECRST known modes,
   SM/RM insert mode, DECSTBM margins, and DECSTR soft reset (`CSI ! p`).
-- DECSCUSR cursor-shape requests (`CSI Ps SP q`) are consumed as no-ops; v0.1
-  renders one cursor shape.
+- DECSCUSR cursor-shape requests (`CSI Ps SP q`) select block, underline, or
+  bar cursor shapes in the render snapshot.
 - DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), primary DA
   (`CSI c`), and secondary DA (`CSI > c`) responses.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
@@ -46,6 +46,13 @@ One decoded scalar value maps to one simplified character cell initially. Common
 CJK ranges are treated as width two, with continuation cells cleared when either
 half is overwritten, erased, or shifted apart. Combining marks are ignored.
 Full grapheme clusters, emoji ZWJ sequences, shaping, and BiDi are postponed.
+
+## Cursor
+
+The core tracks cursor visibility and DECSCUSR cursor shape. Supported shapes
+are block (`0`, `1`, `2`), underline (`3`, `4`), and bar (`5`, `6`). Blink
+timing is not modeled in the core yet; blinking and steady variants currently
+select the same shape.
 
 ## Scrollback
 
