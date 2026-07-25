@@ -1,5 +1,6 @@
 package body Terminal.App.Text_Shaper is
    package RM renames Terminal.App.Render_Model;
+   use type RM.Text_Run_Kind;
 
    function Is_Combining_Or_Format (C : Natural) return Boolean is
      ((C in 16#0300# .. 16#036F#)
@@ -41,7 +42,7 @@ package body Terminal.App.Text_Shaper is
       Saw_Letter    : Natural := 0;
    begin
       if Run.Codepoint_Count = 0 then
-         return Invalid_Run;
+         return RM.Invalid_Run;
       end if;
 
       for I in 1 .. Run.Codepoint_Count loop
@@ -49,15 +50,15 @@ package body Terminal.App.Text_Shaper is
             C : constant Natural := Run.Codepoints (I);
          begin
             if C > 16#10FFFF# then
-               return Invalid_Run;
+               return RM.Invalid_Run;
             elsif Is_Bidi_Control_Or_RTL (C) then
-               return Bidi_Text;
+               return RM.Bidi_Text;
             elsif Is_ZWJ (C) then
-               return Joined_Emoji_Cluster;
+               return RM.Joined_Emoji_Cluster;
             elsif Is_Emoji_Modifier (C) then
-               return Emoji_Modified_Cluster;
+               return RM.Emoji_Modified_Cluster;
             elsif Is_Complex_Script (C) then
-               return Complex_Script;
+               return RM.Complex_Script;
             elsif Is_Combining_Or_Format (C) then
                Saw_Combining := True;
             elsif Is_ASCII_Letter (C) then
@@ -67,16 +68,16 @@ package body Terminal.App.Text_Shaper is
       end loop;
 
       if Saw_Combining then
-         return Combining_Cluster;
+         return RM.Combining_Cluster;
       elsif Saw_Letter >= 2 then
-         return Ligature_Candidate;
+         return RM.Ligature_Candidate;
       else
-         return Simple_Glyph;
+         return RM.Simple_Glyph;
       end if;
    end Classify;
 
    function Requires_Backend (Kind : Run_Kind) return Boolean is
-     (Kind /= Simple_Glyph);
+     (Kind /= RM.Simple_Glyph);
 
    procedure Prepare
      (Run    : in out RM.Text_Run_Command;
@@ -84,15 +85,19 @@ package body Terminal.App.Text_Shaper is
    is
       Kind : constant Run_Kind := Classify (Run);
    begin
-      if Kind = Invalid_Run then
+      Run.Run_Kind := Kind;
+      if Kind = RM.Invalid_Run then
+         Run.Shape_Status := RM.Invalid_Run;
          Run.Fallback_Glyphs := True;
-         Status := Invalid_Run;
+         Status := RM.Invalid_Run;
       elsif Requires_Backend (Kind) then
+         Run.Shape_Status := RM.Needs_Shaping_Backend;
          Run.Fallback_Glyphs := True;
-         Status := Needs_Shaping_Backend;
+         Status := RM.Needs_Shaping_Backend;
       else
+         Run.Shape_Status := RM.Shape_Ok;
          Run.Fallback_Glyphs := False;
-         Status := Ok;
+         Status := RM.Shape_Ok;
       end if;
    end Prepare;
 end Terminal.App.Text_Shaper;

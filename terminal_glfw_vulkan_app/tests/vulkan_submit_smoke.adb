@@ -7,6 +7,8 @@ with Terminal.App.Vulkan_Submit;
 procedure Vulkan_Submit_Smoke is
    use AUnit.Assertions;
    use type Terminal.App.Render_Model.Text_Run_Array_Access;
+   use type Terminal.App.Render_Model.Text_Run_Kind;
+   use type Terminal.App.Render_Model.Text_Run_Shape_Status;
    use type Terminal.App.Vulkan_Submit.Build_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
    use type Terminal.App.Vulkan_Submit.Vertex_Array_Access;
@@ -50,6 +52,8 @@ procedure Vulkan_Submit_Smoke is
             4 => 16#1F3FD#,
             others => 0),
          Codepoint_Count => 4,
+         Run_Kind        => RM.Joined_Emoji_Cluster,
+         Shape_Status    => RM.Needs_Shaping_Backend,
          Fallback_Glyphs => True)];
 
    Frame : RM.Frame_Commands :=
@@ -85,6 +89,12 @@ begin
    Assert
      (VS.Text_Runs (Batch) (1).Codepoints (3) = 16#1F468#,
       "text run joined scalar");
+   Assert
+     (VS.Text_Runs (Batch) (1).Run_Kind = RM.Joined_Emoji_Cluster,
+      "text run class");
+   Assert
+     (VS.Text_Runs (Batch) (1).Shape_Status = RM.Needs_Shaping_Backend,
+      "text run shape status");
    Assert
      (VS.Text_Runs (Batch) (1).Fallback_Glyphs,
       "text run fallback flag");

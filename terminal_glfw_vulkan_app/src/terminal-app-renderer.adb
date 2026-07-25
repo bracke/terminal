@@ -17,10 +17,10 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Cursor_Shape;
    use type Terminal.Core.Dirty_Row_Array_Access;
    use type Terminal.Common.Code_Point;
-   use type Terminal.App.Text_Shaper.Shape_Status;
    use type RM.Glyph_Array_Access;
    use type RM.Rectangle_Array_Access;
    use type RM.Text_Run_Array_Access;
+   use type RM.Text_Run_Shape_Status;
    use type Textrender.Status_Code;
    use type VS.Build_Status;
 
@@ -345,6 +345,8 @@ package body Terminal.App.Renderer is
          Italic          => Cell.Style.Italic,
          Codepoints      => (others => 0),
          Codepoint_Count => 0,
+         Run_Kind        => RM.Invalid_Run,
+         Shape_Status    => RM.Invalid_Run,
          Fallback_Glyphs => True);
 
       Count := Count + 1;
@@ -362,7 +364,7 @@ package body Terminal.App.Renderer is
       Terminal.App.Text_Shaper.Prepare
         (R.Text_Runs (R.Text_Run_Count),
          Shape_Status);
-      if Shape_Status = Terminal.App.Text_Shaper.Needs_Shaping_Backend then
+      if Shape_Status = RM.Needs_Shaping_Backend then
          R.Shaping_Fallback_Count := R.Shaping_Fallback_Count + 1;
       end if;
    end Add_Text_Run;

@@ -10,6 +10,8 @@ procedure Renderer_Metrics_Smoke is
    use Terminal.Common.Bytes;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Render_Model.Text_Run_Kind;
+   use type Terminal.App.Render_Model.Text_Run_Shape_Status;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
 
@@ -531,6 +533,14 @@ begin
       Assert
         (Frame.Text_Runs (2).Cell_Span = 2,
          "emoji cluster text run cell span");
+      Assert
+        (Frame.Text_Runs (2).Run_Kind =
+           Terminal.App.Render_Model.Joined_Emoji_Cluster,
+         "emoji cluster text run class");
+      Assert
+        (Frame.Text_Runs (2).Shape_Status =
+           Terminal.App.Render_Model.Needs_Shaping_Backend,
+         "emoji cluster text run shape status");
       Assert
         (Frame.Text_Runs (2).Fallback_Glyphs,
          "emoji cluster text run should allow the current glyph fallback");

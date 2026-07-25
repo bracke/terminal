@@ -40,6 +40,21 @@ package Terminal.App.Render_Model is
    type Text_Run_Codepoint_Array is
      array (Text_Run_Codepoint_Index) of Natural;
 
+   type Text_Run_Kind is
+     (Simple_Glyph,
+      Combining_Cluster,
+      Joined_Emoji_Cluster,
+      Emoji_Modified_Cluster,
+      Bidi_Text,
+      Complex_Script,
+      Ligature_Candidate,
+      Invalid_Run);
+
+   type Text_Run_Shape_Status is
+     (Shape_Ok,
+      Needs_Shaping_Backend,
+      Invalid_Run);
+
    type Text_Run_Command is record
       X                : Float := 0.0;
       Y                : Float := 0.0;
@@ -51,6 +66,8 @@ package Terminal.App.Render_Model is
       Italic           : Boolean := False;
       Codepoints       : Text_Run_Codepoint_Array := (others => 0);
       Codepoint_Count  : Text_Run_Codepoint_Count := 0;
+      Run_Kind         : Text_Run_Kind := Invalid_Run;
+      Shape_Status     : Text_Run_Shape_Status := Invalid_Run;
       Fallback_Glyphs  : Boolean := True;
    end record;
 
