@@ -1624,8 +1624,15 @@ package body Terminal.Core is
                for I in 1 .. Natural'Max (T.CSI_Count, 1) loop
                   Set_Mode (T, Param (T, I, 0), Final = 'h');
                end loop;
-            elsif Param (T, 1, 0) = 4 then
-               T.Current_Modes.Insert_Mode := Final = 'h';
+            elsif T.CSI_Private = ASCII.NUL then
+               for I in 1 .. Natural'Max (T.CSI_Count, 1) loop
+                  if Param (T, I, 0) = 4 then
+                     T.Current_Modes.Insert_Mode := Final = 'h';
+                  else
+                     T.Diag.Unsupported_Sequence :=
+                       T.Diag.Unsupported_Sequence + 1;
+                  end if;
+               end loop;
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;

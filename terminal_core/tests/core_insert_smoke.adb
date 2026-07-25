@@ -77,4 +77,32 @@ begin
       Assert (Terminal.Core.Cell_At (S, 1, 5).Text.Code_Point = 16#64#, "final d");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "SM/RM list initialize failed");
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[4;4h"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "SM list feed failed");
+   Assert (Terminal.Core.Modes (T).Insert_Mode, "SM list should enable insert");
+   Assert
+     (Terminal.Core.Diagnostics (T).Unsupported_Sequence = 0,
+      "known SM list should not increment diagnostics");
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[4;4l"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "RM list feed failed");
+   Assert
+     (not Terminal.Core.Modes (T).Insert_Mode,
+      "RM list should disable insert");
+   Assert
+     (Terminal.Core.Diagnostics (T).Unsupported_Sequence = 0,
+      "known RM list should not increment diagnostics");
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[4;20h"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "mixed SM list feed failed");
+   Assert
+     (Terminal.Core.Modes (T).Insert_Mode,
+      "mixed SM list should still apply known insert mode");
+   Assert
+     (Terminal.Core.Diagnostics (T).Unsupported_Sequence = 1,
+      "mixed SM list should diagnose unknown normal mode");
 end Core_Insert_Smoke;
