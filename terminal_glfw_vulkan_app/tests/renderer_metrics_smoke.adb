@@ -769,11 +769,18 @@ begin
            Terminal.App.Render_Model.Shape_Ok,
          "RTL text run shape status");
       Assert
+        (Frame.Text_Runs (1).Cell_Span = 2,
+         "RTL text run should span both cells");
+      Assert
         (Frame.Glyph_Count >= 2,
          "RTL shaped run should draw at least two glyphs");
       Assert
         (Frame.Glyphs (1).X > Frame.Glyphs (2).X,
          "RTL shaped run should place first shaped glyph to the right");
+      Assert
+        (Frame.Glyphs (1).X >
+           Frame.Text_Runs (1).X + Frame.Text_Runs (1).Cell_Width - 1.0,
+         "RTL shaped run should start from full run right edge");
    end;
 
    Terminal.App.Renderer.Finalize (R);

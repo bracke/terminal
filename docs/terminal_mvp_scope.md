@@ -131,12 +131,12 @@ it from the matching primary or fallback face. If HarfBuzz cannot load or shape
 the selected font or run, the command remains explicitly marked as
 `Needs_Shaping_Backend`. The renderer draws successful shaped runs through
 `textrender` glyph-index rasterization; RTL shaped runs are placed from the
-run's right edge, while LTR runs are placed from the left edge. Fallback runs use
-the existing codepoint glyph path. The submit/presenter/device layers carry
-those runs without parsing terminal data. Full paragraph BiDi reordering and
-color emoji glyph rendering are still outside the current draw path. Renderer,
-submit, presenter, and device diagnostics expose aggregate shaped-glyph counts
-for that path.
+full coalesced run's right edge with HarfBuzz advance-aware pen movement, while
+LTR runs are placed from the left edge. Fallback runs use the existing codepoint
+glyph path. The submit/presenter/device layers carry those runs without parsing
+terminal data. Full paragraph BiDi reordering and color emoji glyph rendering
+are still outside the current draw path. Renderer, submit, presenter, and device
+diagnostics expose aggregate shaped-glyph counts for that path.
 
 ## Cursor
 

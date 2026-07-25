@@ -73,11 +73,12 @@ and complex-script runs when a configured font face can shape the run without
 `.notdef` glyphs. The terminal renderer draws successful shaped runs through
 `textrender`'s glyph-index rasterization API, using the same primary and
 fallback font-index order and placing RTL runs from the run's right edge and LTR
-runs from the left edge. If HarfBuzz cannot load or shape a run, the run remains
-explicitly marked as `Needs_Shaping_Backend` and is represented by the existing
-codepoint fallback path. Submit batches, presenter diagnostics, and device
-upload diagnostics also carry aggregate shaped-glyph counts so the shaped-text
-path remains observable across the whole render path.
+runs from the left edge. RTL placement uses the full coalesced run width and
+steps the pen according to the HarfBuzz advance sign. If HarfBuzz cannot load or
+shape a run, the run remains explicitly marked as `Needs_Shaping_Backend` and is
+represented by the existing codepoint fallback path. Submit batches, presenter
+diagnostics, and device upload diagnostics also carry aggregate shaped-glyph
+counts so the shaped-text path remains observable across the whole render path.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions
