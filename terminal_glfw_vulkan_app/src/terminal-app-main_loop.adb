@@ -285,6 +285,10 @@ package body Terminal.App.Main_Loop is
 
       Terminal.App.Renderer.Initialize (R, Vk_Ctx, Renderer_Status);
       Terminal.Core.Initialize (T, 24, 80, 10_000, Core_Status);
+      Terminal.Core.Set_Cell_Pixel_Size
+        (T,
+         Terminal.App.Renderer.Cell_Width (R),
+         Terminal.App.Renderer.Cell_Height (R));
       Terminal.PTY.POSIX.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
 
       if Core_Status /= Terminal.Core.Ok
@@ -613,6 +617,10 @@ package body Terminal.App.Main_Loop is
                GLFW_Vulkan.Windows.Framebuffer_Size (W, FB_Width, FB_Height);
                Terminal.App.Renderer.Set_Framebuffer_Size
                  (R, FB_Width, FB_Height);
+               Terminal.Core.Set_Cell_Pixel_Size
+                 (T,
+                  Terminal.App.Renderer.Cell_Width (R),
+                  Terminal.App.Renderer.Cell_Height (R));
                if FB_Width > 0 and then FB_Height > 0 then
                   declare
                      New_Rows : Positive;

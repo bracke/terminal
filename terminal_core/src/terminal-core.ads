@@ -138,6 +138,11 @@ package Terminal.Core is
       Cols   : Positive;
       Status : out Resize_Status);
 
+   procedure Set_Cell_Pixel_Size
+     (T      : in out Terminal;
+      Width  : Positive;
+      Height : Positive);
+
    function Snapshot (T : Terminal) return Render_Snapshot;
    procedure Release (S : in out Render_Snapshot);
    function Modes (T : Terminal) return Mode_Snapshot;
@@ -198,6 +203,8 @@ private
       Initialized      : Boolean := False;
       Rows             : Positive := 1;
       Cols             : Positive := 1;
+      Cell_Pixel_Width : Natural := 0;
+      Cell_Pixel_Height : Natural := 0;
       Scrollback_Limit : Natural := 10_000;
       Scrollback_Rows  : Natural := 0;
 
