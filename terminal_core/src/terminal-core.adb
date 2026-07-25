@@ -303,6 +303,61 @@ package body Terminal.Core is
       return V in 16#0300# .. 16#036F#;
    end Is_Combining;
 
+   procedure Clear_Wide_Overlap
+     (T        : in out Terminal;
+      Row      : Positive;
+      Col      : Positive;
+      New_Width : Cell_Width)
+   is
+      Cells : constant Cell_Array_Access := Active_Cells (T);
+      Last  : constant Positive :=
+        (if New_Width = Width_Two and then Col < T.Cols then Col + 1 else Col);
+   begin
+      if Cells = null then
+         return;
+      end if;
+
+      if Cells (Index (T, Row, Col)).Kind = Wide_Continuation and then Col > 1 then
+         Cells (Index (T, Row, Col - 1)) := Blank_Cell (T.Current_Style);
+      end if;
+
+      for C in Col .. Last loop
+         if Cells (Index (T, Row, C)).Kind = Character
+           and then Cells (Index (T, Row, C)).Text.Width = Width_Two
+           and then C < T.Cols
+         then
+            Cells (Index (T, Row, C + 1)) := Blank_Cell (T.Current_Style);
+         elsif Cells (Index (T, Row, C)).Kind = Wide_Continuation and then C > 1 then
+            Cells (Index (T, Row, C - 1)) := Blank_Cell (T.Current_Style);
+         end if;
+      end loop;
+   end Clear_Wide_Overlap;
+
+   procedure Shift_Row_Right
+     (T        : in out Terminal;
+      Row      : Positive;
+      Col      : Positive;
+      Distance : Positive)
+   is
+      Cells : constant Cell_Array_Access := Active_Cells (T);
+      Blank_Last : constant Positive := Positive'Min (T.Cols, Col + Distance - 1);
+   begin
+      if Cells = null then
+         return;
+      end if;
+
+      if Col + Distance <= T.Cols then
+         for C in reverse Col + Distance .. T.Cols loop
+            Cells (Index (T, Row, C)) := Cells (Index (T, Row, C - Distance));
+         end loop;
+      end if;
+
+      for C in Col .. Blank_Last loop
+         Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
+      end loop;
+      Mark_Dirty (T, Row);
+   end Shift_Row_Right;
+
    procedure Put_Code_Point (T : in out Terminal; CP : Common.Code_Point) is
       Cells : constant Cell_Array_Access := Active_Cells (T);
       W     : constant Cell_Width :=
@@ -322,6 +377,16 @@ package body Terminal.Core is
       if W = Width_Two and then T.Cursor_Col = T.Cols then
          T.Cursor_Col := 1;
          New_Line (T);
+      end if;
+
+      if T.Current_Modes.Insert_Mode then
+         Shift_Row_Right
+           (T,
+            T.Cursor_Row,
+            T.Cursor_Col,
+            (if W = Width_Two then 2 else 1));
+      else
+         Clear_Wide_Overlap (T, T.Cursor_Row, T.Cursor_Col, W);
       end if;
 
       Cells (Index (T, T.Cursor_Row, T.Cursor_Col)) :=
