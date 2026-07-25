@@ -462,6 +462,44 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 12, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize emoji tag width failed");
+   Feed_Bytes
+     ((1  => Byte (Character'Pos ('a')),
+       2  => 16#F0#, 3  => 16#9F#, 4  => 16#8F#, 5  => 16#B4#,
+       6  => 16#F3#, 7  => 16#A0#, 8  => 16#81#, 9  => 16#A7#,
+       10 => 16#F3#, 11 => 16#A0#, 12 => 16#81#, 13 => 16#A2#,
+       14 => 16#F3#, 15 => 16#A0#, 16 => 16#81#, 17 => 16#A5#,
+       18 => 16#F3#, 19 => 16#A0#, 20 => 16#81#, 21 => 16#AE#,
+       22 => 16#F3#, 23 => 16#A0#, 24 => 16#81#, 25 => 16#A7#,
+       26 => 16#F3#, 27 => 16#A0#, 28 => 16#81#, 29 => 16#BF#,
+       30 => Byte (Character'Pos ('b'))),
+      "emoji tag width feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Flag : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Continuation : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert_Char (S, 1, 16#61#, "emoji tag width prefix");
+      Assert (Flag.Text.Code_Point = 16#1F3F4#, "emoji tag base");
+      Assert (Flag.Text.Width = Terminal.Core.Width_Two, "emoji tag width");
+      Assert (Flag.Text.Attachment_Count = 6, "emoji tag attachment count");
+      Assert (Flag.Text.Attachments (1) = 16#E0067#, "emoji tag g");
+      Assert (Flag.Text.Attachments (2) = 16#E0062#, "emoji tag b");
+      Assert (Flag.Text.Attachments (3) = 16#E0065#, "emoji tag e");
+      Assert (Flag.Text.Attachments (4) = 16#E006E#, "emoji tag n");
+      Assert (Flag.Text.Attachments (5) = 16#E0067#, "emoji tag g suffix");
+      Assert (Flag.Text.Attachments (6) = 16#E007F#, "emoji cancel tag");
+      Assert
+        (Continuation.Kind = Terminal.Core.Wide_Continuation,
+         "emoji tag continuation");
+      Assert_Char (S, 4, 16#62#, "emoji tag width suffix");
+      Assert (S.Cursor.Col = 5, "emoji tag width cursor");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize emoji ZWJ cluster failed");
    Feed_Bytes

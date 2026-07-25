@@ -675,6 +675,7 @@ package body Terminal.Core is
         or else (V in 16#FE00# .. 16#FE0F#)
         or else (V in 16#FE20# .. 16#FE2F#)
         or else V = 16#FEFF#
+        or else (V in 16#E0000# .. 16#E007F#)
         or else (V in 16#E0100# .. 16#E01EF#);
    end Is_Zero_Width;
 
