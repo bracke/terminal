@@ -18,7 +18,9 @@
 - DECSCUSR cursor-shape requests (`CSI Ps SP q`) select block, underline, or
   bar cursor shapes in the render snapshot.
 - Xterm synchronized-update private mode (`DECSET`/`DECRST ?2026`) is tracked
-  in mode state and queryable, but does not yet change render scheduling.
+  in mode state and queryable. The GLFW app defers live terminal redraws while
+  it is active, while app-owned local redraws such as selection and scrollback
+  remain immediate.
 - DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), DEC private
   cursor-position report (`CSI ? 6 n`), primary DA (`CSI c`), and secondary DA
   (`CSI > c`) responses.

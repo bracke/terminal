@@ -17,6 +17,7 @@ project App_Tests is
       "input_map_smoke.adb",
       "selection_smoke.adb",
       "scrollback_view_smoke.adb",
+      "render_policy_smoke.adb",
       "queue_smoke.adb",
       "resize_smoke.adb");
 

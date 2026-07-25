@@ -10,6 +10,7 @@ with Terminal.App.PTY_Reader;
 with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.App.Renderer;
+with Terminal.App.Render_Policy;
 with Terminal.App.Resize;
 with Terminal.App.Scrollback_View;
 with Terminal.App.Selection;
@@ -327,6 +328,7 @@ package body Terminal.App.Main_Loop is
                Feed       : Terminal.Core.Feed_Status;
                Write_Stat : Terminal.App.PTY_Write.Write_All_Status;
                Dirty      : Boolean := Need_Redraw;
+               Local_Redraw : Boolean := False;
             begin
                GLFW_Vulkan.Events.Wait_Timeout (0.016);
 
@@ -375,6 +377,7 @@ package body Terminal.App.Main_Loop is
                            end if;
                            Dirty := True;
                            Need_Redraw := True;
+                           Local_Redraw := True;
                            Chunk := (others => <>);
                         elsif Terminal.App.Input_Map.Is_Paste_Shortcut
                           (Event.Key_Event)
@@ -383,6 +386,7 @@ package body Terminal.App.Main_Loop is
                            if Terminal.App.Selection.Has_Selection (Selection) then
                               Terminal.App.Selection.Clear (Selection);
                               Dirty := True;
+                              Local_Redraw := True;
                            end if;
                            Terminal.App.Input_Map.Encode_Paste_Text
                              (GLFW_Vulkan.Clipboard.Get_Text (W),
@@ -393,6 +397,7 @@ package body Terminal.App.Main_Loop is
                            if Terminal.App.Selection.Has_Selection (Selection) then
                               Terminal.App.Selection.Clear (Selection);
                               Dirty := True;
+                              Local_Redraw := True;
                            end if;
                            Terminal.App.Input_Map.Encode_Key
                              (Event.Key_Event, Terminal.Core.Modes (T), Chunk);
@@ -402,6 +407,7 @@ package body Terminal.App.Main_Loop is
                         if Terminal.App.Selection.Has_Selection (Selection) then
                            Terminal.App.Selection.Clear (Selection);
                            Dirty := True;
+                           Local_Redraw := True;
                         end if;
                         Terminal.App.Input_Map.Encode_Character
                           (Event.Character_Event, Chunk);
@@ -426,11 +432,12 @@ package body Terminal.App.Main_Loop is
                              (Modes)
                            then
                               if Terminal.App.Selection.Has_Selection
-                                (Selection)
+                                 (Selection)
                               then
                                  Terminal.App.Selection.Clear (Selection);
                                  Dirty := True;
                                  Need_Redraw := True;
+                                 Local_Redraw := True;
                               end if;
                               Terminal.App.Input_Map.Encode_Mouse_Button
                                 (Event.Button_Event, Modes, Pos.Row, Pos.Col, Chunk);
@@ -458,6 +465,7 @@ package body Terminal.App.Main_Loop is
                                    (Selection, Pos);
                                  Dirty := True;
                                  Need_Redraw := True;
+                                 Local_Redraw := True;
                               elsif Event.Button_Event.Action =
                                 GLFW_Vulkan.Input.Release
                               then
@@ -478,6 +486,7 @@ package body Terminal.App.Main_Loop is
                                  end;
                                  Dirty := True;
                                  Need_Redraw := True;
+                                 Local_Redraw := True;
                               end if;
                            end if;
                         end;
@@ -513,6 +522,7 @@ package body Terminal.App.Main_Loop is
                                 (Selection, Pos);
                               Dirty := True;
                               Need_Redraw := True;
+                              Local_Redraw := True;
                            end if;
                         end;
                      when Terminal.App.Queues.Scroll =>
@@ -545,6 +555,7 @@ package body Terminal.App.Main_Loop is
                                   (T, Scroll_Offset + Scroll_Lines_Per_Wheel);
                               Dirty := True;
                               Need_Redraw := True;
+                              Local_Redraw := True;
                            elsif Event.Scroll_Event.Y_Offset < 0.0 then
                               if Scroll_Offset > Scroll_Lines_Per_Wheel then
                                  Scroll_Offset :=
@@ -554,6 +565,7 @@ package body Terminal.App.Main_Loop is
                               end if;
                               Dirty := True;
                               Need_Redraw := True;
+                              Local_Redraw := True;
                            end if;
                         end;
                      when Terminal.App.Queues.Focus =>
@@ -606,12 +618,22 @@ package body Terminal.App.Main_Loop is
                            Terminal.App.Selection.Clear (Selection);
                            Dirty := True;
                            Need_Redraw := True;
+                           Local_Redraw := True;
                         end if;
                      end if;
                   end;
                end if;
 
-               if Dirty then
+               if Dirty
+                 and then Terminal.App.Render_Policy.Should_Defer_Render
+                   (Modes                => Terminal.Core.Modes (T),
+                    Scrollback_Offset    => Scroll_Offset,
+                    Selection_Active     =>
+                      Terminal.App.Selection.Has_Selection (Selection),
+                    Local_Redraw_Request => Local_Redraw)
+               then
+                  Need_Redraw := True;
+               elsif Dirty then
                   declare
                      Snap : Terminal.Core.Render_Snapshot :=
                        Terminal.App.Scrollback_View.Snapshot
