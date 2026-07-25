@@ -40,6 +40,8 @@ procedure Vulkan_Submit_Smoke is
       Rectangle_Count => 1,
       Glyphs          => Glyphs'Unchecked_Access,
       Glyph_Count     => 1,
+      Text_Runs       => null,
+      Text_Run_Count  => 0,
       Atlas_Width     => 256,
       Atlas_Height    => 256,
       Atlas_Pixels    => System'To_Address (16#1000#),

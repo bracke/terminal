@@ -15,8 +15,10 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Color_Kind;
    use type Terminal.Core.Cursor_Shape;
    use type Terminal.Core.Dirty_Row_Array_Access;
+   use type Terminal.Common.Code_Point;
    use type RM.Glyph_Array_Access;
    use type RM.Rectangle_Array_Access;
+   use type RM.Text_Run_Array_Access;
    use type Textrender.Status_Code;
    use type VS.Build_Status;
 
@@ -28,6 +30,8 @@ package body Terminal.App.Renderer is
      (RM.Rectangle_Array, RM.Rectangle_Array_Access);
    procedure Free_Glyphs is new Ada.Unchecked_Deallocation
      (RM.Glyph_Array, RM.Glyph_Array_Access);
+   procedure Free_Text_Runs is new Ada.Unchecked_Deallocation
+     (RM.Text_Run_Array, RM.Text_Run_Array_Access);
 
    Palette : constant array (Natural range 0 .. 15) of RM.Pixel_Color :=
      [0  => (0.05, 0.05, 0.06, 1.0),
@@ -247,8 +251,13 @@ package body Terminal.App.Renderer is
          Free_Glyphs (R.Glyphs);
          R.Glyphs := null;
       end if;
+      if R.Text_Runs /= null then
+         Free_Text_Runs (R.Text_Runs);
+         R.Text_Runs := null;
+      end if;
       R.Rectangle_Count := 0;
       R.Glyph_Count := 0;
+      R.Text_Run_Count := 0;
       R.Vertex_Count := 0;
       R.Last_Cell_Count := 0;
       R.Last_Dirty_Rows := 0;
@@ -300,6 +309,53 @@ package body Terminal.App.Renderer is
          Color     => Color,
          Codepoint => Codepoint);
    end Add_Glyph;
+
+   procedure Add_Text_Run
+     (R       : in out Renderer;
+      Cell    : Terminal.Core.Cell;
+      X       : Float;
+      Y       : Float;
+      Width   : Float;
+      Height  : Float;
+      Color   : RM.Pixel_Color)
+   is
+      Count : RM.Text_Run_Codepoint_Count := 0;
+   begin
+      if R.Text_Runs = null
+        or else R.Text_Run_Count >= R.Text_Runs'Length
+        or else Cell.Text.Code_Point = 0
+      then
+         return;
+      end if;
+
+      R.Text_Run_Count := R.Text_Run_Count + 1;
+      R.Text_Runs (R.Text_Run_Count) :=
+        (X               => X,
+         Y               => Y,
+         Cell_Width      => Width,
+         Cell_Height     => Height,
+         Cell_Span       =>
+           (if Cell.Text.Width = Terminal.Core.Width_Two then 2 else 1),
+         Color           => Color,
+         Bold            => Cell.Style.Bold,
+         Italic          => Cell.Style.Italic,
+         Codepoints      => (others => 0),
+         Codepoint_Count => 0,
+         Fallback_Glyphs => True);
+
+      Count := Count + 1;
+      R.Text_Runs (R.Text_Run_Count).Codepoints (Count) :=
+        Natural (Cell.Text.Code_Point);
+
+      for I in 1 .. Cell.Text.Attachment_Count loop
+         exit when Count = RM.Max_Text_Run_Codepoints;
+         Count := Count + 1;
+         R.Text_Runs (R.Text_Run_Count).Codepoints (Count) :=
+           Natural (Cell.Text.Attachments (I));
+      end loop;
+
+      R.Text_Runs (R.Text_Run_Count).Codepoint_Count := Count;
+   end Add_Text_Run;
 
    procedure Initialize_Text
      (R      : in out Renderer;
@@ -515,6 +571,7 @@ package body Terminal.App.Renderer is
          R.Rectangles := new RM.Rectangle_Array (1 .. Rect_Max);
          R.Glyphs := new RM.Glyph_Array
            (1 .. Cell_Count * (Terminal.Core.Max_Cluster_Attachments + 1) * 2);
+         R.Text_Runs := new RM.Text_Run_Array (1 .. Cell_Count);
       exception
          when Storage_Error =>
             Release_Frame (R);
@@ -604,6 +661,15 @@ package body Terminal.App.Renderer is
                   declare
                      Glyph_Render_Status : Render_Status;
                   begin
+                     Add_Text_Run
+                       (R,
+                        Cell   => Cell,
+                        X      => X,
+                        Y      => Y,
+                        Width  => Float (Cell_W),
+                        Height => Float (R.CH),
+                        Color  => FG);
+
                      Draw_Glyph
                        (R,
                         Codepoint => Cell.Text.Code_Point,
@@ -749,6 +815,7 @@ package body Terminal.App.Renderer is
          Last_Dirty_Rows      => R.Last_Dirty_Rows,
          Last_Rectangle_Count => R.Rectangle_Count,
          Last_Glyph_Count     => R.Glyph_Count,
+         Last_Text_Run_Count  => R.Text_Run_Count,
          Last_Vertex_Count    => R.Vertex_Count,
          Missing_Glyph_Count  => R.Missing_Glyph_Count,
          Atlas_Dirty          => R.Atlas_Dirty,
@@ -772,6 +839,8 @@ package body Terminal.App.Renderer is
          Rectangle_Count => R.Rectangle_Count,
          Glyphs          => R.Glyphs,
          Glyph_Count     => R.Glyph_Count,
+         Text_Runs       => R.Text_Runs,
+         Text_Run_Count  => R.Text_Run_Count,
          Atlas_Width     => Width,
          Atlas_Height    => Height,
          Atlas_Pixels    => Address,

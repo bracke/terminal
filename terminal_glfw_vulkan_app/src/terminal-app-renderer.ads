@@ -27,6 +27,7 @@ package Terminal.App.Renderer is
       Last_Dirty_Rows     : Natural := 0;
       Last_Rectangle_Count : Natural := 0;
       Last_Glyph_Count    : Natural := 0;
+      Last_Text_Run_Count : Natural := 0;
       Last_Vertex_Count   : Natural := 0;
       Missing_Glyph_Count : Natural := 0;
       Atlas_Dirty         : Boolean := False;
@@ -70,9 +71,11 @@ private
       CH          : Positive := 20;
       Rectangles  : Terminal.App.Render_Model.Rectangle_Array_Access := null;
       Glyphs      : Terminal.App.Render_Model.Glyph_Array_Access := null;
+      Text_Runs   : Terminal.App.Render_Model.Text_Run_Array_Access := null;
       Batch       : Terminal.App.Vulkan_Submit.Submission_Batch;
       Rectangle_Count : Natural := 0;
       Glyph_Count : Natural := 0;
+      Text_Run_Count : Natural := 0;
       Vertex_Count : Natural := 0;
       Missing_Glyph_Count : Natural := 0;
       Last_Cell_Count : Natural := 0;

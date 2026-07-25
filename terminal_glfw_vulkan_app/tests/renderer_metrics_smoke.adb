@@ -512,6 +512,25 @@ begin
       Assert (Saw_A, "emoji cluster render should draw prefix");
       Assert (Saw_Base, "emoji cluster render should draw base emoji glyph");
       Assert (Saw_B, "emoji cluster render should draw suffix");
+      Assert (Frame.Text_Run_Count = 3, "emoji cluster render text run count");
+      Assert
+        (Frame.Text_Runs (2).Codepoint_Count = 4,
+         "emoji cluster text run should preserve cluster length");
+      Assert
+        (Frame.Text_Runs (2).Codepoints (1) = 16#1F469#,
+         "emoji cluster text run base");
+      Assert
+        (Frame.Text_Runs (2).Codepoints (2) = 16#200D#,
+         "emoji cluster text run ZWJ");
+      Assert
+        (Frame.Text_Runs (2).Codepoints (3) = 16#1F468#,
+         "emoji cluster text run joined scalar");
+      Assert
+        (Frame.Text_Runs (2).Codepoints (4) = 16#1F3FD#,
+         "emoji cluster text run modifier");
+      Assert
+        (Frame.Text_Runs (2).Cell_Span = 2,
+         "emoji cluster text run cell span");
       Assert (not Saw_ZWJ, "emoji cluster render should skip ZWJ");
       Assert (not Saw_Joined, "emoji cluster render should skip joined scalar");
       Assert
