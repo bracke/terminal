@@ -64,4 +64,39 @@ begin
 
    Feed_Text (ASCII.ESC & "[99a" & ASCII.ESC & "[99e", "cursor clamp feed failed");
    Assert_Cursor (5, 10, "HPR/VPR should clamp at screen edge");
+
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "C1 movement initialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#84#,
+       3 => Byte (Character'Pos ('b'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 IND feed failed");
+   Assert_Cursor (2, 3, "C1 IND should move to the next row");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#85#, 2 => Byte (Character'Pos ('c'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 NEL feed failed");
+   Assert_Cursor (3, 2, "C1 NEL should return to column one and move down");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#8D#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 RI feed failed");
+   Assert_Cursor (2, 2, "C1 RI should move up");
+
+   declare
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (D.Malformed_UTF8 = 0,
+         "C1 movement controls should not count as malformed UTF-8");
+   end;
 end Core_Cursor_Smoke;

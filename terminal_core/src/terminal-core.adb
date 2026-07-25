@@ -18,6 +18,14 @@ package body Terminal.Core is
    function Active_Cells (T : Terminal) return Cell_Array_Access is
      (if T.Active = Primary then T.Primary_Cells else T.Alt_Cells);
 
+   procedure Scroll_Down_Region
+     (T      : in out Terminal;
+      Top    : Positive;
+      Bottom : Positive;
+      Count  : Positive := 1);
+
+   procedure New_Line (T : in out Terminal);
+
    procedure Mark_Dirty (T : in out Terminal; Row : Positive) is
    begin
       if T.Dirty /= null and then Row in T.Dirty'Range then
@@ -127,6 +135,28 @@ package body Terminal.Core is
       T.Pending_Wrap := False;
       Mark_All_Dirty (T);
    end Screen_Alignment_Test;
+
+   procedure Index_Control (T : in out Terminal) is
+   begin
+      New_Line (T);
+   end Index_Control;
+
+   procedure Next_Line_Control (T : in out Terminal) is
+   begin
+      T.Cursor_Col := 1;
+      New_Line (T);
+   end Next_Line_Control;
+
+   procedure Reverse_Index_Control (T : in out Terminal) is
+      Old_Row : constant Positive := T.Cursor_Row;
+   begin
+      if T.Cursor_Row = T.Top_Margin then
+         Scroll_Down_Region (T, T.Top_Margin, T.Bottom_Margin);
+      elsif T.Cursor_Row > 1 then
+         T.Cursor_Row := T.Cursor_Row - 1;
+      end if;
+      Mark_Cursor_Move (T, Old_Row);
+   end Reverse_Index_Control;
 
    procedure Save_Cursor_State (T : in out Terminal) is
    begin
@@ -1468,6 +1498,18 @@ package body Terminal.Core is
                Clear_CSI (T);
                T.State := CSI;
                goto Continue;
+            elsif Natural (B) = 16#84# then
+               Recover_Incomplete_UTF8 (T);
+               Index_Control (T);
+               goto Continue;
+            elsif Natural (B) = 16#85# then
+               Recover_Incomplete_UTF8 (T);
+               Next_Line_Control (T);
+               goto Continue;
+            elsif Natural (B) = 16#8D# then
+               Recover_Incomplete_UTF8 (T);
+               Reverse_Index_Control (T);
+               goto Continue;
             elsif Natural (B) = 16#9D# then
                Recover_Incomplete_UTF8 (T);
                T.OSC_Count := 0;
@@ -1512,11 +1554,10 @@ package body Terminal.Core is
                      Restore_Cursor_State (T);
                      T.State := Ground;
                   when 'D' =>
-                     New_Line (T);
+                     Index_Control (T);
                      T.State := Ground;
                   when 'E' =>
-                     T.Cursor_Col := 1;
-                     New_Line (T);
+                     Next_Line_Control (T);
                      T.State := Ground;
                   when 'H' =>
                      if T.Tab_Stops /= null then
@@ -1524,16 +1565,7 @@ package body Terminal.Core is
                      end if;
                      T.State := Ground;
                   when 'M' =>
-                     declare
-                        Old_Row : constant Positive := T.Cursor_Row;
-                     begin
-                        if T.Cursor_Row = T.Top_Margin then
-                           Scroll_Down_Region (T, T.Top_Margin, T.Bottom_Margin);
-                        elsif T.Cursor_Row > 1 then
-                           T.Cursor_Row := T.Cursor_Row - 1;
-                        end if;
-                        Mark_Cursor_Move (T, Old_Row);
-                     end;
+                     Reverse_Index_Control (T);
                      T.State := Ground;
                   when '[' =>
                      Clear_CSI (T);
