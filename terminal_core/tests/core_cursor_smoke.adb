@@ -99,4 +99,27 @@ begin
         (D.Malformed_UTF8 = 0,
          "C1 movement controls should not count as malformed UTF-8");
    end;
+
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "VT/FF initialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('x')),
+       2 => 16#0B#,
+       3 => Byte (Character'Pos ('y')),
+       4 => 16#0C#,
+       5 => Byte (Character'Pos ('z'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "VT/FF feed failed");
+   Assert_Cursor (3, 4, "VT and FF should advance like LF");
+
+   declare
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (D.Malformed_UTF8 = 0,
+         "VT/FF should not count as malformed UTF-8");
+   end;
 end Core_Cursor_Smoke;

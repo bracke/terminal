@@ -1720,7 +1720,7 @@ package body Terminal.Core is
             T.Pending_Wrap := False;
          when 9 =>
             Move_Forward_Tabs (T, 1);
-         when 10 =>
+         when 10 | 11 | 12 =>
             New_Line (T);
          when 13 =>
             T.Cursor_Col := 1;
