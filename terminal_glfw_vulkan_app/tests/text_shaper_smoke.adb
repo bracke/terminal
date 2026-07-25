@@ -46,6 +46,8 @@ procedure Text_Shaper_Smoke is
          Codepoint_Count => Count,
          Run_Kind        => RM.Invalid_Run,
          Shape_Status    => RM.Invalid_Run,
+         Shaped_Glyphs   => (others => <>),
+         Shaped_Glyph_Count => 0,
          Fallback_Glyphs => True);
    end Run;
 
@@ -62,6 +64,16 @@ begin
    Assert (Status = RM.Shape_Ok, "simple glyph status");
    Assert (Simple.Run_Kind = RM.Simple_Glyph, "simple glyph stored class");
    Assert (Simple.Shape_Status = RM.Shape_Ok, "simple glyph stored status");
+   Assert (Simple.Shaped_Glyph_Count = 1, "simple glyph shaped count");
+   Assert
+     (Simple.Shaped_Glyphs (1).Codepoint = Character'Pos ('A'),
+      "simple glyph shaped codepoint");
+   Assert
+     (Simple.Shaped_Glyphs (1).Source_Index = 1,
+      "simple glyph source index");
+   Assert
+     (Simple.Shaped_Glyphs (1).X_Advance = Simple.Cell_Width,
+      "simple glyph advance");
    Assert (not Simple.Fallback_Glyphs, "simple glyph should not need fallback");
 
    Assert
@@ -77,6 +89,9 @@ begin
    Assert
      (Combining.Shape_Status = RM.Needs_Shaping_Backend,
       "combining cluster stored status");
+   Assert
+     (Combining.Shaped_Glyph_Count = 0,
+      "combining cluster should not invent shaped glyphs");
    Assert (Combining.Fallback_Glyphs, "combining cluster fallback");
 
    Assert
@@ -84,6 +99,9 @@ begin
       "joined emoji class");
    TS.Prepare (Joined, Status);
    Assert (Status = RM.Needs_Shaping_Backend, "joined emoji needs shaping");
+   Assert
+     (Joined.Shaped_Glyph_Count = 0,
+      "joined emoji should wait for a shaping backend");
 
    Assert
      (TS.Classify (Modified) = RM.Emoji_Modified_Cluster,

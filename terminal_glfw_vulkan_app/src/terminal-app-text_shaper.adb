@@ -86,6 +86,9 @@ package body Terminal.App.Text_Shaper is
       Kind : constant Run_Kind := Classify (Run);
    begin
       Run.Run_Kind := Kind;
+      Run.Shaped_Glyphs := (others => <>);
+      Run.Shaped_Glyph_Count := 0;
+
       if Kind = RM.Invalid_Run then
          Run.Shape_Status := RM.Invalid_Run;
          Run.Fallback_Glyphs := True;
@@ -97,6 +100,15 @@ package body Terminal.App.Text_Shaper is
       else
          Run.Shape_Status := RM.Shape_Ok;
          Run.Fallback_Glyphs := False;
+         Run.Shaped_Glyph_Count := 1;
+         Run.Shaped_Glyphs (1) :=
+           (Glyph_ID     => 0,
+            Codepoint    => Run.Codepoints (1),
+            Source_Index => 1,
+            X_Offset     => 0.0,
+            Y_Offset     => 0.0,
+            X_Advance    => Run.Cell_Width,
+            Y_Advance    => 0.0);
          Status := RM.Shape_Ok;
       end if;
    end Prepare;

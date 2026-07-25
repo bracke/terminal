@@ -35,10 +35,25 @@ package Terminal.App.Render_Model is
    end record;
 
    Max_Text_Run_Codepoints : constant := 9;
+   Max_Shaped_Glyphs_Per_Run : constant := 16;
    subtype Text_Run_Codepoint_Count is Natural range 0 .. Max_Text_Run_Codepoints;
    subtype Text_Run_Codepoint_Index is Positive range 1 .. Max_Text_Run_Codepoints;
    type Text_Run_Codepoint_Array is
      array (Text_Run_Codepoint_Index) of Natural;
+   subtype Shaped_Glyph_Total is Natural range 0 .. Max_Shaped_Glyphs_Per_Run;
+   subtype Shaped_Glyph_Index is Positive range 1 .. Max_Shaped_Glyphs_Per_Run;
+
+   type Shaped_Glyph_Command is record
+      Glyph_ID      : Natural := 0;
+      Codepoint     : Natural := 0;
+      Source_Index  : Text_Run_Codepoint_Count := 0;
+      X_Offset      : Float := 0.0;
+      Y_Offset      : Float := 0.0;
+      X_Advance     : Float := 0.0;
+      Y_Advance     : Float := 0.0;
+   end record;
+
+   type Shaped_Glyph_Array is array (Shaped_Glyph_Index) of Shaped_Glyph_Command;
 
    type Text_Run_Kind is
      (Simple_Glyph,
@@ -68,6 +83,8 @@ package Terminal.App.Render_Model is
       Codepoint_Count  : Text_Run_Codepoint_Count := 0;
       Run_Kind         : Text_Run_Kind := Invalid_Run;
       Shape_Status     : Text_Run_Shape_Status := Invalid_Run;
+      Shaped_Glyphs    : Shaped_Glyph_Array := (others => <>);
+      Shaped_Glyph_Count : Shaped_Glyph_Total := 0;
       Fallback_Glyphs  : Boolean := True;
    end record;
 

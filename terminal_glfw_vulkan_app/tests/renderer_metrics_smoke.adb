@@ -542,6 +542,9 @@ begin
            Terminal.App.Render_Model.Needs_Shaping_Backend,
          "emoji cluster text run shape status");
       Assert
+        (Frame.Text_Runs (2).Shaped_Glyph_Count = 0,
+         "emoji cluster should not invent shaped glyphs");
+      Assert
         (Frame.Text_Runs (2).Fallback_Glyphs,
          "emoji cluster text run should allow the current glyph fallback");
       Assert (not Saw_ZWJ, "emoji cluster render should skip ZWJ");

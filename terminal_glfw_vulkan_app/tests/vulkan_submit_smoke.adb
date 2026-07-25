@@ -54,6 +54,8 @@ procedure Vulkan_Submit_Smoke is
          Codepoint_Count => 4,
          Run_Kind        => RM.Joined_Emoji_Cluster,
          Shape_Status    => RM.Needs_Shaping_Backend,
+         Shaped_Glyphs   => (others => <>),
+         Shaped_Glyph_Count => 0,
          Fallback_Glyphs => True)];
 
    Frame : RM.Frame_Commands :=
@@ -95,6 +97,9 @@ begin
    Assert
      (VS.Text_Runs (Batch) (1).Shape_Status = RM.Needs_Shaping_Backend,
       "text run shape status");
+   Assert
+     (VS.Text_Runs (Batch) (1).Shaped_Glyph_Count = 0,
+      "text run shaped glyph count");
    Assert
      (VS.Text_Runs (Batch) (1).Fallback_Glyphs,
       "text run fallback flag");

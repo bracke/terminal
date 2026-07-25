@@ -347,6 +347,8 @@ package body Terminal.App.Renderer is
          Codepoint_Count => 0,
          Run_Kind        => RM.Invalid_Run,
          Shape_Status    => RM.Invalid_Run,
+         Shaped_Glyphs   => (others => <>),
+         Shaped_Glyph_Count => 0,
          Fallback_Glyphs => True);
 
       Count := Count + 1;

@@ -62,10 +62,12 @@ combining clusters, ZWJ emoji clusters, RTL text, or complex scripts. Text-run
 commands are carried through renderer, submit, presenter, and device
 diagnostics so a real shaper can be attached at the presentation boundary
 without moving terminal parsing or terminal state into the renderer.
-Each `Text_Run_Command` carries the run kind, shape status, and raw
-codepoints. `Fallback_Glyphs` marks runs that are still represented by the
-existing glyph fallback path, and renderer diagnostics count those fallback
-runs.
+Each `Text_Run_Command` carries the run kind, shape status, raw codepoints, and
+a bounded shaped-glyph output buffer. The current adapter emits one shaped
+glyph for simple single-scalar runs and leaves complex runs empty with
+`Needs_Shaping_Backend`. `Fallback_Glyphs` marks runs that are still
+represented by the existing glyph fallback path, and renderer diagnostics count
+those fallback runs.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions
