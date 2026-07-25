@@ -202,6 +202,33 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize zero width format failed");
+   Feed_Bytes
+     ((1  => Byte (Character'Pos ('w')),
+       2  => 16#CD#, 3  => 16#8F#,
+       4  => Byte (Character'Pos ('x')),
+       5  => 16#E2#, 6  => 16#81#, 7  => 16#A0#,
+       8  => Byte (Character'Pos ('y')),
+       9  => 16#EF#, 10 => 16#BB#, 11 => 16#BF#,
+       12 => Byte (Character'Pos ('z')),
+       13 => 16#F3#, 14 => 16#A0#, 15 => 16#84#, 16 => 16#80#),
+      "zero width format feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Char (S, 1, 16#77#, "combining grapheme joiner keeps w");
+      Assert_Char (S, 2, 16#78#, "word joiner should not occupy a cell");
+      Assert_Char (S, 3, 16#79#, "BOM should not occupy a cell");
+      Assert_Char (S, 4, 16#7A#, "variation selector should not occupy a cell");
+      Assert (S.Cursor.Col = 5, "zero width format cursor");
+      Assert
+        (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
+         "zero width format fixtures should be valid UTF-8");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 6, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize supplementary CJK failed");
    Feed_Bytes

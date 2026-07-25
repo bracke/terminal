@@ -92,9 +92,10 @@ and recorded in diagnostics where applicable.
 One decoded scalar value maps to one simplified character cell initially. Common
 CJK ranges, including supplementary CJK ideograph planes, are treated as width
 two, with continuation cells cleared when either half is overwritten, erased, or
-shifted apart. Common combining-mark ranges, zero-width joiner/non-joiner, and
-variation selectors are treated as width zero and ignored. Full grapheme
-clusters, emoji ZWJ sequence composition, shaping, and BiDi are postponed.
+shifted apart. Common combining-mark ranges, zero-width joiner/non-joiner,
+format controls, bidi marks, and variation selectors are treated as width zero
+and ignored. Full grapheme clusters, emoji ZWJ sequence composition, shaping,
+and BiDi are postponed.
 
 ## Cursor
 

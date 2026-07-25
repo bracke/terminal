@@ -568,6 +568,7 @@ package body Terminal.Core is
         V = 16#200C#
         or else V = 16#200D#
         or else (V in 16#0300# .. 16#036F#)
+        or else V = 16#034F#
         or else (V in 16#0483# .. 16#0489#)
         or else (V in 16#0591# .. 16#05BD#)
         or else V = 16#05BF#
@@ -575,6 +576,7 @@ package body Terminal.Core is
         or else (V in 16#05C4# .. 16#05C5#)
         or else V = 16#05C7#
         or else (V in 16#0610# .. 16#061A#)
+        or else V = 16#061C#
         or else (V in 16#064B# .. 16#065F#)
         or else V = 16#0670#
         or else (V in 16#06D6# .. 16#06ED#)
@@ -595,11 +597,16 @@ package body Terminal.Core is
         or else V = 16#094D#
         or else (V in 16#0951# .. 16#0957#)
         or else (V in 16#0962# .. 16#0963#)
+        or else (V in 16#180B# .. 16#180F#)
         or else (V in 16#1AB0# .. 16#1AFF#)
         or else (V in 16#1DC0# .. 16#1DFF#)
+        or else (V in 16#200B# .. 16#200F#)
+        or else (V in 16#202A# .. 16#202E#)
+        or else (V in 16#2060# .. 16#206F#)
         or else (V in 16#20D0# .. 16#20FF#)
         or else (V in 16#FE00# .. 16#FE0F#)
         or else (V in 16#FE20# .. 16#FE2F#)
+        or else V = 16#FEFF#
         or else (V in 16#E0100# .. 16#E01EF#);
    end Is_Zero_Width;
 
