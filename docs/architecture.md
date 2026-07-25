@@ -56,11 +56,14 @@ initialization so the shader sampler binding is always valid. Dirty
 `textrender` atlas batches replace that image through a bounded staging upload.
 
 The current visible Vulkan draw path still renders glyph quads generated from
-`textrender`. Text-run commands are carried through renderer, submit, presenter,
-and device diagnostics so a real shaper can be attached at the presentation
-boundary without moving terminal parsing or terminal state into the renderer.
+`textrender`. `Terminal.App.Text_Shaper` classifies each text run as either a
+simple single-glyph run or a run that needs a shaping backend, such as
+combining clusters, ZWJ emoji clusters, RTL text, or complex scripts. Text-run
+commands are carried through renderer, submit, presenter, and device
+diagnostics so a real shaper can be attached at the presentation boundary
+without moving terminal parsing or terminal state into the renderer.
 `Fallback_Glyphs` marks runs that are still represented by the existing glyph
-fallback path.
+fallback path, and renderer diagnostics count those fallback runs.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions

@@ -111,10 +111,11 @@ attachments in the same cell, while invisible joiner, format-control, bidi,
 variation-selector, tag, and joined emoji attachments remain non-drawing in the
 current glyph fallback path. The app renderer also emits bounded text-run
 commands that preserve the full stored cluster for each drawable cell, and the
-submit/presenter/device layers carry those runs without parsing terminal data.
-BiDi layout, OpenType shaping, emoji ZWJ glyph composition, complex-script
-cluster shaping, and ligature substitution still require a real shaping backend
-behind those text-run commands.
+`Terminal.App.Text_Shaper` adapter classifies which runs require a shaping
+backend. The submit/presenter/device layers carry those runs without parsing
+terminal data. BiDi layout, OpenType shaping, emoji ZWJ glyph composition,
+complex-script cluster shaping, and ligature substitution still require a real
+shaping backend behind those text-run commands.
 
 ## Cursor
 

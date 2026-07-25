@@ -546,6 +546,9 @@ begin
          Assert
            (Diag.Last_Text_Run_Count = Frame.Text_Run_Count,
             "renderer diagnostics should report text run count");
+         Assert
+           (Diag.Last_Shaping_Fallback_Count = 1,
+            "renderer diagnostics should report complex text fallback count");
       end;
    end;
 

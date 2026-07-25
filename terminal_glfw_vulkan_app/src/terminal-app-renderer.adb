@@ -4,6 +4,7 @@ with System;
 with Terminal.Common;
 with Terminal.App.Fonts;
 with Terminal.App.Render_Model;
+with Terminal.App.Text_Shaper;
 with Terminal.App.Vulkan_Submit;
 
 package body Terminal.App.Renderer is
@@ -16,6 +17,7 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Cursor_Shape;
    use type Terminal.Core.Dirty_Row_Array_Access;
    use type Terminal.Common.Code_Point;
+   use type Terminal.App.Text_Shaper.Shape_Status;
    use type RM.Glyph_Array_Access;
    use type RM.Rectangle_Array_Access;
    use type RM.Text_Run_Array_Access;
@@ -258,6 +260,7 @@ package body Terminal.App.Renderer is
       R.Rectangle_Count := 0;
       R.Glyph_Count := 0;
       R.Text_Run_Count := 0;
+      R.Shaping_Fallback_Count := 0;
       R.Vertex_Count := 0;
       R.Last_Cell_Count := 0;
       R.Last_Dirty_Rows := 0;
@@ -320,6 +323,7 @@ package body Terminal.App.Renderer is
       Color   : RM.Pixel_Color)
    is
       Count : RM.Text_Run_Codepoint_Count := 0;
+      Shape_Status : Terminal.App.Text_Shaper.Shape_Status;
    begin
       if R.Text_Runs = null
         or else R.Text_Run_Count >= R.Text_Runs'Length
@@ -355,6 +359,12 @@ package body Terminal.App.Renderer is
       end loop;
 
       R.Text_Runs (R.Text_Run_Count).Codepoint_Count := Count;
+      Terminal.App.Text_Shaper.Prepare
+        (R.Text_Runs (R.Text_Run_Count),
+         Shape_Status);
+      if Shape_Status = Terminal.App.Text_Shaper.Needs_Shaping_Backend then
+         R.Shaping_Fallback_Count := R.Shaping_Fallback_Count + 1;
+      end if;
    end Add_Text_Run;
 
    procedure Initialize_Text
@@ -367,6 +377,7 @@ package body Terminal.App.Renderer is
       R.CW := 8;
       R.CH := 16;
       R.Glyph_Count := 0;
+      R.Shaping_Fallback_Count := 0;
       R.Missing_Glyph_Count := 0;
       R.Rectangle_Count := 0;
       R.Vertex_Count := 0;
@@ -564,6 +575,7 @@ package body Terminal.App.Renderer is
 
       Release_Frame (R);
       R.Missing_Glyph_Count := 0;
+      R.Shaping_Fallback_Count := 0;
 
       Cell_Count := Snapshot.Rows * Snapshot.Cols;
       Rect_Max := Cell_Count * 4 + 2;
@@ -775,6 +787,8 @@ package body Terminal.App.Renderer is
       R.Has_Context := False;
       R.Text_Loaded := False;
       R.Glyph_Count := 0;
+      R.Text_Run_Count := 0;
+      R.Shaping_Fallback_Count := 0;
       R.Vertex_Count := 0;
       R.Missing_Glyph_Count := 0;
       R.Target_Frame_Width := 0;
@@ -816,6 +830,7 @@ package body Terminal.App.Renderer is
          Last_Rectangle_Count => R.Rectangle_Count,
          Last_Glyph_Count     => R.Glyph_Count,
          Last_Text_Run_Count  => R.Text_Run_Count,
+         Last_Shaping_Fallback_Count => R.Shaping_Fallback_Count,
          Last_Vertex_Count    => R.Vertex_Count,
          Missing_Glyph_Count  => R.Missing_Glyph_Count,
          Atlas_Dirty          => R.Atlas_Dirty,

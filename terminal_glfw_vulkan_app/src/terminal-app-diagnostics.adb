@@ -9,6 +9,7 @@ package body Terminal.App.Diagnostics is
    Last_PTY_Overflows : Natural := 0;
    Last_Input_Overflows : Natural := 0;
    Last_Missing_Glyphs : Natural := 0;
+   Last_Shaping_Fallbacks : Natural := 0;
    Last_Render_Status : Terminal.App.Renderer.Render_Status :=
      Terminal.App.Renderer.Not_Initialized;
    Last_Presenter_Status : Terminal.App.Vulkan_Presenter.Present_Status :=
@@ -67,6 +68,9 @@ package body Terminal.App.Diagnostics is
    function Renderer_Changed (S : Snapshot) return Boolean is
    begin
       return S.Renderer.Missing_Glyph_Count /= Last_Missing_Glyphs
+        or else
+          S.Renderer.Last_Shaping_Fallback_Count /=
+            Last_Shaping_Fallbacks
         or else S.Renderer.Last_Render_Status /= Last_Render_Status;
    end Renderer_Changed;
 
@@ -87,6 +91,7 @@ package body Terminal.App.Diagnostics is
       Last_PTY_Overflows := S.PTY_Overflows;
       Last_Input_Overflows := S.Input_Overflows;
       Last_Missing_Glyphs := S.Renderer.Missing_Glyph_Count;
+      Last_Shaping_Fallbacks := S.Renderer.Last_Shaping_Fallback_Count;
       Last_Render_Status := S.Renderer.Last_Render_Status;
       Last_Presenter_Status := S.Presenter.Last_Status;
       Last_Accepted_Frames := S.Presenter.Accepted_Frames;
@@ -128,7 +133,9 @@ package body Terminal.App.Diagnostics is
            Terminal.App.Renderer.Render_Status'Image
              (S.Renderer.Last_Render_Status)
          & " missing_glyphs=" &
-           Natural'Image (S.Renderer.Missing_Glyph_Count));
+           Natural'Image (S.Renderer.Missing_Glyph_Count)
+         & " shaping_fallbacks=" &
+           Natural'Image (S.Renderer.Last_Shaping_Fallback_Count));
 
       Remember (S);
    end Log_If_Changed;
