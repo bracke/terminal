@@ -358,6 +358,117 @@ package body Terminal.Core is
       Mark_Dirty (T, Row);
    end Shift_Row_Right;
 
+   procedure Shift_Row_Left
+     (T        : in out Terminal;
+      Row      : Positive;
+      Col      : Positive;
+      Distance : Positive)
+   is
+      Cells : constant Cell_Array_Access := Active_Cells (T);
+      Blank_First : Positive;
+   begin
+      if Cells = null then
+         return;
+      end if;
+
+      if Col + Distance <= T.Cols then
+         for C in Col .. T.Cols - Distance loop
+            Cells (Index (T, Row, C)) := Cells (Index (T, Row, C + Distance));
+         end loop;
+         Blank_First := T.Cols - Distance + 1;
+      else
+         Blank_First := Col;
+      end if;
+
+      for C in Blank_First .. T.Cols loop
+         Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
+      end loop;
+      Mark_Dirty (T, Row);
+   end Shift_Row_Left;
+
+   procedure Erase_Characters
+     (T     : in out Terminal;
+      Row   : Positive;
+      Col   : Positive;
+      Count : Positive)
+   is
+      Cells : constant Cell_Array_Access := Active_Cells (T);
+      Last  : constant Positive := Positive'Min (T.Cols, Col + Count - 1);
+   begin
+      if Cells = null then
+         return;
+      end if;
+
+      for C in Col .. Last loop
+         Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
+      end loop;
+      Mark_Dirty (T, Row);
+   end Erase_Characters;
+
+   procedure Insert_Blank_Lines
+     (T     : in out Terminal;
+      Row   : Positive;
+      Count : Positive)
+   is
+      Cells  : constant Cell_Array_Access := Active_Cells (T);
+      Amount : Natural;
+   begin
+      if Cells = null or else Row < T.Top_Margin or else Row > T.Bottom_Margin then
+         return;
+      end if;
+
+      Amount := Natural'Min (Count, T.Bottom_Margin - Row + 1);
+
+      if Amount = 0 then
+         return;
+      end if;
+
+      if Row + Amount <= T.Bottom_Margin then
+         for R in reverse Row + Amount .. T.Bottom_Margin loop
+            for C in 1 .. T.Cols loop
+               Cells (Index (T, R, C)) := Cells (Index (T, R - Amount, C));
+            end loop;
+            Mark_Dirty (T, R);
+         end loop;
+      end if;
+
+      for R in Row .. Positive'Min (T.Bottom_Margin, Row + Amount - 1) loop
+         Clear_Row (T, R, 1, T.Cols);
+      end loop;
+   end Insert_Blank_Lines;
+
+   procedure Delete_Lines
+     (T     : in out Terminal;
+      Row   : Positive;
+      Count : Positive)
+   is
+      Cells  : constant Cell_Array_Access := Active_Cells (T);
+      Amount : Natural;
+   begin
+      if Cells = null or else Row < T.Top_Margin or else Row > T.Bottom_Margin then
+         return;
+      end if;
+
+      Amount := Natural'Min (Count, T.Bottom_Margin - Row + 1);
+
+      if Amount = 0 then
+         return;
+      end if;
+
+      if Row + Amount <= T.Bottom_Margin then
+         for R in Row .. T.Bottom_Margin - Amount loop
+            for C in 1 .. T.Cols loop
+               Cells (Index (T, R, C)) := Cells (Index (T, R + Amount, C));
+            end loop;
+            Mark_Dirty (T, R);
+         end loop;
+      end if;
+
+      for R in Positive'Max (Row, T.Bottom_Margin - Amount + 1) .. T.Bottom_Margin loop
+         Clear_Row (T, R, 1, T.Cols);
+      end loop;
+   end Delete_Lines;
+
    procedure Put_Code_Point (T : in out Terminal; CP : Common.Code_Point) is
       Cells : constant Cell_Array_Access := Active_Cells (T);
       W     : constant Cell_Width :=
@@ -581,6 +692,12 @@ package body Terminal.Core is
       C : Natural;
    begin
       case Final is
+         when '@' =>
+            Shift_Row_Right
+              (T,
+               T.Cursor_Row,
+               T.Cursor_Col,
+               Positive'Min (T.Cols - T.Cursor_Col + 1, Positive'Max (1, Param (T, 1, 1))));
          when 'A' =>
             N := Param (T, 1, 1);
             T.Cursor_Row := Positive'Max (1, T.Cursor_Row - Natural'Max (N, 1));
@@ -637,10 +754,32 @@ package body Terminal.Core is
                when 2 => Clear_Row (T, T.Cursor_Row, 1, T.Cols);
                when others => T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end case;
+         when 'L' =>
+            Insert_Blank_Lines
+              (T,
+               T.Cursor_Row,
+               Positive'Max (1, Param (T, 1, 1)));
+         when 'M' =>
+            Delete_Lines
+              (T,
+               T.Cursor_Row,
+               Positive'Max (1, Param (T, 1, 1)));
+         when 'P' =>
+            Shift_Row_Left
+              (T,
+               T.Cursor_Row,
+               T.Cursor_Col,
+               Positive'Min (T.Cols - T.Cursor_Col + 1, Positive'Max (1, Param (T, 1, 1))));
          when 'S' =>
             Scroll_Up_Region (T, T.Top_Margin, T.Bottom_Margin, Positive'Max (1, Param (T, 1, 1)));
          when 'T' =>
             Scroll_Down_Region (T, T.Top_Margin, T.Bottom_Margin, Positive'Max (1, Param (T, 1, 1)));
+         when 'X' =>
+            Erase_Characters
+              (T,
+               T.Cursor_Row,
+               T.Cursor_Col,
+               Positive'Min (T.Cols - T.Cursor_Col + 1, Positive'Max (1, Param (T, 1, 1))));
          when 'm' =>
             Apply_SGR (T);
          when 's' =>
