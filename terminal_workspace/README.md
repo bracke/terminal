@@ -7,7 +7,7 @@ For normal app builds, use the repository-root Alire crate:
 ```sh
 cd ..
 alr build
-./bin/terminal_app_main
+./bin/terminal
 ```
 
 Crates:

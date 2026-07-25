@@ -1,3 +1,7 @@
 project Terminal extends "terminal_workspace/terminal_glfw_vulkan_app/terminal_glfw_vulkan_app.gpr" is
    for Exec_Dir use "bin";
+
+   package Builder is
+      for Executable ("terminal_app_main.adb") use "terminal";
+   end Builder;
 end Terminal;
