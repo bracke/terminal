@@ -1073,6 +1073,30 @@ package body Terminal.Core is
                Positive'Min (T.Cols - T.Cursor_Col + 1, Positive'Max (1, Param (T, 1, 1))));
          when 'Z' =>
             Move_Backward_Tabs (T, Positive'Max (1, Param (T, 1, 1)));
+         when '`' =>
+            C := Param (T, 1, 1);
+            T.Cursor_Col := Positive'Min (T.Cols, Positive'Max (1, C));
+            Mark_Cursor_Move (T, T.Cursor_Row);
+         when 'a' =>
+            N := Param (T, 1, 1);
+            T.Cursor_Col := Positive'Min (T.Cols, T.Cursor_Col + Natural'Max (N, 1));
+            Mark_Cursor_Move (T, T.Cursor_Row);
+         when 'd' =>
+            declare
+               Old_Row : constant Positive := T.Cursor_Row;
+            begin
+               R := Param (T, 1, 1);
+               T.Cursor_Row := Positive'Min (T.Rows, Positive'Max (1, R));
+               Mark_Cursor_Move (T, Old_Row);
+            end;
+         when 'e' =>
+            declare
+               Old_Row : constant Positive := T.Cursor_Row;
+            begin
+               N := Param (T, 1, 1);
+               T.Cursor_Row := Positive'Min (T.Rows, T.Cursor_Row + Natural'Max (N, 1));
+               Mark_Cursor_Move (T, Old_Row);
+            end;
          when 'm' =>
             Apply_SGR (T);
          when 'n' =>

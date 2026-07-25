@@ -7,7 +7,7 @@
 - C0: BEL, BS, HT, LF, CR, ESC.
 - ESC: reset, save/restore cursor, index, next line, reverse index, CSI, OSC,
   and charset-selection consume/ignore.
-- CSI: cursor movement, CUP/CHA, CHT/CBT, TBC, ED, EL, ICH, DCH, ECH,
+- CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL, ICH, DCH, ECH,
   IL, DL, SU, SD, SGR, DECSET/DECRST known modes, SM/RM insert mode, and
   DECSTBM margins.
 - DSR status (`CSI 5 n`) and cursor-position report (`CSI 6 n`) responses.
