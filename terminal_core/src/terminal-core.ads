@@ -83,6 +83,7 @@ package Terminal.Core is
       Cursor_Visible     : Boolean := True;
       Cursor_Blinking    : Boolean := False;
       Insert_Mode        : Boolean := False;
+      Linefeed_New_Line  : Boolean := False;
    end record;
 
    type Diagnostic_Snapshot is record

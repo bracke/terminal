@@ -122,4 +122,23 @@ begin
         (D.Malformed_UTF8 = 0,
          "VT/FF should not count as malformed UTF-8");
    end;
+
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "LNM initialize failed");
+
+   Feed_Text ("ab" & ASCII.LF & "c", "default LF feed failed");
+   Assert_Cursor (2, 4, "default LF should preserve the current column");
+
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "LNM reinitialize failed");
+
+   Feed_Text
+     (ASCII.ESC & "[20h" & "ab" & ASCII.LF & "c",
+      "LNM set LF feed failed");
+   Assert_Cursor (2, 2, "LNM LF should return to column one before moving down");
+
+   Feed_Text
+     (ASCII.ESC & "[20l" & "de" & ASCII.LF & "f",
+      "LNM reset LF feed failed");
+   Assert_Cursor (3, 5, "reset LNM LF should preserve the current column again");
 end Core_Cursor_Smoke;

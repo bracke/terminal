@@ -103,6 +103,15 @@ begin
      (Terminal.Core.Modes (T).Insert_Mode,
       "mixed SM list should still apply known insert mode");
    Assert
-     (Terminal.Core.Diagnostics (T).Unsupported_Sequence = 1,
-      "mixed SM list should diagnose unknown normal mode");
+     (Terminal.Core.Modes (T).Linefeed_New_Line,
+      "mixed SM list should enable linefeed/new-line mode");
+   Assert
+     (Terminal.Core.Diagnostics (T).Unsupported_Sequence = 0,
+      "known SM list should not diagnose linefeed/new-line mode");
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[20l"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "LNM reset feed failed");
+   Assert
+     (not Terminal.Core.Modes (T).Linefeed_New_Line,
+      "RM should disable linefeed/new-line mode");
 end Core_Insert_Smoke;

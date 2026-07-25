@@ -1048,6 +1048,8 @@ package body Terminal.Core is
          end case;
       elsif Prefix = ASCII.NUL and then Number = 4 then
          return (if T.Current_Modes.Insert_Mode then 1 else 2);
+      elsif Prefix = ASCII.NUL and then Number = 20 then
+         return (if T.Current_Modes.Linefeed_New_Line then 1 else 2);
       else
          return 0;
       end if;
@@ -1389,7 +1391,8 @@ package body Terminal.Core is
          Autowrap           => True,
          Cursor_Visible     => True,
          Cursor_Blinking    => False,
-         Insert_Mode        => False);
+         Insert_Mode        => False,
+         Linefeed_New_Line  => False);
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
       T.Current_Cursor_Shape := Cursor_Block;
@@ -1681,12 +1684,15 @@ package body Terminal.Core is
                end loop;
             elsif T.CSI_Private = ASCII.NUL then
                for I in 1 .. Natural'Max (T.CSI_Count, 1) loop
-                  if Param (T, I, 0) = 4 then
-                     T.Current_Modes.Insert_Mode := Final = 'h';
-                  else
-                     T.Diag.Unsupported_Sequence :=
-                       T.Diag.Unsupported_Sequence + 1;
-                  end if;
+                  case Param (T, I, 0) is
+                     when 4 =>
+                        T.Current_Modes.Insert_Mode := Final = 'h';
+                     when 20 =>
+                        T.Current_Modes.Linefeed_New_Line := Final = 'h';
+                     when others =>
+                        T.Diag.Unsupported_Sequence :=
+                          T.Diag.Unsupported_Sequence + 1;
+                  end case;
                end loop;
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
@@ -1721,6 +1727,9 @@ package body Terminal.Core is
          when 9 =>
             Move_Forward_Tabs (T, 1);
          when 10 | 11 | 12 =>
+            if T.Current_Modes.Linefeed_New_Line then
+               T.Cursor_Col := 1;
+            end if;
             New_Line (T);
          when 13 =>
             T.Cursor_Col := 1;

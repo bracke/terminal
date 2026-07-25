@@ -32,7 +32,8 @@
   cursor-position report (`CSI ? 6 n`), primary DA (`CSI c`), and secondary DA
   (`CSI > c`) responses.
 - DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode,
-  known DEC private modes, and stateless `?1048` save/restore cursor mode.
+  line-feed/new-line mode, known DEC private modes, and stateless `?1048`
+  save/restore cursor mode.
 - XTWINOPS window-state report (`CSI 11 t`) returns normal state as
   `CSI 1 t`, and window-position report (`CSI 13 t`) returns unknown position
   as `CSI 3 ; 0 ; 0 t`. Window pixel-size report (`CSI 14 t`) returns the
@@ -48,6 +49,8 @@
 - Default tab stops every eight columns, plus `ESC H` tab-set and `CSI g`
   tab-clear handling.
 - Autowrap with pending-wrap behavior.
+- ANSI line-feed/new-line mode (`CSI 20 h`/`CSI 20 l`) controls whether LF,
+  VT, and FF preserve the current column or first return to column one.
 - Primary and alternate screen buffers.
 - Dirty row tracking.
 - Renderer-neutral snapshots.
