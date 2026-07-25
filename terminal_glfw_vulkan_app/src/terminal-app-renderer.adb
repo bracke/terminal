@@ -431,7 +431,7 @@ package body Terminal.App.Renderer is
       R.Missing_Glyph_Count := 0;
 
       Cell_Count := Snapshot.Rows * Snapshot.Cols;
-      Rect_Max := Cell_Count * 2 + 2;
+      Rect_Max := Cell_Count * 3 + 2;
       begin
          R.Rectangles := new RM.Rectangle_Array (1 .. Rect_Max);
          R.Glyphs := new RM.Glyph_Array (1 .. Cell_Count * 2);
@@ -574,6 +574,16 @@ package body Terminal.App.Renderer is
                        (R,
                         X      => X,
                         Y      => Y + Float (R.CH - 2),
+                        Width  => Float (Cell_W),
+                        Height => 1.0,
+                        Color  => FG);
+                  end if;
+
+                  if Cell.Style.Strikethrough then
+                     Add_Rectangle
+                       (R,
+                        X      => X,
+                        Y      => Y + Float (R.CH) / 2.0,
                         Width  => Float (Cell_W),
                         Height => 1.0,
                         Color  => FG);

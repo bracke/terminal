@@ -192,6 +192,43 @@ begin
          "bold duplicate glyph should keep baseline placement");
    end;
 
+   Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "decoration core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "[4mA" & ASCII.ESC & "[24;9mB"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "decoration feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "decoration render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Rectangle_Count >= 7, "expected decoration rectangles");
+      Assert
+        (Frame.Rectangles (3).Height = 1.0,
+         "underline decoration should be one pixel high");
+      Assert
+        (Frame.Rectangles (3).Width =
+           Float (Terminal.App.Renderer.Cell_Width (R)),
+         "underline decoration should span the cell");
+      Assert
+        (Frame.Rectangles (5).Height = 1.0,
+         "strikethrough decoration should be one pixel high");
+      Assert
+        (Frame.Rectangles (5).Width =
+           Float (Terminal.App.Renderer.Cell_Width (R)),
+         "strikethrough decoration should span the cell");
+   end;
+
    Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "indexed color core initialize failed");
    Terminal.Core.Feed

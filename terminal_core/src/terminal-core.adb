@@ -1082,8 +1082,10 @@ package body Terminal.Core is
                null;
             when 7 =>
                T.Current_Style.Inverse := True;
-            when 8 | 9 =>
+            when 8 =>
                null;
+            when 9 =>
+               T.Current_Style.Strikethrough := True;
             when 21 =>
                T.Current_Style.Bold := False;
             when 22 =>
@@ -1099,7 +1101,7 @@ package body Terminal.Core is
             when 28 =>
                null;
             when 29 =>
-               null;
+               T.Current_Style.Strikethrough := False;
             when 53 | 55 =>
                null;
             when 30 .. 37 =>

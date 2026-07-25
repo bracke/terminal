@@ -35,6 +35,7 @@ package Terminal.Core is
       Bold       : Boolean := False;
       Italic     : Boolean := False;
       Underline  : Boolean := False;
+      Strikethrough : Boolean := False;
       Inverse    : Boolean := False;
    end record;
    subtype Cell_Style is Style;
