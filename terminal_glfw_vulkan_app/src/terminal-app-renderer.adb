@@ -50,6 +50,15 @@ package body Terminal.App.Renderer is
    Cursor_BG  : constant RM.Pixel_Color := (0.86, 0.88, 0.88, 1.0);
    Cursor_FG  : constant RM.Pixel_Color := (0.03, 0.035, 0.04, 1.0);
 
+   function Ceiling_Positive (Value : Float) return Positive is
+      Result : Positive := 1;
+   begin
+      while Float (Result) < Value loop
+         Result := Result + 1;
+      end loop;
+      return Result;
+   end Ceiling_Positive;
+
    function Resolve_Color
      (Color      : Terminal.Core.Color;
       Default    : RM.Pixel_Color)
@@ -222,6 +231,9 @@ package body Terminal.App.Renderer is
          Status := Failed;
          return;
       end if;
+
+      R.CH := Positive'Max
+        (R.CH, Ceiling_Positive (Textrender.Line_Height (R.Text)));
 
       for Path of Terminal.App.Fonts.Fallback_Font_Paths loop
          declare

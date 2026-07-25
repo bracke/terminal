@@ -10,6 +10,7 @@ project App_Tests is
       "vulkan_presenter_smoke.adb",
       "vulkan_device_smoke.adb",
       "shader_loader_smoke.adb",
+      "renderer_metrics_smoke.adb",
       "pty_core_integration_smoke.adb",
       "input_map_smoke.adb",
       "queue_smoke.adb",
