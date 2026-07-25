@@ -106,6 +106,9 @@ begin
      (Simple.Shaped_Glyphs (1).Glyph_ID > 0,
       "simple glyph should have a real font glyph id");
    Assert
+     (Simple.Shaped_Glyphs (1).Font_Index = 0,
+      "simple glyph should use primary font index");
+   Assert
      (Simple.Shaped_Glyphs (1).Source_Index = 1,
       "simple glyph source index");
    Assert
@@ -126,6 +129,9 @@ begin
    Assert
      (Text.Shaped_Glyphs (2).Glyph_ID > 0,
       "simple text second real font glyph id");
+   Assert
+     (Text.Shaped_Glyphs (2).Font_Index = 0,
+      "simple text second primary font index");
    Assert
      (Text.Shaped_Glyphs (2).Source_Index = 2,
       "simple text second source index");

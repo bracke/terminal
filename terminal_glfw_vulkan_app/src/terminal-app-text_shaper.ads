@@ -14,6 +14,11 @@ package Terminal.App.Text_Shaper is
       Pixel_Size  : Positive;
       Status      : out Backend_Status);
 
+   procedure Add_Fallback_Font
+     (Path        : String;
+      Pixel_Size  : Positive;
+      Status      : out Backend_Status);
+
    function Backend_Available return Boolean;
 
    function Classify

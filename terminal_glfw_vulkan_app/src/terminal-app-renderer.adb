@@ -611,12 +611,17 @@ package body Terminal.App.Renderer is
 
       for Path of Terminal.App.Fonts.Fallback_Font_Paths loop
          declare
-            Ignored : constant Textrender.Status_Code :=
+            Fallback_Status : constant Textrender.Status_Code :=
               Textrender.Add_Fallback_Font
                 (R    => R.Text,
                  Path => Terminal.App.Fonts.To_String (Path));
          begin
-            null;
+            if Fallback_Status = Textrender.Success then
+               Terminal.App.Text_Shaper.Add_Fallback_Font
+                 (Path       => Terminal.App.Fonts.To_String (Path),
+                  Pixel_Size => Pixel_Size,
+                  Status     => Shape_Backend_Status);
+            end if;
          end;
       end loop;
 
@@ -757,6 +762,7 @@ package body Terminal.App.Renderer is
                 (R           => R.Text,
                  Glyph_Index => Glyph.Glyph_ID,
                  M           => Metric,
+                 Font_Index  => Glyph.Font_Index,
                  Style       =>
                    (if Run.Italic then Textrender.Italic else Textrender.Regular));
          begin

@@ -289,6 +289,7 @@ package body Terminal.App.HarfBuzz is
 
    procedure Shape
      (Face   : Font_Face;
+      Font_Index : Natural;
       Run    : in out RM.Text_Run_Command;
       Status : out Shape_Status)
    is
@@ -375,6 +376,7 @@ package body Terminal.App.HarfBuzz is
          begin
             Run.Shaped_Glyphs (I + 1) :=
               (Glyph_ID     => Natural (Infos (I).Codepoint),
+               Font_Index   => Font_Index,
                Codepoint    =>
                  (if Source in 1 .. Natural (Run.Codepoint_Count)
                   then Run.Codepoints (Source)

@@ -29,6 +29,7 @@ package Terminal.App.HarfBuzz is
 
    procedure Shape
      (Face   : Font_Face;
+      Font_Index : Natural;
       Run    : in out Terminal.App.Render_Model.Text_Run_Command;
       Status : out Shape_Status);
 

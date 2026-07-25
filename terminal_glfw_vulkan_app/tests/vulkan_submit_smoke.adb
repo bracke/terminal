@@ -61,6 +61,7 @@ procedure Vulkan_Submit_Smoke is
          Shaped_Glyphs   =>
            (1 =>
               (Glyph_ID     => 42,
+               Font_Index   => 0,
                Codepoint    => 16#1F469#,
                Source_Index => 1,
                X_Offset     => 0.0,
@@ -123,6 +124,9 @@ begin
    Assert
      (VS.Text_Runs (Batch) (1).Shaped_Glyphs (1).Glyph_ID = 42,
       "text run shaped glyph id");
+   Assert
+     (VS.Text_Runs (Batch) (1).Shaped_Glyphs (1).Font_Index = 0,
+      "text run shaped glyph font index");
    Assert
      (VS.Text_Runs (Batch) (1).Fallback_Glyphs,
       "text run fallback flag");

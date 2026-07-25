@@ -8,9 +8,15 @@ package body Terminal.App.Text_Shaper is
    use type HB.Load_Status;
    use type HB.Shape_Status;
 
+   Max_Shaping_Fallbacks : constant := Terminal.App.Fonts.Max_Fallback_Fonts;
+   type Fallback_Face_Array is
+     array (Positive range 1 .. Max_Shaping_Fallbacks) of HB.Font_Face;
+
    Default_Face         : HB.Font_Face;
    Default_Face_Loaded  : Boolean := False;
    Default_Face_Tried   : Boolean := False;
+   Fallback_Faces       : Fallback_Face_Array;
+   Fallback_Face_Count  : Natural := 0;
 
    procedure Configure_Font
      (Path        : String;
@@ -22,6 +28,10 @@ package body Terminal.App.Text_Shaper is
       HB.Load (Default_Face, Path, Pixel_Size, Load_Result);
       Default_Face_Tried := True;
       Default_Face_Loaded := Load_Result = HB.Loaded;
+      for I in 1 .. Fallback_Face_Count loop
+         HB.Reset (Fallback_Faces (I));
+      end loop;
+      Fallback_Face_Count := 0;
 
       case Load_Result is
          when HB.Loaded =>
@@ -32,6 +42,33 @@ package body Terminal.App.Text_Shaper is
             Status := Backend_Load_Failed;
       end case;
    end Configure_Font;
+
+   procedure Add_Fallback_Font
+     (Path        : String;
+      Pixel_Size  : Positive;
+      Status      : out Backend_Status)
+   is
+      Load_Result : HB.Load_Status;
+      Slot        : Natural;
+   begin
+      if Fallback_Face_Count >= Max_Shaping_Fallbacks then
+         Status := Backend_Unavailable;
+         return;
+      end if;
+
+      Slot := Fallback_Face_Count + 1;
+      HB.Load (Fallback_Faces (Slot), Path, Pixel_Size, Load_Result);
+
+      case Load_Result is
+         when HB.Loaded =>
+            Fallback_Face_Count := Slot;
+            Status := Backend_Ok;
+         when HB.Invalid_Path =>
+            Status := Backend_Unavailable;
+         when HB.Load_Failed =>
+            Status := Backend_Load_Failed;
+      end case;
+   end Add_Fallback_Font;
 
    function Backend_Available return Boolean is
      (Default_Face_Loaded and then HB.Is_Loaded (Default_Face));
@@ -170,6 +207,61 @@ package body Terminal.App.Text_Shaper is
    function Requires_Backend (Kind : Run_Kind) return Boolean is
      (Kind not in RM.Simple_Glyph | RM.Simple_Text);
 
+   function Has_Notdef_Glyph (Run : RM.Text_Run_Command) return Boolean is
+   begin
+      for I in 1 .. Run.Shaped_Glyph_Count loop
+         if Run.Shaped_Glyphs (I).Glyph_ID = 0 then
+            return True;
+         end if;
+      end loop;
+
+      return False;
+   end Has_Notdef_Glyph;
+
+   procedure Shape_With_Configured_Faces
+     (Run    : in out RM.Text_Run_Command;
+      Status : out HB.Shape_Status)
+   is
+      Candidate : RM.Text_Run_Command;
+      Candidate_Status : HB.Shape_Status;
+      Primary_Result : RM.Text_Run_Command;
+      Primary_Status : HB.Shape_Status := HB.Not_Loaded;
+   begin
+      if Backend_Available then
+         Candidate := Run;
+         HB.Shape (Default_Face, 0, Candidate, Candidate_Status);
+         if Candidate_Status = HB.Shaped and then not Has_Notdef_Glyph (Candidate) then
+            Run := Candidate;
+            Status := HB.Shaped;
+            return;
+         end if;
+
+         Primary_Result := Candidate;
+         Primary_Status := Candidate_Status;
+      end if;
+
+      for I in 1 .. Fallback_Face_Count loop
+         if HB.Is_Loaded (Fallback_Faces (I)) then
+            Candidate := Run;
+            HB.Shape (Fallback_Faces (I), I, Candidate, Candidate_Status);
+            if Candidate_Status = HB.Shaped
+              and then not Has_Notdef_Glyph (Candidate)
+            then
+               Run := Candidate;
+               Status := HB.Shaped;
+               return;
+            end if;
+         end if;
+      end loop;
+
+      if Primary_Status = HB.Shaped then
+         Run := Primary_Result;
+         Status := HB.Shaped;
+      else
+         Status := Primary_Status;
+      end if;
+   end Shape_With_Configured_Faces;
+
    function Direction_Of (Run : RM.Text_Run_Command) return RM.Text_Run_Direction is
    begin
       for I in 1 .. Run.Codepoint_Count loop
@@ -238,7 +330,7 @@ package body Terminal.App.Text_Shaper is
       else
          Ensure_Default_Backend;
          if Backend_Available then
-            HB.Shape (Default_Face, Run, HB_Status);
+            Shape_With_Configured_Faces (Run, HB_Status);
          else
             HB_Status := HB.Not_Loaded;
          end if;
@@ -259,6 +351,7 @@ package body Terminal.App.Text_Shaper is
                for I in 1 .. Run.Codepoint_Count loop
                   Run.Shaped_Glyphs (I) :=
                     (Glyph_ID     => Run.Codepoints (I),
+                     Font_Index   => 0,
                      Codepoint    => Run.Codepoints (I),
                      Source_Index => I,
                      X_Offset     => 0.0,

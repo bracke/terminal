@@ -45,6 +45,7 @@ package Terminal.App.Render_Model is
 
    type Shaped_Glyph_Command is record
       Glyph_ID      : Natural := 0;
+      Font_Index    : Natural := 0;
       Codepoint     : Natural := 0;
       Source_Index  : Text_Run_Codepoint_Count := 0;
       X_Offset      : Float := 0.0;
