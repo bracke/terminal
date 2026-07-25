@@ -17,6 +17,7 @@ project Core_Tests is
       "core_insert_smoke.adb",
       "core_edit_smoke.adb",
       "core_tabs_smoke.adb",
+      "core_charset_smoke.adb",
       "core_cursor_smoke.adb",
       "core_wrap_smoke.adb",
       "core_damage_smoke.adb",

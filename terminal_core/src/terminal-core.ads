@@ -196,6 +196,8 @@ private
      array (CSI_Intermediate_Index) of Standard.Character;
 
    type Buffer_Kind is (Primary, Alternate);
+   type Charset_Kind is (ASCII_Charset, DEC_Special_Graphics);
+   type Charset_Slot is (G0, G1);
    Max_Response_Length : constant := Max_Title_Length + 16;
    subtype Response_Index is Positive range 1 .. Max_Response_Length;
    type Response_Buffer is
@@ -234,6 +236,10 @@ private
       Bottom_Margin : Positive := 1;
       Current_Style : Style;
       Current_Modes : Mode_Snapshot;
+      G0_Charset    : Charset_Kind := ASCII_Charset;
+      G1_Charset    : Charset_Kind := ASCII_Charset;
+      Active_Charset : Charset_Slot := G0;
+      Charset_Target : Charset_Slot := G0;
       Diag          : Diagnostic_Snapshot;
       Last_Printable : Common.Code_Point := 0;
       Has_Last_Printable : Boolean := False;

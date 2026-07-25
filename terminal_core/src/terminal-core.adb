@@ -198,6 +198,10 @@ package body Terminal.Core is
       T.Scrollback_Rows := 0;
       T.Current_Style := (others => <>);
       T.Saved_Style := (others => <>);
+      T.G0_Charset := ASCII_Charset;
+      T.G1_Charset := ASCII_Charset;
+      T.Active_Charset := G0;
+      T.Charset_Target := G0;
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
@@ -299,6 +303,10 @@ package body Terminal.Core is
       T.Current_Style := (others => <>);
       T.Saved_Style := (others => <>);
       T.Current_Modes := (others => <>);
+      T.G0_Charset := ASCII_Charset;
+      T.G1_Charset := ASCII_Charset;
+      T.Active_Charset := G0;
+      T.Charset_Target := G0;
       T.Diag := (others => 0);
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
@@ -1635,6 +1643,12 @@ package body Terminal.Core is
             T.Cursor_Col := 1;
             Mark_Cursor_Move (T, T.Cursor_Row);
             T.Pending_Wrap := False;
+         when 14 =>
+            T.Active_Charset := G1;
+            T.Pending_Wrap := False;
+         when 15 =>
+            T.Active_Charset := G0;
+            T.Pending_Wrap := False;
          when 27 =>
             T.State := Escape;
          when others =>
@@ -1661,10 +1675,66 @@ package body Terminal.Core is
 
    procedure Decode_Printable (T : in out Terminal; B : Common.Bytes.Byte) is
       V : constant Natural := Natural (B);
+
+      function Active_GL_Charset return Charset_Kind is
+      begin
+         return
+           (if T.Active_Charset = G0 then T.G0_Charset else T.G1_Charset);
+      end Active_GL_Charset;
+
+      function Map_DEC_Special_Graphics
+        (CP : Common.Code_Point) return Common.Code_Point
+      is
+         V : constant Natural := Natural (CP);
+      begin
+         case V is
+            when 16#60# => return 16#25C6#;
+            when 16#61# => return 16#2592#;
+            when 16#62# => return 16#2409#;
+            when 16#63# => return 16#240C#;
+            when 16#64# => return 16#240D#;
+            when 16#65# => return 16#240A#;
+            when 16#66# => return 16#00B0#;
+            when 16#67# => return 16#00B1#;
+            when 16#68# => return 16#2424#;
+            when 16#69# => return 16#240B#;
+            when 16#6A# => return 16#2518#;
+            when 16#6B# => return 16#2510#;
+            when 16#6C# => return 16#250C#;
+            when 16#6D# => return 16#2514#;
+            when 16#6E# => return 16#253C#;
+            when 16#6F# => return 16#23BA#;
+            when 16#70# => return 16#23BB#;
+            when 16#71# => return 16#2500#;
+            when 16#72# => return 16#23BC#;
+            when 16#73# => return 16#23BD#;
+            when 16#74# => return 16#251C#;
+            when 16#75# => return 16#2524#;
+            when 16#76# => return 16#2534#;
+            when 16#77# => return 16#252C#;
+            when 16#78# => return 16#2502#;
+            when 16#79# => return 16#2264#;
+            when 16#7A# => return 16#2265#;
+            when 16#7B# => return 16#03C0#;
+            when 16#7C# => return 16#2260#;
+            when 16#7D# => return 16#00A3#;
+            when 16#7E# => return 16#00B7#;
+            when others => return CP;
+         end case;
+      end Map_DEC_Special_Graphics;
+
+      procedure Put_Mapped_ASCII is
+         CP : Common.Code_Point := Common.Code_Point (V);
+      begin
+         if Active_GL_Charset = DEC_Special_Graphics then
+            CP := Map_DEC_Special_Graphics (CP);
+         end if;
+         Put_Code_Point (T, CP);
+      end Put_Mapped_ASCII;
    begin
       if T.UTF8_Need = 0 then
          if V < 16#80# then
-            Put_Code_Point (T, Common.Code_Point (V));
+            Put_Mapped_ASCII;
          elsif V in 16#C2# .. 16#DF# then
             T.UTF8_Need := 1;
             T.UTF8_Seen := 0;
@@ -1859,7 +1929,11 @@ package body Terminal.Core is
                      Start_Ignored_String (T);
                   when '^' | '_' =>
                      Start_Ignored_String (T);
-                  when '(' | ')' | '*' | '+' | '-' | '.' | '/' =>
+                  when '(' | '*' | '-' =>
+                     T.Charset_Target := G0;
+                     T.State := Charset;
+                  when ')' | '+' | '.' | '/' =>
+                     T.Charset_Target := G1;
                      T.State := Charset;
                   when '#' =>
                      T.State := Screen_Alignment;
@@ -1954,7 +2028,16 @@ package body Terminal.Core is
                   T.State := Ignored_String_Overflow;
                end if;
             when Charset =>
-               T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;
+               declare
+                  New_Charset : constant Charset_Kind :=
+                    (if Ch = '0' then DEC_Special_Graphics else ASCII_Charset);
+               begin
+                  if T.Charset_Target = G0 then
+                     T.G0_Charset := New_Charset;
+                  else
+                     T.G1_Charset := New_Charset;
+                  end if;
+               end;
                T.State := Ground;
             when Screen_Alignment =>
                if Ch = '8' then
