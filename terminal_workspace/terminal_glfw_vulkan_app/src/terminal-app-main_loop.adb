@@ -3,25 +3,31 @@ with GLFW_Vulkan.Events;
 with GLFW_Vulkan.Input;
 with GLFW_Vulkan.Windows;
 with Terminal.Core;
+with Terminal.App.Diagnostics;
 with Terminal.App.Input_Map;
 with Terminal.App.PTY_Reader;
+with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.App.Renderer;
 with Terminal.App.Resize;
 with Terminal.App.Vulkan_Context;
+with Terminal.App.Vulkan_Presenter;
 with Terminal.PTY.POSIX;
 
 package body Terminal.App.Main_Loop is
    use type GLFW_Vulkan.Init_Status;
    use type GLFW_Vulkan.Windows.Create_Status;
    use type Terminal.App.Renderer.Init_Status;
+   use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Vulkan_Context.Init_Status;
+   use type Terminal.App.Vulkan_Presenter.Init_Status;
+   use type Terminal.App.Vulkan_Presenter.Present_Status;
    use type Terminal.Core.Initialize_Status;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Resize_Status;
    use type Terminal.PTY.POSIX.Spawn_Status;
    use type Terminal.PTY.POSIX.Resize_Status;
-   use type Terminal.PTY.POSIX.Write_Status;
+   use type Terminal.App.PTY_Write.Write_All_Status;
 
    Input_Queue : access Terminal.App.Queues.Input_Event_Queue := null;
 
@@ -65,25 +71,52 @@ package body Terminal.App.Main_Loop is
       R     : Terminal.App.Renderer.Renderer;
       Vk_Ctx : Terminal.App.Vulkan_Context.Context;
       Vk_Status : Terminal.App.Vulkan_Context.Init_Status;
+      Presenter : Terminal.App.Vulkan_Presenter.Presenter;
+      Presenter_Status : Terminal.App.Vulkan_Presenter.Init_Status;
       Renderer_Status : Terminal.App.Renderer.Init_Status;
       FB_Width  : Natural := 0;
       FB_Height : Natural := 0;
       Last_Rows : Positive := 24;
       Last_Cols : Positive := 80;
+      Need_Redraw : Boolean := True;
    begin
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
       if Init_Status /= GLFW_Vulkan.Ok then
+         Terminal.App.Diagnostics.Log_Startup_Failure
+           ("glfw", GLFW_Vulkan.Init_Status'Image (Init_Status));
          return;
       end if;
 
       GLFW_Vulkan.Windows.Create (Ctx, W, 960, 600, "Ada Terminal", Window_Status);
       if Window_Status /= GLFW_Vulkan.Windows.Ok then
+         Terminal.App.Diagnostics.Log_Startup_Failure
+           ("window", GLFW_Vulkan.Windows.Create_Status'Image (Window_Status));
          GLFW_Vulkan.Finalize (Ctx);
          return;
       end if;
 
       Terminal.App.Vulkan_Context.Initialize (Vk_Ctx, W, Vk_Status);
       if Vk_Status /= Terminal.App.Vulkan_Context.Ok then
+         Terminal.App.Diagnostics.Log_Startup_Failure
+           ("vulkan-context",
+            Terminal.App.Vulkan_Context.Init_Status'Image (Vk_Status));
+         GLFW_Vulkan.Windows.Destroy (W);
+         GLFW_Vulkan.Finalize (Ctx);
+         return;
+      end if;
+
+      GLFW_Vulkan.Windows.Framebuffer_Size (W, FB_Width, FB_Height);
+      Terminal.App.Vulkan_Presenter.Initialize
+        (P              => Presenter,
+         Context        => Vk_Ctx,
+         Status         => Presenter_Status,
+         Desired_Width  => FB_Width,
+         Desired_Height => FB_Height);
+      if Presenter_Status /= Terminal.App.Vulkan_Presenter.Ok then
+         Terminal.App.Diagnostics.Log_Startup_Failure
+           ("vulkan-presenter",
+            Terminal.App.Vulkan_Presenter.Init_Status'Image (Presenter_Status));
+         Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
          GLFW_Vulkan.Windows.Destroy (W);
          GLFW_Vulkan.Finalize (Ctx);
          return;
@@ -97,7 +130,23 @@ package body Terminal.App.Main_Loop is
         or else Spawn_Status /= Terminal.PTY.POSIX.Ok
         or else Renderer_Status /= Terminal.App.Renderer.Ok
       then
+         if Core_Status /= Terminal.Core.Ok then
+            Terminal.App.Diagnostics.Log_Startup_Failure
+              ("terminal-core",
+               Terminal.Core.Initialize_Status'Image (Core_Status));
+         end if;
+         if Spawn_Status /= Terminal.PTY.POSIX.Ok then
+            Terminal.App.Diagnostics.Log_Startup_Failure
+              ("pty",
+               Terminal.PTY.POSIX.Spawn_Status'Image (Spawn_Status));
+         end if;
+         if Renderer_Status /= Terminal.App.Renderer.Ok then
+            Terminal.App.Diagnostics.Log_Startup_Failure
+              ("renderer",
+               Terminal.App.Renderer.Init_Status'Image (Renderer_Status));
+         end if;
          Terminal.PTY.POSIX.Close (S);
+         Terminal.App.Vulkan_Presenter.Finalize (Presenter);
          Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
          GLFW_Vulkan.Windows.Destroy (W);
          GLFW_Vulkan.Finalize (Ctx);
@@ -119,9 +168,8 @@ package body Terminal.App.Main_Loop is
                Event      : Terminal.App.Queues.Input_Event;
                Has_Event  : Boolean;
                Feed       : Terminal.Core.Feed_Status;
-               Write_Last : Natural;
-               Write_Stat : Terminal.PTY.POSIX.Write_Status;
-               Dirty      : Boolean := False;
+               Write_Stat : Terminal.App.PTY_Write.Write_All_Status;
+               Dirty      : Boolean := Need_Redraw;
             begin
                GLFW_Vulkan.Events.Wait_Timeout (0.016);
 
@@ -154,8 +202,10 @@ package body Terminal.App.Main_Loop is
                   end case;
 
                   if Chunk.Length > 0 then
-                     Terminal.PTY.POSIX.Write
-                       (S, Chunk.Data (1 .. Chunk.Length), Write_Last, Write_Stat);
+                     Terminal.App.PTY_Write.Write_All (S, Chunk, Write_Stat);
+                     if Write_Stat /= Terminal.App.PTY_Write.Ok then
+                        GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                     end if;
                   end if;
                end loop;
 
@@ -183,6 +233,7 @@ package body Terminal.App.Main_Loop is
                            Last_Rows := New_Rows;
                            Last_Cols := New_Cols;
                            Dirty := True;
+                           Need_Redraw := True;
                         end if;
                      end if;
                   end;
@@ -193,10 +244,91 @@ package body Terminal.App.Main_Loop is
                      Snap : Terminal.Core.Render_Snapshot :=
                        Terminal.Core.Snapshot (T);
                      Render_Status : Terminal.App.Renderer.Render_Status;
+                     Present_Status : Terminal.App.Vulkan_Presenter.Present_Status;
+                     Can_Present : Boolean := True;
                   begin
-                     Terminal.App.Renderer.Render (R, Snap, Render_Status);
+                     if not
+                       Terminal.App.Vulkan_Presenter.Diagnostics
+                         (Presenter).Initialized
+                     then
+                        GLFW_Vulkan.Windows.Framebuffer_Size
+                          (W, FB_Width, FB_Height);
+                        if FB_Width > 0 and then FB_Height > 0 then
+                           Terminal.App.Vulkan_Presenter.Initialize
+                             (P              => Presenter,
+                              Context        => Vk_Ctx,
+                              Status         => Presenter_Status,
+                              Desired_Width  => FB_Width,
+                              Desired_Height => FB_Height);
+                           if Presenter_Status /=
+                             Terminal.App.Vulkan_Presenter.Ok
+                           then
+                              GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                              Can_Present := False;
+                           end if;
+                        else
+                           Present_Status :=
+                             Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date;
+                           Can_Present := False;
+                        end if;
+                     end if;
+
+                     if Can_Present then
+                        Terminal.App.Renderer.Render (R, Snap, Render_Status);
+                        if Render_Status = Terminal.App.Renderer.Ok then
+                           Terminal.App.Renderer.Present
+                             (R, Vk_Ctx, Presenter, Present_Status);
+                        else
+                           Present_Status := Terminal.App.Vulkan_Presenter.Invalid_Batch;
+                        end if;
+                     else
+                        Render_Status := Terminal.App.Renderer.Not_Initialized;
+                     end if;
+                     if Present_Status =
+                       Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
+                     then
+                        Terminal.App.Vulkan_Presenter.Finalize (Presenter);
+                        GLFW_Vulkan.Windows.Framebuffer_Size
+                          (W, FB_Width, FB_Height);
+                        if FB_Width = 0 or else FB_Height = 0 then
+                           Need_Redraw := True;
+                        else
+                           Terminal.App.Vulkan_Presenter.Initialize
+                             (P              => Presenter,
+                              Context        => Vk_Ctx,
+                              Status         => Presenter_Status,
+                              Desired_Width  => FB_Width,
+                              Desired_Height => FB_Height);
+                           Need_Redraw :=
+                             Presenter_Status = Terminal.App.Vulkan_Presenter.Ok;
+                           if Presenter_Status /=
+                             Terminal.App.Vulkan_Presenter.Ok
+                           then
+                              GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                           end if;
+                        end if;
+                     end if;
+                     declare
+                        Diag : constant Terminal.App.Diagnostics.Snapshot :=
+                          Terminal.App.Diagnostics.Collect
+                            (T, PTY_Q, In_Q, R, Presenter);
+                     begin
+                        Terminal.App.Diagnostics.Log_If_Changed (Diag);
+                     end;
                      Terminal.Core.Release (Snap);
-                     Terminal.Core.Clear_Damage (T);
+                     if Render_Status = Terminal.App.Renderer.Ok
+                       and then
+                         (Present_Status = Terminal.App.Vulkan_Presenter.Ok
+                          or else Present_Status =
+                            Terminal.App.Vulkan_Presenter.Validated_Not_Presented)
+                     then
+                        Terminal.Core.Clear_Damage (T);
+                        Need_Redraw := False;
+                     elsif Present_Status /=
+                       Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
+                     then
+                        Need_Redraw := False;
+                     end if;
                   end;
                end if;
             end;
@@ -208,6 +340,7 @@ package body Terminal.App.Main_Loop is
 
       Input_Queue := null;
       Terminal.App.Renderer.Finalize (R);
+      Terminal.App.Vulkan_Presenter.Finalize (Presenter);
       Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
       GLFW_Vulkan.Windows.Destroy (W);
       GLFW_Vulkan.Finalize (Ctx);

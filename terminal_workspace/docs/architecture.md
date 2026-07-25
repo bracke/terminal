@@ -12,7 +12,7 @@
 bindings.
 
 `terminal_glfw_vulkan_app` depends on `terminal_common`, `terminal_core`,
-`terminal_pty_posix`, `glfw_vulkan`, and `df_vulkan`.
+`terminal_pty_posix`, `glfw_vulkan`, `textrender`, and `df_vulkan`.
 
 ## Dependency Rules
 
@@ -31,6 +31,47 @@ uses GLFW-provided instance extensions, `df_vulkan` handle types, and
 `glfw_vulkan` surface creation. The renderer receives this context during
 initialization and consumes only terminal render snapshots after that.
 
+The app render pipeline is staged:
+
+1. `Terminal.Core.Render_Snapshot` is copied out of the terminal core.
+2. `Terminal.App.Renderer` loads `textrender`, rasterizes glyphs, and builds
+   renderer-neutral `Terminal.App.Render_Model.Frame_Commands`.
+3. `Terminal.App.Vulkan_Submit` converts frame commands into normalized
+   rectangle/glyph triangle vertices and carries text-atlas upload metadata.
+4. `Terminal.App.Vulkan_Presenter` owns the presentation boundary. It currently
+   selects a physical device with a queue family that supports graphics and the
+   GLFW surface, creates a logical device with `VK_KHR_swapchain`, creates the
+   initial swapchain, image views, render pass, framebuffers, command buffers,
+   per-frame sync objects, and a shader-backed color graphics pipeline,
+   validates accepted batches, uploads packed vertices into a host-visible
+   Vulkan vertex buffer, uploads the `textrender` R8 glyph atlas into a sampled
+   Vulkan image, records a render pass, submits, presents through the swapchain,
+   detects stale swapchains, and records presentation diagnostics.
+
+The Vulkan device creates a descriptor-backed 1x1 fallback atlas during
+initialization so the shader sampler binding is always valid. Dirty
+`textrender` atlas batches replace that image through a bounded staging upload.
+
+Resize handling stays in the app layer. The main loop converts framebuffer
+pixels to terminal rows/columns, resizes the core and PTY when cell dimensions
+change, and keeps terminal damage pending until a frame presents successfully.
+If acquire or present reports a stale swapchain, the presenter is finalized and
+reinitialized on the main thread with the current framebuffer size. When a
+window is minimized and GLFW reports a zero-sized framebuffer, the app skips
+swapchain recreation and presentation, keeps damage pending, and retries once a
+nonzero framebuffer size returns.
+
+Diagnostics remain app-owned. The core exposes counters without taking a
+logging dependency; the app collects core, queue, renderer, and presenter
+snapshots and writes compact stderr diagnostics only when status or counters
+change. Renderer diagnostics include the last frame-build status so visible
+window failures distinguish initialization, invalid snapshot, allocation,
+glyph, and batch-conversion problems.
+
+`textrender` is used directly rather than through the existing toolkit layer,
+because that layer currently pulls in a GLFW/OpenGL binding outside this
+terminal's locked Vulkan-only dependency rules.
+
 ## Threading Model
 
 GLFW and Vulkan run on the main thread. Terminal state is mutated only on the
@@ -40,7 +81,8 @@ A background Ada task reads PTY bytes and pushes bounded chunks into a
 protected queue. The POSIX parent master is nonblocking, so the task can stop
 explicitly before the main thread closes the session. GLFW callbacks enqueue
 compact input/window events. The main loop drains queues, feeds the core,
-writes PTY input, handles resize, snapshots, and renders.
+writes PTY input through a bounded write-all helper, handles resize, snapshots,
+and renders.
 
 Queue overflow is explicit: newest items are dropped, existing ordering is
 preserved, and overflow counters are exposed.

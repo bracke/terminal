@@ -9,10 +9,12 @@ terminal_core = "*"
 terminal_pty_posix = "*"
 glfw_vulkan = "*"
 df_vulkan = "*"
+textrender = "*"
+aunit = "*"
 
 [[pins]]
 terminal_common = { path = "../terminal_common" }
 terminal_core = { path = "../terminal_core" }
 terminal_pty_posix = { path = "../terminal_pty_posix" }
 glfw_vulkan = { path = "../glfw_vulkan" }
-
+textrender = { path = "../../../textrender" }
