@@ -59,6 +59,37 @@ package body Terminal.App.Renderer is
       return Result;
    end Ceiling_Positive;
 
+   function Measured_Cell_Width
+     (Text     : in out Textrender.Renderer;
+      Fallback : Positive)
+      return Positive
+   is
+      Max_Width : Float := Float (Fallback);
+   begin
+      for C in Character'Pos (' ') .. Character'Pos ('~') loop
+         declare
+            Metric : Textrender.Glyph_Metric;
+            Status : constant Textrender.Status_Code :=
+              Textrender.Get_Glyph
+                (R => Text,
+                 C => Textrender.Codepoint (C),
+                 M => Metric);
+         begin
+            if Status = Textrender.Success or else Status = Textrender.Glyph_Missing then
+               declare
+                  Right_Edge : constant Float :=
+                    Metric.Bearing_X + Float (Metric.W);
+               begin
+                  Max_Width := Float'Max (Max_Width, Right_Edge);
+               end;
+               Max_Width := Float'Max (Max_Width, Metric.Advance_X);
+            end if;
+         end;
+      end loop;
+
+      return Ceiling_Positive (Max_Width) + 1;
+   end Measured_Cell_Width;
+
    function XTerm_Cube_Component (Value : Natural) return Float is
    begin
       if Value = 0 then
@@ -266,6 +297,31 @@ package body Terminal.App.Renderer is
          Status := Failed;
          return;
       end if;
+
+      declare
+         Measured_CW : constant Positive :=
+           Measured_Cell_Width (R.Text, R.CW);
+      begin
+         if Measured_CW /= R.CW then
+            R.CW := Measured_CW;
+            Text_Status :=
+              Textrender.Load_Font
+                (R            => R.Text,
+                 Path         => Font_Path,
+                 Pixel_Size   => Pixel_Size,
+                 Cell_Width   => R.CW,
+                 Cell_Height  => R.CH,
+                 Atlas_Width  => Atlas_Width,
+                 Atlas_Height => Atlas_Height);
+
+            if Text_Status /= Textrender.Success then
+               R.Initialized := False;
+               R.Text_Loaded := False;
+               Status := Failed;
+               return;
+            end if;
+         end if;
+      end;
 
       R.CH := Positive'Max
         (R.CH, Ceiling_Positive (Textrender.Line_Height (R.Text)));

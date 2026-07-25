@@ -45,8 +45,8 @@ begin
      (Terminal.App.Renderer.Cell_Height (R) >= 16,
       "cell height should keep at least the requested pixel size");
    Assert
-     (Terminal.App.Renderer.Cell_Width (R) = 8,
-      "cell width should keep the fixed monospace grid width");
+     (Terminal.App.Renderer.Cell_Width (R) > 8,
+      "cell width should include measured glyph advance and breathing room");
 
    Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "core initialize failed");
