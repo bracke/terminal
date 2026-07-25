@@ -1954,6 +1954,8 @@ package body Terminal.Core is
                   when ')' | '+' | '.' | '/' =>
                      T.Charset_Target := G1;
                      T.State := Charset;
+                  when '%' =>
+                     T.State := Coding_System;
                   when '#' =>
                      T.State := Screen_Alignment;
                   when '=' | '>' =>
@@ -2057,6 +2059,12 @@ package body Terminal.Core is
                      T.G1_Charset := New_Charset;
                   end if;
                end;
+               T.State := Ground;
+            when Coding_System =>
+               if Ch /= 'G' and then Ch /= '@' then
+                  T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;
+                  Recovered := True;
+               end if;
                T.State := Ground;
             when Screen_Alignment =>
                if Ch = '8' then

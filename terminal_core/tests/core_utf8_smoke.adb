@@ -91,6 +91,41 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 8, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "coding system consume initialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#1B#, 3 => Byte (Character'Pos ('%')),
+       4 => Byte (Character'Pos ('G')),
+       5 => Byte (Character'Pos ('b')),
+       6 => 16#1B#, 7 => Byte (Character'Pos ('%')),
+       8 => Byte (Character'Pos ('@')),
+       9 => Byte (Character'Pos ('c'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "coding system consume feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
+         "coding system consume prefix");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
+         "UTF-8 designation should not leak G");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#63#,
+         "default coding designation should not leak at-sign");
+      Assert
+        (D.Ignored_Escape = 0,
+         "coding system designations should not count as ignored escapes");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 8, 100, Init);
    Assert (Init = Terminal.Core.Ok, "keypad mode consume initialize failed");
 
    Terminal.Core.Feed
