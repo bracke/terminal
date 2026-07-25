@@ -1517,6 +1517,10 @@ package body Terminal.Core is
                Recover_Incomplete_UTF8 (T);
                Horizontal_Tab_Set (T);
                goto Continue;
+            elsif Natural (B) = 16#8C# then
+               Recover_Incomplete_UTF8 (T);
+               Reset_Terminal (T);
+               goto Continue;
             elsif Natural (B) = 16#8D# then
                Recover_Incomplete_UTF8 (T);
                Reverse_Index_Control (T);

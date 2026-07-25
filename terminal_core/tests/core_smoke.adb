@@ -83,4 +83,35 @@ begin
          "DECALN should preserve cursor position");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 2, 4, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "C1 RIS initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => Byte (Character'Pos ('b')),
+       3 => 16#8C#,
+       4 => Byte (Character'Pos ('z'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 RIS feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#7A#,
+         "C1 RIS should clear old text before trailing text");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Kind = Terminal.Core.Empty,
+         "C1 RIS should clear second cell");
+      Assert
+        (S.Cursor.Row = 1 and then S.Cursor.Col = 2,
+         "C1 RIS should reset cursor before trailing text");
+      Assert
+        (D.Malformed_UTF8 = 0,
+         "C1 RIS should not count as malformed UTF-8");
+      Terminal.Core.Release (S);
+   end;
 end Core_Smoke;
