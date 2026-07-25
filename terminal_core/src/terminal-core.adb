@@ -905,10 +905,22 @@ package body Terminal.Core is
             end if;
          when 1000 =>
             T.Current_Modes.Mouse_Button := Enable;
+            if Enable then
+               T.Current_Modes.Mouse_Drag := False;
+               T.Current_Modes.Mouse_Any_Event := False;
+            end if;
          when 1002 =>
             T.Current_Modes.Mouse_Drag := Enable;
+            if Enable then
+               T.Current_Modes.Mouse_Button := False;
+               T.Current_Modes.Mouse_Any_Event := False;
+            end if;
          when 1003 =>
             T.Current_Modes.Mouse_Any_Event := Enable;
+            if Enable then
+               T.Current_Modes.Mouse_Button := False;
+               T.Current_Modes.Mouse_Drag := False;
+            end if;
          when 1006 =>
             T.Current_Modes.Mouse_SGR := Enable;
          when 47 | 1047 =>

@@ -44,13 +44,35 @@ begin
    Assert (Terminal.Core.Modes (T).Bracketed_Paste, "bracketed paste");
 
    Feed_Text
-     (ASCII.ESC & "[?1000;1002;1003;1006h",
+     (ASCII.ESC & "[?1000h",
       "mouse mode set feed failed");
    declare
       M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
    begin
       Assert (M.Mouse_Button, "mouse button reporting");
+      Assert (not M.Mouse_Drag, "mouse drag reporting initially off");
+      Assert (not M.Mouse_Any_Event, "mouse any-event reporting initially off");
+   end;
+
+   Feed_Text
+     (ASCII.ESC & "[?1002h",
+      "mouse drag mode set feed failed");
+   declare
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert (not M.Mouse_Button, "mouse drag disables button mode");
       Assert (M.Mouse_Drag, "mouse drag reporting");
+      Assert (not M.Mouse_Any_Event, "mouse any-event reporting still off");
+   end;
+
+   Feed_Text
+     (ASCII.ESC & "[?1003;1006h",
+      "mouse any-event mode set feed failed");
+   declare
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert (not M.Mouse_Button, "mouse any-event disables button mode");
+      Assert (not M.Mouse_Drag, "mouse any-event disables drag mode");
       Assert (M.Mouse_Any_Event, "mouse any-event reporting");
       Assert (M.Mouse_SGR, "mouse SGR reporting");
    end;

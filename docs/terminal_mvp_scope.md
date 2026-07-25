@@ -66,6 +66,9 @@ Mouse-aware terminal programs can enable basic xterm mouse reporting through
 DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates
 through `?1006`. When reporting is enabled, the app sends mouse press, release,
 and configured motion events to the PTY instead of starting local selection.
+Button, drag, and any-event tracking are treated as exclusive xterm tracking
+modes; enabling one clears the other two. SGR coordinates are an independent
+encoding mode.
 Advanced selection behavior and OSC 52 clipboard escape handling are postponed.
 
 ## TERM and Environment

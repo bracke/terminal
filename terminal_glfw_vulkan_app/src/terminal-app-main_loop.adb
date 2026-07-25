@@ -390,6 +390,8 @@ package body Terminal.App.Main_Loop is
                                 (Event.Button_Event, Modes, Pos.Row, Pos.Col, Chunk);
                               if Event.Button_Event.Action =
                                 GLFW_Vulkan.Input.Press
+                                and then Event.Button_Event.Button /=
+                                  GLFW_Vulkan.Input.Other
                               then
                                  Mouse_Button_Down := True;
                                  Mouse_Button_Code_Value :=

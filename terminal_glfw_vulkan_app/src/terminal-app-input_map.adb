@@ -373,6 +373,7 @@ package body Terminal.App.Input_Map is
       Chunk := (others => <>);
       if not Mouse_Reporting_Enabled (Modes)
         or else Event.Action = GLFW_Vulkan.Input.Repeat
+        or else Event.Button = GLFW_Vulkan.Input.Other
       then
          return;
       end if;

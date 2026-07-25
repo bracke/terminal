@@ -211,6 +211,9 @@ begin
    Modes.Mouse_Button := True;
    Modes.Mouse_SGR := True;
    Assert (IM.Mouse_Reporting_Enabled (Modes), "mouse reporting enabled");
+   IM.Encode_Mouse_Button (Mouse_Event (GI.Other), Modes, 2, 3, Chunk);
+   Assert (Chunk.Length = 0, "unknown mouse button should not encode");
+
    IM.Encode_Mouse_Button (Mouse_Event (GI.Left), Modes, 2, 3, Chunk);
    Assert_Bytes
      (Chunk,
