@@ -79,4 +79,25 @@ begin
          "colon truecolor background values");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 2, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SGR aliases initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[1mA" & ASCII.ESC & "[21;29mB",
+      "SGR aliases feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert (A.Style.Bold, "SGR 1 should make first cell bold");
+      Assert (not B.Style.Bold, "SGR 21 should clear bold");
+      Assert
+        (D.Unsupported_Sequence = 0,
+         "SGR 21/29 should not increment unsupported diagnostics");
+      Terminal.Core.Release (S);
+   end;
 end Core_SGR_Smoke;

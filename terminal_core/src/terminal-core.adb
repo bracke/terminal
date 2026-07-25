@@ -921,6 +921,8 @@ package body Terminal.Core is
                T.Current_Style.Underline := True;
             when 7 =>
                T.Current_Style.Inverse := True;
+            when 21 =>
+               T.Current_Style.Bold := False;
             when 22 =>
                T.Current_Style.Bold := False;
             when 23 =>
@@ -929,6 +931,8 @@ package body Terminal.Core is
                T.Current_Style.Underline := False;
             when 27 =>
                T.Current_Style.Inverse := False;
+            when 29 =>
+               null;
             when 30 .. 37 =>
                T.Current_Style.Foreground := (Kind => Indexed, Index => P - 30, R => 0, G => 0, B => 0);
             when 40 .. 47 =>

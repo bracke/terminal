@@ -23,7 +23,8 @@
 ## SGR
 
 Supported: reset, bold, italic, underline, inverse, normal intensity, style-off
-codes, 8-color foreground/background, bright 16-color variants, indexed
+codes including `21` as bold-off and `29` as a no-op strikethrough-off alias,
+8-color foreground/background, bright 16-color variants, indexed
 `38;5;n` and `48;5;n`, truecolor `38;2;r;g;b` and `48;2;r;g;b`, default
 foreground/background. Colon-separated SGR forms such as `38:5:n` and
 `48:2:r:g:b` are accepted as aliases for the semicolon forms.
