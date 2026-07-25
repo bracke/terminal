@@ -59,6 +59,38 @@ package body Terminal.App.Renderer is
       return Result;
    end Ceiling_Positive;
 
+   function XTerm_Cube_Component (Value : Natural) return Float is
+   begin
+      if Value = 0 then
+         return 0.0;
+      else
+         return Float (55 + Value * 40) / 255.0;
+      end if;
+   end XTerm_Cube_Component;
+
+   function XTerm_Indexed_Color (Index : Natural) return RM.Pixel_Color is
+   begin
+      if Index <= Palette'Last then
+         return Palette (Index);
+      elsif Index <= 231 then
+         declare
+            Offset : constant Natural := Index - 16;
+         begin
+            return
+              (R => XTerm_Cube_Component (Offset / 36),
+               G => XTerm_Cube_Component ((Offset / 6) mod 6),
+               B => XTerm_Cube_Component (Offset mod 6),
+               A => 1.0);
+         end;
+      else
+         declare
+            Level : constant Float := Float (8 + (Index - 232) * 10) / 255.0;
+         begin
+            return (Level, Level, Level, 1.0);
+         end;
+      end if;
+   end XTerm_Indexed_Color;
+
    function Resolve_Color
      (Color      : Terminal.Core.Color;
       Default    : RM.Pixel_Color)
@@ -69,16 +101,7 @@ package body Terminal.App.Renderer is
          when Terminal.Core.Default =>
             return Default;
          when Terminal.Core.Indexed =>
-            if Color.Index <= Palette'Last then
-               return Palette (Color.Index);
-            else
-               declare
-                  Level : constant Float :=
-                    Float (Color.Index) / 255.0;
-               begin
-                  return (Level, Level, Level, 1.0);
-               end;
-            end if;
+            return XTerm_Indexed_Color (Color.Index);
          when Terminal.Core.RGB =>
             return
               (R => Float (Color.R) / 255.0,

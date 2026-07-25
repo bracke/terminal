@@ -28,6 +28,16 @@ procedure Renderer_Metrics_Smoke is
       end loop;
       return Result;
    end To_Bytes;
+
+   procedure Assert_Close
+     (Actual  : Float;
+      Expected : Float;
+      Message  : String)
+   is
+      Diff : constant Float := abs (Actual - Expected);
+   begin
+      Assert (Diff < 0.001, Message);
+   end Assert_Close;
 begin
    Terminal.App.Renderer.Initialize_Headless (R, Status);
    Assert (Status = Terminal.App.Renderer.Ok, "renderer initialize failed");
@@ -131,6 +141,44 @@ begin
       Assert
         (Frame.Glyphs (2).Y = Frame.Glyphs (1).Y,
          "bold duplicate glyph should keep baseline placement");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "indexed color core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "[38;5;196mA" & ASCII.ESC & "[48;5;232mB"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "indexed color feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "indexed color render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Glyph_Count >= 2, "indexed color glyph count");
+      Assert_Close (Frame.Glyphs (1).Color.R, 1.0, "xterm 196 red");
+      Assert_Close (Frame.Glyphs (1).Color.G, 0.0, "xterm 196 green");
+      Assert_Close (Frame.Glyphs (1).Color.B, 0.0, "xterm 196 blue");
+      Assert_Close
+        (Frame.Rectangles (3).Color.R,
+         8.0 / 255.0,
+         "xterm 232 grayscale red");
+      Assert_Close
+        (Frame.Rectangles (3).Color.G,
+         8.0 / 255.0,
+         "xterm 232 grayscale green");
+      Assert_Close
+        (Frame.Rectangles (3).Color.B,
+         8.0 / 255.0,
+         "xterm 232 grayscale blue");
    end;
 
    Terminal.App.Renderer.Finalize (R);
