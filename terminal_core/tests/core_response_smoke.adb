@@ -145,4 +145,37 @@ begin
         (Terminal.Core.Pending_Response_Length (T) = 0,
          "secondary DA should drain");
    end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[?2004h"
+         & ASCII.ESC & "[?2004$p"
+         & ASCII.ESC & "[?1000$p"
+         & ASCII.ESC & "[?9999$p"
+         & ASCII.ESC & "[4$p"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DECRQM feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 40,
+      "DECRQM response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 64);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes
+           (ASCII.ESC & "[?2004;1$y"
+            & ASCII.ESC & "[?1000;2$y"
+            & ASCII.ESC & "[?9999;0$y"
+            & ASCII.ESC & "[4;2$y"),
+         "DECRQM");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "DECRQM should drain");
+   end;
 end Core_Response_Smoke;

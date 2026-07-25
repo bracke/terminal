@@ -20,6 +20,8 @@
 - DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), DEC private
   cursor-position report (`CSI ? 6 n`), primary DA (`CSI c`), and secondary DA
   (`CSI > c`) responses.
+- DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode and
+  known DEC private modes.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
 - Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.

@@ -898,6 +898,64 @@ package body Terminal.Core is
       end if;
    end Queue_Device_Attributes;
 
+   function Mode_Report_State
+     (T       : Terminal;
+      Prefix  : Standard.Character;
+      Number  : Natural)
+      return Natural
+   is
+   begin
+      if Prefix = '?' then
+         case Number is
+            when 1 =>
+               return (if T.Current_Modes.Application_Cursor then 1 else 2);
+            when 6 =>
+               return (if T.Current_Modes.Origin_Mode then 1 else 2);
+            when 7 =>
+               return (if T.Current_Modes.Autowrap then 1 else 2);
+            when 25 =>
+               return (if T.Current_Modes.Cursor_Visible then 1 else 2);
+            when 47 | 1047 | 1049 =>
+               return (if T.Current_Modes.Alternate_Screen then 1 else 2);
+            when 1000 =>
+               return (if T.Current_Modes.Mouse_Button then 1 else 2);
+            when 1002 =>
+               return (if T.Current_Modes.Mouse_Drag then 1 else 2);
+            when 1003 =>
+               return (if T.Current_Modes.Mouse_Any_Event then 1 else 2);
+            when 1004 =>
+               return (if T.Current_Modes.Focus_Reporting then 1 else 2);
+            when 1006 =>
+               return (if T.Current_Modes.Mouse_SGR then 1 else 2);
+            when 2004 =>
+               return (if T.Current_Modes.Bracketed_Paste then 1 else 2);
+            when others =>
+               return 0;
+         end case;
+      elsif Prefix = ASCII.NUL and then Number = 4 then
+         return (if T.Current_Modes.Insert_Mode then 1 else 2);
+      else
+         return 0;
+      end if;
+   end Mode_Report_State;
+
+   procedure Queue_Mode_Report (T : in out Terminal) is
+      Number : constant Natural := Param (T, 1, 0);
+      State  : constant Natural :=
+        Mode_Report_State (T, T.CSI_Private, Number);
+   begin
+      Append_Response_Char (T, ASCII.ESC);
+      Append_Response_Char (T, '[');
+      if T.CSI_Private /= ASCII.NUL then
+         Append_Response_Char (T, T.CSI_Private);
+      end if;
+      Append_Response_Natural (T, Number);
+      Append_Response_Char (T, ';');
+      Append_Response_Natural (T, State);
+      Append_Response_Char (T, '$');
+      Append_Response_Char (T, 'y');
+   end Queue_Mode_Report;
+
    procedure Move_Cursor
      (T   : in out Terminal;
       Row : Natural;
@@ -1203,14 +1261,14 @@ package body Terminal.Core is
       C : Natural;
    begin
       if T.CSI_Intermediate_Count > 0 then
-         if T.CSI_Intermediate_Count = 1
-           and then T.CSI_Private = ASCII.NUL
-         then
+         if T.CSI_Intermediate_Count = 1 then
             if T.CSI_Intermediates (1) = '!'
+              and then T.CSI_Private = ASCII.NUL
               and then Final = 'p'
             then
                Soft_Reset (T);
             elsif T.CSI_Intermediates (1) = ' '
+              and then T.CSI_Private = ASCII.NUL
               and then Final = 'q'
             then
                case Param (T, 1, 1) is
@@ -1227,6 +1285,10 @@ package body Terminal.Core is
                      T.Diag.Unsupported_Sequence :=
                        T.Diag.Unsupported_Sequence + 1;
                end case;
+            elsif T.CSI_Intermediates (1) = '$'
+              and then Final = 'p'
+            then
+               Queue_Mode_Report (T);
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
