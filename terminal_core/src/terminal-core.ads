@@ -164,6 +164,10 @@ private
       OSC_Escape,
       OSC_Overflow,
       OSC_Overflow_Escape,
+      DCS,
+      DCS_Escape,
+      DCS_Overflow,
+      DCS_Overflow_Escape,
       Charset,
       Screen_Alignment);
    subtype Param_Index is Positive range 1 .. 16;
@@ -223,6 +227,7 @@ private
       CSI_Intermediate_Count : Natural := 0;
       OSC_Data      : OSC_Buffer := (others => ASCII.NUL);
       OSC_Count     : Natural := 0;
+      DCS_Count     : Natural := 0;
 
       UTF8_Need     : Natural := 0;
       UTF8_Seen     : Natural := 0;

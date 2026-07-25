@@ -207,6 +207,7 @@ package body Terminal.Core is
       T.CSI_Intermediate_Count := 0;
       T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
+      T.DCS_Count := 0;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
@@ -310,6 +311,7 @@ package body Terminal.Core is
       T.CSI_Intermediate_Count := 0;
       T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
+      T.DCS_Count := 0;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
@@ -388,6 +390,20 @@ package body Terminal.Core is
 
       T.State := Ground;
    end Finish_OSC;
+
+   procedure Append_DCS_Byte
+     (T          : in out Terminal;
+      Overflowed : in out Boolean)
+   is
+   begin
+      if T.DCS_Count >= Parser.Max_Escape_Length then
+         T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+         Overflowed := True;
+         T.State := DCS_Overflow;
+      else
+         T.DCS_Count := T.DCS_Count + 1;
+      end if;
+   end Append_DCS_Byte;
 
    function Scrollback_Index
      (T   : Terminal;
@@ -1498,12 +1514,24 @@ package body Terminal.Core is
             elsif T.State = OSC_Overflow then
                T.State := Ground;
                goto Continue;
+            elsif T.State = DCS or else T.State = DCS_Overflow then
+               T.State := Ground;
+               goto Continue;
             end if;
-         elsif T.State /= OSC and then T.State /= OSC_Overflow then
+         elsif T.State /= OSC
+           and then T.State /= OSC_Overflow
+           and then T.State /= DCS
+           and then T.State /= DCS_Overflow
+         then
             if Natural (B) = 16#9B# then
                Recover_Incomplete_UTF8 (T);
                Clear_CSI (T);
                T.State := CSI;
+               goto Continue;
+            elsif Natural (B) = 16#90# then
+               Recover_Incomplete_UTF8 (T);
+               T.DCS_Count := 0;
+               T.State := DCS;
                goto Continue;
             elsif Natural (B) = 16#84# then
                Recover_Incomplete_UTF8 (T);
@@ -1540,13 +1568,29 @@ package body Terminal.Core is
             elsif T.State = OSC_Overflow and then Natural (B) = 27 then
                T.State := OSC_Overflow_Escape;
                goto Continue;
+            elsif T.State = DCS and then Natural (B) = 27 then
+               T.State := DCS_Escape;
+               goto Continue;
+            elsif T.State = DCS_Overflow and then Natural (B) = 27 then
+               T.State := DCS_Overflow_Escape;
+               goto Continue;
             elsif T.State = OSC and then Natural (B) = 7 then
                Finish_OSC (T);
                goto Continue;
             elsif T.State = OSC_Overflow and then Natural (B) = 7 then
                T.State := Ground;
                goto Continue;
-            elsif T.State /= OSC and then T.State /= OSC_Overflow then
+            elsif T.State = DCS and then Natural (B) = 7 then
+               T.State := Ground;
+               goto Continue;
+            elsif T.State = DCS_Overflow and then Natural (B) = 7 then
+               T.State := Ground;
+               goto Continue;
+            elsif T.State /= OSC
+              and then T.State /= OSC_Overflow
+              and then T.State /= DCS
+              and then T.State /= DCS_Overflow
+            then
                Recover_Incomplete_UTF8 (T);
                Execute_C0 (T, B);
                goto Continue;
@@ -1586,6 +1630,9 @@ package body Terminal.Core is
                   when ']' =>
                      T.OSC_Count := 0;
                      T.State := OSC;
+                  when 'P' =>
+                     T.DCS_Count := 0;
+                     T.State := DCS;
                   when '(' | ')' | '*' | '+' | '-' | '.' | '/' =>
                      T.State := Charset;
                   when '#' =>
@@ -1657,6 +1704,28 @@ package body Terminal.Core is
                   T.State := Ground;
                else
                   T.State := OSC_Overflow;
+               end if;
+            when DCS =>
+               Append_DCS_Byte (T, Overflowed);
+            when DCS_Escape =>
+               if Ch = '\' then
+                  T.State := Ground;
+               else
+                  Append_DCS_Byte (T, Overflowed);
+                  if T.State /= DCS_Overflow then
+                     Append_DCS_Byte (T, Overflowed);
+                     if T.State /= DCS_Overflow then
+                        T.State := DCS;
+                     end if;
+                  end if;
+               end if;
+            when DCS_Overflow =>
+               null;
+            when DCS_Overflow_Escape =>
+               if Ch = '\' then
+                  T.State := Ground;
+               else
+                  T.State := DCS_Overflow;
                end if;
             when Charset =>
                T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;

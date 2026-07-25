@@ -18,6 +18,19 @@ procedure Core_OSC_Smoke is
       return Result;
    end To_Bytes;
 
+   function DCS_Overflow_Fixture return Byte_Array is
+      Result : Byte_Array (1 .. 4_101);
+   begin
+      Result (1) := 16#1B#;
+      Result (2) := Byte (Character'Pos ('P'));
+      for I in 3 .. 4_099 loop
+         Result (I) := Byte (Character'Pos ('a'));
+      end loop;
+      Result (4_100) := 16#1B#;
+      Result (4_101) := Byte (Character'Pos ('\'));
+      return Result;
+   end DCS_Overflow_Fixture;
+
    T : Terminal.Core.Terminal;
    Init : Terminal.Core.Initialize_Status;
    Feed_Status : Terminal.Core.Feed_Status;
@@ -97,6 +110,64 @@ begin
          "C1 OSC payload leaked or trailing text missing");
       Assert (Title.Length = 2, "C1 OSC title length");
       Assert (Title.Text (1 .. Title.Length) = "c1", "C1 OSC title text");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "DCS initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "Pignored" & ASCII.ESC & "\x"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DCS ST feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "DCS payload leaked or trailing text missing");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#90#, 2 => Byte (Character'Pos ('i')),
+       3 => Byte (Character'Pos ('g')), 4 => Byte (Character'Pos ('n')),
+       5 => 16#9C#, 6 => Byte (Character'Pos ('y'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 DCS feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#79#,
+         "C1 DCS payload leaked or trailing text missing");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "DCS overflow initialize failed");
+   Terminal.Core.Feed (T, DCS_Overflow_Fixture, Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Parser_Overflow,
+      "DCS overflow should be explicit");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes ("z"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DCS overflow recovery feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#7A#,
+         "DCS overflow should recover after ST");
+      Assert (D.Parser_Overflow = 1, "DCS overflow diagnostic count");
       Terminal.Core.Release (S);
    end;
 end Core_OSC_Smoke;

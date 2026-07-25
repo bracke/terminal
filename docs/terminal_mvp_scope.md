@@ -20,6 +20,8 @@
 - DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), primary DA
   (`CSI c`), and secondary DA (`CSI > c`) responses.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
+- Bounded DCS payload consumption with BEL, ST, and C1 ST termination;
+  payloads are ignored.
 - Default tab stops every eight columns, plus `ESC H` tab-set and `CSI g`
   tab-clear handling.
 - Autowrap with pending-wrap behavior.
