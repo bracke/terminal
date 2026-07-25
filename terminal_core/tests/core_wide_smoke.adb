@@ -370,6 +370,38 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize keycap emoji width failed");
+   Feed_Bytes
+     ((1 => Byte (Character'Pos ('a')),
+       2 => Byte (Character'Pos ('1')),
+       3 => 16#EF#, 4 => 16#B8#, 5 => 16#8F#,
+       6 => 16#E2#, 7 => 16#83#, 8 => 16#A3#,
+       9 => Byte (Character'Pos ('b'))),
+      "keycap emoji width feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Keycap : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Continuation : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert_Char (S, 1, 16#61#, "keycap emoji width prefix");
+      Assert (Keycap.Text.Code_Point = 16#31#, "keycap emoji base");
+      Assert (Keycap.Text.Width = Terminal.Core.Width_Two, "keycap emoji width");
+      Assert (Keycap.Text.Attachment_Count = 2, "keycap emoji attachment count");
+      Assert (Keycap.Text.Attachments (1) = 16#FE0F#, "keycap emoji VS16");
+      Assert
+        (Keycap.Text.Attachments (2) = 16#20E3#,
+         "keycap emoji enclosing mark");
+      Assert
+        (Continuation.Kind = Terminal.Core.Wide_Continuation,
+         "keycap emoji continuation");
+      Assert_Char (S, 4, 16#62#, "keycap emoji width suffix");
+      Assert (S.Cursor.Col = 5, "keycap emoji width cursor");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize emoji ZWJ cluster failed");
    Feed_Bytes

@@ -608,6 +608,15 @@ package body Terminal.Core is
         or else V = 16#3299#;
    end Is_Emoji_Variation_Base;
 
+   function Is_Keycap_Base (CP : Common.Code_Point) return Boolean is
+      V : constant Natural := Natural (CP);
+   begin
+      return
+        V = 16#23#
+        or else V = 16#2A#
+        or else (V in 16#30# .. 16#39#);
+   end Is_Keycap_Base;
+
    function Is_Zero_Width (CP : Common.Code_Point) return Boolean is
       V : constant Natural := Natural (CP);
    begin
@@ -917,16 +926,26 @@ package body Terminal.Core is
       is
          Cell_Index : constant Natural := Previous_Cell_Index;
 
-         procedure Promote_VS16_Emoji_Width is
+         function Should_Promote_To_Emoji_Width return Boolean is
+         begin
+            return
+              (Attached_CP = 16#FE0F#
+               and then Is_Emoji_Variation_Base
+                 (Cells (Cell_Index).Text.Code_Point))
+              or else
+                (Attached_CP = 16#20E3#
+                 and then Is_Keycap_Base
+                   (Cells (Cell_Index).Text.Code_Point));
+         end Should_Promote_To_Emoji_Width;
+
+         procedure Promote_Emoji_Width is
             Col : constant Positive :=
               Positive (((Cell_Index - 1) mod T.Cols) + 1);
             Next_Col : constant Positive := Col + 1;
          begin
-            if Attached_CP /= 16#FE0F#
-              or else Col = T.Cols
+            if Col = T.Cols
               or else Cells (Cell_Index).Text.Width /= Width_One
-              or else not Is_Emoji_Variation_Base
-                (Cells (Cell_Index).Text.Code_Point)
+              or else not Should_Promote_To_Emoji_Width
             then
                return;
             end if;
@@ -948,7 +967,7 @@ package body Terminal.Core is
                   T.Pending_Wrap := False;
                end if;
             end if;
-         end Promote_VS16_Emoji_Width;
+         end Promote_Emoji_Width;
       begin
          if Cell_Index = 0 then
             return False;
@@ -967,7 +986,7 @@ package body Terminal.Core is
               Cells (Cell_Index).Text.Attachment_Count + 1;
             Cells (Cell_Index).Text.Attachments
               (Cells (Cell_Index).Text.Attachment_Count) := Attached_CP;
-            Promote_VS16_Emoji_Width;
+            Promote_Emoji_Width;
             Mark_Dirty (T, T.Cursor_Row);
             return True;
          else
