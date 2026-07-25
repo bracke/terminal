@@ -37,6 +37,7 @@ package Terminal.Core is
       Italic     : Boolean := False;
       Underline  : Boolean := False;
       Strikethrough : Boolean := False;
+      Overline   : Boolean := False;
       Conceal    : Boolean := False;
       Inverse    : Boolean := False;
    end record;

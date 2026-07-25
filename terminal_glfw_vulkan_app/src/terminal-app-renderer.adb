@@ -448,7 +448,7 @@ package body Terminal.App.Renderer is
       R.Missing_Glyph_Count := 0;
 
       Cell_Count := Snapshot.Rows * Snapshot.Cols;
-      Rect_Max := Cell_Count * 3 + 2;
+      Rect_Max := Cell_Count * 4 + 2;
       begin
          R.Rectangles := new RM.Rectangle_Array (1 .. Rect_Max);
          R.Glyphs := new RM.Glyph_Array (1 .. Cell_Count * 2);
@@ -585,6 +585,16 @@ package body Terminal.App.Renderer is
                            return;
                      end case;
                   end;
+
+                  if Cell.Style.Overline then
+                     Add_Rectangle
+                       (R,
+                        X      => X,
+                        Y      => Y,
+                        Width  => Float (Cell_W),
+                        Height => 1.0,
+                        Color  => FG);
+                  end if;
 
                   if Cell.Style.Underline then
                      Add_Rectangle

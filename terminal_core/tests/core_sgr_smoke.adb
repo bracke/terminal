@@ -106,7 +106,7 @@ begin
    Terminal.Core.Initialize (T, 1, 2, 100, Init);
    Assert (Init = Terminal.Core.Ok, "SGR no-op aliases initialize failed");
    Feed_Text
-     (ASCII.ESC & "[5;6;25;53;55mC",
+     (ASCII.ESC & "[5;6;25mC",
       "SGR no-op aliases feed failed");
 
    declare
@@ -121,6 +121,27 @@ begin
       Assert
         (D.Unsupported_Sequence = 0,
          "SGR no-op aliases should not increment unsupported diagnostics");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SGR overline initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[53mA" & ASCII.ESC & "[55mB",
+      "SGR overline feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert (A.Style.Overline, "SGR 53 should enable overline");
+      Assert (not B.Style.Overline, "SGR 55 should disable overline");
+      Assert
+        (D.Unsupported_Sequence = 0,
+         "SGR 53/55 should not increment unsupported diagnostics");
       Terminal.Core.Release (S);
    end;
 

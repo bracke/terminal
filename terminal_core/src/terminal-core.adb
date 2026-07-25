@@ -1171,8 +1171,10 @@ package body Terminal.Core is
                T.Current_Style.Conceal := False;
             when 29 =>
                T.Current_Style.Strikethrough := False;
-            when 53 | 55 =>
-               null;
+            when 53 =>
+               T.Current_Style.Overline := True;
+            when 55 =>
+               T.Current_Style.Overline := False;
             when 30 .. 37 =>
                T.Current_Style.Foreground := (Kind => Indexed, Index => P - 30, R => 0, G => 0, B => 0);
             when 40 .. 47 =>

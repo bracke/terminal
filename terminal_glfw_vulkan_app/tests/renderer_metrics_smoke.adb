@@ -250,6 +250,37 @@ begin
          "concealed cell should not draw underline or strikethrough");
    end;
 
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "overline core initialize failed");
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[53mA"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "overline feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "overline render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Rectangle_Count >= 5, "expected overline rectangle");
+      Assert
+        (Frame.Rectangles (3).Height = 1.0,
+         "overline decoration should be one pixel high");
+      Assert
+        (Frame.Rectangles (3).Width =
+           Float (Terminal.App.Renderer.Cell_Width (R)),
+         "overline decoration should span the cell");
+      Assert
+        (Frame.Rectangles (3).Y =
+           Float (Terminal.App.Renderer.Content_Margin),
+         "overline decoration should sit at the cell top");
+   end;
+
    Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "decoration core initialize failed");
    Terminal.Core.Feed
