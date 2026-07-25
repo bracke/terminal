@@ -1,6 +1,7 @@
 with Ada.Unchecked_Deallocation;
 with System;
 
+with Terminal.Common;
 with Terminal.App.Fonts;
 with Terminal.App.Render_Model;
 with Terminal.App.Vulkan_Submit;
@@ -432,6 +433,101 @@ package body Terminal.App.Renderer is
         and then Natural (Cell.Text.Code_Point) /= 0;
    end Is_Drawable;
 
+   function Is_Renderable_Attachment
+     (CP : Terminal.Common.Code_Point) return Boolean
+   is
+      V : constant Natural := Natural (CP);
+   begin
+      return
+        (V in 16#0300# .. 16#036F#)
+        or else (V in 16#0483# .. 16#0489#)
+        or else (V in 16#0591# .. 16#05BD#)
+        or else V = 16#05BF#
+        or else (V in 16#05C1# .. 16#05C2#)
+        or else (V in 16#05C4# .. 16#05C5#)
+        or else V = 16#05C7#
+        or else (V in 16#0610# .. 16#061A#)
+        or else (V in 16#064B# .. 16#065F#)
+        or else V = 16#0670#
+        or else (V in 16#06D6# .. 16#06ED#)
+        or else V = 16#0711#
+        or else (V in 16#0730# .. 16#074A#)
+        or else (V in 16#07A6# .. 16#07B0#)
+        or else (V in 16#07EB# .. 16#07F3#)
+        or else (V in 16#0816# .. 16#0819#)
+        or else (V in 16#081B# .. 16#0823#)
+        or else (V in 16#0825# .. 16#0827#)
+        or else (V in 16#0829# .. 16#082D#)
+        or else (V in 16#0859# .. 16#085B#)
+        or else (V in 16#08D3# .. 16#08FF#)
+        or else (V in 16#0900# .. 16#0903#)
+        or else V = 16#093A#
+        or else V = 16#093C#
+        or else (V in 16#0941# .. 16#0948#)
+        or else V = 16#094D#
+        or else (V in 16#0951# .. 16#0957#)
+        or else (V in 16#0962# .. 16#0963#)
+        or else (V in 16#1AB0# .. 16#1AFF#)
+        or else (V in 16#1DC0# .. 16#1DFF#)
+        or else (V in 16#20D0# .. 16#20FF#)
+        or else (V in 16#FE20# .. 16#FE2F#);
+   end Is_Renderable_Attachment;
+
+   procedure Draw_Glyph
+     (R         : in out Renderer;
+      Codepoint : Terminal.Common.Code_Point;
+      X         : Float;
+      Y         : Float;
+      Color     : RM.Pixel_Color;
+      Bold      : Boolean;
+      Italic    : Boolean;
+      Status    : out Render_Status)
+   is
+      Metric       : Textrender.Glyph_Metric;
+      Glyph_Status : constant Textrender.Status_Code :=
+        Textrender.Get_Glyph
+          (R     => R.Text,
+           C     => Textrender.Codepoint (Natural (Codepoint)),
+           M     => Metric,
+           Style =>
+             (if Italic then Textrender.Italic else Textrender.Regular));
+      Placement : Textrender.Glyph_Placement;
+   begin
+      case Glyph_Status is
+         when Textrender.Success | Textrender.Glyph_Missing =>
+            if Glyph_Status = Textrender.Glyph_Missing then
+               R.Missing_Glyph_Count := R.Missing_Glyph_Count + 1;
+            end if;
+
+            if Metric.W > 0 and then Metric.H > 0 then
+               Placement :=
+                 Textrender.Place_Glyph_In_Cell
+                   (R      => R.Text,
+                    M      => Metric,
+                    Cell_X => X,
+                    Cell_Y => Y);
+               Add_Glyph
+                 (R,
+                  Placement => Placement,
+                  Metric    => Metric,
+                  Color     => Color,
+                  Codepoint => Natural (Codepoint));
+               if Bold then
+                  Placement.X := Placement.X + 1.0;
+                  Add_Glyph
+                    (R,
+                     Placement => Placement,
+                     Metric    => Metric,
+                     Color     => Color,
+                     Codepoint => Natural (Codepoint));
+               end if;
+            end if;
+            Status := Ok;
+         when others =>
+            Status := Glyph_Load_Failed;
+      end case;
+   end Draw_Glyph;
+
    procedure Render
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
@@ -457,7 +553,8 @@ package body Terminal.App.Renderer is
       Rect_Max := Cell_Count * 4 + 2;
       begin
          R.Rectangles := new RM.Rectangle_Array (1 .. Rect_Max);
-         R.Glyphs := new RM.Glyph_Array (1 .. Cell_Count * 2);
+         R.Glyphs := new RM.Glyph_Array
+           (1 .. Cell_Count * (Terminal.Core.Max_Cluster_Attachments + 1) * 2);
       exception
          when Storage_Error =>
             Release_Frame (R);
@@ -545,51 +642,39 @@ package body Terminal.App.Renderer is
 
                if Is_Drawable (Cell) and then not Cell.Style.Conceal then
                   declare
-                     Metric       : Textrender.Glyph_Metric;
-                     Glyph_Status : constant Textrender.Status_Code :=
-                       Textrender.Get_Glyph
-                         (R     => R.Text,
-                          C     => Textrender.Codepoint (Natural (Cell.Text.Code_Point)),
-                          M     => Metric,
-                          Style =>
-                            (if Cell.Style.Italic
-                             then Textrender.Italic
-                             else Textrender.Regular));
-                     Placement : Textrender.Glyph_Placement;
+                     Glyph_Render_Status : Render_Status;
                   begin
-                     case Glyph_Status is
-                        when Textrender.Success | Textrender.Glyph_Missing =>
-                           if Glyph_Status = Textrender.Glyph_Missing then
-                              R.Missing_Glyph_Count := R.Missing_Glyph_Count + 1;
-                           end if;
+                     Draw_Glyph
+                       (R,
+                        Codepoint => Cell.Text.Code_Point,
+                        X         => X,
+                        Y         => Y,
+                        Color     => FG,
+                        Bold      => Cell.Style.Bold,
+                        Italic    => Cell.Style.Italic,
+                        Status    => Glyph_Render_Status);
+                     if Glyph_Render_Status /= Ok then
+                        Set_Render_Status (R, Status, Glyph_Render_Status);
+                        return;
+                     end if;
 
-                           if Metric.W > 0 and then Metric.H > 0 then
-                              Placement :=
-                                Textrender.Place_Glyph_In_Cell
-                                  (R      => R.Text,
-                                   M      => Metric,
-                                   Cell_X => X,
-                                   Cell_Y => Y);
-                              Add_Glyph
-                                  (R,
-                                   Placement => Placement,
-                                   Metric    => Metric,
-                                   Color     => FG,
-                                   Codepoint => Natural (Cell.Text.Code_Point));
-                              if Cell.Style.Bold then
-                                 Placement.X := Placement.X + 1.0;
-                                 Add_Glyph
-                                    (R,
-                                     Placement => Placement,
-                                     Metric    => Metric,
-                                     Color     => FG,
-                                     Codepoint => Natural (Cell.Text.Code_Point));
-                              end if;
+                     for I in 1 .. Cell.Text.Attachment_Count loop
+                        if Is_Renderable_Attachment (Cell.Text.Attachments (I)) then
+                           Draw_Glyph
+                             (R,
+                              Codepoint => Cell.Text.Attachments (I),
+                              X         => X,
+                              Y         => Y,
+                              Color     => FG,
+                              Bold      => Cell.Style.Bold,
+                              Italic    => Cell.Style.Italic,
+                              Status    => Glyph_Render_Status);
+                           if Glyph_Render_Status /= Ok then
+                              Set_Render_Status (R, Status, Glyph_Render_Status);
+                              return;
                            end if;
-                        when others =>
-                           Set_Render_Status (R, Status, Glyph_Load_Failed);
-                           return;
-                     end case;
+                        end if;
+                     end loop;
                   end;
 
                   if Cell.Style.Overline then

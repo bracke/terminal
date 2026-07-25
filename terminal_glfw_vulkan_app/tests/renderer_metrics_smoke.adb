@@ -418,6 +418,46 @@ begin
          "xterm 232 grayscale blue");
    end;
 
+   Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "cluster render core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#CC#, 3 => 16#81#,
+       4 => 16#E2#, 5 => 16#80#, 6 => 16#8D#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "cluster render feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "cluster render failed");
+
+   declare
+      Frame      : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+      Saw_Base   : Boolean := False;
+      Saw_Acute  : Boolean := False;
+      Saw_ZWJ    : Boolean := False;
+   begin
+      for I in 1 .. Frame.Glyph_Count loop
+         if Frame.Glyphs (I).Codepoint = 16#61# then
+            Saw_Base := True;
+         elsif Frame.Glyphs (I).Codepoint = 16#0301# then
+            Saw_Acute := True;
+         elsif Frame.Glyphs (I).Codepoint = 16#200D# then
+            Saw_ZWJ := True;
+         end if;
+      end loop;
+
+      Assert (Saw_Base, "cluster render should draw base glyph");
+      Assert (Saw_Acute, "cluster render should draw combining mark");
+      Assert (not Saw_ZWJ, "cluster render should skip invisible ZWJ");
+   end;
+
    Terminal.App.Renderer.Finalize (R);
    Terminal.App.Renderer.Finalize (R);
 

@@ -96,9 +96,11 @@ scalar plus up to eight attached zero-width scalars. Common combining-mark
 ranges, zero-width joiner/non-joiner, format controls, bidi marks, and
 variation selectors are attached to the previous cell without advancing the
 cursor; overflow is reported through diagnostics. Selection and clipboard copy
-preserve stored cluster scalars. Rendering still submits the base scalar to the
-current `textrender` path; full cluster shaping, emoji ZWJ composition, and
-BiDi layout require the renderer text pipeline to consume complete clusters.
+preserve stored cluster scalars. Rendering submits the base scalar and overlays
+renderable combining-mark attachments in the same cell, while invisible joiner,
+format-control, bidi, and variation-selector attachments remain non-drawing.
+Full cluster shaping, emoji ZWJ composition, and BiDi layout require additional
+text-pipeline support beyond the current glyph overlay path.
 
 ## Cursor
 
