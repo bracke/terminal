@@ -32,6 +32,8 @@ package Terminal.App.Queues is
      (Bytes,
       Key,
       Character,
+      Mouse_Button,
+      Cursor_Position,
       Close_Request,
       Resize_Request);
 
@@ -42,6 +44,8 @@ package Terminal.App.Queues is
       Bytes  : Byte_Chunk;
       Key_Event       : GLFW_Vulkan.Input.Key_Event;
       Character_Event : GLFW_Vulkan.Input.Character_Event;
+      Button_Event    : GLFW_Vulkan.Input.Mouse_Button_Event;
+      Cursor_Event    : GLFW_Vulkan.Input.Cursor_Position_Event;
    end record;
    type Input_Event_Ring is array (Positive range 1 .. Max_Input_Events) of Input_Event;
 

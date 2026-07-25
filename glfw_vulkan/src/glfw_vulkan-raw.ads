@@ -13,6 +13,10 @@ package GLFW_Vulkan.Raw is
    GLFW_RELEASE : constant Interfaces.C.int := 0;
    GLFW_REPEAT  : constant Interfaces.C.int := 2;
 
+   GLFW_MOUSE_BUTTON_LEFT   : constant Interfaces.C.int := 0;
+   GLFW_MOUSE_BUTTON_RIGHT  : constant Interfaces.C.int := 1;
+   GLFW_MOUSE_BUTTON_MIDDLE : constant Interfaces.C.int := 2;
+
    GLFW_MOD_SHIFT   : constant Interfaces.C.int := 16#0001#;
    GLFW_MOD_CONTROL : constant Interfaces.C.int := 16#0002#;
    GLFW_MOD_ALT     : constant Interfaces.C.int := 16#0004#;
@@ -105,6 +109,19 @@ package GLFW_Vulkan.Raw is
       Code_Point : Interfaces.C.unsigned)
      with Convention => C;
 
+   type Mouse_Button_Callback_Access is access procedure
+     (Window : GLFW_Window_Handle;
+      Button : Interfaces.C.int;
+      Action : Interfaces.C.int;
+      Mods   : Interfaces.C.int)
+     with Convention => C;
+
+   type Cursor_Pos_Callback_Access is access procedure
+     (Window : GLFW_Window_Handle;
+      X_Pos  : Interfaces.C.double;
+      Y_Pos  : Interfaces.C.double)
+     with Convention => C;
+
    function Set_Key_Callback
      (Window   : GLFW_Window_Handle;
       Callback : Key_Callback_Access) return Key_Callback_Access
@@ -114,6 +131,23 @@ package GLFW_Vulkan.Raw is
      (Window   : GLFW_Window_Handle;
       Callback : Char_Callback_Access) return Char_Callback_Access
      with Import, Convention => C, External_Name => "glfwSetCharCallback";
+
+   function Set_Mouse_Button_Callback
+     (Window   : GLFW_Window_Handle;
+      Callback : Mouse_Button_Callback_Access)
+      return Mouse_Button_Callback_Access
+     with Import, Convention => C, External_Name => "glfwSetMouseButtonCallback";
+
+   function Set_Cursor_Pos_Callback
+     (Window   : GLFW_Window_Handle;
+      Callback : Cursor_Pos_Callback_Access) return Cursor_Pos_Callback_Access
+     with Import, Convention => C, External_Name => "glfwSetCursorPosCallback";
+
+   procedure Get_Cursor_Pos
+     (Window : GLFW_Window_Handle;
+      X_Pos  : out Interfaces.C.double;
+      Y_Pos  : out Interfaces.C.double)
+     with Import, Convention => C, External_Name => "glfwGetCursorPos";
 
    function Create_Window_Surface
      (Instance : System.Address;

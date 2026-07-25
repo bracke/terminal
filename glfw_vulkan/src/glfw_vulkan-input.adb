@@ -9,6 +9,8 @@ package body GLFW_Vulkan.Input is
 
    Global_Key_Callback  : Key_Callback := null;
    Global_Char_Callback : Character_Callback := null;
+   Global_Mouse_Button_Callback : Mouse_Button_Callback := null;
+   Global_Cursor_Position_Callback : Cursor_Position_Callback := null;
 
    function Has_Mod (Mods : Interfaces.C.int; Flag : Interfaces.C.int) return Boolean is
      (((Mods / Flag) mod 2) = 1);
@@ -93,6 +95,19 @@ package body GLFW_Vulkan.Input is
       end case;
    end To_Key;
 
+   function To_Mouse_Button (Button : Interfaces.C.int) return Mouse_Button is
+   begin
+      if Button = Raw.GLFW_MOUSE_BUTTON_LEFT then
+         return Left;
+      elsif Button = Raw.GLFW_MOUSE_BUTTON_RIGHT then
+         return Right;
+      elsif Button = Raw.GLFW_MOUSE_BUTTON_MIDDLE then
+         return Middle;
+      else
+         return Other;
+      end if;
+   end To_Mouse_Button;
+
    procedure Dispatch_Key
      (Window   : Raw.GLFW_Window_Handle;
       Raw_Key  : Interfaces.C.int;
@@ -104,6 +119,19 @@ package body GLFW_Vulkan.Input is
    procedure Dispatch_Char
      (Window     : Raw.GLFW_Window_Handle;
       Code_Point : Interfaces.C.unsigned)
+     with Convention => C;
+
+   procedure Dispatch_Mouse_Button
+     (Window : Raw.GLFW_Window_Handle;
+      Button : Interfaces.C.int;
+      Action : Interfaces.C.int;
+      Mods   : Interfaces.C.int)
+     with Convention => C;
+
+   procedure Dispatch_Cursor_Position
+     (Window : Raw.GLFW_Window_Handle;
+      X_Pos  : Interfaces.C.double;
+      Y_Pos  : Interfaces.C.double)
      with Convention => C;
 
    procedure Dispatch_Key
@@ -144,6 +172,44 @@ package body GLFW_Vulkan.Input is
       end if;
    end Dispatch_Char;
 
+   procedure Dispatch_Mouse_Button
+     (Window : Raw.GLFW_Window_Handle;
+      Button : Interfaces.C.int;
+      Action : Interfaces.C.int;
+      Mods   : Interfaces.C.int)
+   is
+      X_Pos : Interfaces.C.double := 0.0;
+      Y_Pos : Interfaces.C.double := 0.0;
+   begin
+      if Global_Mouse_Button_Callback /= null then
+         Raw.Get_Cursor_Pos (Window, X_Pos, Y_Pos);
+         Global_Mouse_Button_Callback.all
+           ((Button     => To_Mouse_Button (Button),
+             Raw_Button => Integer (Button),
+             Action     => To_Action (Action),
+             Modifiers  =>
+               (Shift   => Has_Mod (Mods, Raw.GLFW_MOD_SHIFT),
+                Control => Has_Mod (Mods, Raw.GLFW_MOD_CONTROL),
+                Alt     => Has_Mod (Mods, Raw.GLFW_MOD_ALT),
+                Super   => Has_Mod (Mods, Raw.GLFW_MOD_SUPER)),
+             X          => Float (X_Pos),
+             Y          => Float (Y_Pos)));
+      end if;
+   end Dispatch_Mouse_Button;
+
+   procedure Dispatch_Cursor_Position
+     (Window : Raw.GLFW_Window_Handle;
+      X_Pos  : Interfaces.C.double;
+      Y_Pos  : Interfaces.C.double)
+   is
+      pragma Unreferenced (Window);
+   begin
+      if Global_Cursor_Position_Callback /= null then
+         Global_Cursor_Position_Callback.all
+           ((X => Float (X_Pos), Y => Float (Y_Pos)));
+      end if;
+   end Dispatch_Cursor_Position;
+
    procedure Set_Key_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
       Callback : Key_Callback)
@@ -169,4 +235,30 @@ package body GLFW_Vulkan.Input is
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Char'Access);
    end Set_Character_Callback;
+
+   procedure Set_Mouse_Button_Callback
+     (W        : in out GLFW_Vulkan.Windows.Window;
+      Callback : Mouse_Button_Callback)
+   is
+      Previous : Raw.Mouse_Button_Callback_Access;
+      pragma Unreferenced (Previous);
+   begin
+      Global_Mouse_Button_Callback := Callback;
+      Previous := Raw.Set_Mouse_Button_Callback
+        (GLFW_Vulkan.Windows.Internal.Handle (W),
+         Dispatch_Mouse_Button'Access);
+   end Set_Mouse_Button_Callback;
+
+   procedure Set_Cursor_Position_Callback
+     (W        : in out GLFW_Vulkan.Windows.Window;
+      Callback : Cursor_Position_Callback)
+   is
+      Previous : Raw.Cursor_Pos_Callback_Access;
+      pragma Unreferenced (Previous);
+   begin
+      Global_Cursor_Position_Callback := Callback;
+      Previous := Raw.Set_Cursor_Pos_Callback
+        (GLFW_Vulkan.Windows.Internal.Handle (W),
+         Dispatch_Cursor_Position'Access);
+   end Set_Cursor_Position_Callback;
 end GLFW_Vulkan.Input;

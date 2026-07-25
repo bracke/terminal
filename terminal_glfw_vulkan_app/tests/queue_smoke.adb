@@ -42,7 +42,9 @@ procedure Queue_Smoke is
             Action => GLFW_Vulkan.Input.Release,
             Modifiers => (others => False)),
          Character_Event =>
-           (Code_Point => Wide_Wide_Character'Val (0)));
+           (Code_Point => Wide_Wide_Character'Val (0)),
+         Button_Event => (others => <>),
+         Cursor_Event => (others => <>));
       Input.Push (Event);
    end Push_Input_Byte;
 

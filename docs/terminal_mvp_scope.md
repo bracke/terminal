@@ -55,6 +55,15 @@ buffers and scrollback. The GLFW app supports page-based scrollback viewing
 with `Shift+Page_Up` and `Shift+Page_Down`; normal typing returns to the live
 bottom.
 
+## Selection and Clipboard
+
+The GLFW app supports basic left-button drag selection over the currently
+visible grid. Selected cells are rendered with inverse video, and releasing the
+left button copies the selected visible text to the system clipboard as UTF-8.
+Selection is app-owned and does not mutate terminal core state. Advanced
+selection behavior, mouse reporting, and OSC 52 clipboard escape handling are
+postponed.
+
 ## TERM and Environment
 
 The POSIX backend inherits the parent environment, sets `TERM=xterm-256color`,

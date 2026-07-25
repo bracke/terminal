@@ -68,6 +68,12 @@ change. Renderer diagnostics include the last frame-build status so visible
 window failures distinguish initialization, invalid snapshot, allocation,
 glyph, and batch-conversion problems.
 
+Mouse selection is also app-owned. `glfw_vulkan` exposes generic mouse events,
+the main loop converts event coordinates to visible grid cells, and
+`Terminal.App.Selection` extracts UTF-8 text from render snapshots and marks
+selected cells with inverse style before rendering. The core does not know
+about selection or clipboards.
+
 `textrender` is used directly rather than through the existing toolkit layer,
 because that layer currently pulls in a GLFW/OpenGL binding outside this
 terminal's locked Vulkan-only dependency rules.

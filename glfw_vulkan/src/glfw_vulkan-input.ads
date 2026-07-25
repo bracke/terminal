@@ -20,19 +20,38 @@ package GLFW_Vulkan.Input is
       Num_0, Num_1, Num_2, Num_3, Num_4, Num_5, Num_6, Num_7, Num_8, Num_9);
 
    type Key_Event is record
-      Key       : GLFW_Vulkan.Input.Key;
-      Raw_Key   : Integer;
-      Scancode  : Integer;
-      Action    : Key_Action;
+      Key       : GLFW_Vulkan.Input.Key := Unknown;
+      Raw_Key   : Integer := 0;
+      Scancode  : Integer := 0;
+      Action    : Key_Action := Release;
       Modifiers : Modifier_Set;
    end record;
 
    type Character_Event is record
-      Code_Point : Wide_Wide_Character;
+      Code_Point : Wide_Wide_Character := Wide_Wide_Character'Val (0);
+   end record;
+
+   type Mouse_Button is (Left, Right, Middle, Other);
+
+   type Mouse_Button_Event is record
+      Button     : Mouse_Button := Other;
+      Raw_Button : Integer := 0;
+      Action     : Key_Action := Release;
+      Modifiers  : Modifier_Set;
+      X          : Float := 0.0;
+      Y          : Float := 0.0;
+   end record;
+
+   type Cursor_Position_Event is record
+      X : Float := 0.0;
+      Y : Float := 0.0;
    end record;
 
    type Key_Callback is access procedure (Event : Key_Event);
    type Character_Callback is access procedure (Event : Character_Event);
+   type Mouse_Button_Callback is access procedure (Event : Mouse_Button_Event);
+   type Cursor_Position_Callback is access procedure
+     (Event : Cursor_Position_Event);
 
    procedure Set_Key_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
@@ -41,4 +60,12 @@ package GLFW_Vulkan.Input is
    procedure Set_Character_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
       Callback : Character_Callback);
+
+   procedure Set_Mouse_Button_Callback
+     (W        : in out GLFW_Vulkan.Windows.Window;
+      Callback : Mouse_Button_Callback);
+
+   procedure Set_Cursor_Position_Callback
+     (W        : in out GLFW_Vulkan.Windows.Window;
+      Callback : Cursor_Position_Callback);
 end GLFW_Vulkan.Input;
