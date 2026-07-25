@@ -428,4 +428,19 @@ package body Terminal.App.Input_Map is
       Code := (if Event.Y_Offset > 0.0 then 64 else 65);
       Append_Mouse (Chunk, Modes, Code, Row, Col, False);
    end Encode_Mouse_Wheel;
+
+   procedure Encode_Focus
+     (Event : GLFW_Vulkan.Input.Focus_Event;
+      Modes : Terminal.Core.Mode_Snapshot;
+      Chunk : out Terminal.App.Queues.Byte_Chunk)
+   is
+   begin
+      Chunk := (others => <>);
+      if Modes.Focus_Reporting then
+         Append_String
+           (Chunk,
+            ASCII.ESC & "["
+            & (if Event.Focused then "I" else "O"));
+      end if;
+   end Encode_Focus;
 end Terminal.App.Input_Map;

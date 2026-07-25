@@ -46,4 +46,9 @@ package Terminal.App.Input_Map is
       Row   : Positive;
       Col   : Positive;
       Chunk : out Terminal.App.Queues.Byte_Chunk);
+
+   procedure Encode_Focus
+     (Event : GLFW_Vulkan.Input.Focus_Event;
+      Modes : Terminal.Core.Mode_Snapshot;
+      Chunk : out Terminal.App.Queues.Byte_Chunk);
 end Terminal.App.Input_Map;

@@ -54,12 +54,17 @@ package GLFW_Vulkan.Input is
       Y        : Float := 0.0;
    end record;
 
+   type Focus_Event is record
+      Focused : Boolean := False;
+   end record;
+
    type Key_Callback is access procedure (Event : Key_Event);
    type Character_Callback is access procedure (Event : Character_Event);
    type Mouse_Button_Callback is access procedure (Event : Mouse_Button_Event);
    type Cursor_Position_Callback is access procedure
      (Event : Cursor_Position_Event);
    type Scroll_Callback is access procedure (Event : Scroll_Event);
+   type Focus_Callback is access procedure (Event : Focus_Event);
 
    procedure Set_Key_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
@@ -80,4 +85,8 @@ package GLFW_Vulkan.Input is
    procedure Set_Scroll_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
       Callback : Scroll_Callback);
+
+   procedure Set_Focus_Callback
+     (W        : in out GLFW_Vulkan.Windows.Window;
+      Callback : Focus_Callback);
 end GLFW_Vulkan.Input;

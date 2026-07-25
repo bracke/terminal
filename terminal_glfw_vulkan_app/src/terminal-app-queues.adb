@@ -66,7 +66,8 @@ package body Terminal.App.Queues is
                  (Code_Point => Wide_Wide_Character'Val (0)),
                Button_Event    => (others => <>),
                Cursor_Event    => (others => <>),
-               Scroll_Event    => (others => <>));
+               Scroll_Event    => (others => <>),
+               Focus_Event     => (others => <>));
             Available := False;
             return;
          end if;

@@ -45,7 +45,8 @@ procedure Queue_Smoke is
            (Code_Point => Wide_Wide_Character'Val (0)),
          Button_Event => (others => <>),
          Cursor_Event => (others => <>),
-         Scroll_Event => (others => <>));
+         Scroll_Event => (others => <>),
+         Focus_Event => (others => <>));
       Input.Push (Event);
    end Push_Input_Byte;
 

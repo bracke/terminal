@@ -66,6 +66,7 @@ package Terminal.Core is
       Mouse_Drag         : Boolean := False;
       Mouse_Any_Event    : Boolean := False;
       Mouse_SGR          : Boolean := False;
+      Focus_Reporting    : Boolean := False;
       Alternate_Screen   : Boolean := False;
       Origin_Mode        : Boolean := False;
       Autowrap           : Boolean := True;

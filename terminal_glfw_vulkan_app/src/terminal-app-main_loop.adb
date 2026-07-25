@@ -49,7 +49,8 @@ package body Terminal.App.Main_Loop is
              Character_Event => (others => <>),
              Button_Event    => (others => <>),
              Cursor_Event    => (others => <>),
-             Scroll_Event    => (others => <>)));
+             Scroll_Event    => (others => <>),
+             Focus_Event     => (others => <>)));
       end if;
    end On_Key;
 
@@ -65,7 +66,8 @@ package body Terminal.App.Main_Loop is
              Character_Event => Event,
              Button_Event    => (others => <>),
              Cursor_Event    => (others => <>),
-             Scroll_Event    => (others => <>)));
+             Scroll_Event    => (others => <>),
+             Focus_Event     => (others => <>)));
       end if;
    end On_Character;
 
@@ -81,7 +83,8 @@ package body Terminal.App.Main_Loop is
              Character_Event => (others => <>),
              Button_Event    => Event,
              Cursor_Event    => (others => <>),
-             Scroll_Event    => (others => <>)));
+             Scroll_Event    => (others => <>),
+             Focus_Event     => (others => <>)));
       end if;
    end On_Mouse_Button;
 
@@ -99,7 +102,8 @@ package body Terminal.App.Main_Loop is
              Character_Event => (others => <>),
              Button_Event    => (others => <>),
              Cursor_Event    => Event,
-             Scroll_Event    => (others => <>)));
+             Scroll_Event    => (others => <>),
+             Focus_Event     => (others => <>)));
       end if;
    end On_Cursor_Position;
 
@@ -115,9 +119,27 @@ package body Terminal.App.Main_Loop is
              Character_Event => (others => <>),
              Button_Event    => (others => <>),
              Cursor_Event    => (others => <>),
-             Scroll_Event    => Event));
+             Scroll_Event    => Event,
+             Focus_Event     => (others => <>)));
       end if;
    end On_Scroll;
+
+   procedure On_Focus (Event : GLFW_Vulkan.Input.Focus_Event) is
+   begin
+      if Input_Queue /= null then
+         Input_Queue.Push
+           ((Kind            => Terminal.App.Queues.Focus,
+             Width           => 0,
+             Height          => 0,
+             Bytes           => (others => <>),
+             Key_Event       => (others => <>),
+             Character_Event => (others => <>),
+             Button_Event    => (others => <>),
+             Cursor_Event    => (others => <>),
+             Scroll_Event    => (others => <>),
+             Focus_Event     => Event));
+      end if;
+   end On_Focus;
 
    function Same_Title
      (Left  : Terminal.Core.Title_Text;
@@ -290,6 +312,7 @@ package body Terminal.App.Main_Loop is
       GLFW_Vulkan.Input.Set_Cursor_Position_Callback
         (W, On_Cursor_Position'Access);
       GLFW_Vulkan.Input.Set_Scroll_Callback (W, On_Scroll'Access);
+      GLFW_Vulkan.Input.Set_Focus_Callback (W, On_Focus'Access);
 
       declare
          Reader_Task : Terminal.App.PTY_Reader.Reader
@@ -533,6 +556,9 @@ package body Terminal.App.Main_Loop is
                               Need_Redraw := True;
                            end if;
                         end;
+                     when Terminal.App.Queues.Focus =>
+                        Terminal.App.Input_Map.Encode_Focus
+                          (Event.Focus_Event, Terminal.Core.Modes (T), Chunk);
                      when Terminal.App.Queues.Close_Request =>
                         GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                         Chunk := (others => <>);

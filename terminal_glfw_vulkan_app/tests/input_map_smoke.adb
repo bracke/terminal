@@ -271,4 +271,15 @@ begin
 
    IM.Encode_Mouse_Wheel (Scroll_Event (0.0), Modes, 4, 5, Chunk);
    Assert (Chunk.Length = 0, "zero scroll should not encode");
+
+   Modes := (others => <>);
+   IM.Encode_Focus ((Focused => True), Modes, Chunk);
+   Assert (Chunk.Length = 0, "disabled focus should not encode");
+
+   Modes.Focus_Reporting := True;
+   IM.Encode_Focus ((Focused => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[I"), "focus in");
+
+   IM.Encode_Focus ((Focused => False), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[O"), "focus out");
 end Input_Map_Smoke;

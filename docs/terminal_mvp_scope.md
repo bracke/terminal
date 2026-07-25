@@ -73,6 +73,10 @@ when reporting is enabled; otherwise the GLFW app uses the wheel for app-owned
 scrollback viewing.
 Advanced selection behavior and OSC 52 clipboard escape handling are postponed.
 
+Focus reporting via DEC private mode `?1004` is supported. When enabled, the
+app sends xterm focus-in and focus-out reports to the PTY as window focus
+changes arrive from GLFW.
+
 ## TERM and Environment
 
 The POSIX backend inherits the parent environment, sets `TERM=xterm-256color`,

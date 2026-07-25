@@ -40,6 +40,8 @@
   clipboard text extraction with a non-GUI smoke test.
 - Cover app-owned xterm mouse reporting byte mappings for button, release, and
   drag events with a non-GUI smoke test.
+- Cover app-owned xterm focus reporting mode and focus-in/focus-out byte
+  mappings with non-GUI smoke tests.
 - Preserve input byte ordering across partial PTY writes with a bounded
   write-all helper used by the main loop and integration smoke.
 - Cover bounded PTY/input queue ordering, drop-newest overflow, and diagnostic

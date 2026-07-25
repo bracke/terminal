@@ -12,6 +12,7 @@ package body GLFW_Vulkan.Input is
    Global_Mouse_Button_Callback : Mouse_Button_Callback := null;
    Global_Cursor_Position_Callback : Cursor_Position_Callback := null;
    Global_Scroll_Callback : Scroll_Callback := null;
+   Global_Focus_Callback : Focus_Callback := null;
 
    function Has_Mod (Mods : Interfaces.C.int; Flag : Interfaces.C.int) return Boolean is
      (((Mods / Flag) mod 2) = 1);
@@ -141,6 +142,11 @@ package body GLFW_Vulkan.Input is
       Y_Offset : Interfaces.C.double)
      with Convention => C;
 
+   procedure Dispatch_Focus
+     (Window  : Raw.GLFW_Window_Handle;
+      Focused : Interfaces.C.int)
+     with Convention => C;
+
    procedure Dispatch_Key
      (Window   : Raw.GLFW_Window_Handle;
       Raw_Key  : Interfaces.C.int;
@@ -235,6 +241,17 @@ package body GLFW_Vulkan.Input is
       end if;
    end Dispatch_Scroll;
 
+   procedure Dispatch_Focus
+     (Window  : Raw.GLFW_Window_Handle;
+      Focused : Interfaces.C.int)
+   is
+      pragma Unreferenced (Window);
+   begin
+      if Global_Focus_Callback /= null then
+         Global_Focus_Callback.all ((Focused => Focused /= 0));
+      end if;
+   end Dispatch_Focus;
+
    procedure Set_Key_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
       Callback : Key_Callback)
@@ -299,4 +316,17 @@ package body GLFW_Vulkan.Input is
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Scroll'Access);
    end Set_Scroll_Callback;
+
+   procedure Set_Focus_Callback
+     (W        : in out GLFW_Vulkan.Windows.Window;
+      Callback : Focus_Callback)
+   is
+      Previous : Raw.Window_Focus_Callback_Access;
+      pragma Unreferenced (Previous);
+   begin
+      Global_Focus_Callback := Callback;
+      Previous := Raw.Set_Window_Focus_Callback
+        (GLFW_Vulkan.Windows.Internal.Handle (W),
+         Dispatch_Focus'Access);
+   end Set_Focus_Callback;
 end GLFW_Vulkan.Input;

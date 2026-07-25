@@ -66,7 +66,7 @@ begin
    end;
 
    Feed_Text
-     (ASCII.ESC & "[?1003;1006h",
+     (ASCII.ESC & "[?1003;1004;1006h",
       "mouse any-event mode set feed failed");
    declare
       M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
@@ -74,11 +74,12 @@ begin
       Assert (not M.Mouse_Button, "mouse any-event disables button mode");
       Assert (not M.Mouse_Drag, "mouse any-event disables drag mode");
       Assert (M.Mouse_Any_Event, "mouse any-event reporting");
+      Assert (M.Focus_Reporting, "focus reporting");
       Assert (M.Mouse_SGR, "mouse SGR reporting");
    end;
 
    Feed_Text
-     (ASCII.ESC & "[?1000;1002;1003;1006l",
+     (ASCII.ESC & "[?1000;1002;1003;1004;1006l",
       "mouse mode reset feed failed");
    declare
       M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
@@ -86,6 +87,7 @@ begin
       Assert (not M.Mouse_Button, "mouse button reporting reset");
       Assert (not M.Mouse_Drag, "mouse drag reporting reset");
       Assert (not M.Mouse_Any_Event, "mouse any-event reporting reset");
+      Assert (not M.Focus_Reporting, "focus reporting reset");
       Assert (not M.Mouse_SGR, "mouse SGR reporting reset");
    end;
 
@@ -201,6 +203,7 @@ begin
       Assert (not M.Mouse_Drag, "DECSTR should reset mouse drag");
       Assert (not M.Mouse_Any_Event, "DECSTR should reset mouse any-event");
       Assert (not M.Mouse_SGR, "DECSTR should reset mouse SGR");
+      Assert (not M.Focus_Reporting, "DECSTR should reset focus reporting");
       Assert (not M.Origin_Mode, "DECSTR should reset origin mode");
       Assert (M.Autowrap, "DECSTR should enable autowrap");
       Assert (M.Cursor_Visible, "DECSTR should show cursor");

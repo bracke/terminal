@@ -921,6 +921,8 @@ package body Terminal.Core is
                T.Current_Modes.Mouse_Button := False;
                T.Current_Modes.Mouse_Drag := False;
             end if;
+         when 1004 =>
+            T.Current_Modes.Focus_Reporting := Enable;
          when 1006 =>
             T.Current_Modes.Mouse_SGR := Enable;
          when 47 | 1047 =>
@@ -1076,6 +1078,7 @@ package body Terminal.Core is
          Mouse_Drag         => False,
          Mouse_Any_Event    => False,
          Mouse_SGR          => False,
+         Focus_Reporting    => False,
          Alternate_Screen   => Keep_Alternate,
          Origin_Mode        => False,
          Autowrap           => True,

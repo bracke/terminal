@@ -35,6 +35,7 @@ package Terminal.App.Queues is
       Mouse_Button,
       Cursor_Position,
       Scroll,
+      Focus,
       Close_Request,
       Resize_Request);
 
@@ -48,6 +49,7 @@ package Terminal.App.Queues is
       Button_Event    : GLFW_Vulkan.Input.Mouse_Button_Event;
       Cursor_Event    : GLFW_Vulkan.Input.Cursor_Position_Event;
       Scroll_Event    : GLFW_Vulkan.Input.Scroll_Event;
+      Focus_Event     : GLFW_Vulkan.Input.Focus_Event;
    end record;
    type Input_Event_Ring is array (Positive range 1 .. Max_Input_Events) of Input_Event;
 
