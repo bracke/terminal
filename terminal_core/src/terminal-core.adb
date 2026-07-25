@@ -1385,6 +1385,13 @@ package body Terminal.Core is
       T.UTF8_Min := 0;
    end Emit_UTF8_Replacement;
 
+   procedure Recover_Incomplete_UTF8 (T : in out Terminal) is
+   begin
+      if T.State = Ground and then T.UTF8_Need > 0 then
+         Emit_UTF8_Replacement (T);
+      end if;
+   end Recover_Incomplete_UTF8;
+
    procedure Decode_Printable (T : in out Terminal; B : Common.Bytes.Byte) is
       V : constant Natural := Natural (B);
    begin
@@ -1447,6 +1454,28 @@ package body Terminal.Core is
       end if;
 
       for B of Data loop
+         if Natural (B) = 16#9C# then
+            if T.State = OSC then
+               Finish_OSC (T);
+               goto Continue;
+            elsif T.State = OSC_Overflow then
+               T.State := Ground;
+               goto Continue;
+            end if;
+         elsif T.State /= OSC and then T.State /= OSC_Overflow then
+            if Natural (B) = 16#9B# then
+               Recover_Incomplete_UTF8 (T);
+               Clear_CSI (T);
+               T.State := CSI;
+               goto Continue;
+            elsif Natural (B) = 16#9D# then
+               Recover_Incomplete_UTF8 (T);
+               T.OSC_Count := 0;
+               T.State := OSC;
+               goto Continue;
+            end if;
+         end if;
+
          if Natural (B) < 32 then
             if T.State = OSC and then Natural (B) = 27 then
                T.State := OSC_Escape;
@@ -1461,9 +1490,7 @@ package body Terminal.Core is
                T.State := Ground;
                goto Continue;
             elsif T.State /= OSC and then T.State /= OSC_Overflow then
-               if T.State = Ground and then T.UTF8_Need > 0 then
-                  Emit_UTF8_Replacement (T);
-               end if;
+               Recover_Incomplete_UTF8 (T);
                Execute_C0 (T, B);
                goto Continue;
             end if;

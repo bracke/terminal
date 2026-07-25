@@ -77,4 +77,26 @@ begin
         (Title.Text (1 .. Title.Length) = "editor",
          "unknown OSC must not change title");
    end;
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#9D#, 2 => Byte (Character'Pos ('2')),
+       3 => Byte (Character'Pos (';')),
+       4 => Byte (Character'Pos ('c')),
+       5 => Byte (Character'Pos ('1')), 6 => 16#9C#,
+       7 => Byte (Character'Pos ('z'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 OSC title feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Title : constant Terminal.Core.Title_Text := Terminal.Core.Title (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#7A#,
+         "C1 OSC payload leaked or trailing text missing");
+      Assert (Title.Length = 2, "C1 OSC title length");
+      Assert (Title.Text (1 .. Title.Length) = "c1", "C1 OSC title text");
+      Terminal.Core.Release (S);
+   end;
 end Core_OSC_Smoke;
