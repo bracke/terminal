@@ -174,4 +174,56 @@ begin
       Assert_Char (S, 5, 16#62#, "ICH continuation shifts suffix");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize zero width failed");
+   Feed_Bytes
+     ((1  => Byte (Character'Pos ('a')),
+       2  => 16#CC#, 3  => 16#81#,
+       4  => Byte (Character'Pos ('b')),
+       5  => 16#E2#, 6  => 16#80#, 7  => 16#8D#,
+       8  => 16#EF#, 9  => 16#B8#, 10 => 16#8F#,
+       11 => Byte (Character'Pos ('c')),
+       12 => 16#E2#, 13 => 16#83#, 14 => 16#9D#,
+       15 => Byte (Character'Pos ('d'))),
+      "zero width feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Char (S, 1, 16#61#, "zero width keeps a");
+      Assert_Char (S, 2, 16#62#, "combining acute should not occupy a cell");
+      Assert_Char (S, 3, 16#63#, "ZWJ and VS16 should not occupy cells");
+      Assert_Char (S, 4, 16#64#, "enclosing mark should not occupy a cell");
+      Assert (S.Cursor.Col = 5, "zero width cursor");
+      Assert
+        (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
+         "zero width fixtures should be valid UTF-8");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize supplementary CJK failed");
+   Feed_Bytes
+     ((1 => Byte (Character'Pos ('a')),
+       2 => 16#F0#, 3 => 16#A0#, 4 => 16#80#, 5 => 16#80#,
+       6 => Byte (Character'Pos ('b'))),
+      "supplementary CJK feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Wide : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Continuation : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert_Char (S, 1, 16#61#, "supplementary CJK prefix");
+      Assert (Wide.Text.Code_Point = 16#20000#, "supplementary CJK code point");
+      Assert (Wide.Text.Width = Terminal.Core.Width_Two, "supplementary CJK width");
+      Assert
+        (Continuation.Kind = Terminal.Core.Wide_Continuation,
+         "supplementary CJK continuation");
+      Assert_Char (S, 4, 16#62#, "supplementary CJK suffix");
+      Assert (S.Cursor.Col = 5, "supplementary CJK cursor");
+      Terminal.Core.Release (S);
+   end;
 end Core_Wide_Smoke;

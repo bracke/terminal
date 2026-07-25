@@ -188,18 +188,15 @@ begin
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "C1 recovery feed failed");
    Assert
-     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 1,
-      "C1 CSI should recover incomplete UTF-8 first");
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
+      "UTF-8 encoded C1 CSI should be valid UTF-8");
 
    declare
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
       Assert
-        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#FFFD#,
-         "C1 recovery should emit replacement first");
-      Assert
         (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#78#,
-         "C1 recovery should still execute CSI");
+         "UTF-8 encoded C1 CSI should execute CSI");
       Terminal.Core.Release (S);
    end;
 
@@ -332,18 +329,15 @@ begin
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "single shift UTF-8 recovery feed failed");
    Assert
-     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 1,
-      "SS2 should recover incomplete UTF-8 first");
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
+      "UTF-8 encoded SS2 should be valid UTF-8");
 
    declare
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
       Assert
-        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#FFFD#,
-         "SS2 recovery should emit replacement first");
-      Assert
-        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#7A#,
-         "text after SS2 recovery should render");
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#7A#,
+         "UTF-8 encoded SS2 should consume the following byte");
       Terminal.Core.Release (S);
    end;
 
@@ -382,18 +376,15 @@ begin
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "C1 ST UTF-8 recovery feed failed");
    Assert
-     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 1,
-      "C1 ST after UTF-8 lead should recover the incomplete sequence");
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 0,
+      "UTF-8 encoded C1 ST should be valid UTF-8");
 
    declare
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
       Assert
-        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#FFFD#,
-         "C1 ST recovery should emit replacement first");
-      Assert
-        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#78#,
-         "text after C1 ST recovery should render");
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "text after UTF-8 encoded C1 ST should render");
       Terminal.Core.Release (S);
    end;
 end Core_UTF8_Smoke;
