@@ -13,6 +13,21 @@ procedure Core_SGR_Smoke is
    T : Terminal.Core.Terminal;
    Init : Terminal.Core.Initialize_Status;
    Feed_Status : Terminal.Core.Feed_Status;
+
+   function To_Bytes (Text : String) return Byte_Array is
+      Result : Byte_Array (1 .. Text'Length);
+   begin
+      for I in Text'Range loop
+         Result (I - Text'First + 1) := Byte (Character'Pos (Text (I)));
+      end loop;
+      return Result;
+   end To_Bytes;
+
+   procedure Feed_Text (Text : String; Message : String) is
+   begin
+      Terminal.Core.Feed (T, To_Bytes (Text), Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, Message);
+   end Feed_Text;
 begin
    Terminal.Core.Initialize (T, 2, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "initialize failed");
@@ -34,6 +49,34 @@ begin
       Assert (C.Style.Bold, "bold style");
       Assert (C.Style.Foreground.Kind = Terminal.Core.Indexed, "indexed foreground");
       Assert (C.Style.Foreground.Index = 1, "red foreground index");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "colon SGR initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[38:5:196mA" & ASCII.ESC & "[48:2:1:2:3mB",
+      "colon SGR feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+   begin
+      Assert
+        (A.Style.Foreground.Kind = Terminal.Core.Indexed,
+         "colon indexed foreground kind");
+      Assert
+        (A.Style.Foreground.Index = 196,
+         "colon indexed foreground value");
+      Assert
+        (B.Style.Background.Kind = Terminal.Core.RGB,
+         "colon truecolor background kind");
+      Assert
+        (B.Style.Background.R = 1
+         and then B.Style.Background.G = 2
+         and then B.Style.Background.B = 3,
+         "colon truecolor background values");
       Terminal.Core.Release (S);
    end;
 end Core_SGR_Smoke;
