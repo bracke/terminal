@@ -250,4 +250,100 @@ begin
          "text after DEL recovery should render");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 8, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "single shift consume initialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1  => Byte (Character'Pos ('a')),
+       2  => 16#1B#, 3 => Byte (Character'Pos ('N')),
+       4  => Byte (Character'Pos ('x')),
+       5  => Byte (Character'Pos ('b')),
+       6  => 16#1B#, 7 => Byte (Character'Pos ('O')),
+       8  => Byte (Character'Pos ('y')),
+       9  => Byte (Character'Pos ('c'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "single shift consume feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
+         "single shift consume prefix");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
+         "SS2 following byte should not leak");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#63#,
+         "SS3 following byte should not leak");
+      Assert
+        (D.Ignored_Escape = 0,
+         "SS2/SS3 should not count as ignored escapes");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 8, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "C1 single shift initialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('a')),
+       2 => 16#8E#,
+       3 => Byte (Character'Pos ('x')),
+       4 => Byte (Character'Pos ('b')),
+       5 => 16#8F#,
+       6 => Byte (Character'Pos ('y')),
+       7 => Byte (Character'Pos ('c'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 single shift feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
+         "C1 single shift consume prefix");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
+         "C1 SS2 following byte should not leak");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#63#,
+         "C1 SS3 following byte should not leak");
+      Assert
+        (D.Malformed_UTF8 = 0,
+         "C1 SS2/SS3 should not count as malformed UTF-8");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 8, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "single shift UTF-8 recovery initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#C2#,
+       2 => 16#8E#,
+       3 => Byte (Character'Pos ('x')),
+       4 => Byte (Character'Pos ('z'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "single shift UTF-8 recovery feed failed");
+   Assert
+     (Terminal.Core.Diagnostics (T).Malformed_UTF8 = 1,
+      "SS2 should recover incomplete UTF-8 first");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#FFFD#,
+         "SS2 recovery should emit replacement first");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#7A#,
+         "text after SS2 recovery should render");
+      Terminal.Core.Release (S);
+   end;
 end Core_UTF8_Smoke;

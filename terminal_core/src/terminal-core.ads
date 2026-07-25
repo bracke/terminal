@@ -189,6 +189,7 @@ private
       Ignored_String_Overflow_Escape,
       Charset,
       Coding_System,
+      Single_Shift,
       Screen_Alignment);
    subtype Param_Index is Positive range 1 .. 16;
    type Param_Array is array (Param_Index) of Natural;

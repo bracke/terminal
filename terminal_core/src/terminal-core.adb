@@ -1942,6 +1942,10 @@ package body Terminal.Core is
                Recover_Incomplete_UTF8 (T);
                Reverse_Index_Control (T);
                goto Continue;
+            elsif Natural (B) = 16#8E# or else Natural (B) = 16#8F# then
+               Recover_Incomplete_UTF8 (T);
+               T.State := Single_Shift;
+               goto Continue;
             elsif Natural (B) = 16#9D# then
                Recover_Incomplete_UTF8 (T);
                T.OSC_Count := 0;
@@ -1985,6 +1989,11 @@ package body Terminal.Core is
                Clear_CSI (T);
                T.State := Ground;
                goto Continue;
+            elsif T.State = Single_Shift then
+               T.State := Ground;
+               Recover_Incomplete_UTF8 (T);
+               Execute_C0 (T, B);
+               goto Continue;
             elsif not In_String_Control (T.State) then
                Recover_Incomplete_UTF8 (T);
                Execute_C0 (T, B);
@@ -2019,6 +2028,8 @@ package body Terminal.Core is
                   when 'M' =>
                      Reverse_Index_Control (T);
                      T.State := Ground;
+                  when 'N' | 'O' =>
+                     T.State := Single_Shift;
                   when '[' =>
                      Clear_CSI (T);
                      T.State := CSI;
@@ -2149,6 +2160,8 @@ package body Terminal.Core is
                   T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;
                   Recovered := True;
                end if;
+               T.State := Ground;
+            when Single_Shift =>
                T.State := Ground;
             when Screen_Alignment =>
                if Ch = '8' then

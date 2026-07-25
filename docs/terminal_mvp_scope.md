@@ -7,14 +7,17 @@
 - C0: BEL, BS, HT, LF, VT, FF, CR, CAN, SUB, ESC.
 - DEL (`0x7F`) is ignored outside string-control payloads.
 - C1: IND (`0x84`), NEL (`0x85`), HTS (`0x88`), RIS (`0x8C`), RI (`0x8D`),
-  DCS (`0x90`), SOS (`0x98`), CSI (`0x9B`), OSC (`0x9D`), PM (`0x9E`), APC
-  (`0x9F`), and ST (`0x9C`) are recognized as byte-oriented controls.
+  SS2 (`0x8E`), SS3 (`0x8F`), DCS (`0x90`), SOS (`0x98`), CSI (`0x9B`),
+  OSC (`0x9D`), PM (`0x9E`), APC (`0x9F`), and ST (`0x9C`) are recognized
+  as byte-oriented controls.
 - ESC: reset, save/restore cursor, index, next line, reverse index, CSI, OSC,
   DEC screen alignment test (`ESC # 8`), keypad mode toggles, and G-set
   charset designation for ASCII and DEC special graphics. Coding-system
   designations `ESC % G` and `ESC % @` are consumed safely.
 - SO/SI select G1/G0 for 7-bit GL text. DEC special graphics maps the common
   VT100 line-drawing range to Unicode box-drawing and symbol code points.
+- SS2/SS3 single-shift controls are consumed with the following byte; G2/G3
+  charset mapping is postponed.
 - Saved cursor state includes row, column, and current SGR style.
 - Saved cursor state also preserves the active G0/G1 charset designation.
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL,
