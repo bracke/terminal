@@ -83,6 +83,30 @@ begin
          "CPR should drain");
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "[2;7H" & ASCII.ESC & "[?6n"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DEC CPR feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 7,
+      "DEC CPR response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 8);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[?2;7R"),
+         "DEC CPR");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "DEC CPR should drain");
+   end;
+
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[c"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "primary DA feed failed");
    Assert

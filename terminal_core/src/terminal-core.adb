@@ -859,13 +859,23 @@ package body Terminal.Core is
    begin
       case Kind is
          when 5 =>
-            Append_Response_Char (T, ASCII.ESC);
-            Append_Response_Char (T, '[');
-            Append_Response_Char (T, '0');
-            Append_Response_Char (T, 'n');
+            if T.CSI_Private = ASCII.NUL then
+               Append_Response_Char (T, ASCII.ESC);
+               Append_Response_Char (T, '[');
+               Append_Response_Char (T, '0');
+               Append_Response_Char (T, 'n');
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
          when 6 =>
             Append_Response_Char (T, ASCII.ESC);
             Append_Response_Char (T, '[');
+            if T.CSI_Private = '?' then
+               Append_Response_Char (T, '?');
+            elsif T.CSI_Private /= ASCII.NUL then
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+               return;
+            end if;
             Append_Response_Natural (T, T.Cursor_Row);
             Append_Response_Char (T, ';');
             Append_Response_Natural (T, T.Cursor_Col);
