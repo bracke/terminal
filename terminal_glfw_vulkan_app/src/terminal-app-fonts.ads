@@ -1,6 +1,6 @@
 --  Font discovery for the terminal text renderer.
 package Terminal.App.Fonts is
-   Max_Fallback_Fonts : constant := 8;
+   Max_Fallback_Fonts : constant := 32;
 
    type Font_Path is record
       Length : Natural := 0;

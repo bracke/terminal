@@ -6,7 +6,6 @@ with Textrender.Fonts;
 
 package body Terminal.App.Fonts is
    use type Ada.Directories.File_Kind;
-   use type Textrender.Fonts.Glyph_Lookup_Result;
    use type Textrender.Fonts.Load_Result;
 
    type Candidate_Array is array (Positive range <>) of access constant String;
@@ -18,6 +17,27 @@ package body Terminal.App.Fonts is
    Noto_Old_Mono : aliased constant String := "/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf";
    DejaVu_Sans   : aliased constant String := "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
    Noto_Sans     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf";
+   Noto_Symbols  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf";
+   Noto_Symbols2 : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf";
+   Noto_Arabic   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf";
+   Noto_Hebrew   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf";
+   Noto_Deva     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf";
+   Noto_Bengali  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf";
+   Noto_Gurmukhi : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansGurmukhi-Regular.ttf";
+   Noto_Gujarati : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansGujarati-Regular.ttf";
+   Noto_Oriya    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansOriya-Regular.ttf";
+   Noto_Tamil    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansTamil-Regular.ttf";
+   Noto_Telugu   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansTelugu-Regular.ttf";
+   Noto_Kannada  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansKannada-Regular.ttf";
+   Noto_Malayalam : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMalayalam-Regular.ttf";
+   Noto_Sinhala  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSinhala-Regular.ttf";
+   Noto_Thai     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf";
+   Noto_Lao      : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLao-Regular.ttf";
+   Noto_Myanmar  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf";
+   Noto_Khmer    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf";
+   Noto_Javanese : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansJavanese-Regular.ttf";
+   Noto_Cham     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansCham-Regular.ttf";
+   Noto_CJK      : aliased constant String := "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
    VL_Gothic     : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-Gothic-Regular.ttf";
    VL_PGothic    : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-PGothic-Regular.ttf";
 
@@ -33,7 +53,28 @@ package body Terminal.App.Fonts is
       DejaVu_Sans'Access,
       VL_Gothic'Access,
       VL_PGothic'Access,
-      Noto_Sans'Access];
+      Noto_Sans'Access,
+      Noto_Symbols'Access,
+      Noto_Symbols2'Access,
+      Noto_Arabic'Access,
+      Noto_Hebrew'Access,
+      Noto_Deva'Access,
+      Noto_Bengali'Access,
+      Noto_Gurmukhi'Access,
+      Noto_Gujarati'Access,
+      Noto_Oriya'Access,
+      Noto_Tamil'Access,
+      Noto_Telugu'Access,
+      Noto_Kannada'Access,
+      Noto_Malayalam'Access,
+      Noto_Sinhala'Access,
+      Noto_Thai'Access,
+      Noto_Lao'Access,
+      Noto_Myanmar'Access,
+      Noto_Khmer'Access,
+      Noto_Javanese'Access,
+      Noto_Cham'Access,
+      Noto_CJK'Access];
 
    Cached_Default_Path  : Font_Path;
    Cached_Default_Ready : Boolean := False;
@@ -93,7 +134,6 @@ package body Terminal.App.Fonts is
 
    function Is_Loadable_Font (Path : String) return Boolean is
       Font  : Textrender.Fonts.Font;
-      Glyph : Textrender.Fonts.Glyph_Info;
    begin
       if not Is_Font_File (Path)
         or else not Is_Ordinary_File (Path)
@@ -103,14 +143,6 @@ package body Terminal.App.Fonts is
       end if;
 
       if Textrender.Fonts.Load (Font, Path) /= Textrender.Fonts.Loaded then
-         Textrender.Fonts.Reset (Font);
-         return False;
-      end if;
-
-      if Textrender.Fonts.Lookup_Glyph
-           (Font, Textrender.Fonts.Codepoint (Character'Pos ('?')), Glyph)
-         /= Textrender.Fonts.Glyph_Found
-      then
          Textrender.Fonts.Reset (Font);
          return False;
       end if;
