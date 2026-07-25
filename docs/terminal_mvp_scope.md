@@ -58,6 +58,8 @@ foreground/background, bright
 16-color variants, indexed `38;5;n` and `48;5;n`, truecolor `38;2;r;g;b` and
 `48;2;r;g;b`, default foreground/background, strikethrough `9`/`29`, and
 overline `53`/`55`. Font selectors `10` through `19` are recognized and ignored.
+Underline color selectors `58;5;n`, `58;2;r;g;b`, and reset `59` are recognized
+and ignored because underline color is not stored in the v1 style model.
 The GLFW app renders blink text with app-owned half-second phases; the
 platform-independent core only stores the blink style state.
 Colon-separated SGR forms such as `38:5:n` and `48:2:r:g:b` are accepted as

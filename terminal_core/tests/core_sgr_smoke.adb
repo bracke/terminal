@@ -125,6 +125,44 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 4, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SGR underline color initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[58;5;196mA"
+      & ASCII.ESC & "[58;2;1;2;3mB"
+      & ASCII.ESC & "[58:5:42mC"
+      & ASCII.ESC & "[59mD",
+      "SGR underline color feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      C : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 3);
+      D_Cell : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 4);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (A.Text.Code_Point = 16#41#
+         and then B.Text.Code_Point = 16#42#
+         and then C.Text.Code_Point = 16#43#
+         and then D_Cell.Text.Code_Point = 16#44#,
+         "SGR underline color selectors should not leak into text");
+      Assert
+        (D.Unsupported_Sequence = 0,
+         "SGR underline color selectors should not increment diagnostics");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[58;4m"), Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "malformed SGR underline color feed failed");
+   Assert
+     (Terminal.Core.Diagnostics (T).Unsupported_Sequence = 1,
+      "malformed SGR underline color should be diagnosed");
+
    Terminal.Core.Initialize (T, 1, 2, 100, Init);
    Assert (Init = Terminal.Core.Ok, "SGR rapid blink initialize failed");
    Feed_Text
