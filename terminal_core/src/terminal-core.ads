@@ -196,7 +196,7 @@ private
      array (CSI_Intermediate_Index) of Standard.Character;
 
    type Buffer_Kind is (Primary, Alternate);
-   Max_Response_Length : constant := 128;
+   Max_Response_Length : constant := Max_Title_Length + 16;
    subtype Response_Index is Positive range 1 .. Max_Response_Length;
    type Response_Buffer is
      array (Response_Index) of Common.Bytes.Byte;

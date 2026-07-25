@@ -940,6 +940,15 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Cols);
          Append_Response_Char (T, 't');
+      elsif T.CSI_Private = ASCII.NUL and then Number = 21 then
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, ']');
+         Append_Response_Char (T, 'l');
+         for I in 1 .. T.Window_Title.Length loop
+            Append_Response_Char (T, T.Window_Title.Text (I));
+         end loop;
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '\');
       else
          T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end if;

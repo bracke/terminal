@@ -249,4 +249,30 @@ begin
         (Terminal.Core.Pending_Response_Length (T) = 0,
          "XTWINOPS window size should drain");
    end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "]2;Ada Terminal" & ASCII.BEL
+         & ASCII.ESC & "[21t"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS title feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 17,
+      "XTWINOPS title response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 32);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "]lAda Terminal" & ASCII.ESC & "\"),
+         "XTWINOPS title");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "XTWINOPS title should drain");
+   end;
 end Core_Response_Smoke;
