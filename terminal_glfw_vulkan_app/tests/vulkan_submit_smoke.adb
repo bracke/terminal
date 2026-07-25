@@ -65,6 +65,12 @@ begin
    Assert
      (VS.Vertices (Batch) (7).Texture = VS.Texture_Text_Atlas,
       "glyph vertices should be textured");
+   Assert
+     (VS.Vertices (Batch) (1).Y = -1.0,
+      "top edge should map to Vulkan clip-space top");
+   Assert
+     (VS.Vertices (Batch) (3).Y = 0.0,
+      "lower edge should map downward in Vulkan clip space");
 
    VS.Release (Batch);
    Assert (VS.Vertex_Count (Batch) = 0, "release should clear vertices");

@@ -17,7 +17,7 @@ package body Terminal.App.Vulkan_Submit is
 
    function Clip_Y (Frame_Height : Natural; Y : Float) return Float is
    begin
-      return 1.0 - Y / Float (Frame_Height) * 2.0;
+      return Y / Float (Frame_Height) * 2.0 - 1.0;
    end Clip_Y;
 
    procedure Append_Vertex
