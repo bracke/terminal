@@ -148,6 +148,8 @@ package body Terminal.Core is
       T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Count := 0;
+      T.CSI_Intermediates := (others => ASCII.NUL);
+      T.CSI_Intermediate_Count := 0;
       T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
       T.UTF8_Need := 0;
@@ -248,6 +250,8 @@ package body Terminal.Core is
       T.CSI_Params := (others => 0);
       T.CSI_Set := (others => False);
       T.CSI_Count := 0;
+      T.CSI_Intermediates := (others => ASCII.NUL);
+      T.CSI_Intermediate_Count := 0;
       T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
       T.UTF8_Need := 0;
@@ -699,6 +703,8 @@ package body Terminal.Core is
       T.CSI_Params := (others => 0);
       T.CSI_Set := (others => False);
       T.CSI_Count := 0;
+      T.CSI_Intermediates := (others => ASCII.NUL);
+      T.CSI_Intermediate_Count := 0;
    end Clear_CSI;
 
    function Param
@@ -1025,11 +1031,50 @@ package body Terminal.Core is
       end loop;
    end Apply_SGR;
 
+   procedure Soft_Reset (T : in out Terminal) is
+      Old_Row : constant Positive := T.Cursor_Row;
+      Keep_Alternate : constant Boolean := T.Current_Modes.Alternate_Screen;
+   begin
+      T.Current_Style := (others => <>);
+      T.Saved_Style := (others => <>);
+      T.Current_Modes :=
+        (Application_Cursor => False,
+         Bracketed_Paste    => False,
+         Alternate_Screen   => Keep_Alternate,
+         Origin_Mode        => False,
+         Autowrap           => True,
+         Cursor_Visible     => True,
+         Insert_Mode        => False);
+      T.Cursor_Row := 1;
+      T.Cursor_Col := 1;
+      T.Saved_Row := 1;
+      T.Saved_Col := 1;
+      T.Pending_Wrap := False;
+      T.Top_Margin := 1;
+      T.Bottom_Margin := T.Rows;
+      T.Last_Printable := 0;
+      T.Has_Last_Printable := False;
+      Mark_Cursor_Move (T, Old_Row);
+   end Soft_Reset;
+
    procedure Execute_CSI (T : in out Terminal; Final : Standard.Character) is
       N : Natural;
       R : Natural;
       C : Natural;
    begin
+      if T.CSI_Intermediate_Count > 0 then
+         if T.CSI_Intermediate_Count = 1
+           and then T.CSI_Intermediates (1) = '!'
+           and then Final = 'p'
+           and then T.CSI_Private = ASCII.NUL
+         then
+            Soft_Reset (T);
+         else
+            T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+         end if;
+         return;
+      end if;
+
       case Final is
          when '@' =>
             Shift_Row_Right
@@ -1412,6 +1457,14 @@ package body Terminal.Core is
                elsif Ch = ';' or else Ch = ':' then
                   if T.CSI_Count < Parser.Max_CSI_Params then
                      T.CSI_Count := T.CSI_Count + 1;
+                  else
+                     T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+                     Overflowed := True;
+                  end if;
+               elsif Ch in ' ' .. '/' then
+                  if T.CSI_Intermediate_Count < Parser.Max_CSI_Intermediate then
+                     T.CSI_Intermediate_Count := T.CSI_Intermediate_Count + 1;
+                     T.CSI_Intermediates (T.CSI_Intermediate_Count) := Ch;
                   else
                      T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
                      Overflowed := True;

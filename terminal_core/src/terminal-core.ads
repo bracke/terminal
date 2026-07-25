@@ -160,6 +160,9 @@ private
    subtype Param_Index is Positive range 1 .. 16;
    type Param_Array is array (Param_Index) of Natural;
    type Param_Set_Array is array (Param_Index) of Boolean;
+   subtype CSI_Intermediate_Index is Positive range 1 .. 4;
+   type CSI_Intermediate_Array is
+     array (CSI_Intermediate_Index) of Standard.Character;
 
    type Buffer_Kind is (Primary, Alternate);
    Max_Response_Length : constant := 128;
@@ -206,6 +209,8 @@ private
       CSI_Params    : Param_Array := (others => 0);
       CSI_Set       : Param_Set_Array := (others => False);
       CSI_Count     : Natural := 0;
+      CSI_Intermediates : CSI_Intermediate_Array := (others => ASCII.NUL);
+      CSI_Intermediate_Count : Natural := 0;
       OSC_Data      : OSC_Buffer := (others => ASCII.NUL);
       OSC_Count     : Natural := 0;
 
