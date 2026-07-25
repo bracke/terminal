@@ -107,6 +107,7 @@ package body Terminal.Core is
       T.Pending_Wrap := False;
       T.Top_Margin := 1;
       T.Bottom_Margin := T.Rows;
+      T.Scrollback_Rows := 0;
       T.Current_Style := (others => <>);
       T.Window_Title := (others => <>);
       T.Response_Length := 0;

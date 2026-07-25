@@ -32,4 +32,13 @@ begin
    Assert
      (Terminal.Core.Scrollback_Cell_At (T, 2, 1).Text.Code_Point = 16#63#,
       "newest retained row");
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#1B#, 2 => Byte (Character'Pos ('c'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "reset feed failed");
+   Assert
+     (Terminal.Core.Scrollback_Row_Count (T) = 0,
+      "terminal reset should clear scrollback");
 end Core_Scrollback_Smoke;

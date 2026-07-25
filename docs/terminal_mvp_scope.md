@@ -44,7 +44,8 @@ clusters, emoji ZWJ sequences, shaping, and BiDi are postponed.
 ## Scrollback
 
 Primary-screen scrollback is bounded by the initialize-time limit. The alternate
-screen has no scrollback.
+screen has no scrollback. Full terminal reset (`ESC c`) clears the visible
+buffers and scrollback.
 
 ## TERM and Environment
 
