@@ -190,25 +190,53 @@ package body Terminal.App.HarfBuzz is
       end case;
    end Script_Tag;
 
+   function Language_Tag (Script : RM.Text_Run_Script) return String is
+   begin
+      case Script is
+         when RM.Script_Latin =>
+            return "en";
+         when RM.Script_Hebrew =>
+            return "he";
+         when RM.Script_Arabic =>
+            return "ar";
+         when RM.Script_Devanagari =>
+            return "hi";
+         when RM.Script_Thai =>
+            return "th";
+         when RM.Script_Khmer =>
+            return "km";
+         when RM.Script_CJK =>
+            return "zh";
+         when RM.Script_Emoji | RM.Script_Common | RM.Script_Unknown =>
+            return "und";
+      end case;
+   end Language_Tag;
+
    procedure Set_Buffer_Properties
      (Buffer : System.Address;
       Run    : RM.Text_Run_Command)
    is
+      Direction_Tag_Text : constant String := Direction_Tag (Run.Direction);
+      Script_Tag_Text    : constant String := Script_Tag (Run.Script);
+      Language_Tag_Text  : constant String := Language_Tag (Run.Script);
       Direction_Text : CStr.chars_ptr :=
-        CStr.New_String (Direction_Tag (Run.Direction));
+        CStr.New_String (Direction_Tag_Text);
       Script_Text    : CStr.chars_ptr :=
-        CStr.New_String (Script_Tag (Run.Script));
-      Language_Text  : CStr.chars_ptr := CStr.New_String ("und");
+        CStr.New_String (Script_Tag_Text);
+      Language_Text  : CStr.chars_ptr := CStr.New_String (Language_Tag_Text);
    begin
       HB_Buffer_Set_Direction
         (Buffer,
-         HB_Direction_From_String (Direction_Text, C.int (3)));
+         HB_Direction_From_String
+           (Direction_Text, C.int (Direction_Tag_Text'Length)));
       HB_Buffer_Set_Script
         (Buffer,
-         HB_Script_From_String (Script_Text, C.int (4)));
+         HB_Script_From_String
+           (Script_Text, C.int (Script_Tag_Text'Length)));
       HB_Buffer_Set_Language
         (Buffer,
-         HB_Language_From_String (Language_Text, C.int (3)));
+         HB_Language_From_String
+           (Language_Text, C.int (Language_Tag_Text'Length)));
       CStr.Free (Direction_Text);
       CStr.Free (Script_Text);
       CStr.Free (Language_Text);

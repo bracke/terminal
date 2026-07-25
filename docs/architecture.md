@@ -65,18 +65,19 @@ raw codepoints, and a bounded shaped-glyph output buffer. The renderer
 coalesces compatible adjacent cells in a row up to the text-run codepoint
 bound, while splitting at style changes, inferred script/direction changes,
 wide/cluster cells, cursor-inverted cells, and other boundaries that would make
-fallback rendering ambiguous. The HarfBuzz adapter returns real font glyph IDs,
-source clusters, advances, offsets, and the selected shaping font index for
-simple text, ligature candidates, combining clusters, emoji ZWJ clusters, RTL
-runs, and complex-script runs when a configured font face can shape the run
-without `.notdef` glyphs. The terminal renderer draws successful shaped runs
-through `textrender`'s glyph-index rasterization API, using the same primary and
-fallback font-index order and placing RTL runs from the run's right edge and
-LTR runs from the left edge. If HarfBuzz cannot load or shape a run, the run
-remains explicitly marked as `Needs_Shaping_Backend` and is represented by the
-existing codepoint fallback path. Submit batches, presenter diagnostics, and
-device upload diagnostics also carry aggregate shaped-glyph counts so the
-shaped-text path remains observable across the whole render path.
+fallback rendering ambiguous. The HarfBuzz adapter sets direction, script, and
+stable script-derived language tags, then returns real font glyph IDs, source
+clusters, advances, offsets, and the selected shaping font index for simple
+text, ligature candidates, combining clusters, emoji ZWJ clusters, RTL runs,
+and complex-script runs when a configured font face can shape the run without
+`.notdef` glyphs. The terminal renderer draws successful shaped runs through
+`textrender`'s glyph-index rasterization API, using the same primary and
+fallback font-index order and placing RTL runs from the run's right edge and LTR
+runs from the left edge. If HarfBuzz cannot load or shape a run, the run remains
+explicitly marked as `Needs_Shaping_Backend` and is represented by the existing
+codepoint fallback path. Submit batches, presenter diagnostics, and device
+upload diagnostics also carry aggregate shaped-glyph counts so the shaped-text
+path remains observable across the whole render path.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions

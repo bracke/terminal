@@ -77,6 +77,8 @@ procedure Text_Shaper_Smoke is
    RTL       : RM.Text_Run_Command := Run (16#05D0#);
    Arabic    : RM.Text_Run_Command := Run (16#0627#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
+   Thai      : RM.Text_Run_Command := Run (16#0E01#);
+   Khmer     : RM.Text_Run_Command := Run (16#1780#);
    Emoji     : RM.Text_Run_Command := Run (16#1F642#);
    Status    : TS.Shape_Status;
    Backend   : TS.Backend_Status;
@@ -216,6 +218,22 @@ begin
      (Deva.Direction = RM.Direction_Left_To_Right,
       "complex script direction");
    Assert (Deva.Script = RM.Script_Devanagari, "complex script script");
+
+   Assert (TS.Classify (Thai) = RM.Complex_Script, "Thai script class");
+   TS.Prepare (Thai, Status);
+   Assert (Status = RM.Shape_Ok, "Thai should shape through HarfBuzz");
+   Assert
+     (Thai.Direction = RM.Direction_Left_To_Right,
+      "Thai script direction");
+   Assert (Thai.Script = RM.Script_Thai, "Thai script");
+
+   Assert (TS.Classify (Khmer) = RM.Complex_Script, "Khmer script class");
+   TS.Prepare (Khmer, Status);
+   Assert (Status = RM.Shape_Ok, "Khmer should shape through HarfBuzz");
+   Assert
+     (Khmer.Direction = RM.Direction_Left_To_Right,
+      "Khmer script direction");
+   Assert (Khmer.Script = RM.Script_Khmer, "Khmer script");
 
    Assert (TS.Classify (Emoji) = RM.Simple_Glyph, "emoji scalar class");
    TS.Prepare (Emoji, Status);
