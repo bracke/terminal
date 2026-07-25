@@ -1550,6 +1550,10 @@ package body Terminal.Core is
                Recover_Incomplete_UTF8 (T);
                Start_Ignored_String (T);
                goto Continue;
+            elsif Natural (B) = 16#98# then
+               Recover_Incomplete_UTF8 (T);
+               Start_Ignored_String (T);
+               goto Continue;
             elsif Natural (B) = 16#9E# then
                Recover_Incomplete_UTF8 (T);
                Start_Ignored_String (T);
@@ -1652,6 +1656,8 @@ package body Terminal.Core is
                      T.OSC_Count := 0;
                      T.State := OSC;
                   when 'P' =>
+                     Start_Ignored_String (T);
+                  when 'X' =>
                      Start_Ignored_String (T);
                   when '^' | '_' =>
                      Start_Ignored_String (T);

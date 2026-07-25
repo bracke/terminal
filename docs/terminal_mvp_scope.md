@@ -6,8 +6,8 @@
 - UTF-8 decoding with replacement for malformed input.
 - C0: BEL, BS, HT, LF, CR, ESC.
 - C1: IND (`0x84`), NEL (`0x85`), HTS (`0x88`), RIS (`0x8C`), RI (`0x8D`),
-  DCS (`0x90`), CSI (`0x9B`), OSC (`0x9D`), PM (`0x9E`), APC (`0x9F`), and
-  ST (`0x9C`) are recognized as byte-oriented controls.
+  DCS (`0x90`), SOS (`0x98`), CSI (`0x9B`), OSC (`0x9D`), PM (`0x9E`), APC
+  (`0x9F`), and ST (`0x9C`) are recognized as byte-oriented controls.
 - ESC: reset, save/restore cursor, index, next line, reverse index, CSI, OSC,
   DEC screen alignment test (`ESC # 8`), keypad mode toggles, and G-set
   charset-designation consume/ignore.
@@ -20,7 +20,7 @@
 - DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), primary DA
   (`CSI c`), and secondary DA (`CSI > c`) responses.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
-- Bounded DCS, PM, and APC payload consumption with BEL, ST, and C1 ST
+- Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.
 - Default tab stops every eight columns, plus `ESC H` tab-set and `CSI g`
   tab-clear handling.

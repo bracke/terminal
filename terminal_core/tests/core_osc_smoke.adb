@@ -192,6 +192,40 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SOS initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "Xignored" & ASCII.ESC & "\e"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "SOS feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#65#,
+         "SOS payload leaked or trailing text missing");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#98#, 2 => Byte (Character'Pos ('s')),
+       3 => Byte (Character'Pos ('o')), 4 => Byte (Character'Pos ('s')),
+       5 => 16#9C#, 6 => Byte (Character'Pos ('f'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 SOS feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#66#,
+         "C1 SOS payload leaked or trailing text missing");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "DCS overflow initialize failed");
    Terminal.Core.Feed (T, DCS_Overflow_Fixture, Feed_Status);
    Assert
