@@ -75,6 +75,8 @@ procedure Text_Shaper_Smoke is
    Joined    : RM.Text_Run_Command := Run (16#1F469#, 16#200D#, 16#1F468#);
    Modified  : RM.Text_Run_Command := Run (16#1F469#, 16#1F3FD#);
    RTL       : RM.Text_Run_Command := Run (16#05D0#);
+   LRM_Text  : RM.Text_Run_Command := Run (16#200E#, Character'Pos ('A'));
+   RLM_Text  : RM.Text_Run_Command := Run (16#200F#, Character'Pos ('A'));
    Arabic    : RM.Text_Run_Command := Run (16#0627#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
    Thai      : RM.Text_Run_Command := Run (16#0E01#);
@@ -200,6 +202,22 @@ begin
    Assert (Status = RM.Shape_Ok, "RTL should shape through HarfBuzz");
    Assert (RTL.Direction = RM.Direction_Right_To_Left, "RTL direction");
    Assert (RTL.Script = RM.Script_Hebrew, "RTL script");
+
+   Assert (TS.Classify (LRM_Text) = RM.Bidi_Text, "LRM text class");
+   TS.Prepare (LRM_Text, Status);
+   Assert (Status = RM.Shape_Ok, "LRM text should shape through HarfBuzz");
+   Assert
+     (LRM_Text.Direction = RM.Direction_Left_To_Right,
+      "LRM text direction");
+   Assert (LRM_Text.Script = RM.Script_Latin, "LRM text script");
+
+   Assert (TS.Classify (RLM_Text) = RM.Bidi_Text, "RLM text class");
+   TS.Prepare (RLM_Text, Status);
+   Assert (Status = RM.Shape_Ok, "RLM text should shape through HarfBuzz");
+   Assert
+     (RLM_Text.Direction = RM.Direction_Right_To_Left,
+      "RLM text direction");
+   Assert (RLM_Text.Script = RM.Script_Latin, "RLM text script");
 
    Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
    TS.Prepare (Arabic, Status);

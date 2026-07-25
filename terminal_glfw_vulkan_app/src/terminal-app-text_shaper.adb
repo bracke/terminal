@@ -100,13 +100,35 @@ package body Terminal.App.Text_Shaper is
    function Is_Emoji_Modifier (C : Natural) return Boolean is
      (C in 16#1F3FB# .. 16#1F3FF#);
 
-   function Is_Bidi_Control_Or_RTL (C : Natural) return Boolean is
+   function Is_LTR_Directional_Control (C : Natural) return Boolean is
+     (C = 16#200E#
+      or else C = 16#202A#
+      or else C = 16#202D#
+      or else C = 16#2066#);
+
+   function Is_RTL_Directional_Control (C : Natural) return Boolean is
+     (C = 16#200F#
+      or else C = 16#202B#
+      or else C = 16#202E#
+      or else C = 16#2067#);
+
+   function Is_Neutral_Bidi_Control (C : Natural) return Boolean is
+     (C = 16#202C#
+      or else C = 16#2068#
+      or else C = 16#2069#);
+
+   function Is_Bidi_Control (C : Natural) return Boolean is
+     (Is_LTR_Directional_Control (C)
+      or else Is_RTL_Directional_Control (C)
+      or else Is_Neutral_Bidi_Control (C));
+
+   function Is_RTL_Script (C : Natural) return Boolean is
      ((C in 16#0590# .. 16#08FF#)
       or else (C in 16#FB1D# .. 16#FDFF#)
-      or else (C in 16#FE70# .. 16#FEFF#)
-      or else (C in 16#200E# .. 16#200F#)
-      or else (C in 16#202A# .. 16#202E#)
-      or else (C in 16#2066# .. 16#2069#));
+      or else (C in 16#FE70# .. 16#FEFF#));
+
+   function Is_Bidi_Control_Or_RTL (C : Natural) return Boolean is
+     (Is_RTL_Script (C) or else Is_Bidi_Control (C));
 
    function Is_Hebrew (C : Natural) return Boolean is
      (C in 16#0590# .. 16#05FF#);
@@ -144,7 +166,8 @@ package body Terminal.App.Text_Shaper is
      (C <= 16#0040#
       or else (C in 16#005B# .. 16#0060#)
       or else (C in 16#007B# .. 16#00BF#)
-      or else Is_Combining_Or_Format (C));
+      or else Is_Combining_Or_Format (C)
+      or else Is_Bidi_Control (C));
 
    function Has_Common_Ligature_Sequence (Run : RM.Text_Run_Command) return Boolean is
    begin
@@ -265,8 +288,12 @@ package body Terminal.App.Text_Shaper is
    function Direction_Of (Run : RM.Text_Run_Command) return RM.Text_Run_Direction is
    begin
       for I in 1 .. Run.Codepoint_Count loop
-         if Is_Bidi_Control_Or_RTL (Run.Codepoints (I)) then
+         if Is_RTL_Script (Run.Codepoints (I))
+           or else Is_RTL_Directional_Control (Run.Codepoints (I))
+         then
             return RM.Direction_Right_To_Left;
+         elsif Is_LTR_Directional_Control (Run.Codepoints (I)) then
+            return RM.Direction_Left_To_Right;
          elsif Is_Latin (Run.Codepoints (I))
            or else Is_CJK (Run.Codepoints (I))
            or else Is_Emoji (Run.Codepoints (I))
