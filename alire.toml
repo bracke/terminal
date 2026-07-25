@@ -13,8 +13,8 @@ df_vulkan = "*"
 textrender = "*"
 
 [[pins]]
-terminal_common = { path = "terminal_workspace/terminal_common" }
-terminal_core = { path = "terminal_workspace/terminal_core" }
-terminal_pty_posix = { path = "terminal_workspace/terminal_pty_posix" }
-glfw_vulkan = { path = "terminal_workspace/glfw_vulkan" }
+terminal_common = { path = "terminal_common" }
+terminal_core = { path = "terminal_core" }
+terminal_pty_posix = { path = "terminal_pty_posix" }
+glfw_vulkan = { path = "glfw_vulkan" }
 textrender = { path = "../textrender" }

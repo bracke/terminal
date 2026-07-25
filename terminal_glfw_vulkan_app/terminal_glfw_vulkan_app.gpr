@@ -2,7 +2,7 @@ with "../terminal_common/terminal_common.gpr";
 with "../terminal_core/terminal_core.gpr";
 with "../terminal_pty_posix/terminal_pty_posix.gpr";
 with "../glfw_vulkan/glfw_vulkan.gpr";
-with "../../../textrender/textrender.gpr";
+with "../../textrender/textrender.gpr";
 with "df_vulkan";
 
 project Terminal_GLFW_Vulkan_App is

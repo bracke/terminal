@@ -1,4 +1,5 @@
-project Terminal extends "terminal_workspace/terminal_glfw_vulkan_app/terminal_glfw_vulkan_app.gpr" is
+project Terminal extends "terminal_glfw_vulkan_app/terminal_glfw_vulkan_app.gpr" is
+   for Object_Dir use "obj";
    for Exec_Dir use "bin";
 
    package Builder is

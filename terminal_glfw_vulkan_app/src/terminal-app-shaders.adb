@@ -19,8 +19,6 @@ package body Terminal.App.Shaders is
             return "assets/shaders/" & Name;
          when 2 =>
             return "terminal_glfw_vulkan_app/assets/shaders/" & Name;
-         when 3 =>
-            return "terminal_workspace/terminal_glfw_vulkan_app/assets/shaders/" & Name;
          when others =>
             return "";
       end case;
@@ -28,7 +26,7 @@ package body Terminal.App.Shaders is
 
    function Existing_Path (Name : String) return String is
    begin
-      for I in 1 .. 3 loop
+      for I in 1 .. 2 loop
          declare
             Path : constant String := Candidate_Path (Name, I);
          begin
