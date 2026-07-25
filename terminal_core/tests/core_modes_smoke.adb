@@ -157,4 +157,25 @@ begin
       Assert (not M.Insert_Mode, "DECSTR should reset insert mode");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "DECSCUSR initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[ q"
+      & ASCII.ESC & "[1 q"
+      & ASCII.ESC & "[2 q"
+      & ASCII.ESC & "[3 q"
+      & ASCII.ESC & "[4 q"
+      & ASCII.ESC & "[5 q"
+      & ASCII.ESC & "[6 q",
+      "DECSCUSR feed failed");
+
+   declare
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (D.Unsupported_Sequence = 0,
+         "valid DECSCUSR shapes should be consumed as no-ops");
+   end;
 end Core_Modes_Smoke;

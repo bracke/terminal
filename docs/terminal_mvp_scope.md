@@ -11,6 +11,8 @@
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL,
   ICH, DCH, ECH, IL, DL, REP, SU, SD, SGR, DECSET/DECRST known modes,
   SM/RM insert mode, DECSTBM margins, and DECSTR soft reset (`CSI ! p`).
+- DECSCUSR cursor-shape requests (`CSI Ps SP q`) are consumed as no-ops; v0.1
+  renders one cursor shape.
 - DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), primary DA
   (`CSI c`), and secondary DA (`CSI > c`) responses.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.

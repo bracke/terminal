@@ -1076,11 +1076,20 @@ package body Terminal.Core is
    begin
       if T.CSI_Intermediate_Count > 0 then
          if T.CSI_Intermediate_Count = 1
-           and then T.CSI_Intermediates (1) = '!'
-           and then Final = 'p'
            and then T.CSI_Private = ASCII.NUL
          then
-            Soft_Reset (T);
+            if T.CSI_Intermediates (1) = '!'
+              and then Final = 'p'
+            then
+               Soft_Reset (T);
+            elsif T.CSI_Intermediates (1) = ' '
+              and then Final = 'q'
+              and then Param (T, 1, 1) in 0 .. 6
+            then
+               null;
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
          else
             T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
          end if;
