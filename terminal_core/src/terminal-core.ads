@@ -164,7 +164,8 @@ private
       OSC_Escape,
       OSC_Overflow,
       OSC_Overflow_Escape,
-      Charset);
+      Charset,
+      Screen_Alignment);
    subtype Param_Index is Positive range 1 .. 16;
    type Param_Array is array (Param_Index) of Natural;
    type Param_Set_Array is array (Param_Index) of Boolean;

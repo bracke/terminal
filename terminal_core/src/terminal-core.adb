@@ -111,6 +111,23 @@ package body Terminal.Core is
       Mark_All_Dirty (T);
    end Reset_Buffer;
 
+   procedure Screen_Alignment_Test (T : in out Terminal) is
+      Cells : constant Cell_Array_Access := Active_Cells (T);
+   begin
+      if Cells = null then
+         return;
+      end if;
+
+      for I in Cells'Range loop
+         Cells (I) :=
+           (Kind  => Character,
+            Text  => (Code_Point => 16#45#, Width => Width_One),
+            Style => T.Current_Style);
+      end loop;
+      T.Pending_Wrap := False;
+      Mark_All_Dirty (T);
+   end Screen_Alignment_Test;
+
    procedure Save_Cursor_State (T : in out Terminal) is
    begin
       T.Saved_Row := T.Cursor_Row;
@@ -1497,6 +1514,8 @@ package body Terminal.Core is
                      T.State := OSC;
                   when '(' | ')' | '*' | '+' | '-' | '.' | '/' =>
                      T.State := Charset;
+                  when '#' =>
+                     T.State := Screen_Alignment;
                   when '=' | '>' =>
                      T.State := Ground;
                   when others =>
@@ -1567,6 +1586,14 @@ package body Terminal.Core is
                end if;
             when Charset =>
                T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;
+               T.State := Ground;
+            when Screen_Alignment =>
+               if Ch = '8' then
+                  Screen_Alignment_Test (T);
+               else
+                  T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;
+                  Recovered := True;
+               end if;
                T.State := Ground;
          end case;
 
