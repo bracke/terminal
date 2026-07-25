@@ -100,4 +100,45 @@ begin
          "SGR 21/29 should not increment unsupported diagnostics");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 1, 2, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "ESC save style initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[31;1m"
+      & ASCII.ESC & "7"
+      & ASCII.ESC & "[0m"
+      & ASCII.ESC & "8"
+      & "X",
+      "ESC save style feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      X : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+   begin
+      Assert (X.Style.Bold, "ESC restore should restore bold");
+      Assert
+        (X.Style.Foreground.Kind = Terminal.Core.Indexed
+         and then X.Style.Foreground.Index = 1,
+         "ESC restore should restore foreground");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "CSI save style initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[3;4m"
+      & ASCII.ESC & "[s"
+      & ASCII.ESC & "[0m"
+      & ASCII.ESC & "[u"
+      & "Y",
+      "CSI save style feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Y : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+   begin
+      Assert (Y.Style.Italic, "CSI restore should restore italic");
+      Assert (Y.Style.Underline, "CSI restore should restore underline");
+      Terminal.Core.Release (S);
+   end;
 end Core_SGR_Smoke;

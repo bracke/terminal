@@ -188,6 +188,7 @@ private
       Cursor_Col    : Positive := 1;
       Saved_Row     : Positive := 1;
       Saved_Col     : Positive := 1;
+      Saved_Style   : Style;
       Pending_Wrap  : Boolean := False;
       Top_Margin    : Positive := 1;
       Bottom_Margin : Positive := 1;
