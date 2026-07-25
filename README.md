@@ -56,6 +56,7 @@ cd terminal_pty_posix
 alr update
 alr exec -- gprbuild -P tests/pty_tests.gpr
 tests/bin/pty_status_smoke
+tests/bin/pty_resize_smoke
 ```
 
 App smoke tests:
