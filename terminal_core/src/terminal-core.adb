@@ -1242,6 +1242,8 @@ package body Terminal.Core is
                T.Current_Style.Conceal := True;
             when 9 =>
                T.Current_Style.Strikethrough := True;
+            when 10 .. 19 =>
+               null;
             when 21 =>
                T.Current_Style.Bold := False;
             when 22 =>

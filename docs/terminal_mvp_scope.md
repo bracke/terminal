@@ -57,8 +57,9 @@ conceal, normal intensity, style-off codes including `21` as bold-off, 8-color
 foreground/background, bright
 16-color variants, indexed `38;5;n` and `48;5;n`, truecolor `38;2;r;g;b` and
 `48;2;r;g;b`, default foreground/background, strikethrough `9`/`29`, and
-overline `53`/`55`. The GLFW app renders blink text with app-owned half-second
-phases; the platform-independent core only stores the blink style state.
+overline `53`/`55`. Font selectors `10` through `19` are recognized and ignored.
+The GLFW app renders blink text with app-owned half-second phases; the
+platform-independent core only stores the blink style state.
 Colon-separated SGR forms such as `38:5:n` and `48:2:r:g:b` are accepted as
 aliases for the semicolon forms.
 

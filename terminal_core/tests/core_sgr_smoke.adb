@@ -104,6 +104,28 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 2, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SGR font selectors initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[11;19mA" & ASCII.ESC & "[10mB",
+      "SGR font selectors feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (A.Text.Code_Point = 16#41# and then B.Text.Code_Point = 16#42#,
+         "SGR font selectors should not leak into text");
+      Assert
+        (D.Unsupported_Sequence = 0,
+         "SGR font selectors should not increment unsupported diagnostics");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 100, Init);
    Assert (Init = Terminal.Core.Ok, "SGR rapid blink initialize failed");
    Feed_Text
      (ASCII.ESC & "[6mC",
