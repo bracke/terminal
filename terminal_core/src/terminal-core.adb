@@ -1147,7 +1147,7 @@ package body Terminal.Core is
             when 4 =>
                T.Current_Style.Underline := True;
             when 5 | 6 =>
-               null;
+               T.Current_Style.Blink := True;
             when 7 =>
                T.Current_Style.Inverse := True;
             when 8 =>
@@ -1164,7 +1164,7 @@ package body Terminal.Core is
             when 24 =>
                T.Current_Style.Underline := False;
             when 25 =>
-               null;
+               T.Current_Style.Blink := False;
             when 27 =>
                T.Current_Style.Inverse := False;
             when 28 =>

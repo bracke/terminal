@@ -34,6 +34,7 @@ package Terminal.Core is
       Background : Color;
       Bold       : Boolean := False;
       Faint      : Boolean := False;
+      Blink      : Boolean := False;
       Italic     : Boolean := False;
       Underline  : Boolean := False;
       Strikethrough : Boolean := False;

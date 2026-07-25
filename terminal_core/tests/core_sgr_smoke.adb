@@ -104,10 +104,10 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 2, 100, Init);
-   Assert (Init = Terminal.Core.Ok, "SGR no-op aliases initialize failed");
+   Assert (Init = Terminal.Core.Ok, "SGR rapid blink initialize failed");
    Feed_Text
-     (ASCII.ESC & "[5;6;25mC",
-      "SGR no-op aliases feed failed");
+     (ASCII.ESC & "[6mC",
+      "SGR rapid blink feed failed");
 
    declare
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
@@ -117,10 +117,32 @@ begin
    begin
       Assert
         (C.Text.Code_Point = 16#43#,
-         "SGR no-op aliases should not suppress text");
+         "SGR rapid blink should not suppress text");
+      Assert (C.Style.Blink, "SGR 6 should enable blink");
       Assert
         (D.Unsupported_Sequence = 0,
-         "SGR no-op aliases should not increment unsupported diagnostics");
+         "SGR 6 should not increment unsupported diagnostics");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SGR blink initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[5mA" & ASCII.ESC & "[25mB",
+      "SGR blink feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert (A.Style.Blink, "SGR 5 should enable blink");
+      Assert (not B.Style.Blink, "SGR 25 should disable blink");
+      Assert
+        (D.Unsupported_Sequence = 0,
+         "SGR 5/25 should not increment unsupported diagnostics");
       Terminal.Core.Release (S);
    end;
 
