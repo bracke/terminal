@@ -433,6 +433,36 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize emoji modifier width failed");
+   Feed_Bytes
+     ((1  => Byte (Character'Pos ('a')),
+       2  => 16#F0#, 3  => 16#9F#, 4  => 16#91#, 5  => 16#8D#,
+       6  => 16#F0#, 7  => 16#9F#, 8  => 16#8F#, 9  => 16#BD#,
+       10 => Byte (Character'Pos ('b'))),
+      "emoji modifier width feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Emoji : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Continuation : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert_Char (S, 1, 16#61#, "emoji modifier width prefix");
+      Assert (Emoji.Text.Code_Point = 16#1F44D#, "emoji modifier base");
+      Assert (Emoji.Text.Width = Terminal.Core.Width_Two, "emoji modifier width");
+      Assert (Emoji.Text.Attachment_Count = 1, "emoji modifier attachment count");
+      Assert
+        (Emoji.Text.Attachments (1) = 16#1F3FD#,
+         "emoji modifier attachment");
+      Assert
+        (Continuation.Kind = Terminal.Core.Wide_Continuation,
+         "emoji modifier continuation");
+      Assert_Char (S, 4, 16#62#, "emoji modifier width suffix");
+      Assert (S.Cursor.Col = 5, "emoji modifier width cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize emoji ZWJ cluster failed");
    Feed_Bytes
      ((1  => Byte (Character'Pos ('a')),

@@ -623,6 +623,12 @@ package body Terminal.Core is
       return V in 16#1F1E6# .. 16#1F1FF#;
    end Is_Regional_Indicator;
 
+   function Is_Emoji_Modifier (CP : Common.Code_Point) return Boolean is
+      V : constant Natural := Natural (CP);
+   begin
+      return V in 16#1F3FB# .. 16#1F3FF#;
+   end Is_Emoji_Modifier;
+
    function Is_Zero_Width (CP : Common.Code_Point) return Boolean is
       V : constant Natural := Natural (CP);
    begin
@@ -1021,7 +1027,14 @@ package body Terminal.Core is
              (Count = 0
               and then Is_Regional_Indicator
                 (Cells (Cell_Index).Text.Code_Point)
-              and then Is_Regional_Indicator (Spacing_CP));
+              and then Is_Regional_Indicator (Spacing_CP))
+           or else
+             (Count = 0
+              and then Is_Emoji_Modifier (Spacing_CP)
+              and then Cells (Cell_Index).Text.Width = Width_Two
+              and then Is_Wide (Cells (Cell_Index).Text.Code_Point)
+              and then not Is_Regional_Indicator
+                (Cells (Cell_Index).Text.Code_Point));
       end Previous_Cluster_Accepts_Spacing;
    begin
       if Cells = null then
