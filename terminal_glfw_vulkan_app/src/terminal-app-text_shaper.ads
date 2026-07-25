@@ -9,6 +9,14 @@ package Terminal.App.Text_Shaper is
 
    function Requires_Backend (Kind : Run_Kind) return Boolean;
 
+   function Direction_Of
+     (Run : Terminal.App.Render_Model.Text_Run_Command)
+      return Terminal.App.Render_Model.Text_Run_Direction;
+
+   function Script_Of
+     (Run : Terminal.App.Render_Model.Text_Run_Command)
+      return Terminal.App.Render_Model.Text_Run_Script;
+
    procedure Prepare
      (Run    : in out Terminal.App.Render_Model.Text_Run_Command;
       Status : out Shape_Status);

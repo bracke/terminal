@@ -7,7 +7,9 @@ procedure Text_Shaper_Smoke is
    use AUnit.Assertions;
    package RM renames Terminal.App.Render_Model;
    package TS renames Terminal.App.Text_Shaper;
+   use type RM.Text_Run_Direction;
    use type RM.Text_Run_Kind;
+   use type RM.Text_Run_Script;
    use type RM.Text_Run_Shape_Status;
 
    function Run
@@ -47,6 +49,8 @@ procedure Text_Shaper_Smoke is
          Codepoint_Count => Count,
          Run_Kind        => RM.Invalid_Run,
          Shape_Status    => RM.Invalid_Run,
+         Direction       => RM.Direction_Neutral,
+         Script          => RM.Script_Common,
          Shaped_Glyphs   => (others => <>),
          Shaped_Glyph_Count => 0,
          Fallback_Glyphs => True);
@@ -70,7 +74,9 @@ procedure Text_Shaper_Smoke is
    Joined    : RM.Text_Run_Command := Run (16#1F469#, 16#200D#, 16#1F468#);
    Modified  : RM.Text_Run_Command := Run (16#1F469#, 16#1F3FD#);
    RTL       : RM.Text_Run_Command := Run (16#05D0#);
+   Arabic    : RM.Text_Run_Command := Run (16#0627#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
+   Emoji     : RM.Text_Run_Command := Run (16#1F642#);
    Status    : TS.Shape_Status;
 begin
    Assert (TS.Classify (Simple) = RM.Simple_Glyph, "simple glyph class");
@@ -78,6 +84,10 @@ begin
    Assert (Status = RM.Shape_Ok, "simple glyph status");
    Assert (Simple.Run_Kind = RM.Simple_Glyph, "simple glyph stored class");
    Assert (Simple.Shape_Status = RM.Shape_Ok, "simple glyph stored status");
+   Assert
+     (Simple.Direction = RM.Direction_Left_To_Right,
+      "simple glyph direction");
+   Assert (Simple.Script = RM.Script_Latin, "simple glyph script");
    Assert (Simple.Shaped_Glyph_Count = 1, "simple glyph shaped count");
    Assert
      (Simple.Shaped_Glyphs (1).Codepoint = Character'Pos ('A'),
@@ -97,6 +107,8 @@ begin
    TS.Prepare (Text, Status);
    Assert (Status = RM.Shape_Ok, "simple text status");
    Assert (Text.Run_Kind = RM.Simple_Text, "simple text stored class");
+   Assert (Text.Direction = RM.Direction_Left_To_Right, "simple text direction");
+   Assert (Text.Script = RM.Script_Latin, "simple text script");
    Assert (Text.Shaped_Glyph_Count = 3, "simple text shaped count");
    Assert
      (Text.Shaped_Glyphs (2).Codepoint = Character'Pos ('b'),
@@ -122,6 +134,10 @@ begin
    Assert
      (Ligature.Shaped_Glyph_Count = 0,
       "ligature text should not invent shaped glyphs");
+   Assert
+     (Ligature.Direction = RM.Direction_Left_To_Right,
+      "ligature text direction");
+   Assert (Ligature.Script = RM.Script_Latin, "ligature text script");
    Assert (Ligature.Fallback_Glyphs, "ligature text fallback flag");
 
    Assert
@@ -137,6 +153,10 @@ begin
    Assert
      (Combining.Shape_Status = RM.Needs_Shaping_Backend,
       "combining cluster stored status");
+   Assert
+     (Combining.Direction = RM.Direction_Left_To_Right,
+      "combining cluster direction");
+   Assert (Combining.Script = RM.Script_Latin, "combining cluster script");
    Assert
      (Combining.Shaped_Glyph_Count = 0,
       "combining cluster should not invent shaped glyphs");
@@ -160,8 +180,27 @@ begin
    Assert (TS.Classify (RTL) = RM.Bidi_Text, "RTL class");
    TS.Prepare (RTL, Status);
    Assert (Status = RM.Needs_Shaping_Backend, "RTL needs shaping");
+   Assert (RTL.Direction = RM.Direction_Right_To_Left, "RTL direction");
+   Assert (RTL.Script = RM.Script_Hebrew, "RTL script");
+
+   Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
+   TS.Prepare (Arabic, Status);
+   Assert (Status = RM.Needs_Shaping_Backend, "Arabic needs shaping");
+   Assert
+     (Arabic.Direction = RM.Direction_Right_To_Left,
+      "Arabic direction");
+   Assert (Arabic.Script = RM.Script_Arabic, "Arabic script");
 
    Assert (TS.Classify (Deva) = RM.Complex_Script, "complex script class");
    TS.Prepare (Deva, Status);
    Assert (Status = RM.Needs_Shaping_Backend, "complex script needs shaping");
+   Assert
+     (Deva.Direction = RM.Direction_Left_To_Right,
+      "complex script direction");
+   Assert (Deva.Script = RM.Script_Devanagari, "complex script script");
+
+   Assert (TS.Classify (Emoji) = RM.Simple_Glyph, "emoji scalar class");
+   TS.Prepare (Emoji, Status);
+   Assert (Status = RM.Shape_Ok, "emoji scalar status");
+   Assert (Emoji.Script = RM.Script_Emoji, "emoji scalar script");
 end Text_Shaper_Smoke;

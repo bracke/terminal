@@ -62,15 +62,16 @@ combining clusters, ZWJ emoji clusters, RTL text, or complex scripts. Text-run
 commands are carried through renderer, submit, presenter, and device
 diagnostics so a real shaper can be attached at the presentation boundary
 without moving terminal parsing or terminal state into the renderer.
-Each `Text_Run_Command` carries the run kind, shape status, raw codepoints, and
-a bounded shaped-glyph output buffer. The renderer coalesces compatible
-adjacent cells in a row up to the text-run codepoint bound, while splitting at
-style changes, wide/cluster cells, cursor-inverted cells, and other boundaries
-that would make fallback rendering ambiguous. The current adapter emits shaped
-glyphs for simple glyph/text runs, marks common ASCII ligature sequences and
-complex text as `Needs_Shaping_Backend`, and leaves those complex shaped-glyph
-buffers empty. For simple runs, `Glyph_ID` is the codepoint-backed key consumed
-by `textrender`; real font glyph IDs still require a shaping/text backend.
+Each `Text_Run_Command` carries the run kind, shape status, direction, script,
+raw codepoints, and a bounded shaped-glyph output buffer. The renderer
+coalesces compatible adjacent cells in a row up to the text-run codepoint
+bound, while splitting at style changes, wide/cluster cells, cursor-inverted
+cells, and other boundaries that would make fallback rendering ambiguous. The
+current adapter emits shaped glyphs for simple glyph/text runs, marks common
+ASCII ligature sequences and complex text as `Needs_Shaping_Backend`, and
+leaves those complex shaped-glyph buffers empty. For simple runs, `Glyph_ID` is
+the codepoint-backed key consumed by `textrender`; real font glyph IDs still
+require a shaping/text backend.
 `Fallback_Glyphs` marks runs that are still represented by the existing glyph
 fallback path, and renderer diagnostics count those fallback runs. Submit
 batches, presenter diagnostics, and device upload diagnostics also carry

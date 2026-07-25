@@ -71,6 +71,23 @@ package Terminal.App.Render_Model is
       Needs_Shaping_Backend,
       Invalid_Run);
 
+   type Text_Run_Direction is
+     (Direction_Neutral,
+      Direction_Left_To_Right,
+      Direction_Right_To_Left);
+
+   type Text_Run_Script is
+     (Script_Common,
+      Script_Latin,
+      Script_Hebrew,
+      Script_Arabic,
+      Script_Devanagari,
+      Script_Thai,
+      Script_Khmer,
+      Script_CJK,
+      Script_Emoji,
+      Script_Unknown);
+
    type Text_Run_Command is record
       X                : Float := 0.0;
       Y                : Float := 0.0;
@@ -84,6 +101,8 @@ package Terminal.App.Render_Model is
       Codepoint_Count  : Text_Run_Codepoint_Count := 0;
       Run_Kind         : Text_Run_Kind := Invalid_Run;
       Shape_Status     : Text_Run_Shape_Status := Invalid_Run;
+      Direction        : Text_Run_Direction := Direction_Neutral;
+      Script           : Text_Run_Script := Script_Common;
       Shaped_Glyphs    : Shaped_Glyph_Array := (others => <>);
       Shaped_Glyph_Count : Shaped_Glyph_Total := 0;
       Fallback_Glyphs  : Boolean := True;

@@ -10,7 +10,9 @@ procedure Renderer_Metrics_Smoke is
    use Terminal.Common.Bytes;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Render_Model.Text_Run_Direction;
    use type Terminal.App.Render_Model.Text_Run_Kind;
+   use type Terminal.App.Render_Model.Text_Run_Script;
    use type Terminal.App.Render_Model.Text_Run_Shape_Status;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
@@ -542,6 +544,14 @@ begin
            Terminal.App.Render_Model.Needs_Shaping_Backend,
          "emoji cluster text run shape status");
       Assert
+        (Frame.Text_Runs (2).Direction =
+           Terminal.App.Render_Model.Direction_Left_To_Right,
+         "emoji cluster text run direction");
+      Assert
+        (Frame.Text_Runs (2).Script =
+           Terminal.App.Render_Model.Script_Emoji,
+         "emoji cluster text run script");
+      Assert
         (Frame.Text_Runs (2).Shaped_Glyph_Count = 0,
          "emoji cluster should not invent shaped glyphs");
       Assert
@@ -602,6 +612,14 @@ begin
            Terminal.App.Render_Model.Shape_Ok,
          "simple text run shape status");
       Assert
+        (Frame.Text_Runs (1).Direction =
+           Terminal.App.Render_Model.Direction_Left_To_Right,
+         "simple text run direction");
+      Assert
+        (Frame.Text_Runs (1).Script =
+           Terminal.App.Render_Model.Script_Latin,
+         "simple text run script");
+      Assert
         (Frame.Text_Runs (1).Shaped_Glyph_Count = 3,
          "simple text shaped glyph count");
       declare
@@ -655,6 +673,14 @@ begin
         (Frame.Text_Runs (1).Shape_Status =
            Terminal.App.Render_Model.Needs_Shaping_Backend,
          "ligature text run shape status");
+      Assert
+        (Frame.Text_Runs (1).Direction =
+           Terminal.App.Render_Model.Direction_Left_To_Right,
+         "ligature text run direction");
+      Assert
+        (Frame.Text_Runs (1).Script =
+           Terminal.App.Render_Model.Script_Latin,
+         "ligature text run script");
       Assert
         (Frame.Text_Runs (1).Shaped_Glyph_Count = 0,
          "ligature text should wait for shaping backend");

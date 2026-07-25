@@ -7,7 +7,9 @@ with Terminal.App.Vulkan_Submit;
 procedure Vulkan_Submit_Smoke is
    use AUnit.Assertions;
    use type Terminal.App.Render_Model.Text_Run_Array_Access;
+   use type Terminal.App.Render_Model.Text_Run_Direction;
    use type Terminal.App.Render_Model.Text_Run_Kind;
+   use type Terminal.App.Render_Model.Text_Run_Script;
    use type Terminal.App.Render_Model.Text_Run_Shape_Status;
    use type Terminal.App.Vulkan_Submit.Build_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
@@ -54,6 +56,8 @@ procedure Vulkan_Submit_Smoke is
          Codepoint_Count => 4,
          Run_Kind        => RM.Joined_Emoji_Cluster,
          Shape_Status    => RM.Needs_Shaping_Backend,
+         Direction       => RM.Direction_Left_To_Right,
+         Script          => RM.Script_Emoji,
          Shaped_Glyphs   =>
            (1 =>
               (Glyph_ID     => 42,
@@ -107,6 +111,12 @@ begin
    Assert
      (VS.Text_Runs (Batch) (1).Shape_Status = RM.Needs_Shaping_Backend,
       "text run shape status");
+   Assert
+     (VS.Text_Runs (Batch) (1).Direction = RM.Direction_Left_To_Right,
+      "text run direction");
+   Assert
+     (VS.Text_Runs (Batch) (1).Script = RM.Script_Emoji,
+      "text run script");
    Assert
      (VS.Text_Runs (Batch) (1).Shaped_Glyph_Count = 1,
       "text run shaped glyph count");
