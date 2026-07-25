@@ -73,12 +73,27 @@ package body Terminal.Core is
       Last  : Positive)
    is
       Cells : constant Cell_Array_Access := Active_Cells (T);
+      From  : Positive := First;
+      To    : Positive := Last;
    begin
       if Cells = null then
          return;
       end if;
 
-      for C in First .. Last loop
+      if Cells (Index (T, Row, From)).Kind = Wide_Continuation
+        and then From > 1
+      then
+         From := From - 1;
+      end if;
+
+      if Cells (Index (T, Row, To)).Kind = Character
+        and then Cells (Index (T, Row, To)).Text.Width = Width_Two
+        and then To < T.Cols
+      then
+         To := To + 1;
+      end if;
+
+      for C in From .. To loop
          Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
       end loop;
       Mark_Dirty (T, Row);
@@ -502,17 +517,9 @@ package body Terminal.Core is
       Col   : Positive;
       Count : Positive)
    is
-      Cells : constant Cell_Array_Access := Active_Cells (T);
       Last  : constant Positive := Positive'Min (T.Cols, Col + Count - 1);
    begin
-      if Cells = null then
-         return;
-      end if;
-
-      for C in Col .. Last loop
-         Cells (Index (T, Row, C)) := Blank_Cell (T.Current_Style);
-      end loop;
-      Mark_Dirty (T, Row);
+      Clear_Row (T, Row, Col, Last);
    end Erase_Characters;
 
    procedure Insert_Blank_Lines
