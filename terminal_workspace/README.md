@@ -2,6 +2,14 @@
 
 Initial Linux-first Ada 2022 terminal emulator workspace.
 
+For normal app builds, use the repository-root Alire crate:
+
+```sh
+cd ..
+alr build
+./bin/terminal_app_main
+```
+
 Crates:
 
 - `glfw_vulkan`: reusable GLFW window/event/surface helper crate for Vulkan apps.

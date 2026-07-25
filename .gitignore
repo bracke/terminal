@@ -12,6 +12,10 @@
 *.o
 *.a
 *.so
+*/b__*.adb
+*/b__*.ads
+b__*.adb
+b__*.ads
 *.lexch
 *.bexch
 *.cswi

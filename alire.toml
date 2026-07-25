@@ -1,0 +1,20 @@
+name = "terminal"
+description = "Linux GLFW/Vulkan terminal emulator application"
+version = "0.1.0-dev"
+licenses = "MIT"
+project-files = ["terminal.gpr"]
+
+[[depends-on]]
+terminal_common = "*"
+terminal_core = "*"
+terminal_pty_posix = "*"
+glfw_vulkan = "*"
+df_vulkan = "*"
+textrender = "*"
+
+[[pins]]
+terminal_common = { path = "terminal_workspace/terminal_common" }
+terminal_core = { path = "terminal_workspace/terminal_core" }
+terminal_pty_posix = { path = "terminal_workspace/terminal_pty_posix" }
+glfw_vulkan = { path = "terminal_workspace/glfw_vulkan" }
+textrender = { path = "../textrender" }
