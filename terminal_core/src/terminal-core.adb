@@ -1966,6 +1966,13 @@ package body Terminal.Core is
             elsif T.State = Ignored_String_Overflow and then Natural (B) = 7 then
                T.State := Ground;
                goto Continue;
+            elsif (Natural (B) = 16#18# or else Natural (B) = 16#1A#)
+              and then T.State /= Ground
+            then
+               Recover_Incomplete_UTF8 (T);
+               Clear_CSI (T);
+               T.State := Ground;
+               goto Continue;
             elsif not In_String_Control (T.State) then
                Recover_Incomplete_UTF8 (T);
                Execute_C0 (T, B);

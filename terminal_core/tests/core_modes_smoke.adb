@@ -427,4 +427,47 @@ begin
         (D.Unsupported_Sequence = 0,
          "valid DECSCUSR shapes should not increment diagnostics");
    end;
+
+   Terminal.Core.Initialize (T, 2, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "CAN/SUB initialize failed");
+
+   Terminal.Core.Feed
+     (T,
+      (1  => 16#1B#,
+       2  => Byte (Character'Pos ('[')),
+       3  => Byte (Character'Pos ('?')),
+       4  => Byte (Character'Pos ('2')),
+       5  => Byte (Character'Pos ('0')),
+       6  => Byte (Character'Pos ('0')),
+       7  => Byte (Character'Pos ('4')),
+       8  => 16#18#,
+       9  => Byte (Character'Pos ('x')),
+       10 => 16#1B#,
+       11 => Byte (Character'Pos ('[')),
+       12 => Byte (Character'Pos ('?')),
+       13 => Byte (Character'Pos ('2')),
+       14 => Byte (Character'Pos ('5')),
+       15 => 16#1A#,
+       16 => Byte (Character'Pos ('y'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "CAN/SUB feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert
+        (not M.Bracketed_Paste,
+         "CAN should cancel bracketed-paste DECSET before final byte");
+      Assert
+        (M.Cursor_Visible,
+         "SUB should cancel cursor-visibility DECRST before final byte");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "printable text after CAN should render");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#79#,
+         "printable text after SUB should render");
+      Terminal.Core.Release (S);
+   end;
 end Core_Modes_Smoke;
