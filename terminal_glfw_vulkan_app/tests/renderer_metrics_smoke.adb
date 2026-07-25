@@ -458,6 +458,67 @@ begin
       Assert (not Saw_ZWJ, "cluster render should skip invisible ZWJ");
    end;
 
+   Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "emoji cluster render core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1  => Byte (Character'Pos ('a')),
+       2  => 16#F0#, 3  => 16#9F#, 4  => 16#91#, 5  => 16#A9#,
+       6  => 16#E2#, 7  => 16#80#, 8  => 16#8D#,
+       9  => 16#F0#, 10 => 16#9F#, 11 => 16#91#, 12 => 16#A8#,
+       13 => 16#F0#, 14 => 16#9F#, 15 => 16#8F#, 16 => 16#BD#,
+       17 => Byte (Character'Pos ('b'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "emoji cluster render feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "emoji cluster render failed");
+
+   declare
+      Frame       : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+      Saw_A       : Boolean := False;
+      Saw_Base    : Boolean := False;
+      Saw_ZWJ     : Boolean := False;
+      Saw_Joined  : Boolean := False;
+      Saw_Modifier : Boolean := False;
+      Saw_B       : Boolean := False;
+   begin
+      for I in 1 .. Frame.Glyph_Count loop
+         if Frame.Glyphs (I).Codepoint = 16#61# then
+            Saw_A := True;
+         elsif Frame.Glyphs (I).Codepoint = 16#1F469# then
+            Saw_Base := True;
+         elsif Frame.Glyphs (I).Codepoint = 16#200D# then
+            Saw_ZWJ := True;
+         elsif Frame.Glyphs (I).Codepoint = 16#1F468# then
+            Saw_Joined := True;
+         elsif Frame.Glyphs (I).Codepoint = 16#1F3FD# then
+            Saw_Modifier := True;
+         elsif Frame.Glyphs (I).Codepoint = 16#62# then
+            Saw_B := True;
+         end if;
+      end loop;
+
+      Assert (Saw_A, "emoji cluster render should draw prefix");
+      Assert (Saw_Base, "emoji cluster render should draw base emoji glyph");
+      Assert (Saw_B, "emoji cluster render should draw suffix");
+      Assert (not Saw_ZWJ, "emoji cluster render should skip ZWJ");
+      Assert (not Saw_Joined, "emoji cluster render should skip joined scalar");
+      Assert
+        (not Saw_Modifier,
+         "emoji cluster render should skip emoji modifier attachment");
+   end;
+
    Terminal.App.Renderer.Finalize (R);
    Terminal.App.Renderer.Finalize (R);
 
