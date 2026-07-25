@@ -2030,6 +2030,9 @@ package body Terminal.Core is
                      T.State := Ground;
                   when 'N' | 'O' =>
                      T.State := Single_Shift;
+                  when 'Z' =>
+                     Queue_Device_Attributes (T);
+                     T.State := Ground;
                   when '[' =>
                      Clear_CSI (T);
                      T.State := CSI;
