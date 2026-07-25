@@ -35,9 +35,12 @@ The app render pipeline is staged:
 
 1. `Terminal.Core.Render_Snapshot` is copied out of the terminal core.
 2. `Terminal.App.Renderer` loads `textrender`, rasterizes glyphs, and builds
-   renderer-neutral `Terminal.App.Render_Model.Frame_Commands`.
+   renderer-neutral `Terminal.App.Render_Model.Frame_Commands`. The frame
+   contains the current fallback glyph quads plus bounded text-run commands
+   that preserve complete cell clusters for a later shaping backend.
 3. `Terminal.App.Vulkan_Submit` converts frame commands into normalized
-   rectangle/glyph triangle vertices and carries text-atlas upload metadata.
+   rectangle/glyph triangle vertices, carries text-run commands by value, and
+   carries text-atlas upload metadata.
 4. `Terminal.App.Vulkan_Presenter` owns the presentation boundary. It currently
    selects a physical device with a queue family that supports graphics and the
    GLFW surface, creates a logical device with `VK_KHR_swapchain`, creates the
@@ -51,6 +54,13 @@ The app render pipeline is staged:
 The Vulkan device creates a descriptor-backed 1x1 fallback atlas during
 initialization so the shader sampler binding is always valid. Dirty
 `textrender` atlas batches replace that image through a bounded staging upload.
+
+The current visible Vulkan draw path still renders glyph quads generated from
+`textrender`. Text-run commands are carried through renderer, submit, presenter,
+and device diagnostics so a real shaper can be attached at the presentation
+boundary without moving terminal parsing or terminal state into the renderer.
+`Fallback_Glyphs` marks runs that are still represented by the existing glyph
+fallback path.
 
 Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions

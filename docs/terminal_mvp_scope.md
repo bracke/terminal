@@ -108,10 +108,13 @@ ZWJ sequences without consuming more grid cells; overflow is reported through
 diagnostics. Selection and clipboard copy preserve stored cluster scalars.
 Rendering submits the base scalar and overlays renderable combining-mark
 attachments in the same cell, while invisible joiner, format-control, bidi,
-variation-selector, tag, and joined emoji attachments remain non-drawing until a
-shaped text run path is available; the core exposes this renderability
-classification with the snapshot-facing text model. BiDi layout requires
-additional text-pipeline support beyond the current glyph overlay path.
+variation-selector, tag, and joined emoji attachments remain non-drawing in the
+current glyph fallback path. The app renderer also emits bounded text-run
+commands that preserve the full stored cluster for each drawable cell, and the
+submit/presenter/device layers carry those runs without parsing terminal data.
+BiDi layout, OpenType shaping, emoji ZWJ glyph composition, complex-script
+cluster shaping, and ligature substitution still require a real shaping backend
+behind those text-run commands.
 
 ## Cursor
 

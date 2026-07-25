@@ -85,6 +85,9 @@ begin
    Assert
      (VS.Text_Runs (Batch) (1).Codepoints (3) = 16#1F468#,
       "text run joined scalar");
+   Assert
+     (VS.Text_Runs (Batch) (1).Fallback_Glyphs,
+      "text run fallback flag");
    Runs (1).Codepoints (3) := 0;
    Assert
      (VS.Text_Runs (Batch) (1).Codepoints (3) = 16#1F468#,

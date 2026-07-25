@@ -531,11 +531,22 @@ begin
       Assert
         (Frame.Text_Runs (2).Cell_Span = 2,
          "emoji cluster text run cell span");
+      Assert
+        (Frame.Text_Runs (2).Fallback_Glyphs,
+         "emoji cluster text run should allow the current glyph fallback");
       Assert (not Saw_ZWJ, "emoji cluster render should skip ZWJ");
       Assert (not Saw_Joined, "emoji cluster render should skip joined scalar");
       Assert
         (not Saw_Modifier,
          "emoji cluster render should skip emoji modifier attachment");
+      declare
+         Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+      begin
+         Assert
+           (Diag.Last_Text_Run_Count = Frame.Text_Run_Count,
+            "renderer diagnostics should report text run count");
+      end;
    end;
 
    Terminal.App.Renderer.Finalize (R);
