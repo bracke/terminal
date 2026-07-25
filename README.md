@@ -70,6 +70,7 @@ tests/bin/vulkan_presenter_smoke
 tests/bin/vulkan_device_smoke
 tests/bin/shader_loader_smoke
 tests/bin/pty_core_integration_smoke
+tests/bin/pty_m1_commands_smoke
 tests/bin/input_map_smoke
 tests/bin/queue_smoke
 tests/bin/resize_smoke

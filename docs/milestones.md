@@ -30,6 +30,8 @@
 - Spawn `$SHELL` in a Linux PTY.
 - Validate PTY output can be fed into `Terminal.Core` in a non-GUI integration
   smoke and converted into renderer glyph vertices plus atlas metadata.
+- Validate real shell `echo`, `cat`, SGR color, and clear-sequence behavior
+  through a non-GUI PTY/core command smoke.
 - Cover app-owned key, character, cursor-mode, control-key, Alt-key, and
   bracketed-paste byte mappings with a non-GUI smoke test.
 - Preserve input byte ordering across partial PTY writes with a bounded
