@@ -24,6 +24,7 @@ procedure PTY_M1_Commands_Smoke is
    Echo_Marker  : constant String := "ADA_ECHO_OK";
    Cat_Marker   : constant String := "ADA_CAT_OK";
    Red_Marker   : constant String := "ADA_RED_OK";
+   LS_Marker    : constant String := "ADA_LS_COLOR_DIR";
    Clear_Marker : constant String := "ADA_CLEAR_OK";
 
    Command : constant String :=
@@ -31,6 +32,9 @@ procedure PTY_M1_Commands_Smoke is
      & "echo ADA_ECHO_OK; sleep 0.05; "
      & "printf 'ADA_CAT_OK\n' | cat; sleep 0.05; "
      & "printf '\033[31mADA_RED_OK\033[0m\n'; sleep 0.05; "
+     & "rm -rf /tmp/ADA_LS_COLOR_DIR; mkdir /tmp/ADA_LS_COLOR_DIR; "
+     & "cd /tmp; LS_COLORS='di=01;34' ls --color=always -d ADA_LS_COLOR_DIR; "
+     & "rm -rf /tmp/ADA_LS_COLOR_DIR; sleep 0.05; "
      & "printf '\033[2J\033[HADA_CLEAR_OK\n'; exit"
      & Character'Val (13);
 
@@ -46,6 +50,7 @@ procedure PTY_M1_Commands_Smoke is
    Echo_Found   : Boolean := False;
    Cat_Found    : Boolean := False;
    Red_Found    : Boolean := False;
+   LS_Found     : Boolean := False;
    Clear_Found  : Boolean := False;
 
    function To_Bytes (Text : String) return Byte_Array is
@@ -158,6 +163,18 @@ procedure PTY_M1_Commands_Smoke is
          end;
       end if;
 
+      if not LS_Found and then Find_Text (Snap, LS_Marker, Row, Col) then
+         declare
+            Cell : constant Terminal.Core.Cell :=
+              Terminal.Core.Cell_At (Snap, Row, Col);
+         begin
+            LS_Found :=
+              Cell.Style.Bold
+              and then Cell.Style.Foreground.Kind = Terminal.Core.Indexed
+              and then Cell.Style.Foreground.Index = 4;
+         end;
+      end if;
+
       Clear_Found := Text_At_Top_Left (Snap, Clear_Marker);
       Terminal.Core.Release (Snap);
    end Inspect_Snapshot;
@@ -196,7 +213,11 @@ begin
             exit;
       end case;
 
-      exit when Echo_Found and then Cat_Found and then Red_Found and then Clear_Found;
+      exit when Echo_Found
+        and then Cat_Found
+        and then Red_Found
+        and then LS_Found
+        and then Clear_Found;
    end loop;
 
    Terminal.PTY.POSIX.Close (S);
@@ -204,5 +225,6 @@ begin
    Assert (Echo_Found, "echo output should be visible in core snapshot");
    Assert (Cat_Found, "cat output should be visible in core snapshot");
    Assert (Red_Found, "SGR red output should carry indexed foreground style");
+   Assert (LS_Found, "ls --color output should carry directory color style");
    Assert (Clear_Found, "clear sequence should leave marker at top-left");
 end PTY_M1_Commands_Smoke;
