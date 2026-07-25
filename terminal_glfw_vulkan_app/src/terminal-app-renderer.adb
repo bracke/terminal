@@ -326,7 +326,7 @@ package body Terminal.App.Renderer is
       R.Missing_Glyph_Count := 0;
 
       Cell_Count := Snapshot.Rows * Snapshot.Cols;
-      Rect_Max := Cell_Count * 2 + 1;
+      Rect_Max := Cell_Count * 2 + 2;
       begin
          R.Rectangles := new RM.Rectangle_Array (1 .. Rect_Max);
          R.Glyphs := new RM.Glyph_Array (1 .. Cell_Count);
@@ -337,8 +337,8 @@ package body Terminal.App.Renderer is
             return;
       end;
       R.Last_Cell_Count := Cell_Count;
-      R.Last_Frame_Width := Snapshot.Cols * R.CW;
-      R.Last_Frame_Height := Snapshot.Rows * R.CH;
+      R.Last_Frame_Width := Snapshot.Cols * R.CW + Content_Margin * 2;
+      R.Last_Frame_Height := Snapshot.Rows * R.CH + Content_Margin * 2;
 
       if Snapshot.Dirty /= null then
          for Row in 1 .. Snapshot.Rows loop
@@ -352,8 +352,8 @@ package body Terminal.App.Renderer is
         (R,
          X      => 0.0,
          Y      => 0.0,
-         Width  => Float (Snapshot.Cols * R.CW),
-         Height => Float (Snapshot.Rows * R.CH),
+         Width  => Float (R.Last_Frame_Width),
+         Height => Float (R.Last_Frame_Height),
          Color  => Default_BG);
 
       for Row in 1 .. Snapshot.Rows loop
@@ -361,8 +361,10 @@ package body Terminal.App.Renderer is
             declare
                Cell : constant Terminal.Core.Cell :=
                  Terminal.Core.Cell_At (Snapshot, Row, Col);
-               X    : constant Float := Float ((Col - 1) * R.CW);
-               Y    : constant Float := Float ((Row - 1) * R.CH);
+               X    : constant Float :=
+                 Float (Content_Margin + (Col - 1) * R.CW);
+               Y    : constant Float :=
+                 Float (Content_Margin + (Row - 1) * R.CH);
                Cell_W : constant Positive :=
                  (if Cell.Text.Width = Terminal.Core.Width_Two then R.CW * 2 else R.CW);
                Cursor_Cell : constant Boolean := Is_Cursor_Cell (Snapshot, Row, Col);

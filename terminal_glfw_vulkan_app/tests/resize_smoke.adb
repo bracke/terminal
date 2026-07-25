@@ -13,6 +13,7 @@ begin
       Pixel_Height => 600,
       Cell_Width   => 8,
       Cell_Height  => 16,
+      Margin       => 0,
       Rows         => Rows,
       Cols         => Cols);
    Assert (Rows = 37, "600 px at 16 px/cell");
@@ -23,6 +24,7 @@ begin
       Pixel_Height => 1,
       Cell_Width   => 8,
       Cell_Height  => 16,
+      Margin       => 0,
       Rows         => Rows,
       Cols         => Cols);
    Assert (Rows = 1, "tiny height clamps to one row");
@@ -33,8 +35,20 @@ begin
       Pixel_Height => 0,
       Cell_Width   => 8,
       Cell_Height  => 16,
+      Margin       => 0,
       Rows         => Rows,
       Cols         => Cols);
    Assert (Rows = 1, "zero height clamps to one row");
    Assert (Cols = 1, "zero width clamps to one col");
+
+   Terminal.App.Resize.Pixels_To_Cells
+     (Pixel_Width  => 960,
+      Pixel_Height => 600,
+      Cell_Width   => 8,
+      Cell_Height  => 16,
+      Margin       => 6,
+      Rows         => Rows,
+      Cols         => Cols);
+   Assert (Rows = 36, "vertical margin reduces usable rows");
+   Assert (Cols = 118, "horizontal margin reduces usable cols");
 end Resize_Smoke;

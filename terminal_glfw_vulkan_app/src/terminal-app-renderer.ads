@@ -6,6 +6,8 @@ with Terminal.App.Vulkan_Submit;
 with Textrender;
 
 package Terminal.App.Renderer is
+   Content_Margin : constant Natural := 6;
+
    type Renderer is limited private;
 
    type Init_Status is (Ok, Vulkan_Adapter_Missing, Failed);

@@ -42,6 +42,22 @@ begin
    begin
       Assert (Frame.Rectangle_Count >= 3, "expected background, cell, cursor");
       Assert
+        (Frame.Width =
+           Terminal.App.Renderer.Cell_Width (R)
+           + Terminal.App.Renderer.Content_Margin * 2,
+         "frame width should include horizontal content margins");
+      Assert
+        (Frame.Height =
+           Terminal.App.Renderer.Cell_Height (R)
+           + Terminal.App.Renderer.Content_Margin * 2,
+         "frame height should include vertical content margins");
+      Assert
+        (Frame.Rectangles (2).X = Float (Terminal.App.Renderer.Content_Margin),
+         "first cell should be inset horizontally");
+      Assert
+        (Frame.Rectangles (2).Y = Float (Terminal.App.Renderer.Content_Margin),
+         "first cell should be inset vertically");
+      Assert
         (Frame.Rectangles (3).Height <= 16.0,
          "cursor block should be font-sized, not full line height");
       Assert

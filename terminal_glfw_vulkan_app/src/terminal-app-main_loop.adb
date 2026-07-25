@@ -222,6 +222,7 @@ package body Terminal.App.Main_Loop is
                         FB_Height,
                         Terminal.App.Renderer.Cell_Width (R),
                         Terminal.App.Renderer.Cell_Height (R),
+                        Terminal.App.Renderer.Content_Margin,
                         New_Rows,
                         New_Cols);
                      if New_Rows /= Last_Rows or else New_Cols /= Last_Cols then
