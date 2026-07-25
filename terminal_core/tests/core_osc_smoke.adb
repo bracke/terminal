@@ -148,6 +148,50 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "PM/APC initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "^ignored" & ASCII.ESC & "\a"
+         & ASCII.ESC & "_ignored" & ASCII.BEL & "b"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "PM/APC feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
+         "PM payload leaked or trailing text missing");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
+         "APC payload leaked or trailing text missing");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#9E#, 2 => Byte (Character'Pos ('p')),
+       3 => Byte (Character'Pos ('m')), 4 => 16#9C#,
+       5 => Byte (Character'Pos ('c')), 6 => 16#9F#,
+       7 => Byte (Character'Pos ('a')), 8 => 16#9C#,
+       9 => Byte (Character'Pos ('d'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 PM/APC feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#63#,
+         "C1 PM payload leaked or trailing text missing");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 4).Text.Code_Point = 16#64#,
+         "C1 APC payload leaked or trailing text missing");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "DCS overflow initialize failed");
    Terminal.Core.Feed (T, DCS_Overflow_Fixture, Feed_Status);
    Assert

@@ -207,7 +207,7 @@ package body Terminal.Core is
       T.CSI_Intermediate_Count := 0;
       T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
-      T.DCS_Count := 0;
+      T.Ignored_String_Count := 0;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
@@ -311,7 +311,7 @@ package body Terminal.Core is
       T.CSI_Intermediate_Count := 0;
       T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
-      T.DCS_Count := 0;
+      T.Ignored_String_Count := 0;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
@@ -391,19 +391,35 @@ package body Terminal.Core is
       T.State := Ground;
    end Finish_OSC;
 
-   procedure Append_DCS_Byte
+   procedure Append_Ignored_String_Byte
      (T          : in out Terminal;
       Overflowed : in out Boolean)
    is
    begin
-      if T.DCS_Count >= Parser.Max_Escape_Length then
+      if T.Ignored_String_Count >= Parser.Max_Escape_Length then
          T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
          Overflowed := True;
-         T.State := DCS_Overflow;
+         T.State := Ignored_String_Overflow;
       else
-         T.DCS_Count := T.DCS_Count + 1;
+         T.Ignored_String_Count := T.Ignored_String_Count + 1;
       end if;
-   end Append_DCS_Byte;
+   end Append_Ignored_String_Byte;
+
+   procedure Start_Ignored_String (T : in out Terminal) is
+   begin
+      T.Ignored_String_Count := 0;
+      T.State := Ignored_String;
+   end Start_Ignored_String;
+
+   function In_String_Control (State : Parser_State) return Boolean is
+     (State = OSC
+      or else State = OSC_Escape
+      or else State = OSC_Overflow
+      or else State = OSC_Overflow_Escape
+      or else State = Ignored_String
+      or else State = Ignored_String_Escape
+      or else State = Ignored_String_Overflow
+      or else State = Ignored_String_Overflow_Escape);
 
    function Scrollback_Index
      (T   : Terminal;
@@ -1508,21 +1524,23 @@ package body Terminal.Core is
 
       for B of Data loop
          if Natural (B) = 16#9C# then
-            if T.State = OSC then
+            if T.State = OSC or else T.State = OSC_Escape then
                Finish_OSC (T);
                goto Continue;
-            elsif T.State = OSC_Overflow then
+            elsif T.State = OSC_Overflow
+              or else T.State = OSC_Overflow_Escape
+            then
                T.State := Ground;
                goto Continue;
-            elsif T.State = DCS or else T.State = DCS_Overflow then
+            elsif T.State = Ignored_String
+              or else T.State = Ignored_String_Escape
+              or else T.State = Ignored_String_Overflow
+              or else T.State = Ignored_String_Overflow_Escape
+            then
                T.State := Ground;
                goto Continue;
             end if;
-         elsif T.State /= OSC
-           and then T.State /= OSC_Overflow
-           and then T.State /= DCS
-           and then T.State /= DCS_Overflow
-         then
+         elsif not In_String_Control (T.State) then
             if Natural (B) = 16#9B# then
                Recover_Incomplete_UTF8 (T);
                Clear_CSI (T);
@@ -1530,8 +1548,15 @@ package body Terminal.Core is
                goto Continue;
             elsif Natural (B) = 16#90# then
                Recover_Incomplete_UTF8 (T);
-               T.DCS_Count := 0;
-               T.State := DCS;
+               Start_Ignored_String (T);
+               goto Continue;
+            elsif Natural (B) = 16#9E# then
+               Recover_Incomplete_UTF8 (T);
+               Start_Ignored_String (T);
+               goto Continue;
+            elsif Natural (B) = 16#9F# then
+               Recover_Incomplete_UTF8 (T);
+               Start_Ignored_String (T);
                goto Continue;
             elsif Natural (B) = 16#84# then
                Recover_Incomplete_UTF8 (T);
@@ -1568,11 +1593,11 @@ package body Terminal.Core is
             elsif T.State = OSC_Overflow and then Natural (B) = 27 then
                T.State := OSC_Overflow_Escape;
                goto Continue;
-            elsif T.State = DCS and then Natural (B) = 27 then
-               T.State := DCS_Escape;
+            elsif T.State = Ignored_String and then Natural (B) = 27 then
+               T.State := Ignored_String_Escape;
                goto Continue;
-            elsif T.State = DCS_Overflow and then Natural (B) = 27 then
-               T.State := DCS_Overflow_Escape;
+            elsif T.State = Ignored_String_Overflow and then Natural (B) = 27 then
+               T.State := Ignored_String_Overflow_Escape;
                goto Continue;
             elsif T.State = OSC and then Natural (B) = 7 then
                Finish_OSC (T);
@@ -1580,17 +1605,13 @@ package body Terminal.Core is
             elsif T.State = OSC_Overflow and then Natural (B) = 7 then
                T.State := Ground;
                goto Continue;
-            elsif T.State = DCS and then Natural (B) = 7 then
+            elsif T.State = Ignored_String and then Natural (B) = 7 then
                T.State := Ground;
                goto Continue;
-            elsif T.State = DCS_Overflow and then Natural (B) = 7 then
+            elsif T.State = Ignored_String_Overflow and then Natural (B) = 7 then
                T.State := Ground;
                goto Continue;
-            elsif T.State /= OSC
-              and then T.State /= OSC_Overflow
-              and then T.State /= DCS
-              and then T.State /= DCS_Overflow
-            then
+            elsif not In_String_Control (T.State) then
                Recover_Incomplete_UTF8 (T);
                Execute_C0 (T, B);
                goto Continue;
@@ -1631,8 +1652,9 @@ package body Terminal.Core is
                      T.OSC_Count := 0;
                      T.State := OSC;
                   when 'P' =>
-                     T.DCS_Count := 0;
-                     T.State := DCS;
+                     Start_Ignored_String (T);
+                  when '^' | '_' =>
+                     Start_Ignored_String (T);
                   when '(' | ')' | '*' | '+' | '-' | '.' | '/' =>
                      T.State := Charset;
                   when '#' =>
@@ -1705,27 +1727,27 @@ package body Terminal.Core is
                else
                   T.State := OSC_Overflow;
                end if;
-            when DCS =>
-               Append_DCS_Byte (T, Overflowed);
-            when DCS_Escape =>
+            when Ignored_String =>
+               Append_Ignored_String_Byte (T, Overflowed);
+            when Ignored_String_Escape =>
                if Ch = '\' then
                   T.State := Ground;
                else
-                  Append_DCS_Byte (T, Overflowed);
-                  if T.State /= DCS_Overflow then
-                     Append_DCS_Byte (T, Overflowed);
-                     if T.State /= DCS_Overflow then
-                        T.State := DCS;
+                  Append_Ignored_String_Byte (T, Overflowed);
+                  if T.State /= Ignored_String_Overflow then
+                     Append_Ignored_String_Byte (T, Overflowed);
+                     if T.State /= Ignored_String_Overflow then
+                        T.State := Ignored_String;
                      end if;
                   end if;
                end if;
-            when DCS_Overflow =>
+            when Ignored_String_Overflow =>
                null;
-            when DCS_Overflow_Escape =>
+            when Ignored_String_Overflow_Escape =>
                if Ch = '\' then
                   T.State := Ground;
                else
-                  T.State := DCS_Overflow;
+                  T.State := Ignored_String_Overflow;
                end if;
             when Charset =>
                T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;
