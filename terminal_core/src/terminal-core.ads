@@ -87,10 +87,12 @@ package Terminal.Core is
 
    type Cell_Array is array (Positive range <>) of Cell;
    type Dirty_Row_Array is array (Positive range <>) of Boolean;
+   type Tab_Stop_Array is array (Positive range <>) of Boolean;
    subtype Core_Byte_Array is Terminal.Common.Bytes.Byte_Array;
 
    type Cell_Array_Access is access all Cell_Array;
    type Dirty_Row_Array_Access is access all Dirty_Row_Array;
+   type Tab_Stop_Array_Access is access all Tab_Stop_Array;
 
    type Render_Snapshot is record
       Rows   : Natural := 0;
@@ -179,6 +181,7 @@ private
       Alt_Cells     : Cell_Array_Access := null;
       Scrollback    : Cell_Array_Access := null;
       Dirty         : Dirty_Row_Array_Access := null;
+      Tab_Stops     : Tab_Stop_Array_Access := null;
 
       Active        : Buffer_Kind := Primary;
       Cursor_Row    : Positive := 1;

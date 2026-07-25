@@ -54,4 +54,22 @@ begin
 
    Feed_Text ((1 => ASCII.HT), "HT clamp feed failed");
    Assert_Cursor_Col (20, "HT should stay clamped at the last column");
+
+   Feed_Text (ASCII.ESC & "c", "reset feed failed");
+   Assert_Cursor_Col (1, "reset should return cursor to column one");
+
+   Feed_Text (ASCII.ESC & "[5G" & ASCII.ESC & "H", "HTS feed failed");
+   Assert_Cursor_Col (5, "HTS setup should leave cursor at custom stop");
+
+   Feed_Text (ASCII.ESC & "[G" & (1 => ASCII.HT), "custom HT feed failed");
+   Assert_Cursor_Col (5, "HT should move to custom tab stop");
+
+   Feed_Text (ASCII.ESC & "[g" & ASCII.ESC & "[G" & (1 => ASCII.HT), "TBC current feed failed");
+   Assert_Cursor_Col (9, "TBC current should remove custom tab stop");
+
+   Feed_Text (ASCII.ESC & "[3g" & ASCII.ESC & "[G" & (1 => ASCII.HT), "TBC all feed failed");
+   Assert_Cursor_Col (20, "TBC all should clamp HT to the last column");
+
+   Feed_Text (ASCII.ESC & "c" & (1 => ASCII.HT), "reset tabs feed failed");
+   Assert_Cursor_Col (9, "reset should restore default tab stops");
 end Core_Tabs_Smoke;

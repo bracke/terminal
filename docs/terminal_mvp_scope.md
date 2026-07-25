@@ -7,11 +7,13 @@
 - C0: BEL, BS, HT, LF, CR, ESC.
 - ESC: reset, save/restore cursor, index, next line, reverse index, CSI, OSC,
   and charset-selection consume/ignore.
-- CSI: cursor movement, CUP/CHA, default-tab CHT/CBT, ED, EL, ICH, DCH, ECH,
+- CSI: cursor movement, CUP/CHA, CHT/CBT, TBC, ED, EL, ICH, DCH, ECH,
   IL, DL, SU, SD, SGR, DECSET/DECRST known modes, SM/RM insert mode, and
   DECSTBM margins.
 - DSR status (`CSI 5 n`) and cursor-position report (`CSI 6 n`) responses.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
+- Default tab stops every eight columns, plus `ESC H` tab-set and `CSI g`
+  tab-clear handling.
 - Autowrap with pending-wrap behavior.
 - Primary and alternate screen buffers.
 - Dirty row tracking.

@@ -9,6 +9,8 @@ package body Terminal.Core is
      (Cell_Array, Cell_Array_Access);
    procedure Free_Dirty is new Ada.Unchecked_Deallocation
      (Dirty_Row_Array, Dirty_Row_Array_Access);
+   procedure Free_Tab_Stops is new Ada.Unchecked_Deallocation
+     (Tab_Stop_Array, Tab_Stop_Array_Access);
 
    function Index (T : Terminal; Row : Positive; Col : Positive) return Positive is
      ((Row - 1) * T.Cols + Col);
@@ -42,6 +44,17 @@ package body Terminal.Core is
          Mark_Dirty (T, T.Cursor_Row);
       end if;
    end Mark_Cursor_Move;
+
+   procedure Reset_Tab_Stops (T : in out Terminal) is
+   begin
+      if T.Tab_Stops = null then
+         return;
+      end if;
+
+      for C in T.Tab_Stops'Range loop
+         T.Tab_Stops (C) := C > 1 and then (C - 1) mod 8 = 0;
+      end loop;
+   end Reset_Tab_Stops;
 
    function Blank_Cell (Style : Cell_Style) return Cell is
       C : Cell;
@@ -105,6 +118,7 @@ package body Terminal.Core is
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
       T.UTF8_Min := 0;
+      Reset_Tab_Stops (T);
       Reset_Buffer (T, T.Primary_Cells);
       Reset_Buffer (T, T.Alt_Cells);
    end Reset_Terminal;
@@ -119,15 +133,23 @@ package body Terminal.Core is
    begin
       if T.Primary_Cells /= null then
          Free_Cells (T.Primary_Cells);
+         T.Primary_Cells := null;
       end if;
       if T.Alt_Cells /= null then
          Free_Cells (T.Alt_Cells);
+         T.Alt_Cells := null;
       end if;
       if T.Scrollback /= null then
          Free_Cells (T.Scrollback);
+         T.Scrollback := null;
       end if;
       if T.Dirty /= null then
          Free_Dirty (T.Dirty);
+         T.Dirty := null;
+      end if;
+      if T.Tab_Stops /= null then
+         Free_Tab_Stops (T.Tab_Stops);
+         T.Tab_Stops := null;
       end if;
 
       T.Primary_Cells := new Cell_Array (1 .. Count);
@@ -138,11 +160,13 @@ package body Terminal.Core is
          T.Scrollback := null;
       end if;
       T.Dirty := new Dirty_Row_Array (1 .. Rows);
+      T.Tab_Stops := new Tab_Stop_Array (1 .. Cols);
       T.Rows := Rows;
       T.Cols := Cols;
       T.Bottom_Margin := Rows;
       T.Scrollback_Rows := 0;
       Status := True;
+      Reset_Tab_Stops (T);
       Reset_Buffer (T, T.Primary_Cells);
       Reset_Buffer (T, T.Alt_Cells);
       Mark_All_Dirty (T);
@@ -708,15 +732,33 @@ package body Terminal.Core is
    end Move_Cursor;
 
    function Next_Tab_Column (T : Terminal; Col : Positive) return Positive is
-     (Positive'Min (T.Cols, ((Col - 1) / 8 + 1) * 8 + 1));
+   begin
+      if T.Tab_Stops /= null and then Col < T.Cols then
+         for C in Col + 1 .. T.Cols loop
+            if T.Tab_Stops (C) then
+               return C;
+            end if;
+         end loop;
+      end if;
 
-   function Previous_Tab_Column (Col : Positive) return Positive is
+      return T.Cols;
+   end Next_Tab_Column;
+
+   function Previous_Tab_Column (T : Terminal; Col : Positive) return Positive is
    begin
       if Col <= 1 then
          return 1;
-      else
-         return Positive'Max (1, ((Col - 2) / 8) * 8 + 1);
       end if;
+
+      if T.Tab_Stops /= null then
+         for C in reverse 1 .. Col - 1 loop
+            if T.Tab_Stops (C) then
+               return C;
+            end if;
+         end loop;
+      end if;
+
+      return 1;
    end Previous_Tab_Column;
 
    procedure Move_Forward_Tabs (T : in out Terminal; Count : Positive) is
@@ -734,7 +776,7 @@ package body Terminal.Core is
       Old_Row : constant Positive := T.Cursor_Row;
    begin
       for I in 1 .. Count loop
-         T.Cursor_Col := Previous_Tab_Column (T.Cursor_Col);
+         T.Cursor_Col := Previous_Tab_Column (T, T.Cursor_Col);
          exit when T.Cursor_Col = 1;
       end loop;
       T.Pending_Wrap := False;
@@ -986,6 +1028,23 @@ package body Terminal.Core is
                when 2 => Clear_Row (T, T.Cursor_Row, 1, T.Cols);
                when others => T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end case;
+         when 'g' =>
+            N := Param (T, 1, 0);
+            case N is
+               when 0 =>
+                  if T.Tab_Stops /= null then
+                     T.Tab_Stops (T.Cursor_Col) := False;
+                  end if;
+               when 3 =>
+                  if T.Tab_Stops /= null then
+                     for C in T.Tab_Stops'Range loop
+                        T.Tab_Stops (C) := False;
+                     end loop;
+                  end if;
+               when others =>
+                  T.Diag.Unsupported_Sequence :=
+                    T.Diag.Unsupported_Sequence + 1;
+            end case;
          when 'L' =>
             Insert_Blank_Lines
               (T,
@@ -1204,6 +1263,11 @@ package body Terminal.Core is
                      T.Cursor_Col := 1;
                      New_Line (T);
                      T.State := Ground;
+                  when 'H' =>
+                     if T.Tab_Stops /= null then
+                        T.Tab_Stops (T.Cursor_Col) := True;
+                     end if;
+                     T.State := Ground;
                   when 'M' =>
                      declare
                         Old_Row : constant Positive := T.Cursor_Row;
@@ -1305,6 +1369,7 @@ package body Terminal.Core is
    is
       Old_Primary : Cell_Array_Access := T.Primary_Cells;
       Old_Alt     : Cell_Array_Access := T.Alt_Cells;
+      Old_Tabs    : Tab_Stop_Array_Access := T.Tab_Stops;
       Old_Rows    : constant Positive := T.Rows;
       Old_Cols    : constant Positive := T.Cols;
       New_Count   : constant Positive := Rows * Cols;
@@ -1328,10 +1393,12 @@ package body Terminal.Core is
          Free_Dirty (T.Dirty);
       end if;
       T.Dirty := new Dirty_Row_Array (1 .. Rows);
+      T.Tab_Stops := new Tab_Stop_Array (1 .. Cols);
 
       T.Rows := Rows;
       T.Cols := Cols;
       T.Scrollback_Rows := 0;
+      Reset_Tab_Stops (T);
       Reset_Buffer (T, T.Primary_Cells);
       Reset_Buffer (T, T.Alt_Cells);
 
@@ -1341,12 +1408,20 @@ package body Terminal.Core is
             T.Alt_Cells (Index (T, R, C)) := Old_Alt ((R - 1) * Old_Cols + C);
          end loop;
       end loop;
+      if Old_Tabs /= null then
+         for C in 1 .. Positive'Min (Old_Cols, Cols) loop
+            T.Tab_Stops (C) := Old_Tabs (C);
+         end loop;
+      end if;
 
       if Old_Primary /= null then
          Free_Cells (Old_Primary);
       end if;
       if Old_Alt /= null then
          Free_Cells (Old_Alt);
+      end if;
+      if Old_Tabs /= null then
+         Free_Tab_Stops (Old_Tabs);
       end if;
 
       T.Cursor_Row := Positive'Min (Rows, T.Cursor_Row);
@@ -1359,6 +1434,7 @@ package body Terminal.Core is
       when Storage_Error =>
          T.Primary_Cells := Old_Primary;
          T.Alt_Cells := Old_Alt;
+         T.Tab_Stops := Old_Tabs;
          T.Rows := Old_Rows;
          T.Cols := Old_Cols;
          T.Scrollback_Rows := 0;
