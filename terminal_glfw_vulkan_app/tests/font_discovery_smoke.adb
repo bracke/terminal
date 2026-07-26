@@ -11,6 +11,14 @@ procedure Font_Discovery_Smoke is
 
    Noto_Devanagari : constant String :=
      "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf";
+   Noto_Brahmi : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansBrahmi-Regular.ttf";
+   Noto_Sharada : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansSharada-Regular.ttf";
+   Noto_Newa : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansNewa-Regular.ttf";
+   Noto_Tirhuta : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansTirhuta-Regular.ttf";
    Noto_Khmer : constant String :=
      "/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf";
    Noto_Tai_Viet : constant String :=
@@ -62,6 +70,10 @@ begin
    end loop;
 
    Assert_Contains_If_Installed (Noto_Devanagari, "Devanagari");
+   Assert_Contains_If_Installed (Noto_Brahmi, "Brahmi");
+   Assert_Contains_If_Installed (Noto_Sharada, "Sharada");
+   Assert_Contains_If_Installed (Noto_Newa, "Newa");
+   Assert_Contains_If_Installed (Noto_Tirhuta, "Tirhuta");
    Assert_Contains_If_Installed (Noto_Khmer, "Khmer");
    Assert_Contains_If_Installed (Noto_Tai_Viet, "Tai Viet");
    Assert_Contains_If_Installed (Noto_Meetei, "Meetei Mayek");

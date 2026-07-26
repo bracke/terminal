@@ -31,6 +31,16 @@ package body Terminal.App.Fonts is
    Noto_Kannada  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansKannada-Regular.ttf";
    Noto_Malayalam : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMalayalam-Regular.ttf";
    Noto_Sinhala  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSinhala-Regular.ttf";
+   Noto_Brahmi    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansBrahmi-Regular.ttf";
+   Noto_Kaithi    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansKaithi-Regular.ttf";
+   Noto_Chakma    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansChakma-Regular.ttf";
+   Noto_Mahajani  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMahajani-Regular.ttf";
+   Noto_Sharada   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSharada-Regular.ttf";
+   Noto_Khojki    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansKhojki-Regular.ttf";
+   Noto_Khudawadi : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansKhudawadi-Regular.ttf";
+   Noto_Grantha   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansGrantha-Regular.ttf";
+   Noto_Newa      : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansNewa-Regular.ttf";
+   Noto_Tirhuta   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansTirhuta-Regular.ttf";
    Noto_Thai     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf";
    Noto_Lao      : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLao-Regular.ttf";
    Noto_Myanmar  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf";
@@ -83,6 +93,16 @@ package body Terminal.App.Fonts is
       Noto_Kannada'Access,
       Noto_Malayalam'Access,
       Noto_Sinhala'Access,
+      Noto_Brahmi'Access,
+      Noto_Kaithi'Access,
+      Noto_Chakma'Access,
+      Noto_Mahajani'Access,
+      Noto_Sharada'Access,
+      Noto_Khojki'Access,
+      Noto_Khudawadi'Access,
+      Noto_Grantha'Access,
+      Noto_Newa'Access,
+      Noto_Tirhuta'Access,
       Noto_Thai'Access,
       Noto_Lao'Access,
       Noto_Myanmar'Access,
