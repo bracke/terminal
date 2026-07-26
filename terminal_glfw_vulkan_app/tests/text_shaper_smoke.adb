@@ -91,6 +91,16 @@ procedure Text_Shaper_Smoke is
    Old_Italic : RM.Text_Run_Command := Run (16#10300#);
    Old_Persian : RM.Text_Run_Command := Run (16#103A0#);
    Ugaritic  : RM.Text_Run_Command := Run (16#10380#);
+   Linear_B  : RM.Text_Run_Command := Run (16#10000#);
+   Cypriot   : RM.Text_Run_Command := Run (16#10800#);
+   Egyptian  : RM.Text_Run_Command := Run (16#13000#);
+   Anatolian : RM.Text_Run_Command := Run (16#14400#);
+   Old_Permic : RM.Text_Run_Command := Run (16#10350#);
+   Elbasan   : RM.Text_Run_Command := Run (16#10500#);
+   Caucasian : RM.Text_Run_Command := Run (16#10530#);
+   Mro       : RM.Text_Run_Command := Run (16#16A40#);
+   Bassa     : RM.Text_Run_Command := Run (16#16AD0#);
+   Pahawh    : RM.Text_Run_Command := Run (16#16B00#);
    Armenian  : RM.Text_Run_Command := Run (16#0561#, 16#0562#);
    Georgian  : RM.Text_Run_Command := Run (16#10D0#, 16#10D1#);
    Ethiopic  : RM.Text_Run_Command := Run (16#12A0#, 16#12A1#);
@@ -447,6 +457,20 @@ begin
      (Ugaritic.Direction = RM.Direction_Left_To_Right,
       "Ugaritic direction");
    Assert (Ugaritic.Script = RM.Script_Ugaritic, "Ugaritic script");
+
+   Assert_Simple_Script (Linear_B, RM.Script_Linear_B, "Linear B");
+   Assert_Simple_Script (Cypriot, RM.Script_Cypriot, "Cypriot");
+   Assert_Simple_Script
+     (Egyptian, RM.Script_Egyptian_Hieroglyphs, "Egyptian Hieroglyphs");
+   Assert_Simple_Script
+     (Anatolian, RM.Script_Anatolian_Hieroglyphs, "Anatolian Hieroglyphs");
+   Assert_Simple_Script (Old_Permic, RM.Script_Old_Permic, "Old Permic");
+   Assert_Simple_Script (Elbasan, RM.Script_Elbasan, "Elbasan");
+   Assert_Simple_Script
+     (Caucasian, RM.Script_Caucasian_Albanian, "Caucasian Albanian");
+   Assert_Simple_Script (Mro, RM.Script_Mro, "Mro");
+   Assert_Simple_Script (Bassa, RM.Script_Bassa_Vah, "Bassa Vah");
+   Assert_Simple_Script (Pahawh, RM.Script_Pahawh_Hmong, "Pahawh Hmong");
 
    Assert (TS.Classify (Armenian) = RM.Simple_Text, "Armenian text class");
    TS.Prepare (Armenian, Status);

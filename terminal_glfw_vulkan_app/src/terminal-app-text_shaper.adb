@@ -203,6 +203,36 @@ package body Terminal.App.Text_Shaper is
    function Is_Ugaritic (C : Natural) return Boolean is
      (C in 16#10380# .. 16#1039F#);
 
+   function Is_Linear_B (C : Natural) return Boolean is
+     (C in 16#10000# .. 16#1007F#);
+
+   function Is_Cypriot (C : Natural) return Boolean is
+     (C in 16#10800# .. 16#1083F#);
+
+   function Is_Egyptian_Hieroglyphs (C : Natural) return Boolean is
+     (C in 16#13000# .. 16#1342F#);
+
+   function Is_Anatolian_Hieroglyphs (C : Natural) return Boolean is
+     (C in 16#14400# .. 16#1467F#);
+
+   function Is_Old_Permic (C : Natural) return Boolean is
+     (C in 16#10350# .. 16#1037F#);
+
+   function Is_Elbasan (C : Natural) return Boolean is
+     (C in 16#10500# .. 16#1052F#);
+
+   function Is_Caucasian_Albanian (C : Natural) return Boolean is
+     (C in 16#10530# .. 16#1056F#);
+
+   function Is_Mro (C : Natural) return Boolean is
+     (C in 16#16A40# .. 16#16A6F#);
+
+   function Is_Bassa_Vah (C : Natural) return Boolean is
+     (C in 16#16AD0# .. 16#16AFF#);
+
+   function Is_Pahawh_Hmong (C : Natural) return Boolean is
+     (C in 16#16B00# .. 16#16B8F#);
+
    function Is_Armenian (C : Natural) return Boolean is
      ((C in 16#0530# .. 16#058F#)
       or else (C in 16#FB13# .. 16#FB17#));
@@ -432,6 +462,16 @@ package body Terminal.App.Text_Shaper is
            or else Is_Old_Italic (Run.Codepoints (I))
            or else Is_Old_Persian (Run.Codepoints (I))
            or else Is_Ugaritic (Run.Codepoints (I))
+           or else Is_Linear_B (Run.Codepoints (I))
+           or else Is_Cypriot (Run.Codepoints (I))
+           or else Is_Egyptian_Hieroglyphs (Run.Codepoints (I))
+           or else Is_Anatolian_Hieroglyphs (Run.Codepoints (I))
+           or else Is_Old_Permic (Run.Codepoints (I))
+           or else Is_Elbasan (Run.Codepoints (I))
+           or else Is_Caucasian_Albanian (Run.Codepoints (I))
+           or else Is_Mro (Run.Codepoints (I))
+           or else Is_Bassa_Vah (Run.Codepoints (I))
+           or else Is_Pahawh_Hmong (Run.Codepoints (I))
            or else Is_Hiragana (Run.Codepoints (I))
            or else Is_Katakana (Run.Codepoints (I))
            or else Is_Bopomofo (Run.Codepoints (I))
@@ -604,6 +644,26 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Old_Persian;
             elsif Is_Ugaritic (C) then
                return RM.Script_Ugaritic;
+            elsif Is_Linear_B (C) then
+               return RM.Script_Linear_B;
+            elsif Is_Cypriot (C) then
+               return RM.Script_Cypriot;
+            elsif Is_Egyptian_Hieroglyphs (C) then
+               return RM.Script_Egyptian_Hieroglyphs;
+            elsif Is_Anatolian_Hieroglyphs (C) then
+               return RM.Script_Anatolian_Hieroglyphs;
+            elsif Is_Old_Permic (C) then
+               return RM.Script_Old_Permic;
+            elsif Is_Elbasan (C) then
+               return RM.Script_Elbasan;
+            elsif Is_Caucasian_Albanian (C) then
+               return RM.Script_Caucasian_Albanian;
+            elsif Is_Mro (C) then
+               return RM.Script_Mro;
+            elsif Is_Bassa_Vah (C) then
+               return RM.Script_Bassa_Vah;
+            elsif Is_Pahawh_Hmong (C) then
+               return RM.Script_Pahawh_Hmong;
             elsif Is_Armenian (C) then
                return RM.Script_Armenian;
             elsif Is_Georgian (C) then

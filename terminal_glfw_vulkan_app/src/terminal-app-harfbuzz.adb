@@ -187,6 +187,26 @@ package body Terminal.App.HarfBuzz is
             return "xpeo";
          when RM.Script_Ugaritic =>
             return "ugar";
+         when RM.Script_Linear_B =>
+            return "linb";
+         when RM.Script_Cypriot =>
+            return "cprt";
+         when RM.Script_Egyptian_Hieroglyphs =>
+            return "egyp";
+         when RM.Script_Anatolian_Hieroglyphs =>
+            return "hluw";
+         when RM.Script_Old_Permic =>
+            return "perm";
+         when RM.Script_Elbasan =>
+            return "elba";
+         when RM.Script_Caucasian_Albanian =>
+            return "aghb";
+         when RM.Script_Mro =>
+            return "mroo";
+         when RM.Script_Bassa_Vah =>
+            return "bass";
+         when RM.Script_Pahawh_Hmong =>
+            return "hmng";
          when RM.Script_Armenian =>
             return "armn";
          when RM.Script_Georgian =>
@@ -359,8 +379,24 @@ package body Terminal.App.HarfBuzz is
             | RM.Script_Gothic
             | RM.Script_Old_Italic
             | RM.Script_Old_Persian
-            | RM.Script_Ugaritic =>
+            | RM.Script_Ugaritic
+            | RM.Script_Linear_B
+            | RM.Script_Cypriot
+            | RM.Script_Anatolian_Hieroglyphs
+            | RM.Script_Caucasian_Albanian =>
             return "und";
+         when RM.Script_Egyptian_Hieroglyphs =>
+            return "egy";
+         when RM.Script_Old_Permic =>
+            return "kv";
+         when RM.Script_Elbasan =>
+            return "sq";
+         when RM.Script_Mro =>
+            return "mro";
+         when RM.Script_Bassa_Vah =>
+            return "bsq";
+         when RM.Script_Pahawh_Hmong =>
+            return "hmn";
          when RM.Script_Armenian =>
             return "hy";
          when RM.Script_Georgian =>
