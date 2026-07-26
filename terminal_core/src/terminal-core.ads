@@ -319,7 +319,9 @@ private
       CSI_Intermediate_Count : Natural := 0;
       OSC_Data      : OSC_Buffer := (others => ASCII.NUL);
       OSC_Count     : Natural := 0;
+      Ignored_String_Data : OSC_Buffer := (others => ASCII.NUL);
       Ignored_String_Count : Natural := 0;
+      Ignored_String_Is_DCS : Boolean := False;
 
       UTF8_Need     : Natural := 0;
       UTF8_Seen     : Natural := 0;

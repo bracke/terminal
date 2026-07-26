@@ -259,6 +259,91 @@ begin
          "DECRQM should drain");
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[1;3;31;48;5;200m"
+         & ASCII.ESC & "P$qm" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DECRQSS SGR feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 23,
+      "DECRQSS SGR response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 32);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes
+           (ASCII.ESC & "P1$r1;3;31;48;5;200m" & ASCII.ESC & "\"),
+         "DECRQSS SGR");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "DECRQSS SGR should drain");
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[2;4r"
+         & ASCII.ESC & "P$qr" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DECRQSS margins feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 11,
+      "DECRQSS margins response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "P1$r2;4r" & ASCII.ESC & "\"),
+         "DECRQSS margins");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "DECRQSS margins should drain");
+   end;
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "P$qx" & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "DECRQSS invalid feed failed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 7,
+         "DECRQSS invalid response length");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before,
+         "DECRQSS invalid query should return a negative response");
+
+      declare
+         Buffer : Byte_Array (1 .. 8);
+         Last   : Natural;
+      begin
+         Terminal.Core.Read_Response (T, Buffer, Last);
+         Assert_Bytes
+           (Buffer,
+            Last,
+            To_Bytes (ASCII.ESC & "P0$r" & ASCII.ESC & "\"),
+            "DECRQSS invalid");
+         Assert
+           (Terminal.Core.Pending_Response_Length (T) = 0,
+            "DECRQSS invalid should drain");
+      end;
+   end;
+
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[18t"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS text area feed failed");
    Assert

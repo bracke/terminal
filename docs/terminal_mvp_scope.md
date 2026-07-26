@@ -39,6 +39,9 @@
 - DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode,
   line-feed/new-line mode, known DEC private modes, and stateless `?1048`
   save/restore cursor mode.
+- DECRQSS status-string reports (`DCS $ q m ST` and `DCS $ q r ST`) return
+  current SGR state and scrolling margins; unsupported DECRQSS queries receive
+  a negative `DCS 0 $ r ST` response.
 - XTWINOPS window-state report (`CSI 11 t`) returns normal state as
   `CSI 1 t`. XTWINOPS window action requests (`CSI 1 t` through `CSI 10 t`,
   including move and resize parameters) are recognized and ignored by the core

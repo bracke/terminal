@@ -242,7 +242,9 @@ package body Terminal.Core is
       T.CSI_Intermediate_Count := 0;
       T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
+      T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
+      T.Ignored_String_Is_DCS := False;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
@@ -364,7 +366,9 @@ package body Terminal.Core is
       T.CSI_Intermediate_Count := 0;
       T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
+      T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
+      T.Ignored_String_Is_DCS := False;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
@@ -686,6 +690,7 @@ package body Terminal.Core is
 
    procedure Append_Ignored_String_Byte
      (T          : in out Terminal;
+      Ch         : Standard.Character;
       Overflowed : in out Boolean)
    is
    begin
@@ -695,12 +700,18 @@ package body Terminal.Core is
          T.State := Ignored_String_Overflow;
       else
          T.Ignored_String_Count := T.Ignored_String_Count + 1;
+         T.Ignored_String_Data (T.Ignored_String_Count) := Ch;
       end if;
    end Append_Ignored_String_Byte;
 
-   procedure Start_Ignored_String (T : in out Terminal) is
+   procedure Start_Ignored_String
+     (T      : in out Terminal;
+      Is_DCS : Boolean)
+   is
    begin
+      T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
+      T.Ignored_String_Is_DCS := Is_DCS;
       T.State := Ignored_String;
    end Start_Ignored_String;
 
@@ -1431,6 +1442,132 @@ package body Terminal.Core is
          end if;
       end loop;
    end Append_Response_Natural;
+
+   procedure Append_DECRQSS_Start
+     (T     : in out Terminal;
+      Valid : Boolean)
+   is
+   begin
+      Append_Response_Char (T, ASCII.ESC);
+      Append_Response_Char (T, 'P');
+      Append_Response_Char (T, (if Valid then '1' else '0'));
+      Append_Response_Char (T, '$');
+      Append_Response_Char (T, 'r');
+   end Append_DECRQSS_Start;
+
+   procedure Append_DECRQSS_End (T : in out Terminal) is
+   begin
+      Append_Response_Char (T, ASCII.ESC);
+      Append_Response_Char (T, '\');
+   end Append_DECRQSS_End;
+
+   procedure Append_SGR_Status (T : in out Terminal) is
+      First : Boolean := True;
+
+      procedure Param (N : Natural) is
+      begin
+         if First then
+            First := False;
+         else
+            Append_Response_Char (T, ';');
+         end if;
+         Append_Response_Natural (T, N);
+      end Param;
+
+      procedure Color_Params
+        (C      : Color;
+         Base_8 : Natural;
+         Bright : Natural;
+         Selector : Natural)
+      is
+      begin
+         case C.Kind is
+            when Default =>
+               null;
+            when Indexed =>
+               if C.Index <= 7 then
+                  Param (Base_8 + C.Index);
+               elsif C.Index <= 15 then
+                  Param (Bright + C.Index - 8);
+               else
+                  Param (Selector);
+                  Param (5);
+                  Param (C.Index);
+               end if;
+            when RGB =>
+               Param (Selector);
+               Param (2);
+               Param (C.R);
+               Param (C.G);
+               Param (C.B);
+         end case;
+      end Color_Params;
+   begin
+      if T.Current_Style.Bold then
+         Param (1);
+      end if;
+      if T.Current_Style.Faint then
+         Param (2);
+      end if;
+      if T.Current_Style.Italic then
+         Param (3);
+      end if;
+      if T.Current_Style.Underline then
+         Param (4);
+      end if;
+      if T.Current_Style.Blink then
+         Param (5);
+      end if;
+      if T.Current_Style.Inverse then
+         Param (7);
+      end if;
+      if T.Current_Style.Conceal then
+         Param (8);
+      end if;
+      if T.Current_Style.Strikethrough then
+         Param (9);
+      end if;
+      if T.Current_Style.Overline then
+         Param (53);
+      end if;
+
+      Color_Params (T.Current_Style.Foreground, 30, 90, 38);
+      Color_Params (T.Current_Style.Background, 40, 100, 48);
+
+      if First then
+         Param (0);
+      end if;
+      Append_Response_Char (T, 'm');
+   end Append_SGR_Status;
+
+   procedure Finish_Ignored_String (T : in out Terminal) is
+   begin
+      if T.Ignored_String_Is_DCS
+        and then T.Ignored_String_Count >= 3
+        and then T.Ignored_String_Data (1) = '$'
+        and then T.Ignored_String_Data (2) = 'q'
+      then
+         case T.Ignored_String_Data (3) is
+            when 'm' =>
+               Append_DECRQSS_Start (T, Valid => True);
+               Append_SGR_Status (T);
+               Append_DECRQSS_End (T);
+            when 'r' =>
+               Append_DECRQSS_Start (T, Valid => True);
+               Append_Response_Natural (T, T.Top_Margin);
+               Append_Response_Char (T, ';');
+               Append_Response_Natural (T, T.Bottom_Margin);
+               Append_Response_Char (T, 'r');
+               Append_DECRQSS_End (T);
+            when others =>
+               Append_DECRQSS_Start (T, Valid => False);
+               Append_DECRQSS_End (T);
+         end case;
+      end if;
+
+      T.Ignored_String_Is_DCS := False;
+      T.State := Ground;
+   end Finish_Ignored_String;
 
    procedure Queue_Device_Status_Report
      (T    : in out Terminal;
@@ -2437,8 +2574,10 @@ package body Terminal.Core is
             when 16#8F# =>
                T.Single_Shift_Charset := G3;
                T.State := Single_Shift;
-            when 16#90# | 16#98# | 16#9E# | 16#9F# =>
-               Start_Ignored_String (T);
+            when 16#90# =>
+               Start_Ignored_String (T, Is_DCS => True);
+            when 16#98# | 16#9E# | 16#9F# =>
+               Start_Ignored_String (T, Is_DCS => False);
             when 16#9B# =>
                Clear_CSI (T);
                T.State := CSI;
@@ -2524,9 +2663,13 @@ package body Terminal.Core is
                goto Continue;
             elsif T.State = Ignored_String
               or else T.State = Ignored_String_Escape
-              or else T.State = Ignored_String_Overflow
+            then
+               Finish_Ignored_String (T);
+               goto Continue;
+            elsif T.State = Ignored_String_Overflow
               or else T.State = Ignored_String_Overflow_Escape
             then
+               T.Ignored_String_Is_DCS := False;
                T.State := Ground;
                goto Continue;
             elsif not In_String_Control (T.State) then
@@ -2541,19 +2684,19 @@ package body Terminal.Core is
                goto Continue;
             elsif Natural (B) = 16#90# then
                Recover_Incomplete_UTF8 (T);
-               Start_Ignored_String (T);
+               Start_Ignored_String (T, Is_DCS => True);
                goto Continue;
             elsif Natural (B) = 16#98# then
                Recover_Incomplete_UTF8 (T);
-               Start_Ignored_String (T);
+               Start_Ignored_String (T, Is_DCS => False);
                goto Continue;
             elsif Natural (B) = 16#9E# then
                Recover_Incomplete_UTF8 (T);
-               Start_Ignored_String (T);
+               Start_Ignored_String (T, Is_DCS => False);
                goto Continue;
             elsif Natural (B) = 16#9F# then
                Recover_Incomplete_UTF8 (T);
-               Start_Ignored_String (T);
+               Start_Ignored_String (T, Is_DCS => False);
                goto Continue;
             elsif Natural (B) = 16#84# then
                Recover_Incomplete_UTF8 (T);
@@ -2619,9 +2762,10 @@ package body Terminal.Core is
                T.State := Ground;
                goto Continue;
             elsif T.State = Ignored_String and then Natural (B) = 7 then
-               T.State := Ground;
+               Finish_Ignored_String (T);
                goto Continue;
             elsif T.State = Ignored_String_Overflow and then Natural (B) = 7 then
+               T.Ignored_String_Is_DCS := False;
                T.State := Ground;
                goto Continue;
             elsif (Natural (B) = 16#18# or else Natural (B) = 16#1A#)
@@ -2686,11 +2830,11 @@ package body Terminal.Core is
                      T.OSC_Count := 0;
                      T.State := OSC;
                   when 'P' =>
-                     Start_Ignored_String (T);
+                     Start_Ignored_String (T, Is_DCS => True);
                   when 'X' =>
-                     Start_Ignored_String (T);
+                     Start_Ignored_String (T, Is_DCS => False);
                   when '^' | '_' =>
-                     Start_Ignored_String (T);
+                     Start_Ignored_String (T, Is_DCS => False);
                   when '(' =>
                      T.Charset_Target := G0;
                      T.State := Charset;
@@ -2777,14 +2921,14 @@ package body Terminal.Core is
                   T.State := OSC_Overflow;
                end if;
             when Ignored_String =>
-               Append_Ignored_String_Byte (T, Overflowed);
+               Append_Ignored_String_Byte (T, Ch, Overflowed);
             when Ignored_String_Escape =>
                if Ch = '\' then
-                  T.State := Ground;
+                  Finish_Ignored_String (T);
                else
-                  Append_Ignored_String_Byte (T, Overflowed);
+                  Append_Ignored_String_Byte (T, ASCII.ESC, Overflowed);
                   if T.State /= Ignored_String_Overflow then
-                     Append_Ignored_String_Byte (T, Overflowed);
+                     Append_Ignored_String_Byte (T, Ch, Overflowed);
                      if T.State /= Ignored_String_Overflow then
                         T.State := Ignored_String;
                      end if;
@@ -2794,6 +2938,7 @@ package body Terminal.Core is
                null;
             when Ignored_String_Overflow_Escape =>
                if Ch = '\' then
+                  T.Ignored_String_Is_DCS := False;
                   T.State := Ground;
                else
                   T.State := Ignored_String_Overflow;
