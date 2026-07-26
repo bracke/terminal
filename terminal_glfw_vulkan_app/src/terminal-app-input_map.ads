@@ -9,6 +9,9 @@ package Terminal.App.Input_Map is
    function Is_Copy_Shortcut
      (Event : GLFW_Vulkan.Input.Key_Event) return Boolean;
 
+   function Is_Primary_Paste_Button
+     (Event : GLFW_Vulkan.Input.Mouse_Button_Event) return Boolean;
+
    procedure Encode_Key
      (Event : GLFW_Vulkan.Input.Key_Event;
       Modes : Terminal.Core.Mode_Snapshot;

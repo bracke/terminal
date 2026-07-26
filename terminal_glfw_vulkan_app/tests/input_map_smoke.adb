@@ -249,6 +249,21 @@ begin
    IM.Encode_Key (Key_Event (GI.C, Shift => True, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#03#), "ctrl-shift-c encodes if not intercepted");
 
+   Assert
+     (IM.Is_Primary_Paste_Button (Mouse_Event (GI.Middle)),
+      "middle press should paste primary selection");
+   Assert
+     (not IM.Is_Primary_Paste_Button
+        (Mouse_Event (GI.Middle, Action => GI.Release)),
+      "middle release should not paste primary selection");
+   Assert
+     (not IM.Is_Primary_Paste_Button (Mouse_Event (GI.Left)),
+      "left press should not paste primary selection");
+   Assert
+     (not IM.Is_Primary_Paste_Button
+        (Mouse_Event (GI.Middle, Control => True)),
+      "modified middle press should not paste primary selection");
+
    IM.Encode_Character ((Code_Point => Wide_Wide_Character'Val (16#00E9#)), Chunk);
    Assert_Bytes (Chunk, (1 => 16#C3#, 2 => 16#A9#), "utf8 e-acute");
 

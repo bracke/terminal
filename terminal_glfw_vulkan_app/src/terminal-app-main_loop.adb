@@ -724,6 +724,16 @@ package body Terminal.App.Main_Loop is
                                  Need_Redraw := True;
                                  Local_Redraw := True;
                               end if;
+                           elsif Terminal.App.Input_Map.Is_Primary_Paste_Button
+                             (Event.Button_Event)
+                           then
+                              Scroll_Offset := 0;
+                              Terminal.App.Input_Map.Encode_Paste_Text
+                                (Terminal.App.Clipboard_OSC52.Text
+                                   (Clipboard_Targets,
+                                    Terminal.Core.Clipboard_Primary),
+                                 Modes,
+                                 Chunk);
                            end if;
                         end;
                      when Terminal.App.Queues.Cursor_Position =>

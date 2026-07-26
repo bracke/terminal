@@ -190,7 +190,8 @@ primary and selection target slots. `Ctrl+Shift+C` and `Super+C` copy the
 current selection without sending bytes to the PTY. Double-clicking selects the
 ASCII word under the pointer, where word characters are letters, digits, and
 underscore; double-clicking punctuation selects that single cell. Triple-clicking
-selects the visible row.
+selects the visible row. Middle-click pastes the app-owned primary selection
+slot when terminal mouse reporting is disabled.
 
 Mouse-aware terminal programs can enable basic xterm mouse reporting through
 DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates
@@ -243,7 +244,8 @@ legacy `CSI M` packets or SGR `CSI < ... M/m` packets according to the current
 core mode snapshot.
 `Ctrl+Shift+C`/`Super+C` are app-owned copy shortcuts and
 `Ctrl+Shift+V`/`Super+V` are app-owned paste shortcuts. Plain `Ctrl+C` remains
-terminal input.
+terminal input. Unmodified middle-click is an app-owned primary-selection paste
+when mouse reporting is disabled.
 GLFW character events are encoded as UTF-8 only when they are valid Unicode
 scalar values; surrogate code points and values above `U+10FFFF` are dropped at
 the app boundary. Plain printable space is sent through the character callback;

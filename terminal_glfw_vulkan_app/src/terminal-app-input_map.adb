@@ -259,6 +259,17 @@ package body Terminal.App.Input_Map is
            or else Event.Modifiers.Super);
    end Is_Copy_Shortcut;
 
+   function Is_Primary_Paste_Button
+     (Event : GLFW_Vulkan.Input.Mouse_Button_Event) return Boolean is
+   begin
+      return Event.Action = Press
+        and then Event.Button = Middle
+        and then not Event.Modifiers.Shift
+        and then not Event.Modifiers.Control
+        and then not Event.Modifiers.Alt
+        and then not Event.Modifiers.Super;
+   end Is_Primary_Paste_Button;
+
    procedure Encode_Key
      (Event : GLFW_Vulkan.Input.Key_Event;
       Modes : Terminal.Core.Mode_Snapshot;
