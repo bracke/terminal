@@ -3153,21 +3153,26 @@ package body Terminal.Core is
                   T.State := Ignored_String_Overflow;
                end if;
             when Charset =>
-               declare
-                  New_Charset : constant Charset_Kind :=
-                    (if Ch = '0' then DEC_Special_Graphics else ASCII_Charset);
-               begin
-                  case T.Charset_Target is
-                     when G0 =>
-                        T.G0_Charset := New_Charset;
-                     when G1 =>
-                        T.G1_Charset := New_Charset;
-                     when G2 =>
-                        T.G2_Charset := New_Charset;
-                     when G3 =>
-                        T.G3_Charset := New_Charset;
-                  end case;
-               end;
+               if Ch = '0' or else Ch = 'B' or else Ch = '@' then
+                  declare
+                     New_Charset : constant Charset_Kind :=
+                       (if Ch = '0' then DEC_Special_Graphics else ASCII_Charset);
+                  begin
+                     case T.Charset_Target is
+                        when G0 =>
+                           T.G0_Charset := New_Charset;
+                        when G1 =>
+                           T.G1_Charset := New_Charset;
+                        when G2 =>
+                           T.G2_Charset := New_Charset;
+                        when G3 =>
+                           T.G3_Charset := New_Charset;
+                     end case;
+                  end;
+               else
+                  T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;
+                  Recovered := True;
+               end if;
                T.State := Ground;
             when Coding_System =>
                if Ch /= 'G' and then Ch /= '@' then

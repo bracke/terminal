@@ -13,8 +13,9 @@
 - ESC: reset, save/restore cursor, index, next line, reverse index, DECID
   device attributes (`ESC Z`), CSI, OSC, DEC screen alignment test
   (`ESC # 8`), keypad mode toggles, and G-set charset designation for ASCII
-  and DEC special graphics. Coding-system designations `ESC % G` and `ESC % @`
-  are consumed safely.
+  (`B`/`@`) and DEC special graphics (`0`). Unsupported G-set charset
+  selectors are diagnosed without changing the previous designation.
+  Coding-system designations `ESC % G` and `ESC % @` are consumed safely.
 - SO/SI select G1/G0 for 7-bit GL text. SS2/SS3 single-shift one printable
   byte through G2/G3. DEC special graphics maps the common VT100 line-drawing
   range to Unicode box-drawing and symbol code points across G0 through G3.

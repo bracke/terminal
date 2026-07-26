@@ -145,6 +145,43 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 2, 12, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "unsupported charset initialize failed");
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Ignored_Escape;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "(0"
+            & ASCII.ESC & "(U"
+            & "x"
+            & ASCII.ESC & "*0"
+            & ASCII.ESC & "*U"
+            & ASCII.ESC & "N"
+            & "x"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Parser_Recovered,
+         "unsupported charset feed should recover");
+      Assert
+        (Terminal.Core.Diagnostics (T).Ignored_Escape = Before + 2,
+         "unsupported charset selectors should be diagnosed");
+   end;
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#2502#,
+         "unsupported G0 selector should preserve previous DEC charset");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#2502#,
+         "unsupported G2 selector should preserve previous DEC charset");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 2, 12, 100, Init);
    Assert (Init = Terminal.Core.Ok, "save charset initialize failed");
    Terminal.Core.Feed
      (T,
