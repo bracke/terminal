@@ -85,7 +85,9 @@ aliases for the semicolon forms.
 OSC payloads are bounded. BEL and ST (`ESC \`) termination are recognized.
 OSC 0/1/2 update the app window title. OSC 52 clipboard set requests are
 decoded from bounded base64 payloads by the core and applied to the system
-clipboard by the GLFW app. OSC 8 hyperlinks are parsed into bounded per-cell
+clipboard by the GLFW app. OSC 52 clipboard query requests are detected by the
+core and answered by the app with a bounded base64 OSC 52 response generated
+from GLFW clipboard text. OSC 8 hyperlinks are parsed into bounded per-cell
 snapshot metadata. Unknown OSC, escape, and CSI sequences are consumed safely
 and recorded in diagnostics where applicable.
 
@@ -187,9 +189,9 @@ modes; enabling one clears the other two. SGR coordinates are an independent
 encoding mode. Mouse wheel events are encoded as xterm wheel button packets
 when reporting is enabled; otherwise the GLFW app uses the wheel for app-owned
 scrollback viewing.
-Advanced selection behavior is postponed. OSC 52 clipboard set requests are
-supported for bounded text payloads; richer clipboard query/selection-target
-behavior remains postponed.
+Advanced selection behavior is postponed. OSC 52 clipboard set and query
+requests are supported for bounded text payloads; richer clipboard
+selection-target behavior remains postponed.
 
 Focus reporting via DEC private mode `?1004` is supported. When enabled, the
 app sends xterm focus-in and focus-out reports to the PTY as window focus

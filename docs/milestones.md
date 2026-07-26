@@ -78,6 +78,6 @@
 ## Postponed
 
 Sixel, kitty graphics, iTerm2 images, richer OSC 8 hover/tooltip UI, richer
-OSC 52 clipboard query/selection-target behavior, ligatures, full emoji
-shaping, BiDi, advanced mouse/selection behavior, tabs, splits, themes, config,
+OSC 52 clipboard selection-target behavior, full color emoji rendering,
+paragraph BiDi, advanced mouse/selection behavior, tabs, splits, themes, config,
 Windows ConPTY, and terminal multiplexer behavior.

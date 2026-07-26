@@ -452,6 +452,12 @@ package body Terminal.Core is
          end if;
 
          T.Clipboard_Data := (others => <>);
+         if Enc_First = Last and then T.OSC_Data (Enc_First) = '?' then
+            T.Clipboard_Data.Pending := True;
+            T.Clipboard_Data.Operation := Clipboard_Query;
+            return;
+         end if;
+
          if Enc_First <= Last then
             for I in Enc_First .. Last loop
                declare

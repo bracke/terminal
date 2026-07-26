@@ -20,6 +20,7 @@ project App_Tests is
       "input_map_smoke.adb",
       "selection_smoke.adb",
       "hyperlink_smoke.adb",
+      "clipboard_osc52_smoke.adb",
       "scrollback_view_smoke.adb",
       "render_policy_smoke.adb",
       "cursor_blink_smoke.adb",

@@ -6,6 +6,7 @@ with GLFW_Vulkan.Events;
 with GLFW_Vulkan.Input;
 with GLFW_Vulkan.Windows;
 with Terminal.Core;
+with Terminal.App.Clipboard_OSC52;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Diagnostics;
 with Terminal.App.Hyperlinks;
@@ -38,6 +39,7 @@ package body Terminal.App.Main_Loop is
    use type Terminal.PTY.POSIX.Spawn_Status;
    use type Terminal.PTY.POSIX.Resize_Status;
    use type Terminal.App.PTY_Write.Write_All_Status;
+   use type Terminal.Core.Clipboard_Operation;
    use type GLFW_Vulkan.Input.Key;
    use type GLFW_Vulkan.Input.Key_Action;
    use type GLFW_Vulkan.Input.Mouse_Button;
@@ -187,17 +189,29 @@ package body Terminal.App.Main_Loop is
 
    procedure Apply_Clipboard_Request
      (W : GLFW_Vulkan.Windows.Window;
-      T : in out Terminal.Core.Terminal)
+      S : in out Terminal.PTY.POSIX.Session;
+      T : in out Terminal.Core.Terminal;
+      Ok : out Boolean)
    is
       Request : constant Terminal.Core.Clipboard_Request :=
         Terminal.Core.Clipboard (T);
+      Chunk : Terminal.App.Queues.Byte_Chunk;
+      Write_Stat : Terminal.App.PTY_Write.Write_All_Status;
    begin
+      Ok := True;
       if Request.Pending then
-         if Request.Length = 0 then
-            GLFW_Vulkan.Clipboard.Set_Text (W, "");
+         if Request.Operation = Terminal.Core.Clipboard_Query then
+            Terminal.App.Clipboard_OSC52.Build_Query_Response
+              (GLFW_Vulkan.Clipboard.Get_Text (W), Chunk);
+            Terminal.App.PTY_Write.Write_All (S, Chunk, Write_Stat);
+            Ok := Write_Stat = Terminal.App.PTY_Write.Ok;
          else
-            GLFW_Vulkan.Clipboard.Set_Text
-              (W, Request.Text (1 .. Request.Length));
+            if Request.Length = 0 then
+               GLFW_Vulkan.Clipboard.Set_Text (W, "");
+            else
+               GLFW_Vulkan.Clipboard.Set_Text
+                 (W, Request.Text (1 .. Request.Length));
+            end if;
          end if;
          Terminal.Core.Clear_Clipboard (T);
       end if;
@@ -415,7 +429,14 @@ package body Terminal.App.Main_Loop is
                   end if;
                end loop;
                Apply_Title (W, Terminal.Core.Title (T), Last_Title);
-               Apply_Clipboard_Request (W, T);
+               declare
+                  Clipboard_Ok : Boolean;
+               begin
+                  Apply_Clipboard_Request (W, S, T, Clipboard_Ok);
+                  if not Clipboard_Ok then
+                     GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                  end if;
+               end;
 
                while Terminal.Core.Pending_Response_Length (T) > 0 loop
                   Chunk := (others => <>);

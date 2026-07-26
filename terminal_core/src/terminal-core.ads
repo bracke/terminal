@@ -129,8 +129,11 @@ package Terminal.Core is
    Max_Clipboard_Length : constant := 3072;
    subtype Clipboard_Length_Range is Natural range 0 .. Max_Clipboard_Length;
 
+   type Clipboard_Operation is (Clipboard_Set, Clipboard_Query);
+
    type Clipboard_Request is record
       Pending : Boolean := False;
+      Operation : Clipboard_Operation := Clipboard_Set;
       Length  : Clipboard_Length_Range := 0;
       Text    : String (1 .. Max_Clipboard_Length) := (others => ' ');
    end record;

@@ -6,6 +6,7 @@ procedure Core_OSC_Smoke is
    use AUnit.Assertions;
    use Terminal.Common.Bytes;
    use type Terminal.Common.Code_Point;
+   use type Terminal.Core.Clipboard_Operation;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
 
@@ -158,6 +159,24 @@ begin
    begin
       Assert (Clip.Pending, "empty OSC 52 clipboard request pending");
       Assert (Clip.Length = 0, "empty OSC 52 clipboard request length");
+   end;
+   Terminal.Core.Clear_Clipboard (T);
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "]52;c;?" & ASCII.BEL),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "OSC 52 query feed failed");
+
+   declare
+      Clip : constant Terminal.Core.Clipboard_Request :=
+        Terminal.Core.Clipboard (T);
+   begin
+      Assert (Clip.Pending, "OSC 52 query pending");
+      Assert
+        (Clip.Operation = Terminal.Core.Clipboard_Query,
+         "OSC 52 query operation");
+      Assert (Clip.Length = 0, "OSC 52 query should not decode text");
    end;
    Terminal.Core.Clear_Clipboard (T);
 
