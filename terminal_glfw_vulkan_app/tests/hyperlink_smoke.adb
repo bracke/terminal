@@ -104,12 +104,28 @@ begin
      (Terminal.App.Hyperlinks.Supported_URI ("mailto:a@example.test"),
       "mailto URI should be supported");
    Assert
+     (Terminal.App.Hyperlinks.Supported_URI ("HTTPS://example.test"),
+      "URI scheme matching should be case-insensitive");
+   Assert
+     (Terminal.App.Hyperlinks.Supported_URI ("MailTo:a@example.test"),
+      "mailto URI scheme matching should be case-insensitive");
+   Assert
      (not Terminal.App.Hyperlinks.Supported_URI ("file:///tmp/x"),
       "file URI should not be opened by default");
+   Assert
+     (not Terminal.App.Hyperlinks.Supported_URI ("https://example.test/a b"),
+      "URI with spaces should not be opened");
+   Assert
+     (not Terminal.App.Hyperlinks.Supported_URI
+        ("https://example.test/" & Character'Val (10) & "x"),
+      "URI with control bytes should not be opened");
    Assert
      (Terminal.App.Hyperlinks.Open_Command ("https://example.test")
       = "xdg-open 'https://example.test'",
       "open command");
+   Assert
+     (Terminal.App.Hyperlinks.Open_Command ("https://example.test/a b") = "",
+      "open command should reject unsupported URI bytes");
    Assert
      (Terminal.App.Hyperlinks.Open_Command ("https://example.test/a'b")
       = "xdg-open 'https://example.test/a'\''b'",

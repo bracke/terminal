@@ -39,16 +39,51 @@ package body Terminal.App.Hyperlinks is
       end if;
    end Link_At;
 
+   function Is_URI_Graphic (Ch : Character) return Boolean is
+     (Character'Pos (Ch) > 16#20# and then Character'Pos (Ch) < 16#7F#);
+
+   function Lower (Ch : Character) return Character is
+   begin
+      if Ch in 'A' .. 'Z' then
+         return Character'Val
+           (Character'Pos (Ch)
+            - Character'Pos ('A')
+            + Character'Pos ('a'));
+      else
+         return Ch;
+      end if;
+   end Lower;
+
+   function Has_Prefix_Case_Insensitive
+     (Text   : String;
+      Prefix : String) return Boolean
+   is
+   begin
+      if Text'Length < Prefix'Length then
+         return False;
+      end if;
+
+      for I in Prefix'Range loop
+         if Lower (Text (Text'First + I - Prefix'First)) /= Lower (Prefix (I)) then
+            return False;
+         end if;
+      end loop;
+
+      return True;
+   end Has_Prefix_Case_Insensitive;
+
    function Supported_URI (URI : String) return Boolean is
    begin
+      for Ch of URI loop
+         if not Is_URI_Graphic (Ch) then
+            return False;
+         end if;
+      end loop;
+
       return
-        (URI'Length > 7 and then URI (URI'First .. URI'First + 6) = "http://")
-        or else
-          (URI'Length > 8
-           and then URI (URI'First .. URI'First + 7) = "https://")
-        or else
-          (URI'Length > 7
-           and then URI (URI'First .. URI'First + 6) = "mailto:");
+        Has_Prefix_Case_Insensitive (URI, "http://")
+        or else Has_Prefix_Case_Insensitive (URI, "https://")
+        or else Has_Prefix_Case_Insensitive (URI, "mailto:");
    end Supported_URI;
 
    function Open_Command (URI : String) return String is
