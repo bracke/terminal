@@ -164,6 +164,37 @@ begin
          "DEC DSR probes should drain");
    end;
 
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[i"
+            & ASCII.ESC & "[4i"
+            & ASCII.ESC & "[5i"
+            & ASCII.ESC & "[?1i"
+            & ASCII.ESC & "[?4i"
+            & ASCII.ESC & "[?5i"
+            & ASCII.ESC & "[?10i"
+            & ASCII.ESC & "[?11i"),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "media-copy no-op feed failed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "media-copy no-ops should not queue responses");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before,
+         "media-copy no-ops should be recognized");
+
+      Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[?99i"), Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "unknown media-copy feed failed");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
+         "unknown media-copy should be diagnosed");
+   end;
+
    Terminal.Core.Feed
      (T,
       To_Bytes (ASCII.ESC & "[3;4H" & ASCII.ESC & "[6n"),

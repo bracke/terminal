@@ -2470,6 +2470,26 @@ package body Terminal.Core is
                    (Max_Row, T.Cursor_Row + Natural'Max (N, 1));
                Mark_Cursor_Move (T, Old_Row);
             end;
+         when 'i' =>
+            if T.CSI_Private = ASCII.NUL then
+               case Param (T, 1, 0) is
+                  when 0 | 4 | 5 =>
+                     null;
+                  when others =>
+                     T.Diag.Unsupported_Sequence :=
+                       T.Diag.Unsupported_Sequence + 1;
+               end case;
+            elsif T.CSI_Private = '?' then
+               case Param (T, 1, 0) is
+                  when 1 | 4 | 5 | 10 | 11 =>
+                     null;
+                  when others =>
+                     T.Diag.Unsupported_Sequence :=
+                       T.Diag.Unsupported_Sequence + 1;
+               end case;
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
          when 'm' =>
             Apply_SGR (T);
          when 'n' =>
