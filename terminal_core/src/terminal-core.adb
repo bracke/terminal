@@ -1541,28 +1541,50 @@ package body Terminal.Core is
    end Append_SGR_Status;
 
    procedure Finish_Ignored_String (T : in out Terminal) is
+      function Cursor_Style_Param return Natural is
+      begin
+         case T.Current_Cursor_Shape is
+            when Cursor_Block =>
+               return (if T.Current_Cursor_Blinking then 1 else 2);
+            when Cursor_Underline =>
+               return (if T.Current_Cursor_Blinking then 3 else 4);
+            when Cursor_Bar =>
+               return (if T.Current_Cursor_Blinking then 5 else 6);
+         end case;
+      end Cursor_Style_Param;
    begin
       if T.Ignored_String_Is_DCS
         and then T.Ignored_String_Count >= 3
         and then T.Ignored_String_Data (1) = '$'
         and then T.Ignored_String_Data (2) = 'q'
       then
-         case T.Ignored_String_Data (3) is
-            when 'm' =>
-               Append_DECRQSS_Start (T, Valid => True);
-               Append_SGR_Status (T);
-               Append_DECRQSS_End (T);
-            when 'r' =>
-               Append_DECRQSS_Start (T, Valid => True);
-               Append_Response_Natural (T, T.Top_Margin);
-               Append_Response_Char (T, ';');
-               Append_Response_Natural (T, T.Bottom_Margin);
-               Append_Response_Char (T, 'r');
-               Append_DECRQSS_End (T);
-            when others =>
-               Append_DECRQSS_Start (T, Valid => False);
-               Append_DECRQSS_End (T);
-         end case;
+         if T.Ignored_String_Count = 4
+           and then T.Ignored_String_Data (3) = ' '
+           and then T.Ignored_String_Data (4) = 'q'
+         then
+            Append_DECRQSS_Start (T, Valid => True);
+            Append_Response_Natural (T, Cursor_Style_Param);
+            Append_Response_Char (T, ' ');
+            Append_Response_Char (T, 'q');
+            Append_DECRQSS_End (T);
+         else
+            case T.Ignored_String_Data (3) is
+               when 'm' =>
+                  Append_DECRQSS_Start (T, Valid => True);
+                  Append_SGR_Status (T);
+                  Append_DECRQSS_End (T);
+               when 'r' =>
+                  Append_DECRQSS_Start (T, Valid => True);
+                  Append_Response_Natural (T, T.Top_Margin);
+                  Append_Response_Char (T, ';');
+                  Append_Response_Natural (T, T.Bottom_Margin);
+                  Append_Response_Char (T, 'r');
+                  Append_DECRQSS_End (T);
+               when others =>
+                  Append_DECRQSS_Start (T, Valid => False);
+                  Append_DECRQSS_End (T);
+            end case;
+         end if;
       end if;
 
       T.Ignored_String_Is_DCS := False;

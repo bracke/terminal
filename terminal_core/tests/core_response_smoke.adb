@@ -344,6 +344,34 @@ begin
       end;
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[5 q"
+         & ASCII.ESC & "P$q q" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "DECRQSS cursor style feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 10,
+      "DECRQSS cursor style response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "P1$r5 q" & ASCII.ESC & "\"),
+         "DECRQSS cursor style");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "DECRQSS cursor style should drain");
+   end;
+
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[18t"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS text area feed failed");
    Assert
