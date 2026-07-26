@@ -140,11 +140,13 @@ begin
          To_Bytes
            (ASCII.ESC & "[<0;1;1M"
             & ASCII.ESC & "[=3;3H"
-            & "x"),
+            & "x"
+            & ASCII.ESC & "[?2D"
+            & ASCII.ESC & "[>2J"),
          Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "private CSI consume feed failed");
       Assert
-        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 2,
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 4,
          "private CSI forms should be diagnosed");
    end;
 

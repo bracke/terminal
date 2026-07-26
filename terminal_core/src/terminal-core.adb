@@ -2376,6 +2376,13 @@ package body Terminal.Core is
          return;
       end if;
 
+      if T.CSI_Private /= ASCII.NUL
+        and then Final not in 'c' | 'h' | 'i' | 'l' | 'n' | 't'
+      then
+         T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+         return;
+      end if;
+
       case Final is
          when '@' =>
             Shift_Row_Right
