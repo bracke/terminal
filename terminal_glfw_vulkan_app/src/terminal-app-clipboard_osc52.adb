@@ -69,6 +69,15 @@ package body Terminal.App.Clipboard_OSC52 is
       end if;
    end Store;
 
+   procedure Store_Local_Selection
+     (State : in out Target_Store;
+      Text  : String)
+   is
+   begin
+      Store (State, Terminal.Core.Clipboard_Primary, Text);
+      Store (State, Terminal.Core.Clipboard_Selection, Text);
+   end Store_Local_Selection;
+
    function Text
      (State  : Target_Store;
       Target : Terminal.Core.Clipboard_Target) return String

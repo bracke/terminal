@@ -652,6 +652,9 @@ package body Terminal.App.Main_Loop is
                                  begin
                                     if Text'Length > 0 then
                                        GLFW_Vulkan.Clipboard.Set_Text (W, Text);
+                                       Terminal.App.Clipboard_OSC52
+                                         .Store_Local_Selection
+                                           (Clipboard_Targets, Text);
                                     end if;
                                     Terminal.Core.Release (Copy_Snap);
                                  end;

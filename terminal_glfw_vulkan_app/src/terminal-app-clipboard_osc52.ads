@@ -11,6 +11,10 @@ package Terminal.App.Clipboard_OSC52 is
       Target : Terminal.Core.Clipboard_Target;
       Text   : String);
 
+   procedure Store_Local_Selection
+     (State : in out Target_Store;
+      Text  : String);
+
    function Text
      (State  : Target_Store;
       Target : Terminal.Core.Clipboard_Target) return String;

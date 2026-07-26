@@ -78,6 +78,17 @@ begin
         (Store, Terminal.Core.Clipboard_Clipboard) = "",
       "system clipboard target is not stored in app target cache");
 
+   Terminal.App.Clipboard_OSC52.Store_Local_Selection
+     (Store, "local");
+   Assert
+     (Terminal.App.Clipboard_OSC52.Text
+        (Store, Terminal.Core.Clipboard_Primary) = "local",
+      "local selection should update primary target");
+   Assert
+     (Terminal.App.Clipboard_OSC52.Text
+        (Store, Terminal.Core.Clipboard_Selection) = "local",
+      "local selection should update selection target");
+
    Terminal.App.Clipboard_OSC52.Store
      (Store, Terminal.Core.Clipboard_Primary, Long_Text);
    Assert
