@@ -1479,7 +1479,9 @@ package body Terminal.Core is
       Number : Natural)
    is
    begin
-      if T.CSI_Private = ASCII.NUL and then Number = 11 then
+      if T.CSI_Private = ASCII.NUL and then Number in 1 .. 10 then
+         null;
+      elsif T.CSI_Private = ASCII.NUL and then Number = 11 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '1');

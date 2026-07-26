@@ -40,9 +40,12 @@
   line-feed/new-line mode, known DEC private modes, and stateless `?1048`
   save/restore cursor mode.
 - XTWINOPS window-state report (`CSI 11 t`) returns normal state as
-  `CSI 1 t`, and window-position report (`CSI 13 t`) returns unknown position
-  as `CSI 3 ; 0 ; 0 t`. Window pixel-size report (`CSI 14 t`) returns the
-  app-provided framebuffer height and width as `CSI 4 ; height ; width t`.
+  `CSI 1 t`. XTWINOPS window action requests (`CSI 1 t` through `CSI 10 t`,
+  including move and resize parameters) are recognized and ignored by the core
+  because platform window control belongs outside terminal state. Window-position
+  report (`CSI 13 t`) returns unknown position as `CSI 3 ; 0 ; 0 t`. Window
+  pixel-size report (`CSI 14 t`) returns the app-provided framebuffer height
+  and width as `CSI 4 ; height ; width t`.
   Screen pixel-size report (`CSI 15 t`) returns the same app-provided
   framebuffer size as `CSI 5 ; height ; width t`. Character-cell size report
   (`CSI 16 t`) returns the app-provided renderer cell height and width as

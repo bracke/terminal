@@ -39,6 +39,31 @@ begin
    Terminal.Core.Initialize (T, 5, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "initialize failed");
 
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[1t"
+            & ASCII.ESC & "[2t"
+            & ASCII.ESC & "[3;10;20t"
+            & ASCII.ESC & "[4;480;640t"
+            & ASCII.ESC & "[8;24;80t"
+            & ASCII.ESC & "[10t"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "XTWINOPS action no-op feed failed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "XTWINOPS action no-ops should not queue responses");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before,
+         "XTWINOPS action no-ops should be recognized");
+   end;
+
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[5n"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "DSR status feed failed");
    Assert
