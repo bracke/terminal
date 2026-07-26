@@ -289,6 +289,35 @@ package body Terminal.App.Text_Shaper is
    function Is_Pahawh_Hmong (C : Natural) return Boolean is
      (C in 16#16B00# .. 16#16B8F#);
 
+   function Is_Linear_A (C : Natural) return Boolean is
+     (C in 16#10600# .. 16#1077F#);
+
+   function Is_Phaistos_Disc (C : Natural) return Boolean is
+     (C in 16#101D0# .. 16#101FF#);
+
+   function Is_Cuneiform (C : Natural) return Boolean is
+     ((C in 16#12000# .. 16#123FF#)
+      or else (C in 16#12400# .. 16#1247F#)
+      or else (C in 16#12480# .. 16#1254F#));
+
+   function Is_Lycian (C : Natural) return Boolean is
+     (C in 16#10280# .. 16#1029F#);
+
+   function Is_Carian (C : Natural) return Boolean is
+     (C in 16#102A0# .. 16#102DF#);
+
+   function Is_Old_Turkic (C : Natural) return Boolean is
+     (C in 16#10C00# .. 16#10C4F#);
+
+   function Is_Medefaidrin (C : Natural) return Boolean is
+     (C in 16#16E40# .. 16#16E9F#);
+
+   function Is_Toto (C : Natural) return Boolean is
+     (C in 16#1E290# .. 16#1E2BF#);
+
+   function Is_Wancho (C : Natural) return Boolean is
+     (C in 16#1E2C0# .. 16#1E2FF#);
+
    function Is_Deseret (C : Natural) return Boolean is
      (C in 16#10400# .. 16#1044F#);
 
@@ -561,6 +590,15 @@ package body Terminal.App.Text_Shaper is
            or else Is_Mro (Run.Codepoints (I))
            or else Is_Bassa_Vah (Run.Codepoints (I))
            or else Is_Pahawh_Hmong (Run.Codepoints (I))
+           or else Is_Linear_A (Run.Codepoints (I))
+           or else Is_Phaistos_Disc (Run.Codepoints (I))
+           or else Is_Cuneiform (Run.Codepoints (I))
+           or else Is_Lycian (Run.Codepoints (I))
+           or else Is_Carian (Run.Codepoints (I))
+           or else Is_Old_Turkic (Run.Codepoints (I))
+           or else Is_Medefaidrin (Run.Codepoints (I))
+           or else Is_Toto (Run.Codepoints (I))
+           or else Is_Wancho (Run.Codepoints (I))
            or else Is_Deseret (Run.Codepoints (I))
            or else Is_Shavian (Run.Codepoints (I))
            or else Is_Osmanya (Run.Codepoints (I))
@@ -797,6 +835,24 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Bassa_Vah;
             elsif Is_Pahawh_Hmong (C) then
                return RM.Script_Pahawh_Hmong;
+            elsif Is_Linear_A (C) then
+               return RM.Script_Linear_A;
+            elsif Is_Phaistos_Disc (C) then
+               return RM.Script_Phaistos_Disc;
+            elsif Is_Cuneiform (C) then
+               return RM.Script_Cuneiform;
+            elsif Is_Lycian (C) then
+               return RM.Script_Lycian;
+            elsif Is_Carian (C) then
+               return RM.Script_Carian;
+            elsif Is_Old_Turkic (C) then
+               return RM.Script_Old_Turkic;
+            elsif Is_Medefaidrin (C) then
+               return RM.Script_Medefaidrin;
+            elsif Is_Toto (C) then
+               return RM.Script_Toto;
+            elsif Is_Wancho (C) then
+               return RM.Script_Wancho;
             elsif Is_Deseret (C) then
                return RM.Script_Deseret;
             elsif Is_Shavian (C) then

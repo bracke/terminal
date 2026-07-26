@@ -101,6 +101,15 @@ procedure Text_Shaper_Smoke is
    Mro       : RM.Text_Run_Command := Run (16#16A40#);
    Bassa     : RM.Text_Run_Command := Run (16#16AD0#);
    Pahawh    : RM.Text_Run_Command := Run (16#16B00#);
+   Linear_A  : RM.Text_Run_Command := Run (16#10600#);
+   Phaistos  : RM.Text_Run_Command := Run (16#101D0#);
+   Cuneiform : RM.Text_Run_Command := Run (16#12000#);
+   Lycian    : RM.Text_Run_Command := Run (16#10280#);
+   Carian    : RM.Text_Run_Command := Run (16#102A0#);
+   Old_Turkic : RM.Text_Run_Command := Run (16#10C00#);
+   Medefaidrin : RM.Text_Run_Command := Run (16#16E40#);
+   Toto      : RM.Text_Run_Command := Run (16#1E290#);
+   Wancho    : RM.Text_Run_Command := Run (16#1E2C0#);
    Deseret   : RM.Text_Run_Command := Run (16#10400#);
    Shavian   : RM.Text_Run_Command := Run (16#10450#);
    Osmanya   : RM.Text_Run_Command := Run (16#10480#);
@@ -513,6 +522,17 @@ begin
    Assert_Simple_Script (Mro, RM.Script_Mro, "Mro");
    Assert_Simple_Script (Bassa, RM.Script_Bassa_Vah, "Bassa Vah");
    Assert_Simple_Script (Pahawh, RM.Script_Pahawh_Hmong, "Pahawh Hmong");
+   Assert_Simple_Script (Linear_A, RM.Script_Linear_A, "Linear A");
+   Assert_Simple_Script
+     (Phaistos, RM.Script_Phaistos_Disc, "Phaistos Disc");
+   Assert_Simple_Script (Cuneiform, RM.Script_Cuneiform, "Cuneiform");
+   Assert_Simple_Script (Lycian, RM.Script_Lycian, "Lycian");
+   Assert_Simple_Script (Carian, RM.Script_Carian, "Carian");
+   Assert_Simple_Script (Old_Turkic, RM.Script_Old_Turkic, "Old Turkic");
+   Assert_Simple_Script
+     (Medefaidrin, RM.Script_Medefaidrin, "Medefaidrin");
+   Assert_Simple_Script (Toto, RM.Script_Toto, "Toto");
+   Assert_Simple_Script (Wancho, RM.Script_Wancho, "Wancho");
    Assert_Simple_Script (Deseret, RM.Script_Deseret, "Deseret");
    Assert_Simple_Script (Shavian, RM.Script_Shavian, "Shavian");
    Assert_Simple_Script (Osmanya, RM.Script_Osmanya, "Osmanya");

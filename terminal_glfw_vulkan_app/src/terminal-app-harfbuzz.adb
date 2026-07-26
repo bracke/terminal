@@ -207,6 +207,24 @@ package body Terminal.App.HarfBuzz is
             return "bass";
          when RM.Script_Pahawh_Hmong =>
             return "hmng";
+         when RM.Script_Linear_A =>
+            return "lina";
+         when RM.Script_Phaistos_Disc =>
+            return "disc";
+         when RM.Script_Cuneiform =>
+            return "xsux";
+         when RM.Script_Lycian =>
+            return "lyci";
+         when RM.Script_Carian =>
+            return "cari";
+         when RM.Script_Old_Turkic =>
+            return "orkh";
+         when RM.Script_Medefaidrin =>
+            return "medf";
+         when RM.Script_Toto =>
+            return "toto";
+         when RM.Script_Wancho =>
+            return "wcho";
          when RM.Script_Deseret =>
             return "dsrt";
          when RM.Script_Shavian =>
@@ -451,6 +469,19 @@ package body Terminal.App.HarfBuzz is
             return "bsq";
          when RM.Script_Pahawh_Hmong =>
             return "hmn";
+         when RM.Script_Linear_A
+            | RM.Script_Phaistos_Disc
+            | RM.Script_Cuneiform
+            | RM.Script_Lycian
+            | RM.Script_Carian
+            | RM.Script_Old_Turkic =>
+            return "und";
+         when RM.Script_Medefaidrin =>
+            return "dmf";
+         when RM.Script_Toto =>
+            return "txo";
+         when RM.Script_Wancho =>
+            return "nnp";
          when RM.Script_Deseret | RM.Script_Shavian =>
             return "en";
          when RM.Script_Osmanya =>
