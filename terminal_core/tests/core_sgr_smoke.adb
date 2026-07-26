@@ -9,6 +9,7 @@ procedure Core_SGR_Smoke is
    use type Terminal.Core.Color_Kind;
    use type Terminal.Core.Initialize_Status;
    use type Terminal.Core.Feed_Status;
+   use type Terminal.Core.Underline_Style;
 
    T : Terminal.Core.Terminal;
    Init : Terminal.Core.Initialize_Status;
@@ -197,12 +198,48 @@ begin
         Terminal.Core.Diagnostics (T);
    begin
       Assert (A.Style.Underline, "SGR 4:2 should enable underline");
+      Assert
+        (A.Style.Underline_Kind = Terminal.Core.Underline_Double,
+         "SGR 4:2 should select double underline");
       Assert (not A.Style.Faint, "SGR 4:2 should not enable faint");
       Assert (not B.Style.Underline, "SGR 4:0 should disable underline");
+      Assert
+        (B.Style.Underline_Kind = Terminal.Core.Underline_Single,
+         "SGR 4:0 should reset underline style");
       Assert (C.Style.Underline, "SGR 4:5 should enable underline");
+      Assert
+        (C.Style.Underline_Kind = Terminal.Core.Underline_Dashed,
+         "SGR 4:5 should select dashed underline");
       Assert
         (D.Unsupported_Sequence = 0,
          "SGR underline styles should not increment diagnostics");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 3, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "SGR extra underline styles initialize failed");
+   Feed_Text
+     (ASCII.ESC & "[4:3mA"
+      & ASCII.ESC & "[4:4mB"
+      & ASCII.ESC & "[24mC",
+      "SGR extra underline styles feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      B : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      C : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert
+        (A.Style.Underline_Kind = Terminal.Core.Underline_Curly,
+         "SGR 4:3 should select curly underline");
+      Assert
+        (B.Style.Underline_Kind = Terminal.Core.Underline_Dotted,
+         "SGR 4:4 should select dotted underline");
+      Assert (not C.Style.Underline, "SGR 24 should clear underline");
+      Assert
+        (C.Style.Underline_Kind = Terminal.Core.Underline_Single,
+         "SGR 24 should reset underline kind");
       Terminal.Core.Release (S);
    end;
 

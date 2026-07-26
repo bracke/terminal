@@ -91,8 +91,9 @@ foreground/background, bright
 16-color variants, indexed `38;5;n` and `48;5;n`, truecolor `38;2;r;g;b` and
 `48;2;r;g;b`, default foreground/background, strikethrough `9`/`29`, and
 overline `53`/`55`. Underline substyle selectors such as `4:0`, `4:1`,
-`4:2`, `4:3`, `4:4`, and `4:5` are recognized and collapsed to the boolean
-underline style. Font selectors `10` through `19` are recognized and ignored.
+`4:2`, `4:3`, `4:4`, and `4:5` are stored in snapshots; the renderer draws
+single, double, curly, dotted, and dashed underline approximations. Font
+selectors `10` through `19` are recognized and ignored.
 Underline color selectors `58;5;n`, `58;2;r;g;b`, and reset `59` are recognized
 and stored separately from foreground/background color.
 The GLFW app renders blink text with app-owned half-second phases; the

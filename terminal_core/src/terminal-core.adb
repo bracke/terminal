@@ -1540,7 +1540,29 @@ package body Terminal.Core is
          Param (3);
       end if;
       if T.Current_Style.Underline then
-         Param (4);
+         if T.Current_Style.Underline_Kind = Underline_Single then
+            Param (4);
+         else
+            if First then
+               First := False;
+            else
+               Append_Response_Char (T, ';');
+            end if;
+            Append_Response_Char (T, '4');
+            Append_Response_Char (T, ':');
+            case T.Current_Style.Underline_Kind is
+               when Underline_Single =>
+                  Append_Response_Char (T, '1');
+               when Underline_Double =>
+                  Append_Response_Char (T, '2');
+               when Underline_Curly =>
+                  Append_Response_Char (T, '3');
+               when Underline_Dotted =>
+                  Append_Response_Char (T, '4');
+               when Underline_Dashed =>
+                  Append_Response_Char (T, '5');
+            end case;
+         end if;
       end if;
       if T.Current_Style.Blink then
          Param (5);
@@ -2093,8 +2115,22 @@ package body Terminal.Core is
                   case Param (T, I + 1, 1) is
                      when 0 =>
                         T.Current_Style.Underline := False;
-                     when 1 .. 5 =>
+                        T.Current_Style.Underline_Kind := Underline_Single;
+                     when 1 =>
                         T.Current_Style.Underline := True;
+                        T.Current_Style.Underline_Kind := Underline_Single;
+                     when 2 =>
+                        T.Current_Style.Underline := True;
+                        T.Current_Style.Underline_Kind := Underline_Double;
+                     when 3 =>
+                        T.Current_Style.Underline := True;
+                        T.Current_Style.Underline_Kind := Underline_Curly;
+                     when 4 =>
+                        T.Current_Style.Underline := True;
+                        T.Current_Style.Underline_Kind := Underline_Dotted;
+                     when 5 =>
+                        T.Current_Style.Underline := True;
+                        T.Current_Style.Underline_Kind := Underline_Dashed;
                      when others =>
                         T.Diag.Unsupported_Sequence :=
                           T.Diag.Unsupported_Sequence + 1;
@@ -2102,6 +2138,7 @@ package body Terminal.Core is
                   I := I + 1;
                else
                   T.Current_Style.Underline := True;
+                  T.Current_Style.Underline_Kind := Underline_Single;
                end if;
             when 5 | 6 =>
                T.Current_Style.Blink := True;
@@ -2122,6 +2159,7 @@ package body Terminal.Core is
                T.Current_Style.Italic := False;
             when 24 =>
                T.Current_Style.Underline := False;
+               T.Current_Style.Underline_Kind := Underline_Single;
             when 25 =>
                T.Current_Style.Blink := False;
             when 27 =>

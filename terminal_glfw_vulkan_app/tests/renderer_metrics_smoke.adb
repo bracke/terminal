@@ -396,6 +396,66 @@ begin
          "strikethrough decoration should span the cell");
    end;
 
+   Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "underline substyle core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[4:2mA"
+         & ASCII.ESC & "[4:3mB"
+         & ASCII.ESC & "[4:4mC"
+         & ASCII.ESC & "[4:5mD"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "underline substyle feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "underline substyle render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+      Found_Double_Line : Boolean := False;
+      Found_Segment     : Boolean := False;
+   begin
+      Assert
+        (Frame.Rectangle_Count >= 10,
+         "underline substyles should emit multiple decoration rectangles");
+      for I in 1 .. Frame.Rectangle_Count loop
+         if Frame.Rectangles (I).Width =
+           Float (Terminal.App.Renderer.Cell_Width (R))
+         then
+            for J in I + 1 .. Frame.Rectangle_Count loop
+               if Frame.Rectangles (J).Width = Frame.Rectangles (I).Width
+                 and then Frame.Rectangles (J).X = Frame.Rectangles (I).X
+                 and then abs (Frame.Rectangles (J).Y - Frame.Rectangles (I).Y) = 2.0
+               then
+                  Found_Double_Line := True;
+               end if;
+            end loop;
+         end if;
+
+         if Frame.Rectangles (I).Width <= 2.0 then
+            Found_Segment := True;
+         end if;
+      end loop;
+
+      Assert
+        (Found_Double_Line,
+         "double underline should draw two separated full-width lines");
+      Assert
+        (Found_Segment,
+         "curly or dotted underline should be segmented");
+   end;
+
    Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "hover link core initialize failed");
    Terminal.Core.Feed

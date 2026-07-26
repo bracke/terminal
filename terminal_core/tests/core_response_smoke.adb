@@ -402,6 +402,34 @@ begin
 
    Terminal.Core.Feed
      (T,
+      To_Bytes
+        (ASCII.ESC & "[0;4:3;58;5;42m"
+         & ASCII.ESC & "P$qm" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "DECRQSS underline SGR feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 19,
+      "DECRQSS underline SGR response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 24);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "P1$r4:3;58;5;42m" & ASCII.ESC & "\"),
+         "DECRQSS underline SGR");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "DECRQSS underline SGR should drain");
+   end;
+
+   Terminal.Core.Feed
+     (T,
       (1 => 16#1B#,
        2 => Byte (Character'Pos ('[')),
        3 => Byte (Character'Pos ('0')),

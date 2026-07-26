@@ -311,6 +311,53 @@ package body Terminal.App.Renderer is
         (X => X, Y => Y, Width => Width, Height => Height, Color => Color);
    end Add_Rectangle;
 
+   procedure Add_Underline
+     (R      : in out Renderer;
+      Kind   : Terminal.Core.Underline_Style;
+      X      : Float;
+      Y      : Float;
+      Width  : Float;
+      Color  : RM.Pixel_Color)
+   is
+      Base_Y : constant Float := Y + Float (R.CH - 2);
+      Step   : constant Float := 4.0;
+      Dash   : constant Float := 5.0;
+      Pos    : Float := X;
+      Index  : Natural := 0;
+   begin
+      case Kind is
+         when Terminal.Core.Underline_Single =>
+            Add_Rectangle (R, X, Base_Y, Width, 1.0, Color);
+         when Terminal.Core.Underline_Double =>
+            Add_Rectangle (R, X, Base_Y - 2.0, Width, 1.0, Color);
+            Add_Rectangle (R, X, Base_Y, Width, 1.0, Color);
+         when Terminal.Core.Underline_Curly =>
+            while Pos < X + Width loop
+               Add_Rectangle
+                 (R,
+                  Pos,
+                  Base_Y - Float (Index mod 2),
+                  Float'Min (2.0, X + Width - Pos),
+                  1.0,
+                  Color);
+               Pos := Pos + 2.0;
+               Index := Index + 1;
+            end loop;
+         when Terminal.Core.Underline_Dotted =>
+            while Pos < X + Width loop
+               Add_Rectangle
+                 (R, Pos, Base_Y, Float'Min (1.0, X + Width - Pos), 1.0, Color);
+               Pos := Pos + Step;
+            end loop;
+         when Terminal.Core.Underline_Dashed =>
+            while Pos < X + Width loop
+               Add_Rectangle
+                 (R, Pos, Base_Y, Float'Min (Dash, X + Width - Pos), 1.0, Color);
+               Pos := Pos + Dash + 3.0;
+            end loop;
+      end case;
+   end Add_Underline;
+
    procedure Add_Glyph
      (R         : in out Renderer;
       Placement : Textrender.Glyph_Placement;
@@ -1114,13 +1161,15 @@ package body Terminal.App.Renderer is
                   end if;
 
                   if Cell.Style.Underline or else Is_Hovered_Link_Cell (R, Cell) then
-                     Add_Rectangle
+                     Add_Underline
                        (R,
-                        X      => X,
-                        Y      => Y + Float (R.CH - 2),
-                        Width  => Float (Cell_W),
-                        Height => 1.0,
-                        Color  => Underline_Color (Cell, FG));
+                        (if Cell.Style.Underline
+                         then Cell.Style.Underline_Kind
+                         else Terminal.Core.Underline_Single),
+                        X,
+                        Y,
+                        Float (Cell_W),
+                        Underline_Color (Cell, FG));
                   end if;
 
                   if Cell.Style.Strikethrough then

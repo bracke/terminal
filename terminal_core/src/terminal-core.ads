@@ -29,10 +29,18 @@ package Terminal.Core is
       B     : Natural range 0 .. 255 := 0;
    end record;
 
+   type Underline_Style is
+     (Underline_Single,
+      Underline_Double,
+      Underline_Curly,
+      Underline_Dotted,
+      Underline_Dashed);
+
    type Style is record
       Foreground : Color;
       Background : Color;
       Underline_Color : Color;
+      Underline_Kind : Underline_Style := Underline_Single;
       Bold       : Boolean := False;
       Faint      : Boolean := False;
       Blink      : Boolean := False;
