@@ -78,6 +78,83 @@ package body Terminal.App.Selection is
       end if;
    end Extend_Selection;
 
+   function Is_Wide_Continuation
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      Col      : Positive) return Boolean;
+
+   function Is_Word_Code_Point
+     (Code : Terminal.Common.Code_Point) return Boolean
+   is
+      C : constant Natural := Natural (Code);
+   begin
+      return
+        (C in Character'Pos ('A') .. Character'Pos ('Z'))
+        or else (C in Character'Pos ('a') .. Character'Pos ('z'))
+        or else (C in Character'Pos ('0') .. Character'Pos ('9'))
+        or else C = Character'Pos ('_');
+   end Is_Word_Code_Point;
+
+   function Is_Word_Cell
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      Col      : Positive) return Boolean
+   is
+      Cell : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (Snapshot, Row, Col);
+   begin
+      return Cell.Kind = Terminal.Core.Character
+        and then Is_Word_Code_Point (Cell.Text.Code_Point);
+   end Is_Word_Cell;
+
+   procedure Select_Word
+     (Selection : in out Selection_State;
+      Snapshot  : Terminal.Core.Render_Snapshot;
+      Position  : Cell_Position)
+   is
+      Row   : Positive;
+      Col   : Positive;
+      First : Positive;
+      Last  : Positive;
+   begin
+      if Snapshot.Rows = 0
+        or else Snapshot.Cols = 0
+        or else Snapshot.Cells = null
+      then
+         Clear (Selection);
+         return;
+      end if;
+
+      Row := Clamp_Pos (Position.Row, Positive (Snapshot.Rows));
+      Col := Clamp_Pos (Position.Col, Positive (Snapshot.Cols));
+      if Is_Wide_Continuation (Snapshot, Row, Col) then
+         Col := Col - 1;
+      end if;
+
+      if not Is_Word_Cell (Snapshot, Row, Col) then
+         Begin_Selection (Selection, (Row => Row, Col => Col));
+         Selection.Active := False;
+         return;
+      end if;
+
+      First := Col;
+      while First > 1 and then Is_Word_Cell (Snapshot, Row, First - 1) loop
+         First := First - 1;
+      end loop;
+
+      Last := Col;
+      while Last < Positive (Snapshot.Cols)
+        and then Is_Word_Cell (Snapshot, Row, Last + 1)
+      loop
+         Last := Last + 1;
+      end loop;
+
+      Selection.Active := False;
+      Selection.Has_Range := True;
+      Selection.Anchor := (Row => Row, Col => First);
+      Selection.Focus := (Row => Row, Col => Last);
+   end Select_Word;
+
    procedure Finish_Selection
      (Selection : in out Selection_State;
       Position  : Cell_Position)

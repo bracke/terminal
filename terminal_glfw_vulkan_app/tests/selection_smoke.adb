@@ -119,6 +119,43 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 12, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "word selection initialize failed");
+   Terminal.Core.Feed (T, To_Bytes ("ab_cd xy!"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "word selection feed failed");
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 4));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = "ab_cd",
+         "word selection should expand over letters digits and underscore");
+      Terminal.App.Selection.Apply_To_Snapshot (S, Sel);
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Style.Inverse,
+         "word selection should highlight first word cell");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 5).Style.Inverse,
+         "word selection should highlight last word cell");
+      Assert
+        (not Terminal.Core.Cell_At (S, 1, 6).Style.Inverse,
+         "word selection should stop before space");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 9));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = "!",
+         "non-word double click should select the clicked cell");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 4, 10, Init);
    Assert (Init = Terminal.Core.Ok, "cluster selection initialize failed");
    Terminal.Core.Feed
@@ -222,6 +259,19 @@ begin
         (Terminal.App.Selection.Selected_Text (S, Sel) =
          To_String ((1 => 16#E4#, 2 => 16#B8#, 3 => 16#80#)),
          "selecting both halves of a wide glyph should copy it once");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 3));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         To_String ((1 => 16#E4#, 2 => 16#B8#, 3 => 16#80#)),
+         "word select on wide continuation should select the wide glyph");
       Terminal.Core.Release (S);
    end;
 

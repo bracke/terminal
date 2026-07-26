@@ -255,6 +255,11 @@ package body Terminal.App.Main_Loop is
       end case;
    end Mouse_Button_Code;
 
+   function Same_Position
+     (Left  : Terminal.App.Selection.Cell_Position;
+      Right : Terminal.App.Selection.Cell_Position) return Boolean is
+     (Left.Row = Right.Row and then Left.Col = Right.Col);
+
    function Supported_Link
      (Link : Terminal.Core.Hyperlink) return Terminal.Core.Hyperlink
    is
@@ -269,6 +274,7 @@ package body Terminal.App.Main_Loop is
    end Supported_Link;
 
    Scroll_Lines_Per_Wheel : constant Positive := 3;
+   Double_Click_Interval : constant Duration := 0.5;
 
    procedure Run is
       Ctx : GLFW_Vulkan.Context;
@@ -305,6 +311,9 @@ package body Terminal.App.Main_Loop is
       Blink_Origin : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
       Last_Blink_Tick : Natural := 0;
       Blinking_Text_Active : Boolean := False;
+      Last_Click_Time : Ada.Real_Time.Time := Blink_Origin;
+      Last_Click_Pos  : Terminal.App.Selection.Cell_Position;
+      Have_Last_Click : Boolean := False;
 
       procedure Apply_Hovered_Link (Link : Terminal.Core.Hyperlink) is
          Cursor_Status : GLFW_Vulkan.Windows.Cursor_Status;
@@ -650,10 +659,30 @@ package body Terminal.App.Main_Loop is
                                     if Event.Button_Event.Modifiers.Shift then
                                        Terminal.App.Selection.Extend_Selection
                                          (Selection, Pos);
+                                    elsif Have_Last_Click
+                                      and then Same_Position (Last_Click_Pos, Pos)
+                                      and then
+                                        Ada.Real_Time.To_Duration
+                                          (Ada.Real_Time.Clock - Last_Click_Time)
+                                          <= Double_Click_Interval
+                                    then
+                                       declare
+                                          Word_Snap :
+                                            Terminal.Core.Render_Snapshot :=
+                                              Terminal.App.Scrollback_View
+                                                .Snapshot (T, Scroll_Offset);
+                                       begin
+                                          Terminal.App.Selection.Select_Word
+                                            (Selection, Word_Snap, Pos);
+                                          Terminal.Core.Release (Word_Snap);
+                                       end;
                                     else
                                        Terminal.App.Selection.Begin_Selection
                                          (Selection, Pos);
                                     end if;
+                                    Last_Click_Time := Ada.Real_Time.Clock;
+                                    Last_Click_Pos := Pos;
+                                    Have_Last_Click := True;
                                     Dirty := True;
                                     Need_Redraw := True;
                                     Local_Redraw := True;
