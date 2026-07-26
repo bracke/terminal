@@ -255,6 +255,19 @@ package body Terminal.App.Main_Loop is
       end case;
    end Mouse_Button_Code;
 
+   function Supported_Link
+     (Link : Terminal.Core.Hyperlink) return Terminal.Core.Hyperlink
+   is
+      URI_Text : constant String :=
+        (if Link.URI_Length = 0 then "" else Link.URI (1 .. Link.URI_Length));
+   begin
+      if Link.Active and then Terminal.App.Hyperlinks.Supported_URI (URI_Text) then
+         return Link;
+      else
+         return (others => <>);
+      end if;
+   end Supported_Link;
+
    Scroll_Lines_Per_Wheel : constant Positive := 3;
 
    procedure Run is
@@ -292,6 +305,23 @@ package body Terminal.App.Main_Loop is
       Blink_Origin : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
       Last_Blink_Tick : Natural := 0;
       Blinking_Text_Active : Boolean := False;
+
+      procedure Apply_Hovered_Link (Link : Terminal.Core.Hyperlink) is
+         Cursor_Status : GLFW_Vulkan.Windows.Cursor_Status;
+      begin
+         if Terminal.App.Hyperlinks.Same_Link (Hovered_Link, Link) then
+            return;
+         end if;
+
+         Hovered_Link := Link;
+         Terminal.App.Renderer.Set_Hovered_Link (R, Hovered_Link);
+         GLFW_Vulkan.Windows.Set_Standard_Cursor
+           (W,
+            (if Hovered_Link.Active
+             then GLFW_Vulkan.Windows.Hand_Cursor
+             else GLFW_Vulkan.Windows.Default_Cursor),
+            Cursor_Status);
+      end Apply_Hovered_Link;
    begin
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
       if Init_Status /= GLFW_Vulkan.Ok then
@@ -665,16 +695,15 @@ package body Terminal.App.Main_Loop is
                                    Terminal.App.Scrollback_View.Snapshot
                                      (T, Scroll_Offset);
                                  New_Link : constant Terminal.Core.Hyperlink :=
-                                   Terminal.App.Hyperlinks.Link_At
-                                     (Hover_Snap, Pos);
+                                   Supported_Link
+                                     (Terminal.App.Hyperlinks.Link_At
+                                        (Hover_Snap, Pos));
                               begin
                                  Terminal.Core.Release (Hover_Snap);
                                  if not Terminal.App.Hyperlinks.Same_Link
                                    (Hovered_Link, New_Link)
                                  then
-                                    Hovered_Link := New_Link;
-                                    Terminal.App.Renderer.Set_Hovered_Link
-                                      (R, Hovered_Link);
+                                    Apply_Hovered_Link (New_Link);
                                     Dirty := True;
                                     Need_Redraw := True;
                                     Local_Redraw := True;
@@ -778,8 +807,7 @@ package body Terminal.App.Main_Loop is
                              Terminal.App.Scrollback_View.Clamp_Offset
                                (T, Scroll_Offset);
                            Terminal.App.Selection.Clear (Selection);
-                           Hovered_Link := (others => <>);
-                           Terminal.App.Renderer.Set_Hovered_Link (R, Hovered_Link);
+                           Apply_Hovered_Link ((others => <>));
                            Dirty := True;
                            Need_Redraw := True;
                            Local_Redraw := True;

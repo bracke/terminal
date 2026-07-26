@@ -212,7 +212,8 @@ clears it. The GLFW app resolves links under the pointer from snapshots and
 opens `http`, `https`, and `mailto` links with `Ctrl+Left Click` through the
 desktop opener. Supported URI scheme matching is case-insensitive, and URIs
 with bare schemes, spaces, or control bytes are rejected before launcher command
-construction. Hover styling, tooltips, and richer link UI remain postponed.
+construction. Supported links under the pointer are underlined and use a hand
+cursor. Tooltips and richer link UI remain postponed.
 
 ## TERM and Environment
 

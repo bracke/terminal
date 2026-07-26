@@ -5,6 +5,7 @@ with GLFW_Vulkan.Raw;
 
 package body GLFW_Vulkan.Windows is
    use type GLFW_Vulkan.Raw.GLFW_Window_Handle;
+   use type GLFW_Vulkan.Raw.GLFW_Cursor_Handle;
    use type Interfaces.C.int;
 
    procedure Create
@@ -39,6 +40,11 @@ package body GLFW_Vulkan.Windows is
    procedure Destroy (W : in out Window) is
    begin
       if W.Handle /= Raw.Null_Window then
+         if W.Cursor /= Raw.Null_Cursor then
+            Raw.Set_Cursor (W.Handle, Raw.Null_Cursor);
+            Raw.Destroy_Cursor (W.Cursor);
+            W.Cursor := Raw.Null_Cursor;
+         end if;
          Raw.Destroy_Window (W.Handle);
          W.Handle := Raw.Null_Window;
       end if;
@@ -72,6 +78,45 @@ package body GLFW_Vulkan.Windows is
       end if;
       Interfaces.C.Strings.Free (C_Title);
    end Set_Title;
+
+   function Raw_Cursor_Shape
+     (Cursor : Standard_Cursor) return Interfaces.C.int
+   is
+   begin
+      case Cursor is
+         when Default_Cursor => return Raw.GLFW_ARROW_CURSOR;
+         when I_Beam_Cursor  => return Raw.GLFW_IBEAM_CURSOR;
+         when Hand_Cursor    => return Raw.GLFW_HAND_CURSOR;
+      end case;
+   end Raw_Cursor_Shape;
+
+   procedure Set_Standard_Cursor
+     (W      : in out Window;
+      Cursor : Standard_Cursor;
+      Status : out Cursor_Status)
+   is
+      New_Cursor : Raw.GLFW_Cursor_Handle := Raw.Null_Cursor;
+   begin
+      if W.Handle = Raw.Null_Window then
+         Status := Window_Invalid;
+         return;
+      end if;
+
+      if Cursor /= Default_Cursor then
+         New_Cursor := Raw.Create_Standard_Cursor (Raw_Cursor_Shape (Cursor));
+         if New_Cursor = Raw.Null_Cursor then
+            Status := Create_Failed;
+            return;
+         end if;
+      end if;
+
+      Raw.Set_Cursor (W.Handle, New_Cursor);
+      if W.Cursor /= Raw.Null_Cursor then
+         Raw.Destroy_Cursor (W.Cursor);
+      end if;
+      W.Cursor := New_Cursor;
+      Status := Ok;
+   end Set_Standard_Cursor;
 
    procedure Framebuffer_Size
      (W      : Window;

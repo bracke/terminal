@@ -10,6 +10,16 @@ package GLFW_Vulkan.Windows is
       Invalid_Size,
       Create_Failed);
 
+   type Standard_Cursor is
+     (Default_Cursor,
+      I_Beam_Cursor,
+      Hand_Cursor);
+
+   type Cursor_Status is
+     (Ok,
+      Window_Invalid,
+      Create_Failed);
+
    procedure Create
      (Ctx    : in out GLFW_Vulkan.Context;
       W      : out Window;
@@ -30,6 +40,11 @@ package GLFW_Vulkan.Windows is
      (W     : Window;
       Title : String);
 
+   procedure Set_Standard_Cursor
+     (W      : in out Window;
+      Cursor : Standard_Cursor;
+      Status : out Cursor_Status);
+
    procedure Framebuffer_Size
      (W      : Window;
       Width  : out Natural;
@@ -38,5 +53,6 @@ package GLFW_Vulkan.Windows is
 private
    type Window is limited record
       Handle : Raw.GLFW_Window_Handle := Raw.Null_Window;
+      Cursor : Raw.GLFW_Cursor_Handle := Raw.Null_Cursor;
    end record;
 end GLFW_Vulkan.Windows;

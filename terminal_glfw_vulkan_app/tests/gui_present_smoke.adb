@@ -16,6 +16,7 @@ procedure GUI_Present_Smoke is
    use Terminal.Common.Bytes;
    use type GLFW_Vulkan.Init_Status;
    use type GLFW_Vulkan.Windows.Create_Status;
+   use type GLFW_Vulkan.Windows.Cursor_Status;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Vulkan_Context.Init_Status;
@@ -41,6 +42,7 @@ procedure GUI_Present_Smoke is
    Present_Status : Terminal.App.Vulkan_Presenter.Present_Status;
    FB_Width  : Natural := 0;
    FB_Height : Natural := 0;
+   Cursor_Status : GLFW_Vulkan.Windows.Cursor_Status;
 
    function Display_Available return Boolean is
      (Ada.Environment_Variables.Exists ("DISPLAY")
@@ -60,6 +62,12 @@ procedure GUI_Present_Smoke is
       Ada.Text_IO.Put_Line ("gui_present_smoke: skipped: " & Reason);
    end Skip;
 begin
+   GLFW_Vulkan.Windows.Set_Standard_Cursor
+     (W, GLFW_Vulkan.Windows.Hand_Cursor, Cursor_Status);
+   Assert
+     (Cursor_Status = GLFW_Vulkan.Windows.Window_Invalid,
+      "invalid window cursor set should be explicit");
+
    if not Display_Available then
       Skip ("no DISPLAY or WAYLAND_DISPLAY");
       return;
@@ -83,6 +91,16 @@ begin
 
    GLFW_Vulkan.Events.Poll;
    Assert (GLFW_Vulkan.Windows.Is_Valid (W), "window should be valid");
+   GLFW_Vulkan.Windows.Set_Standard_Cursor
+     (W, GLFW_Vulkan.Windows.Hand_Cursor, Cursor_Status);
+   Assert
+     (Cursor_Status = GLFW_Vulkan.Windows.Ok,
+      "hand cursor should be set on valid window");
+   GLFW_Vulkan.Windows.Set_Standard_Cursor
+     (W, GLFW_Vulkan.Windows.Default_Cursor, Cursor_Status);
+   Assert
+     (Cursor_Status = GLFW_Vulkan.Windows.Ok,
+      "default cursor should be restored on valid window");
 
    Terminal.App.Vulkan_Context.Initialize (Vk_Ctx, W, Vk_Status);
    if Vk_Status /= Terminal.App.Vulkan_Context.Ok then

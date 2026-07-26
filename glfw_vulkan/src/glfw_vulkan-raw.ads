@@ -5,6 +5,8 @@ with System;
 package GLFW_Vulkan.Raw is
    type GLFW_Window_Handle is new System.Address;
    Null_Window : constant GLFW_Window_Handle := GLFW_Window_Handle (System.Null_Address);
+   type GLFW_Cursor_Handle is new System.Address;
+   Null_Cursor : constant GLFW_Cursor_Handle := GLFW_Cursor_Handle (System.Null_Address);
 
    GLFW_CLIENT_API : constant Interfaces.C.int := 16#00022001#;
    GLFW_NO_API     : constant Interfaces.C.int := 0;
@@ -16,6 +18,10 @@ package GLFW_Vulkan.Raw is
    GLFW_MOUSE_BUTTON_LEFT   : constant Interfaces.C.int := 0;
    GLFW_MOUSE_BUTTON_RIGHT  : constant Interfaces.C.int := 1;
    GLFW_MOUSE_BUTTON_MIDDLE : constant Interfaces.C.int := 2;
+
+   GLFW_ARROW_CURSOR : constant Interfaces.C.int := 16#00036001#;
+   GLFW_IBEAM_CURSOR : constant Interfaces.C.int := 16#00036002#;
+   GLFW_HAND_CURSOR  : constant Interfaces.C.int := 16#00036004#;
 
    GLFW_MOD_SHIFT   : constant Interfaces.C.int := 16#0001#;
    GLFW_MOD_CONTROL : constant Interfaces.C.int := 16#0002#;
@@ -68,6 +74,18 @@ package GLFW_Vulkan.Raw is
      (Window : GLFW_Window_Handle;
       Title  : Interfaces.C.Strings.chars_ptr)
      with Import, Convention => C, External_Name => "glfwSetWindowTitle";
+
+   function Create_Standard_Cursor
+     (Shape : Interfaces.C.int) return GLFW_Cursor_Handle
+     with Import, Convention => C, External_Name => "glfwCreateStandardCursor";
+
+   procedure Destroy_Cursor (Cursor : GLFW_Cursor_Handle)
+     with Import, Convention => C, External_Name => "glfwDestroyCursor";
+
+   procedure Set_Cursor
+     (Window : GLFW_Window_Handle;
+      Cursor : GLFW_Cursor_Handle)
+     with Import, Convention => C, External_Name => "glfwSetCursor";
 
    procedure Get_Framebuffer_Size
      (Window : GLFW_Window_Handle;
