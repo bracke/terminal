@@ -1744,6 +1744,10 @@ package body Terminal.Core is
      (T      : in out Terminal;
       Number : Natural)
    is
+      Target : constant Natural := Param (T, 2, 0);
+
+      function Valid_Title_Stack_Target return Boolean is
+        (T.CSI_Count <= 2 and then Target in 0 .. 2);
    begin
       if T.CSI_Private = ASCII.NUL and then Number in 1 .. 10 then
          null;
@@ -1836,10 +1840,16 @@ package body Terminal.Core is
          end loop;
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '\');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 22 then
+      elsif T.CSI_Private = ASCII.NUL
+        and then Number = 22
+        and then Valid_Title_Stack_Target
+      then
          T.Saved_Window_Title := T.Window_Title;
          T.Saved_Window_Title_Valid := True;
-      elsif T.CSI_Private = ASCII.NUL and then Number = 23 then
+      elsif T.CSI_Private = ASCII.NUL
+        and then Number = 23
+        and then Valid_Title_Stack_Target
+      then
          if T.Saved_Window_Title_Valid then
             T.Window_Title := T.Saved_Window_Title;
          end if;

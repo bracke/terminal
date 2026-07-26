@@ -822,4 +822,62 @@ begin
             "XTWINOPS restored title should drain");
       end;
    end;
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "]2;param" & ASCII.BEL
+            & ASCII.ESC & "[22;0t"
+            & ASCII.ESC & "]2;temporary" & ASCII.BEL
+            & ASCII.ESC & "[23;0t"
+            & ASCII.ESC & "[22;1t"
+            & ASCII.ESC & "[23;1t"
+            & ASCII.ESC & "[22;2t"
+            & ASCII.ESC & "[23;2t"
+            & ASCII.ESC & "[21t"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "XTWINOPS parameterized title stack feed failed");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before,
+         "XTWINOPS parameterized title stack should be recognized");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 10,
+         "XTWINOPS parameterized restored title response length");
+
+      declare
+         Buffer : Byte_Array (1 .. 16);
+         Last   : Natural;
+      begin
+         Terminal.Core.Read_Response (T, Buffer, Last);
+         Assert_Bytes
+           (Buffer,
+            Last,
+            To_Bytes (ASCII.ESC & "]lparam" & ASCII.ESC & "\"),
+            "XTWINOPS parameterized restored title");
+         Assert
+           (Terminal.Core.Pending_Response_Length (T) = 0,
+            "XTWINOPS parameterized restored title should drain");
+      end;
+   end;
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T, To_Bytes (ASCII.ESC & "[22;3t" & ASCII.ESC & "[23;3t"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "XTWINOPS unsupported title stack target feed failed");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 2,
+         "XTWINOPS unsupported title stack targets should be diagnosed");
+   end;
 end Core_Response_Smoke;
