@@ -21,6 +21,23 @@ package body Terminal.App.Fonts is
    Noto_Symbols2 : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf";
    Noto_Arabic   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf";
    Noto_Hebrew   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf";
+   Noto_Samaritan : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSamaritan-Regular.ttf";
+   Noto_Mandaic  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMandaic-Regular.ttf";
+   Noto_Adlam    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansAdlam-Regular.ttf";
+   Noto_Rohingya : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansHanifiRohingya-Regular.ttf";
+   Noto_Aramaic  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansImperialAramaic-Regular.ttf";
+   Noto_Palmyrene : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansPalmyrene-Regular.ttf";
+   Noto_Nabataean : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansNabataean-Regular.ttf";
+   Noto_Hatran   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansHatran-Regular.ttf";
+   Noto_Phoenician : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansPhoenician-Regular.ttf";
+   Noto_Lydian   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLydian-Regular.ttf";
+   Noto_Avestan  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansAvestan-Regular.ttf";
+   Noto_Parthian : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansInscriptionalParthian-Regular.ttf";
+   Noto_Pahlavi  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansInscriptionalPahlavi-Regular.ttf";
+   Noto_Psalter  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansPsalterPahlavi-Regular.ttf";
+   Noto_Old_South_Arabian : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansOldSouthArabian-Regular.ttf";
+   Noto_Old_North_Arabian : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansOldNorthArabian-Regular.ttf";
+   Noto_Manichaean : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansManichaean-Regular.ttf";
    Noto_Deva     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf";
    Noto_Bengali  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansBengali-Regular.ttf";
    Noto_Gurmukhi : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansGurmukhi-Regular.ttf";
@@ -111,6 +128,23 @@ package body Terminal.App.Fonts is
       Noto_Symbols2'Access,
       Noto_Arabic'Access,
       Noto_Hebrew'Access,
+      Noto_Samaritan'Access,
+      Noto_Mandaic'Access,
+      Noto_Adlam'Access,
+      Noto_Rohingya'Access,
+      Noto_Aramaic'Access,
+      Noto_Palmyrene'Access,
+      Noto_Nabataean'Access,
+      Noto_Hatran'Access,
+      Noto_Phoenician'Access,
+      Noto_Lydian'Access,
+      Noto_Avestan'Access,
+      Noto_Parthian'Access,
+      Noto_Pahlavi'Access,
+      Noto_Psalter'Access,
+      Noto_Old_South_Arabian'Access,
+      Noto_Old_North_Arabian'Access,
+      Noto_Manichaean'Access,
       Noto_Deva'Access,
       Noto_Bengali'Access,
       Noto_Gurmukhi'Access,

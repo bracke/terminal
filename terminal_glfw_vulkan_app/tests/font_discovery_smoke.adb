@@ -33,6 +33,40 @@ procedure Font_Discovery_Smoke is
      "/usr/share/fonts/truetype/noto/NotoSansTaiViet-Regular.ttf";
    Noto_Meetei : constant String :=
      "/usr/share/fonts/truetype/noto/NotoSansMeeteiMayek-Regular.ttf";
+   Noto_Samaritan : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansSamaritan-Regular.ttf";
+   Noto_Mandaic : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansMandaic-Regular.ttf";
+   Noto_Adlam : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansAdlam-Regular.ttf";
+   Noto_Rohingya : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansHanifiRohingya-Regular.ttf";
+   Noto_Aramaic : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansImperialAramaic-Regular.ttf";
+   Noto_Palmyrene : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansPalmyrene-Regular.ttf";
+   Noto_Nabataean : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansNabataean-Regular.ttf";
+   Noto_Hatran : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansHatran-Regular.ttf";
+   Noto_Phoenician : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansPhoenician-Regular.ttf";
+   Noto_Lydian : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansLydian-Regular.ttf";
+   Noto_Avestan : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansAvestan-Regular.ttf";
+   Noto_Parthian : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansInscriptionalParthian-Regular.ttf";
+   Noto_Pahlavi : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansInscriptionalPahlavi-Regular.ttf";
+   Noto_Psalter : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansPsalterPahlavi-Regular.ttf";
+   Noto_Old_South_Arabian : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansOldSouthArabian-Regular.ttf";
+   Noto_Old_North_Arabian : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansOldNorthArabian-Regular.ttf";
+   Noto_Manichaean : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansManichaean-Regular.ttf";
    Noto_Linear_A : constant String :=
      "/usr/share/fonts/truetype/noto/NotoSansLinearA-Regular.ttf";
    Noto_Linear_B : constant String :=
@@ -123,6 +157,26 @@ begin
    Assert_Contains_If_Installed (Noto_Khmer, "Khmer");
    Assert_Contains_If_Installed (Noto_Tai_Viet, "Tai Viet");
    Assert_Contains_If_Installed (Noto_Meetei, "Meetei Mayek");
+   Assert_Contains_If_Installed (Noto_Samaritan, "Samaritan");
+   Assert_Contains_If_Installed (Noto_Mandaic, "Mandaic");
+   Assert_Contains_If_Installed (Noto_Adlam, "Adlam");
+   Assert_Contains_If_Installed (Noto_Rohingya, "Hanifi Rohingya");
+   Assert_Contains_If_Installed (Noto_Aramaic, "Imperial Aramaic");
+   Assert_Contains_If_Installed (Noto_Palmyrene, "Palmyrene");
+   Assert_Contains_If_Installed (Noto_Nabataean, "Nabataean");
+   Assert_Contains_If_Installed (Noto_Hatran, "Hatran");
+   Assert_Contains_If_Installed (Noto_Phoenician, "Phoenician");
+   Assert_Contains_If_Installed (Noto_Lydian, "Lydian");
+   Assert_Contains_If_Installed (Noto_Avestan, "Avestan");
+   Assert_Contains_If_Installed
+     (Noto_Parthian, "Inscriptional Parthian");
+   Assert_Contains_If_Installed (Noto_Pahlavi, "Inscriptional Pahlavi");
+   Assert_Contains_If_Installed (Noto_Psalter, "Psalter Pahlavi");
+   Assert_Contains_If_Installed
+     (Noto_Old_South_Arabian, "Old South Arabian");
+   Assert_Contains_If_Installed
+     (Noto_Old_North_Arabian, "Old North Arabian");
+   Assert_Contains_If_Installed (Noto_Manichaean, "Manichaean");
    Assert_Contains_If_Installed (Noto_Linear_A, "Linear A");
    Assert_Contains_If_Installed (Noto_Linear_B, "Linear B");
    Assert_Contains_If_Installed (Noto_Cuneiform, "Cuneiform");
