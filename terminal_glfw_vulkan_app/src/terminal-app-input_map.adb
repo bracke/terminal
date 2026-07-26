@@ -150,6 +150,17 @@ package body Terminal.App.Input_Map is
       end if;
    end Append_Keypad_Application;
 
+   procedure Append_Return
+     (Chunk : in out Terminal.App.Queues.Byte_Chunk;
+      Modes : Terminal.Core.Mode_Snapshot)
+   is
+   begin
+      Append (Chunk, 16#0D#);
+      if Modes.Linefeed_New_Line then
+         Append (Chunk, 16#0A#);
+      end if;
+   end Append_Return;
+
    function Mouse_Button_Code
      (Button : GLFW_Vulkan.Input.Mouse_Button) return Natural
    is
@@ -459,7 +470,7 @@ package body Terminal.App.Input_Map is
       end if;
 
       case Event.Key is
-         when Enter      => Append (Chunk, 16#0D#);
+         when Enter      => Append_Return (Chunk, Modes);
          when Tab        =>
             if Event.Modifiers.Shift then
                Append_String (Chunk, ASCII.ESC & "[Z");
@@ -470,7 +481,7 @@ package body Terminal.App.Input_Map is
             if Event.Modifiers.Alt then
                Append (Chunk, 16#1B#);
             end if;
-            Append (Chunk, 16#0D#);
+            Append_Return (Chunk, Modes);
          when Backspace  => Append (Chunk, 16#7F#);
          when Space      =>
             if Event.Modifiers.Alt then

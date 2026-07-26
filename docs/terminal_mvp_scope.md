@@ -104,7 +104,9 @@
   tab-clear handling across bounded parameter lists.
 - Autowrap with pending-wrap behavior.
 - ANSI line-feed/new-line mode (`CSI 20 h`/`CSI 20 l`) controls whether LF,
-  VT, and FF preserve the current column or first return to column one.
+  VT, and FF preserve the current column or first return to column one. The
+  GLFW app also uses this mode for Return-key input, sending CR LF while it is
+  enabled and CR while it is disabled.
 - Primary and alternate screen buffers.
 - Dirty row tracking.
 - Renderer-neutral snapshots.

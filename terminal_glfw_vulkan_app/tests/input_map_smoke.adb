@@ -85,6 +85,11 @@ begin
    IM.Encode_Key (Key_Event (GI.Enter), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#0D#), "enter");
 
+   Modes.Linefeed_New_Line := True;
+   IM.Encode_Key (Key_Event (GI.Enter), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#0D#, 2 => 16#0A#), "LNM enter");
+   Modes.Linefeed_New_Line := False;
+
    IM.Encode_Key (Key_Event (GI.Backspace), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#7F#), "backspace");
 
@@ -182,6 +187,11 @@ begin
 
    IM.Encode_Key (Key_Event (GI.Kp_Enter), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#0D#), "keypad enter");
+
+   Modes.Linefeed_New_Line := True;
+   IM.Encode_Key (Key_Event (GI.Kp_Enter), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#0D#, 2 => 16#0A#), "LNM keypad enter");
+   Modes.Linefeed_New_Line := False;
 
    Modes.Application_Keypad := True;
    IM.Encode_Key (Key_Event (GI.Kp_1), Modes, Chunk);
