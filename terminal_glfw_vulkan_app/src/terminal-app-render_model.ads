@@ -84,6 +84,8 @@ package Terminal.App.Render_Model is
       Script_Cyrillic,
       Script_Armenian,
       Script_Georgian,
+      Script_Ethiopic,
+      Script_Cherokee,
       Script_Hebrew,
       Script_Arabic,
       Script_Devanagari,

@@ -179,6 +179,10 @@ package body Terminal.App.HarfBuzz is
             return "armn";
          when RM.Script_Georgian =>
             return "geor";
+         when RM.Script_Ethiopic =>
+            return "ethi";
+         when RM.Script_Cherokee =>
+            return "cher";
          when RM.Script_Hebrew =>
             return "hebr";
          when RM.Script_Arabic =>
@@ -237,6 +241,10 @@ package body Terminal.App.HarfBuzz is
             return "hy";
          when RM.Script_Georgian =>
             return "ka";
+         when RM.Script_Ethiopic =>
+            return "am";
+         when RM.Script_Cherokee =>
+            return "chr";
          when RM.Script_Hebrew =>
             return "he";
          when RM.Script_Arabic =>

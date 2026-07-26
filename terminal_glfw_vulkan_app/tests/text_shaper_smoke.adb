@@ -87,6 +87,8 @@ procedure Text_Shaper_Smoke is
    Cyrillic  : RM.Text_Run_Command := Run (16#0430#, 16#0431#);
    Armenian  : RM.Text_Run_Command := Run (16#0561#, 16#0562#);
    Georgian  : RM.Text_Run_Command := Run (16#10D0#, 16#10D1#);
+   Ethiopic  : RM.Text_Run_Command := Run (16#12A0#, 16#12A1#);
+   Cherokee  : RM.Text_Run_Command := Run (16#13A0#, 16#13A1#);
    Arabic    : RM.Text_Run_Command := Run (16#0627#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
    Bengali   : RM.Text_Run_Command := Run (16#0995#);
@@ -349,6 +351,30 @@ begin
    Assert
      (Georgian.Script = RM.Script_Georgian,
       "Georgian text script");
+
+   Assert (TS.Classify (Ethiopic) = RM.Simple_Text, "Ethiopic text class");
+   TS.Prepare (Ethiopic, Status);
+   Assert
+     (Status = RM.Shape_Ok,
+      "Ethiopic text should shape or fall back as simple text");
+   Assert
+     (Ethiopic.Direction = RM.Direction_Left_To_Right,
+      "Ethiopic text direction");
+   Assert
+     (Ethiopic.Script = RM.Script_Ethiopic,
+      "Ethiopic text script");
+
+   Assert (TS.Classify (Cherokee) = RM.Simple_Text, "Cherokee text class");
+   TS.Prepare (Cherokee, Status);
+   Assert
+     (Status = RM.Shape_Ok,
+      "Cherokee text should shape or fall back as simple text");
+   Assert
+     (Cherokee.Direction = RM.Direction_Left_To_Right,
+      "Cherokee text direction");
+   Assert
+     (Cherokee.Script = RM.Script_Cherokee,
+      "Cherokee text script");
 
    Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
    TS.Prepare (Arabic, Status);

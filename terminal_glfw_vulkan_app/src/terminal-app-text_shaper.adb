@@ -172,6 +172,16 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#1C90# .. 16#1CBF#)
       or else (C in 16#2D00# .. 16#2D2F#));
 
+   function Is_Ethiopic (C : Natural) return Boolean is
+     ((C in 16#1200# .. 16#137F#)
+      or else (C in 16#1380# .. 16#139F#)
+      or else (C in 16#2D80# .. 16#2DDF#)
+      or else (C in 16#AB00# .. 16#AB2F#));
+
+   function Is_Cherokee (C : Natural) return Boolean is
+     ((C in 16#13A0# .. 16#13FF#)
+      or else (C in 16#AB70# .. 16#ABBF#));
+
    function Is_ASCII_Digit (C : Natural) return Boolean is
      (C in Character'Pos ('0') .. Character'Pos ('9'));
 
@@ -330,6 +340,8 @@ package body Terminal.App.Text_Shaper is
            or else Is_Cyrillic (Run.Codepoints (I))
            or else Is_Armenian (Run.Codepoints (I))
            or else Is_Georgian (Run.Codepoints (I))
+           or else Is_Ethiopic (Run.Codepoints (I))
+           or else Is_Cherokee (Run.Codepoints (I))
            or else Is_CJK (Run.Codepoints (I))
            or else Is_Emoji (Run.Codepoints (I))
            or else Is_Complex_Script (Run.Codepoints (I))
@@ -393,6 +405,10 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Armenian;
             elsif Is_Georgian (C) then
                return RM.Script_Georgian;
+            elsif Is_Ethiopic (C) then
+               return RM.Script_Ethiopic;
+            elsif Is_Cherokee (C) then
+               return RM.Script_Cherokee;
             elsif Is_CJK (C) then
                return RM.Script_CJK;
             elsif Is_Emoji (C) then
