@@ -90,10 +90,11 @@ core and answered by the app with a bounded base64 OSC 52 response generated
 from GLFW clipboard text. OSC 52 targets `c`, `p`, and `s` are recognized and
 exposed on the core request snapshot; `c` uses the GLFW system clipboard, while
 `p` and `s` use bounded app-owned target slots so they can round-trip
-independently. Unsupported OSC 52 targets are diagnosed and ignored. OSC 8
-hyperlinks are parsed into bounded per-cell snapshot metadata. Unknown OSC,
-escape, and CSI sequences are consumed safely and recorded in diagnostics where
-applicable.
+independently. Query responses preserve the requested `c`/`p`/`s` target
+designator in the OSC 52 response. Unsupported OSC 52 targets are diagnosed and
+ignored. OSC 8 hyperlinks are parsed into bounded per-cell snapshot metadata.
+Unknown OSC, escape, and CSI sequences are consumed safely and recorded in
+diagnostics where applicable.
 
 ## Unicode And Text
 

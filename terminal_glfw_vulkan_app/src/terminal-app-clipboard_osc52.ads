@@ -19,6 +19,11 @@ package Terminal.App.Clipboard_OSC52 is
      (Text  : String;
       Chunk : out Terminal.App.Queues.Byte_Chunk);
 
+   procedure Build_Query_Response
+     (Target : Terminal.Core.Clipboard_Target;
+      Text   : String;
+      Chunk  : out Terminal.App.Queues.Byte_Chunk);
+
 private
    subtype Stored_Length is Natural range 0 .. Terminal.Core.Max_Clipboard_Length;
    subtype Stored_Index is Positive range 1 .. Terminal.Core.Max_Clipboard_Length;

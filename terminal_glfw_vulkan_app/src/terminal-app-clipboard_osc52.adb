@@ -84,12 +84,17 @@ package body Terminal.App.Clipboard_OSC52 is
    end Text;
 
    procedure Build_Query_Response
-     (Text  : String;
-      Chunk : out Terminal.App.Queues.Byte_Chunk)
+     (Target : Terminal.Core.Clipboard_Target;
+      Text   : String;
+      Chunk  : out Terminal.App.Queues.Byte_Chunk)
    is
       Last_Input : constant Natural :=
         Natural'Min (Text'Length, Max_Query_Text_Bytes);
       Offset     : Natural := 0;
+      Target_Char : constant Character :=
+        (if Target = Terminal.Core.Clipboard_Primary then 'p'
+         elsif Target = Terminal.Core.Clipboard_Selection then 's'
+         else 'c');
    begin
       Chunk := (others => <>);
       Append (Chunk, Ada.Characters.Latin_1.ESC);
@@ -97,7 +102,7 @@ package body Terminal.App.Clipboard_OSC52 is
       Append (Chunk, '5');
       Append (Chunk, '2');
       Append (Chunk, ';');
-      Append (Chunk, 'c');
+      Append (Chunk, Target_Char);
       Append (Chunk, ';');
 
       while Offset < Last_Input loop
@@ -123,5 +128,13 @@ package body Terminal.App.Clipboard_OSC52 is
 
       Append (Chunk, Ada.Characters.Latin_1.ESC);
       Append (Chunk, '\');
+   end Build_Query_Response;
+
+   procedure Build_Query_Response
+     (Text  : String;
+      Chunk : out Terminal.App.Queues.Byte_Chunk)
+   is
+   begin
+      Build_Query_Response (Terminal.Core.Clipboard_Clipboard, Text, Chunk);
    end Build_Query_Response;
 end Terminal.App.Clipboard_OSC52;

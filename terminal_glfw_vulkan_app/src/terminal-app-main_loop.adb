@@ -204,7 +204,8 @@ package body Terminal.App.Main_Loop is
       if Request.Pending then
          if Request.Operation = Terminal.Core.Clipboard_Query then
             Terminal.App.Clipboard_OSC52.Build_Query_Response
-              ((if Request.Target = Terminal.Core.Clipboard_Clipboard
+              (Request.Target,
+               (if Request.Target = Terminal.Core.Clipboard_Clipboard
                 then GLFW_Vulkan.Clipboard.Get_Text (W)
                 else Terminal.App.Clipboard_OSC52.Text (Store, Request.Target)),
                Chunk);

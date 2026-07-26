@@ -36,6 +36,20 @@ begin
         Character'Val (16#1B#) & "\",
       "empty OSC 52 query response");
 
+   Terminal.App.Clipboard_OSC52.Build_Query_Response
+     (Terminal.Core.Clipboard_Primary, "primary", Chunk);
+   Assert
+     (Text_Of (Chunk) = Character'Val (16#1B#) & "]52;p;cHJpbWFyeQ==" &
+        Character'Val (16#1B#) & "\",
+      "primary OSC 52 query response should preserve target");
+
+   Terminal.App.Clipboard_OSC52.Build_Query_Response
+     (Terminal.Core.Clipboard_Selection, "selection", Chunk);
+   Assert
+     (Text_Of (Chunk) = Character'Val (16#1B#) & "]52;s;c2VsZWN0aW9u" &
+        Character'Val (16#1B#) & "\",
+      "selection OSC 52 query response should preserve target");
+
    Terminal.App.Clipboard_OSC52.Build_Query_Response (Long_Text, Chunk);
    Assert
      (Chunk.Length = 4_093,
