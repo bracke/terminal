@@ -110,6 +110,13 @@ begin
    IM.Encode_Key (Key_Event (GI.Space, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#00#), "ctrl-space");
 
+   IM.Encode_Key
+     (Key_Event (GI.Space, Control => True, Alt => True), Modes, Chunk);
+   Assert_Bytes
+     (Chunk,
+      (1 => 16#1B#, 2 => 16#00#),
+      "ctrl-alt-space");
+
    IM.Encode_Key (Key_Event (GI.Space, Alt => True), Modes, Chunk);
    Assert_Bytes
      (Chunk,
@@ -124,6 +131,12 @@ begin
 
    IM.Encode_Key (Key_Event (GI.C, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#03#), "ctrl-c");
+
+   IM.Encode_Key (Key_Event (GI.C, Control => True, Alt => True), Modes, Chunk);
+   Assert_Bytes
+     (Chunk,
+      (1 => 16#1B#, 2 => 16#03#),
+      "ctrl-alt-c");
 
    IM.Encode_Key (Key_Event (GI.D, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#04#), "ctrl-d");

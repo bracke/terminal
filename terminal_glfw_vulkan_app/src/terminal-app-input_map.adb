@@ -308,6 +308,9 @@ package body Terminal.App.Input_Map is
 
       if Event.Modifiers.Control then
          if Event.Key = Space then
+            if Event.Modifiers.Alt then
+               Append (Chunk, 16#1B#);
+            end if;
             Append (Chunk, 16#00#);
             return;
          end if;
@@ -316,6 +319,9 @@ package body Terminal.App.Input_Map is
             Ctrl : constant Byte := Control_Byte (Event.Key);
          begin
             if Ctrl /= 0 then
+               if Event.Modifiers.Alt then
+                  Append (Chunk, 16#1B#);
+               end if;
                Append (Chunk, Ctrl);
                return;
             end if;

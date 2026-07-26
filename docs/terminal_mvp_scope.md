@@ -313,6 +313,7 @@ GLFW character events are encoded as UTF-8 only when they are valid Unicode
 scalar values; surrogate code points and values above `U+10FFFF` are dropped at
 the app boundary. Plain printable space is sent through the character callback;
 modified Space is handled by the key callback for `Ctrl+Space` (`NUL`) and
-`Alt+Space` (`ESC SP`). Plain Backspace sends `DEL`; `Ctrl+Backspace` sends
-`BS`, `Alt+Backspace` sends `ESC DEL`, and `Ctrl+Alt+Backspace` sends
-`ESC BS`.
+`Alt+Space` (`ESC SP`); `Ctrl+Alt+Space` sends `ESC NUL`. Ctrl-letter keys
+send C0 control bytes, and adding Alt prefixes the control byte with `ESC`.
+Plain Backspace sends `DEL`; `Ctrl+Backspace` sends `BS`, `Alt+Backspace`
+sends `ESC DEL`, and `Ctrl+Alt+Backspace` sends `ESC BS`.
