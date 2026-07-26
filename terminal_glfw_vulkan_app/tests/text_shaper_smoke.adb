@@ -125,6 +125,16 @@ procedure Text_Shaper_Smoke is
    Grantha   : RM.Text_Run_Command := Run (16#11305#);
    Newa      : RM.Text_Run_Command := Run (16#11400#);
    Tirhuta   : RM.Text_Run_Command := Run (16#11480#);
+   Siddham   : RM.Text_Run_Command := Run (16#11580#);
+   Modi      : RM.Text_Run_Command := Run (16#11600#);
+   Takri     : RM.Text_Run_Command := Run (16#11680#);
+   Ahom      : RM.Text_Run_Command := Run (16#11700#);
+   Dogra     : RM.Text_Run_Command := Run (16#11800#);
+   Warang    : RM.Text_Run_Command := Run (16#118A0#);
+   Dives     : RM.Text_Run_Command := Run (16#11900#);
+   Nandinagari : RM.Text_Run_Command := Run (16#119A0#);
+   Zanabazar : RM.Text_Run_Command := Run (16#11A00#);
+   Soyombo   : RM.Text_Run_Command := Run (16#11A50#);
    Thai      : RM.Text_Run_Command := Run (16#0E01#);
    Lao       : RM.Text_Run_Command := Run (16#0E81#);
    Myanmar   : RM.Text_Run_Command := Run (16#1000#);
@@ -577,6 +587,17 @@ begin
    Assert_Complex_Script (Grantha, RM.Script_Grantha, "Grantha");
    Assert_Complex_Script (Newa, RM.Script_Newa, "Newa");
    Assert_Complex_Script (Tirhuta, RM.Script_Tirhuta, "Tirhuta");
+   Assert_Complex_Script (Siddham, RM.Script_Siddham, "Siddham");
+   Assert_Complex_Script (Modi, RM.Script_Modi, "Modi");
+   Assert_Complex_Script (Takri, RM.Script_Takri, "Takri");
+   Assert_Complex_Script (Ahom, RM.Script_Ahom, "Ahom");
+   Assert_Complex_Script (Dogra, RM.Script_Dogra, "Dogra");
+   Assert_Complex_Script (Warang, RM.Script_Warang_Citi, "Warang Citi");
+   Assert_Complex_Script (Dives, RM.Script_Dives_Akuru, "Dives Akuru");
+   Assert_Complex_Script (Nandinagari, RM.Script_Nandinagari, "Nandinagari");
+   Assert_Complex_Script
+     (Zanabazar, RM.Script_Zanabazar_Square, "Zanabazar Square");
+   Assert_Complex_Script (Soyombo, RM.Script_Soyombo, "Soyombo");
    Assert_Complex_Script (Thai, RM.Script_Thai, "Thai");
    Assert_Complex_Script (Lao, RM.Script_Lao, "Lao");
    Assert_Complex_Script (Myanmar, RM.Script_Myanmar, "Myanmar");

@@ -153,6 +153,7 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#0D80# .. 16#0DFF#)
       or else (C in 16#0F00# .. 16#0FFF#)
       or else (C in 16#11000# .. 16#114DF#)
+      or else (C in 16#11580# .. 16#11AAF#)
       or else (C in 16#0E00# .. 16#0E7F#)
       or else (C in 16#0E80# .. 16#0EFF#)
       or else (C in 16#1000# .. 16#109F#)
@@ -505,6 +506,26 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Newa;
             elsif C in 16#11480# .. 16#114DF# then
                return RM.Script_Tirhuta;
+            elsif C in 16#11580# .. 16#115FF# then
+               return RM.Script_Siddham;
+            elsif C in 16#11600# .. 16#1165F# then
+               return RM.Script_Modi;
+            elsif C in 16#11680# .. 16#116CF# then
+               return RM.Script_Takri;
+            elsif C in 16#11700# .. 16#1174F# then
+               return RM.Script_Ahom;
+            elsif C in 16#11800# .. 16#1184F# then
+               return RM.Script_Dogra;
+            elsif C in 16#118A0# .. 16#118FF# then
+               return RM.Script_Warang_Citi;
+            elsif C in 16#11900# .. 16#1195F# then
+               return RM.Script_Dives_Akuru;
+            elsif C in 16#119A0# .. 16#119FF# then
+               return RM.Script_Nandinagari;
+            elsif C in 16#11A00# .. 16#11A4F# then
+               return RM.Script_Zanabazar_Square;
+            elsif C in 16#11A50# .. 16#11AAF# then
+               return RM.Script_Soyombo;
             elsif C in 16#0E00# .. 16#0E7F# then
                return RM.Script_Thai;
             elsif C in 16#0E80# .. 16#0EFF# then
