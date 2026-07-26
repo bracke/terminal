@@ -114,6 +114,13 @@ procedure Text_Shaper_Smoke is
    Myanmar   : RM.Text_Run_Command := Run (16#1000#);
    Mongolian : RM.Text_Run_Command := Run (16#1820#);
    Khmer     : RM.Text_Run_Command := Run (16#1780#);
+   Balinese  : RM.Text_Run_Command := Run (16#1B05#);
+   Sundanese : RM.Text_Run_Command := Run (16#1B8A#);
+   Batak     : RM.Text_Run_Command := Run (16#1BC1#);
+   Lepcha    : RM.Text_Run_Command := Run (16#1C00#);
+   Ol_Chiki  : RM.Text_Run_Command := Run (16#1C5A#);
+   Buginese  : RM.Text_Run_Command := Run (16#1A00#);
+   Tai_Tham  : RM.Text_Run_Command := Run (16#1A20#);
    Javanese  : RM.Text_Run_Command := Run (16#A984#);
    Cham      : RM.Text_Run_Command := Run (16#AA00#);
    Emoji     : RM.Text_Run_Command := Run (16#1F642#);
@@ -472,6 +479,13 @@ begin
    Assert_Complex_Script (Myanmar, RM.Script_Myanmar, "Myanmar");
    Assert_Complex_Script (Mongolian, RM.Script_Mongolian, "Mongolian");
    Assert_Complex_Script (Khmer, RM.Script_Khmer, "Khmer");
+   Assert_Complex_Script (Balinese, RM.Script_Balinese, "Balinese");
+   Assert_Complex_Script (Sundanese, RM.Script_Sundanese, "Sundanese");
+   Assert_Complex_Script (Batak, RM.Script_Batak, "Batak");
+   Assert_Complex_Script (Lepcha, RM.Script_Lepcha, "Lepcha");
+   Assert_Complex_Script (Ol_Chiki, RM.Script_Ol_Chiki, "Ol Chiki");
+   Assert_Complex_Script (Buginese, RM.Script_Buginese, "Buginese");
+   Assert_Complex_Script (Tai_Tham, RM.Script_Tai_Tham, "Tai Tham");
    Assert_Complex_Script (Javanese, RM.Script_Javanese, "Javanese");
    Assert_Complex_Script (Cham, RM.Script_Cham, "Cham");
 

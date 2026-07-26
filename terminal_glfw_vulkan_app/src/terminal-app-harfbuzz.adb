@@ -235,6 +235,20 @@ package body Terminal.App.HarfBuzz is
             return "mong";
          when RM.Script_Khmer =>
             return "khmr";
+         when RM.Script_Balinese =>
+            return "bali";
+         when RM.Script_Sundanese =>
+            return "sund";
+         when RM.Script_Batak =>
+            return "batk";
+         when RM.Script_Lepcha =>
+            return "lepc";
+         when RM.Script_Ol_Chiki =>
+            return "olck";
+         when RM.Script_Buginese =>
+            return "bugi";
+         when RM.Script_Tai_Tham =>
+            return "lana";
          when RM.Script_Javanese =>
             return "java";
          when RM.Script_Cham =>
@@ -313,6 +327,20 @@ package body Terminal.App.HarfBuzz is
             return "mn";
          when RM.Script_Khmer =>
             return "km";
+         when RM.Script_Balinese =>
+            return "ban";
+         when RM.Script_Sundanese =>
+            return "su";
+         when RM.Script_Batak =>
+            return "bbc";
+         when RM.Script_Lepcha =>
+            return "lep";
+         when RM.Script_Ol_Chiki =>
+            return "sat";
+         when RM.Script_Buginese =>
+            return "bug";
+         when RM.Script_Tai_Tham =>
+            return "nod";
          when RM.Script_Javanese =>
             return "jv";
          when RM.Script_Cham =>

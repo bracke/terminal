@@ -156,6 +156,9 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#0E80# .. 16#0EFF#)
       or else (C in 16#1000# .. 16#109F#)
       or else (C in 16#1800# .. 16#18AF#)
+      or else (C in 16#1A00# .. 16#1AAF#)
+      or else (C in 16#1B00# .. 16#1BFF#)
+      or else (C in 16#1C00# .. 16#1C7F#)
       or else (C in 16#1780# .. 16#17FF#)
       or else (C in 16#A980# .. 16#A9DF#)
       or else (C in 16#AA00# .. 16#AA5F#));
@@ -434,6 +437,20 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Mongolian;
             elsif C in 16#1780# .. 16#17FF# then
                return RM.Script_Khmer;
+            elsif C in 16#1B00# .. 16#1B7F# then
+               return RM.Script_Balinese;
+            elsif C in 16#1B80# .. 16#1BBF# then
+               return RM.Script_Sundanese;
+            elsif C in 16#1BC0# .. 16#1BFF# then
+               return RM.Script_Batak;
+            elsif C in 16#1C00# .. 16#1C4F# then
+               return RM.Script_Lepcha;
+            elsif C in 16#1C50# .. 16#1C7F# then
+               return RM.Script_Ol_Chiki;
+            elsif C in 16#1A00# .. 16#1A1F# then
+               return RM.Script_Buginese;
+            elsif C in 16#1A20# .. 16#1AAF# then
+               return RM.Script_Tai_Tham;
             elsif C in 16#A980# .. 16#A9DF# then
                return RM.Script_Javanese;
             elsif C in 16#AA00# .. 16#AA5F# then
