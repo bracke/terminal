@@ -1048,5 +1048,30 @@ begin
         (Terminal.Core.Diagnostics (T).Parser_Overflow =
            Before + Fixture'Length - Response_Capacity,
          "response queue overflow should be diagnosed per dropped byte");
+
+      declare
+         Buffer : Byte_Array (1 .. Response_Capacity);
+         Last   : Natural;
+      begin
+         Terminal.Core.Read_Response (T, Buffer, Last);
+         Assert (Last = Response_Capacity, "response overflow drain length");
+         for Offset in 0 .. Response_Capacity / 4 - 1 loop
+            Assert
+              (Buffer (Offset * 4 + 1) = Byte (Character'Pos (ASCII.ESC)),
+               "response overflow preserved ESC" & Natural'Image (Offset));
+            Assert
+              (Buffer (Offset * 4 + 2) = Byte (Character'Pos ('[')),
+               "response overflow preserved CSI" & Natural'Image (Offset));
+            Assert
+              (Buffer (Offset * 4 + 3) = Byte (Character'Pos ('0')),
+               "response overflow preserved status" & Natural'Image (Offset));
+            Assert
+              (Buffer (Offset * 4 + 4) = Byte (Character'Pos ('n')),
+               "response overflow preserved final" & Natural'Image (Offset));
+         end loop;
+         Assert
+           (Terminal.Core.Pending_Response_Length (T) = 0,
+            "response overflow drain should empty queue");
+      end;
    end;
 end Core_Response_Smoke;
