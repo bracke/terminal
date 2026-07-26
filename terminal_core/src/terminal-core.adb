@@ -1917,6 +1917,14 @@ package body Terminal.Core is
       State  : constant Natural :=
         Mode_Report_State (T, T.CSI_Private, Number);
    begin
+      if T.CSI_Count /= 1
+        or else not T.CSI_Set (1)
+        or else (T.CSI_Private /= ASCII.NUL and then T.CSI_Private /= '?')
+      then
+         T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+         return;
+      end if;
+
       Append_Response_Char (T, ASCII.ESC);
       Append_Response_Char (T, '[');
       if T.CSI_Private /= ASCII.NUL then

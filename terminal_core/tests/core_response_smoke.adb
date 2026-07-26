@@ -419,6 +419,28 @@ begin
          "DECRQM should drain");
    end;
 
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[$p"
+            & ASCII.ESC & "[4;20$p"
+            & ASCII.ESC & "[>4$p"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "malformed DECRQM feed failed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "malformed DECRQM should not queue responses");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 3,
+         "malformed DECRQM should be diagnosed");
+   end;
+
    Terminal.Core.Feed
      (T,
       To_Bytes
