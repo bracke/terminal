@@ -426,6 +426,37 @@ package body Terminal.Core is
          Bit_Count : Natural := 0;
          Invalid   : Boolean := False;
          Done      : Boolean := False;
+         Target    : Clipboard_Target := Clipboard_Clipboard;
+
+         function Parse_Target return Boolean is
+            Saw_Supported : Boolean := False;
+         begin
+            if Enc_First <= First + 1 then
+               return True;
+            end if;
+
+            for I in First .. Enc_First - 2 loop
+               case T.OSC_Data (I) is
+                  when 'c' =>
+                     Target := Clipboard_Clipboard;
+                     Saw_Supported := True;
+                  when 'p' =>
+                     if not Saw_Supported then
+                        Target := Clipboard_Primary;
+                     end if;
+                     Saw_Supported := True;
+                  when 's' =>
+                     if not Saw_Supported then
+                        Target := Clipboard_Selection;
+                     end if;
+                     Saw_Supported := True;
+                  when others =>
+                     null;
+               end case;
+            end loop;
+
+            return Saw_Supported;
+         end Parse_Target;
 
          procedure Append_Decoded (Value : Natural) is
          begin
@@ -452,9 +483,15 @@ package body Terminal.Core is
          end if;
 
          T.Clipboard_Data := (others => <>);
+         if not Parse_Target then
+            T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            return;
+         end if;
+
          if Enc_First = Last and then T.OSC_Data (Enc_First) = '?' then
             T.Clipboard_Data.Pending := True;
             T.Clipboard_Data.Operation := Clipboard_Query;
+            T.Clipboard_Data.Target := Target;
             return;
          end if;
 
@@ -494,6 +531,7 @@ package body Terminal.Core is
             T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
          else
             T.Clipboard_Data.Pending := True;
+            T.Clipboard_Data.Target := Target;
             T.Clipboard_Data.Length := Out_Len;
          end if;
       end Decode_OSC52;

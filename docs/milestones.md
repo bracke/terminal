@@ -77,7 +77,7 @@
 
 ## Postponed
 
-Sixel, kitty graphics, iTerm2 images, richer OSC 8 hover/tooltip UI, richer
-OSC 52 clipboard selection-target behavior, full color emoji rendering,
-paragraph BiDi, advanced mouse/selection behavior, tabs, splits, themes, config,
-Windows ConPTY, and terminal multiplexer behavior.
+Sixel, kitty graphics, iTerm2 images, richer OSC 8 hover/tooltip UI, distinct
+platform clipboards for OSC 52 primary/selection targets, full color emoji
+rendering, paragraph BiDi, advanced mouse/selection behavior, tabs, splits,
+themes, config, Windows ConPTY, and terminal multiplexer behavior.

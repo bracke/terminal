@@ -130,10 +130,15 @@ package Terminal.Core is
    subtype Clipboard_Length_Range is Natural range 0 .. Max_Clipboard_Length;
 
    type Clipboard_Operation is (Clipboard_Set, Clipboard_Query);
+   type Clipboard_Target is
+     (Clipboard_Clipboard,
+      Clipboard_Primary,
+      Clipboard_Selection);
 
    type Clipboard_Request is record
       Pending : Boolean := False;
       Operation : Clipboard_Operation := Clipboard_Set;
+      Target : Clipboard_Target := Clipboard_Clipboard;
       Length  : Clipboard_Length_Range := 0;
       Text    : String (1 .. Max_Clipboard_Length) := (others => ' ');
    end record;
