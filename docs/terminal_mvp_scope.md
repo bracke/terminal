@@ -87,7 +87,8 @@
   operations (`CSI 22 t`, `CSI 23 t`, and their `;0`, `;1`, `;2` variants)
   save and restore one bounded title. Extra XTWINOPS report parameters and
   overlong title-stack parameter lists are diagnosed.
-- Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
+- Bounded OSC 0/1/2 window-title capture, clipped to 256 bytes and applied by
+  the GLFW app.
 - Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.
 - Default tab stops every eight columns, plus `ESC H` tab-set and `CSI g`

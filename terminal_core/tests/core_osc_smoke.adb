@@ -33,6 +33,21 @@ procedure Core_OSC_Smoke is
       return Result;
    end DCS_Overflow_Fixture;
 
+   function Long_Title_Fixture return Byte_Array is
+      Payload_Length : constant Natural := Terminal.Core.Max_Title_Length + 20;
+      Result : Byte_Array (1 .. Payload_Length + 5);
+   begin
+      Result (1) := 16#1B#;
+      Result (2) := Byte (Character'Pos (']'));
+      Result (3) := Byte (Character'Pos ('1'));
+      Result (4) := Byte (Character'Pos (';'));
+      for I in 1 .. Payload_Length loop
+         Result (I + 4) := Byte (Character'Pos ('A'));
+      end loop;
+      Result (Result'Last) := 16#07#;
+      return Result;
+   end Long_Title_Fixture;
+
    T : Terminal.Core.Terminal;
    Init : Terminal.Core.Initialize_Status;
    Feed_Status : Terminal.Core.Feed_Status;
@@ -91,6 +106,22 @@ begin
       Assert
         (Title.Text (1 .. Title.Length) = "editor",
          "unknown OSC must not change title");
+   end;
+
+   Terminal.Core.Feed (T, Long_Title_Fixture, Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "long OSC title feed failed");
+
+   declare
+      Title : constant Terminal.Core.Title_Text := Terminal.Core.Title (T);
+   begin
+      Assert
+        (Title.Length = Terminal.Core.Max_Title_Length,
+         "long OSC title should be clipped to bounded length");
+      for I in 1 .. Title.Length loop
+         Assert
+           (Title.Text (I) = 'A',
+            "long OSC title clipped byte" & Natural'Image (I));
+      end loop;
    end;
 
    Terminal.Core.Initialize (T, 1, 8, 100, Init);
