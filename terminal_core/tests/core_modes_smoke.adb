@@ -79,6 +79,16 @@ begin
      (not Terminal.Core.Modes (T).Synchronized_Update,
       "synchronized update mode reset");
 
+   Feed_Text (ASCII.ESC & "[2h", "keyboard lock mode set feed failed");
+   Assert
+     (Terminal.Core.Modes (T).Keyboard_Locked,
+      "keyboard lock mode");
+
+   Feed_Text (ASCII.ESC & "[2l", "keyboard lock mode reset feed failed");
+   Assert
+     (not Terminal.Core.Modes (T).Keyboard_Locked,
+      "keyboard lock mode reset");
+
    Feed_Text
      (ASCII.ESC & "[?1000h",
       "mouse mode set feed failed");
@@ -274,6 +284,7 @@ begin
       & ASCII.ESC & "[2;4r"
       & ASCII.ESC & "="
       & ASCII.ESC & "[?1;6;7;25;2004;2026h"
+      & ASCII.ESC & "[2h"
       & ASCII.ESC & "[4h"
       & ASCII.ESC & "[4;5H"
       & ASCII.ESC & "[!p"
@@ -313,6 +324,7 @@ begin
       Assert (M.Autowrap, "DECSTR should enable autowrap");
       Assert (M.Cursor_Visible, "DECSTR should show cursor");
       Assert (not M.Cursor_Blinking, "DECSTR should reset cursor blinking");
+      Assert (not M.Keyboard_Locked, "DECSTR should reset keyboard lock");
       Assert (not M.Insert_Mode, "DECSTR should reset insert mode");
       Assert (not S.Cursor.Blinking, "DECSTR should reset snapshot cursor blinking");
       Terminal.Core.Release (S);

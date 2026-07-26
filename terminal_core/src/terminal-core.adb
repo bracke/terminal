@@ -1905,6 +1905,8 @@ package body Terminal.Core is
             when others =>
                return 0;
          end case;
+      elsif Prefix = ASCII.NUL and then Number = 2 then
+         return (if T.Current_Modes.Keyboard_Locked then 1 else 2);
       elsif Prefix = ASCII.NUL and then Number = 4 then
          return (if T.Current_Modes.Insert_Mode then 1 else 2);
       elsif Prefix = ASCII.NUL and then Number = 20 then
@@ -2282,6 +2284,7 @@ package body Terminal.Core is
          Autowrap           => True,
          Cursor_Visible     => True,
          Cursor_Blinking    => False,
+         Keyboard_Locked    => False,
          Insert_Mode        => False,
          Linefeed_New_Line  => False);
       T.Cursor_Row := 1;
@@ -2629,6 +2632,8 @@ package body Terminal.Core is
             elsif T.CSI_Private = ASCII.NUL then
                for I in 1 .. Natural'Max (T.CSI_Count, 1) loop
                   case Param (T, I, 0) is
+                     when 2 =>
+                        T.Current_Modes.Keyboard_Locked := Final = 'h';
                      when 4 =>
                         T.Current_Modes.Insert_Mode := Final = 'h';
                      when 20 =>

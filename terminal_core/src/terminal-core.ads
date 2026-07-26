@@ -115,6 +115,7 @@ package Terminal.Core is
       Autowrap           : Boolean := True;
       Cursor_Visible     : Boolean := True;
       Cursor_Blinking    : Boolean := False;
+      Keyboard_Locked    : Boolean := False;
       Insert_Mode        : Boolean := False;
       Linefeed_New_Line  : Boolean := False;
    end record;

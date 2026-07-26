@@ -529,6 +529,10 @@ package body Terminal.App.Main_Loop is
                   exit when not Has_Event;
                   case Event.Kind is
                      when Terminal.App.Queues.Key =>
+                        declare
+                           Modes : constant Terminal.Core.Mode_Snapshot :=
+                             Terminal.Core.Modes (T);
+                        begin
                         if Is_Scrollback_Key (Event.Key_Event) then
                            if Terminal.App.Selection.Has_Selection (Selection) then
                               Terminal.App.Selection.Clear (Selection);
@@ -550,15 +554,19 @@ package body Terminal.App.Main_Loop is
                           (Event.Key_Event)
                         then
                            Scroll_Offset := 0;
-                           if Terminal.App.Selection.Has_Selection (Selection) then
-                              Terminal.App.Selection.Clear (Selection);
-                              Dirty := True;
-                              Local_Redraw := True;
+                           if Modes.Keyboard_Locked then
+                              Chunk := (others => <>);
+                           else
+                              if Terminal.App.Selection.Has_Selection (Selection) then
+                                 Terminal.App.Selection.Clear (Selection);
+                                 Dirty := True;
+                                 Local_Redraw := True;
+                              end if;
+                              Terminal.App.Input_Map.Encode_Paste_Text
+                                (GLFW_Vulkan.Clipboard.Get_Text (W),
+                                 Modes,
+                                 Chunk);
                            end if;
-                           Terminal.App.Input_Map.Encode_Paste_Text
-                             (GLFW_Vulkan.Clipboard.Get_Text (W),
-                              Terminal.Core.Modes (T),
-                              Chunk);
                         elsif Terminal.App.Input_Map.Is_Copy_Shortcut
                           (Event.Key_Event)
                         then
@@ -568,23 +576,32 @@ package body Terminal.App.Main_Loop is
                            Chunk := (others => <>);
                         else
                            Scroll_Offset := 0;
-                           if Terminal.App.Selection.Has_Selection (Selection) then
-                              Terminal.App.Selection.Clear (Selection);
-                              Dirty := True;
-                              Local_Redraw := True;
+                           if Modes.Keyboard_Locked then
+                              Chunk := (others => <>);
+                              Suppress_Character := Wide_Wide_Character'Val (0);
+                           else
+                              if Terminal.App.Selection.Has_Selection (Selection) then
+                                 Terminal.App.Selection.Clear (Selection);
+                                 Dirty := True;
+                                 Local_Redraw := True;
+                              end if;
+                              Terminal.App.Input_Map.Encode_Key
+                                (Event.Key_Event, Modes, Chunk);
+                              Suppress_Character :=
+                                Terminal.App.Input_Map.Suppressed_Character
+                                  (Event.Key_Event, Modes);
                            end if;
-                           Terminal.App.Input_Map.Encode_Key
-                             (Event.Key_Event, Terminal.Core.Modes (T), Chunk);
-                           Suppress_Character :=
-                             Terminal.App.Input_Map.Suppressed_Character
-                               (Event.Key_Event, Terminal.Core.Modes (T));
                         end if;
+                        end;
                      when Terminal.App.Queues.Character =>
                         Scroll_Offset := 0;
                         if Suppress_Character /= Wide_Wide_Character'Val (0)
                           and then Event.Character_Event.Code_Point =
                             Suppress_Character
                         then
+                           Chunk := (others => <>);
+                           Suppress_Character := Wide_Wide_Character'Val (0);
+                        elsif Terminal.Core.Modes (T).Keyboard_Locked then
                            Chunk := (others => <>);
                            Suppress_Character := Wide_Wide_Character'Val (0);
                         else

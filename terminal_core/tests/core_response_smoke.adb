@@ -392,16 +392,18 @@ begin
          & ASCII.ESC & "[?1000$p"
          & ASCII.ESC & "[?1048$p"
          & ASCII.ESC & "[?9999$p"
+         & ASCII.ESC & "[2h"
+         & ASCII.ESC & "[2$p"
          & ASCII.ESC & "[4$p"
          & ASCII.ESC & "[20$p"),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "DECRQM feed failed");
    Assert
-     (Terminal.Core.Pending_Response_Length (T) = 88,
+     (Terminal.Core.Pending_Response_Length (T) = 95,
       "DECRQM response length");
 
    declare
-      Buffer : Byte_Array (1 .. 90);
+      Buffer : Byte_Array (1 .. 96);
       Last   : Natural;
    begin
       Terminal.Core.Read_Response (T, Buffer, Last);
@@ -416,6 +418,7 @@ begin
             & ASCII.ESC & "[?1000;2$y"
             & ASCII.ESC & "[?1048;2$y"
             & ASCII.ESC & "[?9999;0$y"
+            & ASCII.ESC & "[2;1$y"
             & ASCII.ESC & "[4;2$y"
             & ASCII.ESC & "[20;2$y"),
          "DECRQM");

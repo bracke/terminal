@@ -45,6 +45,9 @@
   in mode state and queryable. The GLFW app defers live terminal redraws while
   it is active, while app-owned local redraws such as selection and scrollback
   remain immediate.
+- Keyboard action mode (`CSI 2 h`/`CSI 2 l`) is tracked in mode state and
+  queryable. While locked, the GLFW app drops keyboard-generated input bytes
+  such as key presses, character callbacks, and paste requests.
 - DSR status (`CSI 5 n`), DEC private operating status (`CSI ? 5 n`),
   cursor-position report (`CSI 6 n`), DEC private cursor-position report
   (`CSI ? 6 n`), primary DA (`CSI c`/`CSI 0 c`), and secondary DA
@@ -56,10 +59,11 @@
   (`CSI ? 26 n` -> `CSI ? 27 ; 1 ; 0 ; 0 n`), no locator
   (`CSI ? 53 n`/`CSI ? 55 n` -> `CSI ? 50 n`), and unknown locator type
   (`CSI ? 56 n` -> `CSI ? 57 ; 0 n`).
-- DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode,
-  line-feed/new-line mode, known DEC private modes including application keypad
-  mode `?66`, and stateless `?1048` save/restore cursor mode. Missing, extra,
-  and unsupported-private DECRQM parameters are diagnosed.
+- DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for keyboard action
+  mode, insert mode, line-feed/new-line mode, known DEC private modes including
+  application keypad mode `?66`, and stateless `?1048` save/restore cursor
+  mode. Missing, extra, and unsupported-private DECRQM parameters are
+  diagnosed.
 - Terminal-generated response bytes are held in a bounded core queue. If the
   queue is full, newest response bytes are dropped, already-queued byte
   ordering is preserved, and parser-overflow diagnostics are incremented.
