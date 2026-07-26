@@ -129,6 +129,12 @@ procedure Text_Shaper_Smoke is
    Tai_Tham  : RM.Text_Run_Command := Run (16#1A20#);
    Javanese  : RM.Text_Run_Command := Run (16#A984#);
    Cham      : RM.Text_Run_Command := Run (16#AA00#);
+   Hiragana  : RM.Text_Run_Command := Run (16#3042#);
+   Katakana  : RM.Text_Run_Command := Run (16#30AB#);
+   Bopomofo  : RM.Text_Run_Command := Run (16#3105#);
+   Hangul    : RM.Text_Run_Command := Run (16#AC00#);
+   Yi        : RM.Text_Run_Command := Run (16#A000#);
+   Han       : RM.Text_Run_Command := Run (16#4E00#);
    Emoji     : RM.Text_Run_Command := Run (16#1F642#);
    Status    : TS.Shape_Status;
    Backend   : TS.Backend_Status;
@@ -169,6 +175,21 @@ procedure Text_Shaper_Smoke is
       Assert (Text.Script = Script, Label & " script");
       Assert_Shaped_Or_Needs_Backend (Text, Status, Label);
    end Assert_Complex_Script;
+
+   procedure Assert_Simple_Script
+     (Text     : in out RM.Text_Run_Command;
+      Script   : RM.Text_Run_Script;
+      Label    : String)
+   is
+   begin
+      Assert (TS.Classify (Text) = RM.Simple_Glyph, Label & " class");
+      TS.Prepare (Text, Status);
+      Assert (Status = RM.Shape_Ok, Label & " simple status");
+      Assert
+        (Text.Direction = RM.Direction_Left_To_Right,
+         Label & " direction");
+      Assert (Text.Script = Script, Label & " script");
+   end Assert_Simple_Script;
 begin
    TS.Configure_Font
      (Path       => Terminal.App.Fonts.Default_Font_Path,
@@ -540,6 +561,12 @@ begin
    Assert_Complex_Script (Tai_Tham, RM.Script_Tai_Tham, "Tai Tham");
    Assert_Complex_Script (Javanese, RM.Script_Javanese, "Javanese");
    Assert_Complex_Script (Cham, RM.Script_Cham, "Cham");
+   Assert_Simple_Script (Hiragana, RM.Script_Hiragana, "Hiragana");
+   Assert_Simple_Script (Katakana, RM.Script_Katakana, "Katakana");
+   Assert_Simple_Script (Bopomofo, RM.Script_Bopomofo, "Bopomofo");
+   Assert_Simple_Script (Hangul, RM.Script_Hangul, "Hangul");
+   Assert_Simple_Script (Yi, RM.Script_Yi, "Yi");
+   Assert_Simple_Script (Han, RM.Script_CJK, "Han");
 
    Assert (TS.Classify (Emoji) = RM.Simple_Glyph, "emoji scalar class");
    TS.Prepare (Emoji, Status);

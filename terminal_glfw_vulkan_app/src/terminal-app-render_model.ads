@@ -127,6 +127,11 @@ package Terminal.App.Render_Model is
       Script_Tai_Tham,
       Script_Javanese,
       Script_Cham,
+      Script_Hiragana,
+      Script_Katakana,
+      Script_Bopomofo,
+      Script_Hangul,
+      Script_Yi,
       Script_CJK,
       Script_Emoji,
       Script_Unknown);

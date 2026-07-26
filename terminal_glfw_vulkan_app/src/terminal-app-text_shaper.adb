@@ -236,6 +236,29 @@ package body Terminal.App.Text_Shaper is
    function Is_ASCII_Digit (C : Natural) return Boolean is
      (C in Character'Pos ('0') .. Character'Pos ('9'));
 
+   function Is_Hiragana (C : Natural) return Boolean is
+     ((C in 16#3040# .. 16#309F#)
+      or else (C in 16#1B001# .. 16#1B11F#));
+
+   function Is_Katakana (C : Natural) return Boolean is
+     ((C in 16#30A0# .. 16#30FF#)
+      or else (C in 16#31F0# .. 16#31FF#)
+      or else (C in 16#1B000# .. 16#1B0FF#));
+
+   function Is_Bopomofo (C : Natural) return Boolean is
+     ((C in 16#3100# .. 16#312F#)
+      or else (C in 16#31A0# .. 16#31BF#));
+
+   function Is_Hangul (C : Natural) return Boolean is
+     ((C in 16#1100# .. 16#11FF#)
+      or else (C in 16#3130# .. 16#318F#)
+      or else (C in 16#A960# .. 16#A97F#)
+      or else (C in 16#AC00# .. 16#D7AF#)
+      or else (C in 16#D7B0# .. 16#D7FF#));
+
+   function Is_Yi (C : Natural) return Boolean is
+     (C in 16#A000# .. 16#A4CF#);
+
    function Is_CJK (C : Natural) return Boolean is
      ((C in 16#1100# .. 16#11FF#)
       or else (C in 16#2E80# .. 16#A4CF#)
@@ -404,6 +427,11 @@ package body Terminal.App.Text_Shaper is
            or else Is_Old_Italic (Run.Codepoints (I))
            or else Is_Old_Persian (Run.Codepoints (I))
            or else Is_Ugaritic (Run.Codepoints (I))
+           or else Is_Hiragana (Run.Codepoints (I))
+           or else Is_Katakana (Run.Codepoints (I))
+           or else Is_Bopomofo (Run.Codepoints (I))
+           or else Is_Hangul (Run.Codepoints (I))
+           or else Is_Yi (Run.Codepoints (I))
            or else Is_CJK (Run.Codepoints (I))
            or else Is_Emoji (Run.Codepoints (I))
            or else Is_Complex_Script (Run.Codepoints (I))
@@ -481,6 +509,16 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Javanese;
             elsif C in 16#AA00# .. 16#AA5F# then
                return RM.Script_Cham;
+            elsif Is_Hiragana (C) then
+               return RM.Script_Hiragana;
+            elsif Is_Katakana (C) then
+               return RM.Script_Katakana;
+            elsif Is_Bopomofo (C) then
+               return RM.Script_Bopomofo;
+            elsif Is_Hangul (C) then
+               return RM.Script_Hangul;
+            elsif Is_Yi (C) then
+               return RM.Script_Yi;
             elsif Is_Latin (C) then
                return RM.Script_Latin;
             elsif Is_Greek (C) then

@@ -265,6 +265,16 @@ package body Terminal.App.HarfBuzz is
             return "java";
          when RM.Script_Cham =>
             return "cham";
+         when RM.Script_Hiragana =>
+            return "hira";
+         when RM.Script_Katakana =>
+            return "kana";
+         when RM.Script_Bopomofo =>
+            return "bopo";
+         when RM.Script_Hangul =>
+            return "hang";
+         when RM.Script_Yi =>
+            return "yiii";
          when RM.Script_CJK =>
             return "hani";
          when RM.Script_Emoji =>
@@ -365,6 +375,14 @@ package body Terminal.App.HarfBuzz is
             return "jv";
          when RM.Script_Cham =>
             return "cjm";
+         when RM.Script_Hiragana | RM.Script_Katakana =>
+            return "ja";
+         when RM.Script_Bopomofo =>
+            return "zh";
+         when RM.Script_Hangul =>
+            return "ko";
+         when RM.Script_Yi =>
+            return "ii";
          when RM.Script_CJK =>
             return "zh";
          when RM.Script_Emoji | RM.Script_Common | RM.Script_Unknown =>
