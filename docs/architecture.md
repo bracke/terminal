@@ -36,8 +36,8 @@ The app render pipeline is staged:
 1. `Terminal.Core.Render_Snapshot` is copied out of the terminal core.
 2. `Terminal.App.Renderer` loads `textrender`, rasterizes glyphs, and builds
    renderer-neutral `Terminal.App.Render_Model.Frame_Commands`. The frame
-   contains the current fallback glyph quads plus bounded text-run commands
-   that preserve complete cell clusters for a later shaping backend.
+   contains fallback glyph quads plus bounded text-run commands prepared for
+   the app-layer HarfBuzz shaping backend.
 3. `Terminal.App.Vulkan_Submit` converts frame commands into normalized
    rectangle/glyph triangle vertices, carries text-run commands by value, and
    carries text-atlas upload metadata.

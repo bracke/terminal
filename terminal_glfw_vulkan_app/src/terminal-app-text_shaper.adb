@@ -163,6 +163,15 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#2DE0# .. 16#2DFF#)
       or else (C in 16#A640# .. 16#A69F#));
 
+   function Is_Armenian (C : Natural) return Boolean is
+     ((C in 16#0530# .. 16#058F#)
+      or else (C in 16#FB13# .. 16#FB17#));
+
+   function Is_Georgian (C : Natural) return Boolean is
+     ((C in 16#10A0# .. 16#10FF#)
+      or else (C in 16#1C90# .. 16#1CBF#)
+      or else (C in 16#2D00# .. 16#2D2F#));
+
    function Is_ASCII_Digit (C : Natural) return Boolean is
      (C in Character'Pos ('0') .. Character'Pos ('9'));
 
@@ -319,6 +328,8 @@ package body Terminal.App.Text_Shaper is
          elsif Is_Latin (Run.Codepoints (I))
            or else Is_Greek (Run.Codepoints (I))
            or else Is_Cyrillic (Run.Codepoints (I))
+           or else Is_Armenian (Run.Codepoints (I))
+           or else Is_Georgian (Run.Codepoints (I))
            or else Is_CJK (Run.Codepoints (I))
            or else Is_Emoji (Run.Codepoints (I))
            or else Is_Complex_Script (Run.Codepoints (I))
@@ -378,6 +389,10 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Greek;
             elsif Is_Cyrillic (C) then
                return RM.Script_Cyrillic;
+            elsif Is_Armenian (C) then
+               return RM.Script_Armenian;
+            elsif Is_Georgian (C) then
+               return RM.Script_Georgian;
             elsif Is_CJK (C) then
                return RM.Script_CJK;
             elsif Is_Emoji (C) then

@@ -85,6 +85,8 @@ procedure Text_Shaper_Smoke is
    RLM_Text  : RM.Text_Run_Command := Run (16#200F#, Character'Pos ('A'));
    Greek     : RM.Text_Run_Command := Run (16#03B1#, 16#03B2#);
    Cyrillic  : RM.Text_Run_Command := Run (16#0430#, 16#0431#);
+   Armenian  : RM.Text_Run_Command := Run (16#0561#, 16#0562#);
+   Georgian  : RM.Text_Run_Command := Run (16#10D0#, 16#10D1#);
    Arabic    : RM.Text_Run_Command := Run (16#0627#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
    Bengali   : RM.Text_Run_Command := Run (16#0995#);
@@ -323,6 +325,30 @@ begin
    Assert
      (Cyrillic.Shaped_Glyph_Count > 0,
       "Cyrillic text shaped glyph count");
+
+   Assert (TS.Classify (Armenian) = RM.Simple_Text, "Armenian text class");
+   TS.Prepare (Armenian, Status);
+   Assert
+     (Status = RM.Shape_Ok,
+      "Armenian text should shape through HarfBuzz");
+   Assert
+     (Armenian.Direction = RM.Direction_Left_To_Right,
+      "Armenian text direction");
+   Assert
+     (Armenian.Script = RM.Script_Armenian,
+      "Armenian text script");
+
+   Assert (TS.Classify (Georgian) = RM.Simple_Text, "Georgian text class");
+   TS.Prepare (Georgian, Status);
+   Assert
+     (Status = RM.Shape_Ok,
+      "Georgian text should shape through HarfBuzz");
+   Assert
+     (Georgian.Direction = RM.Direction_Left_To_Right,
+      "Georgian text direction");
+   Assert
+     (Georgian.Script = RM.Script_Georgian,
+      "Georgian text script");
 
    Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
    TS.Prepare (Arabic, Status);
