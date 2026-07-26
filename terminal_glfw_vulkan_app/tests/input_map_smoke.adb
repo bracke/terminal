@@ -221,8 +221,15 @@ begin
      (IM.Is_Paste_Shortcut (Key_Event (GI.V, Super => True)),
       "super-v should paste");
    Assert
+     (IM.Is_Paste_Shortcut (Key_Event (GI.Insert, Shift => True)),
+      "shift-insert should paste");
+   Assert
      (not IM.Is_Paste_Shortcut (Key_Event (GI.V, Control => True)),
       "ctrl-v is left to terminal programs");
+   Assert
+     (not IM.Is_Paste_Shortcut
+        (Key_Event (GI.Insert, Shift => True, Control => True)),
+      "modified shift-insert should be left to terminal programs");
 
    IM.Encode_Key (Key_Event (GI.V, Shift => True, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#16#), "ctrl-shift-v encodes if not intercepted");
@@ -239,8 +246,15 @@ begin
      (IM.Is_Copy_Shortcut (Key_Event (GI.C, Super => True)),
       "super-c should copy");
    Assert
+     (IM.Is_Copy_Shortcut (Key_Event (GI.Insert, Control => True)),
+      "ctrl-insert should copy");
+   Assert
      (not IM.Is_Copy_Shortcut (Key_Event (GI.C, Control => True)),
       "ctrl-c is left to terminal programs");
+   Assert
+     (not IM.Is_Copy_Shortcut
+        (Key_Event (GI.Insert, Shift => True, Control => True)),
+      "modified ctrl-insert should be left to terminal programs");
    Assert
      (not IM.Is_Copy_Shortcut
         (Key_Event (GI.C, Action => GI.Release, Shift => True, Control => True)),

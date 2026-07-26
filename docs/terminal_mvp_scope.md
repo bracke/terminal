@@ -186,8 +186,9 @@ range starts or ends on the continuation cell. Selection is app-owned and does
 not mutate terminal core state. `Shift+Left Click` extends an existing
 selection from its original anchor, or starts a new selection when no range is
 active. Releasing a non-empty local selection also updates the app-owned OSC 52
-primary and selection target slots. `Ctrl+Shift+C` and `Super+C` copy the
-current selection without sending bytes to the PTY. Double-clicking selects the
+primary and selection target slots. `Ctrl+Shift+C`, `Super+C`, and
+`Ctrl+Insert` copy the current selection without sending bytes to the PTY.
+Double-clicking selects the
 ASCII token under the pointer, where token characters are letters, digits,
 underscore, and common shell path/URI characters. Double-clicking punctuation
 outside that set selects that single cell. Triple-clicking selects the visible
@@ -243,10 +244,10 @@ Modified F1-F4 use `CSI 1 ; modifier P/Q/R/S`; modified F5-F12 use
 Mouse reporting is app-owned and encoded from GLFW mouse events using xterm
 legacy `CSI M` packets or SGR `CSI < ... M/m` packets according to the current
 core mode snapshot.
-`Ctrl+Shift+C`/`Super+C` are app-owned copy shortcuts and
-`Ctrl+Shift+V`/`Super+V` are app-owned paste shortcuts. Plain `Ctrl+C` remains
-terminal input. Unmodified middle-click is an app-owned primary-selection paste
-when mouse reporting is disabled.
+`Ctrl+Shift+C`/`Super+C`/`Ctrl+Insert` are app-owned copy shortcuts and
+`Ctrl+Shift+V`/`Super+V`/`Shift+Insert` are app-owned paste shortcuts. Plain
+`Ctrl+C` remains terminal input. Unmodified middle-click is an app-owned
+primary-selection paste when mouse reporting is disabled.
 GLFW character events are encoded as UTF-8 only when they are valid Unicode
 scalar values; surrogate code points and values above `U+10FFFF` are dropped at
 the app boundary. Plain printable space is sent through the character callback;

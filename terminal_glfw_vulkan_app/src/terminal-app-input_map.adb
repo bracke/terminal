@@ -243,20 +243,34 @@ package body Terminal.App.Input_Map is
      (Event : GLFW_Vulkan.Input.Key_Event) return Boolean is
    begin
       return Event.Action /= Release
-        and then Event.Key = V
         and then
-          ((Event.Modifiers.Control and then Event.Modifiers.Shift)
-           or else Event.Modifiers.Super);
+          ((Event.Key = V
+            and then
+              ((Event.Modifiers.Control and then Event.Modifiers.Shift)
+               or else Event.Modifiers.Super))
+           or else
+             (Event.Key = Insert
+              and then Event.Modifiers.Shift
+              and then not Event.Modifiers.Control
+              and then not Event.Modifiers.Alt
+              and then not Event.Modifiers.Super));
    end Is_Paste_Shortcut;
 
    function Is_Copy_Shortcut
      (Event : GLFW_Vulkan.Input.Key_Event) return Boolean is
    begin
       return Event.Action /= Release
-        and then Event.Key = C
         and then
-          ((Event.Modifiers.Control and then Event.Modifiers.Shift)
-           or else Event.Modifiers.Super);
+          ((Event.Key = C
+            and then
+              ((Event.Modifiers.Control and then Event.Modifiers.Shift)
+               or else Event.Modifiers.Super))
+           or else
+             (Event.Key = Insert
+              and then Event.Modifiers.Control
+              and then not Event.Modifiers.Shift
+              and then not Event.Modifiers.Alt
+              and then not Event.Modifiers.Super));
    end Is_Copy_Shortcut;
 
    function Is_Primary_Paste_Button
