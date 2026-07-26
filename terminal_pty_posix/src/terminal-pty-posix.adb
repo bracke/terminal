@@ -97,6 +97,18 @@ package body Terminal.PTY.POSIX is
       return errno_location.all;
    end Last_Errno;
 
+   function Decode_Exit_State (Status : int) return Exit_State is
+      Low_7_Bits : constant int := Status mod 128;
+   begin
+      if Low_7_Bits = 0 then
+         return Exited;
+      elsif Low_7_Bits = 127 then
+         return Still_Running;
+      else
+         return Signaled;
+      end if;
+   end Decode_Exit_State;
+
    function Shell_Path return String is
       Name  : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String ("SHELL");
       Value : constant Interfaces.C.Strings.chars_ptr := getenv (Name);
@@ -157,6 +169,7 @@ package body Terminal.PTY.POSIX is
       S.Child_PID := -1;
       S.Closed := True;
       S.Last_Status := 0;
+      S.Last_State := Unknown;
 
       Master := posix_openpt (O_RDWR + O_NOCTTY);
       if Master < 0 then
@@ -227,6 +240,7 @@ package body Terminal.PTY.POSIX is
          S.Master_FD := Integer (Master);
          S.Child_PID := Integer (PID);
          S.Closed := False;
+         S.Last_State := Still_Running;
          Status := Ok;
       end if;
    end Spawn_Default_Shell;
@@ -318,13 +332,22 @@ package body Terminal.PTY.POSIX is
    end Is_Alive;
 
    function Child_State (S : Session) return Exit_State is
+      Status : aliased int := 0;
+      R : int;
    begin
       if S.Child_PID <= 0 then
          return Unknown;
-      elsif Is_Alive (S) then
+      elsif S.Closed then
+         return S.Last_State;
+      end if;
+
+      R := waitpid (int (S.Child_PID), Status'Address, WNOHANG);
+      if R = 0 then
          return Still_Running;
+      elsif R > 0 then
+         return Decode_Exit_State (Status);
       else
-         return Exited;
+         return Unknown;
       end if;
    end Child_State;
 
@@ -348,6 +371,9 @@ package body Terminal.PTY.POSIX is
          end loop;
          if R > 0 then
             S.Last_Status := Integer (Status);
+            S.Last_State := Decode_Exit_State (Status);
+         else
+            S.Last_State := Unknown;
          end if;
       end if;
       S.Closed := True;

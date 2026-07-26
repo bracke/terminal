@@ -76,6 +76,6 @@ private
       Child_PID   : Integer := -1;
       Closed      : Boolean := True;
       Last_Status : Integer := 0;
+      Last_State  : Exit_State := Unknown;
    end record;
 end Terminal.PTY.POSIX;
-
