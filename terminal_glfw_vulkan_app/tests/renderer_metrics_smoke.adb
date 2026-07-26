@@ -655,6 +655,91 @@ begin
    Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
    Assert
      (Core_Status = Terminal.Core.Ok,
+      "neutral latin run core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (Character'Val (16#1B#) & "[?25l(ab)"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "neutral latin run feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "neutral latin run render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Text_Run_Count = 1,
+         "neutral punctuation should join surrounding latin run");
+      Assert
+        (Frame.Text_Runs (1).Codepoint_Count = 4,
+         "neutral latin run codepoint count");
+      Assert
+        (Frame.Text_Runs (1).Direction =
+           Terminal.App.Render_Model.Direction_Left_To_Right,
+         "neutral latin run direction");
+      Assert
+        (Frame.Text_Runs (1).Script =
+           Terminal.App.Render_Model.Script_Latin,
+         "neutral latin run script");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "neutral mixed run core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('(')),
+       2 => Byte (Character'Pos ('a')),
+       3 => 16#D7#,
+       4 => 16#90#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "neutral mixed run feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "neutral mixed run render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Text_Run_Count = 2,
+         "neutral punctuation must not merge conflicting scripts");
+      Assert
+        (Frame.Text_Runs (1).Codepoint_Count = 2,
+         "neutral mixed first run codepoint count");
+      Assert
+        (Frame.Text_Runs (1).Script = Terminal.App.Render_Model.Script_Latin,
+         "neutral mixed first run script");
+      Assert
+        (Frame.Text_Runs (2).Script = Terminal.App.Render_Model.Script_Hebrew,
+         "neutral mixed second run script");
+      Assert
+        (Frame.Text_Runs (2).Direction =
+           Terminal.App.Render_Model.Direction_Right_To_Left,
+         "neutral mixed second run direction");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
       "ligature text run core initialize failed");
    Terminal.Core.Feed
      (T,

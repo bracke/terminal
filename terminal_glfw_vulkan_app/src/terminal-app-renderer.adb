@@ -403,32 +403,10 @@ package body Terminal.App.Renderer is
       end if;
    end Add_Text_Run;
 
-   function Can_Coalesce_With
-     (Snapshot : Terminal.Core.Render_Snapshot;
-      Row      : Positive;
-      Base     : Terminal.Core.Cell;
-      Col      : Positive) return Boolean
+   function Cell_Direction
+     (Cell : Terminal.Core.Cell) return RM.Text_Run_Direction
    is
-      Cell : constant Terminal.Core.Cell := Terminal.Core.Cell_At (Snapshot, Row, Col);
-      Base_Run : RM.Text_Run_Command :=
-        (X                  => 0.0,
-         Y                  => 0.0,
-         Cell_Width         => Float (Cell_Column_Span (Base)),
-         Cell_Height        => 1.0,
-         Cell_Span          => Cell_Column_Span (Base),
-         Color              => Default_FG,
-         Bold               => Base.Style.Bold,
-         Italic             => Base.Style.Italic,
-         Codepoints         => (1 => Natural (Base.Text.Code_Point), others => 0),
-         Codepoint_Count    => 1,
-         Run_Kind           => RM.Invalid_Run,
-         Shape_Status       => RM.Invalid_Run,
-         Direction          => RM.Direction_Neutral,
-         Script             => RM.Script_Common,
-         Shaped_Glyphs      => (others => <>),
-         Shaped_Glyph_Count => 0,
-         Fallback_Glyphs    => True);
-      Candidate_Run : RM.Text_Run_Command :=
+      Run : RM.Text_Run_Command :=
         (X                  => 0.0,
          Y                  => 0.0,
          Cell_Width         => Float (Cell_Column_Span (Cell)),
@@ -447,20 +425,85 @@ package body Terminal.App.Renderer is
          Shaped_Glyph_Count => 0,
          Fallback_Glyphs    => True);
    begin
-      return Is_Drawable (Cell)
-        and then not Cell.Style.Conceal
-        and then Cell.Kind /= Terminal.Core.Wide_Continuation
-        and then Cell.Text.Width = Terminal.Core.Width_One
-        and then Cell.Text.Attachment_Count = 0
-        and then Base.Text.Width = Terminal.Core.Width_One
-        and then Base.Text.Attachment_Count = 0
-        and then Base.Style = Cell.Style
-        and then Terminal.App.Text_Shaper.Direction_Of (Base_Run) =
-          Terminal.App.Text_Shaper.Direction_Of (Candidate_Run)
-        and then Terminal.App.Text_Shaper.Script_Of (Base_Run) =
-          Terminal.App.Text_Shaper.Script_Of (Candidate_Run)
-        and then not Is_Block_Cursor (Snapshot, Row, Col);
-   end Can_Coalesce_With;
+      return Terminal.App.Text_Shaper.Direction_Of (Run);
+   end Cell_Direction;
+
+   function Cell_Script
+     (Cell : Terminal.Core.Cell) return RM.Text_Run_Script
+   is
+      Run : RM.Text_Run_Command :=
+        (X                  => 0.0,
+         Y                  => 0.0,
+         Cell_Width         => Float (Cell_Column_Span (Cell)),
+         Cell_Height        => 1.0,
+         Cell_Span          => Cell_Column_Span (Cell),
+         Color              => Default_FG,
+         Bold               => Cell.Style.Bold,
+         Italic             => Cell.Style.Italic,
+         Codepoints         => (1 => Natural (Cell.Text.Code_Point), others => 0),
+         Codepoint_Count    => 1,
+         Run_Kind           => RM.Invalid_Run,
+         Shape_Status       => RM.Invalid_Run,
+         Direction          => RM.Direction_Neutral,
+         Script             => RM.Script_Common,
+         Shaped_Glyphs      => (others => <>),
+         Shaped_Glyph_Count => 0,
+         Fallback_Glyphs    => True);
+   begin
+      return Terminal.App.Text_Shaper.Script_Of (Run);
+   end Cell_Script;
+
+   function Can_Coalesce_Range
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      First    : Positive;
+      Last     : Positive) return Boolean
+   is
+      Base : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (Snapshot, Row, First);
+      Effective_Direction : RM.Text_Run_Direction := RM.Direction_Neutral;
+      Effective_Script    : RM.Text_Run_Script := RM.Script_Common;
+   begin
+      for Col in First .. Last loop
+         declare
+            Cell : constant Terminal.Core.Cell :=
+              Terminal.Core.Cell_At (Snapshot, Row, Col);
+            Direction : RM.Text_Run_Direction;
+            Script    : RM.Text_Run_Script;
+         begin
+            if not Is_Drawable (Cell)
+              or else Cell.Style.Conceal
+              or else Cell.Kind = Terminal.Core.Wide_Continuation
+              or else Cell.Text.Width /= Terminal.Core.Width_One
+              or else Cell.Text.Attachment_Count /= 0
+              or else Cell.Style /= Base.Style
+              or else Is_Block_Cursor (Snapshot, Row, Col)
+            then
+               return False;
+            end if;
+
+            Direction := Cell_Direction (Cell);
+            if Direction /= RM.Direction_Neutral then
+               if Effective_Direction = RM.Direction_Neutral then
+                  Effective_Direction := Direction;
+               elsif Effective_Direction /= Direction then
+                  return False;
+               end if;
+            end if;
+
+            Script := Cell_Script (Cell);
+            if Script /= RM.Script_Common then
+               if Effective_Script = RM.Script_Common then
+                  Effective_Script := Script;
+               elsif Effective_Script /= Script then
+                  return False;
+               end if;
+            end if;
+         end;
+      end loop;
+
+      return True;
+   end Can_Coalesce_Range;
 
    procedure Build_Text_Runs
      (R        : in out Renderer;
@@ -488,8 +531,8 @@ package body Terminal.App.Renderer is
                      then
                         while Last < Snapshot.Cols
                           and then Last - First + 1 < RM.Max_Text_Run_Codepoints
-                          and then Can_Coalesce_With
-                            (Snapshot, Row, Cell, Positive (Last + 1))
+                          and then Can_Coalesce_Range
+                            (Snapshot, Row, First, Positive (Last + 1))
                         loop
                            Last := Last + 1;
                         end loop;
