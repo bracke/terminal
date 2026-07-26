@@ -438,6 +438,44 @@ begin
          "DECRQM should drain");
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[?7$p"
+         & ASCII.ESC & "[?25$p"
+         & ASCII.ESC & "[2$p"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "partial DECRQM feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 24,
+      "partial DECRQM response length");
+
+   declare
+      First  : Byte_Array (1 .. 10);
+      Second : Byte_Array (1 .. 24);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, First, Last);
+      Assert_Bytes
+        (First,
+         Last,
+         To_Bytes (ASCII.ESC & "[?7;1$y" & ASCII.ESC & "["),
+         "partial DECRQM first drain");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 14,
+         "partial DECRQM remaining length");
+
+      Terminal.Core.Read_Response (T, Second, Last);
+      Assert_Bytes
+        (Second,
+         Last,
+         To_Bytes ("?25;2$y" & ASCII.ESC & "[2;1$y"),
+         "partial DECRQM second drain");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "partial DECRQM should drain");
+   end;
+
    declare
       Before : constant Natural :=
         Terminal.Core.Diagnostics (T).Unsupported_Sequence;
