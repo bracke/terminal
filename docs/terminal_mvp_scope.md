@@ -198,8 +198,9 @@ changes arrive from GLFW.
 OSC 8 hyperlink ranges are preserved by the platform-independent core as
 bounded URI/id metadata on rendered cells. Starting `OSC 8 ; params ; uri ST`
 applies the current hyperlink to subsequently printed cells; `OSC 8 ;; ST`
-clears it. The renderer and app do not yet expose hover, click, tooltip, or
-open-link behavior.
+clears it. The GLFW app resolves links under the pointer from snapshots and
+opens `http`, `https`, and `mailto` links with `Ctrl+Left Click` through the
+desktop opener. Hover styling, tooltips, and richer link UI remain postponed.
 
 ## TERM and Environment
 

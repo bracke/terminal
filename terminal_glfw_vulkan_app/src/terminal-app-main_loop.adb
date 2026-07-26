@@ -8,6 +8,7 @@ with GLFW_Vulkan.Windows;
 with Terminal.Core;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Diagnostics;
+with Terminal.App.Hyperlinks;
 with Terminal.App.Input_Map;
 with Terminal.App.PTY_Reader;
 with Terminal.App.PTY_Write;
@@ -532,11 +533,36 @@ package body Terminal.App.Main_Loop is
                               if Event.Button_Event.Action =
                                 GLFW_Vulkan.Input.Press
                               then
-                                 Terminal.App.Selection.Begin_Selection
-                                   (Selection, Pos);
-                                 Dirty := True;
-                                 Need_Redraw := True;
-                                 Local_Redraw := True;
+                                 if Event.Button_Event.Modifiers.Control then
+                                    if Terminal.App.Selection.Has_Selection
+                                      (Selection)
+                                    then
+                                       Terminal.App.Selection.Clear (Selection);
+                                       Dirty := True;
+                                       Need_Redraw := True;
+                                       Local_Redraw := True;
+                                    end if;
+                                    declare
+                                       Link_Snap : Terminal.Core.Render_Snapshot :=
+                                         Terminal.App.Scrollback_View.Snapshot
+                                           (T, Scroll_Offset);
+                                       Link : constant Terminal.Core.Hyperlink :=
+                                         Terminal.App.Hyperlinks.Link_At
+                                           (Link_Snap, Pos);
+                                       Link_Status :
+                                         Terminal.App.Hyperlinks.Activation_Status;
+                                    begin
+                                       Terminal.App.Hyperlinks.Activate
+                                         (Link, Link_Status);
+                                       Terminal.Core.Release (Link_Snap);
+                                    end;
+                                 else
+                                    Terminal.App.Selection.Begin_Selection
+                                      (Selection, Pos);
+                                    Dirty := True;
+                                    Need_Redraw := True;
+                                    Local_Redraw := True;
+                                 end if;
                               elsif Event.Button_Event.Action =
                                 GLFW_Vulkan.Input.Release
                               then

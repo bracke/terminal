@@ -18,6 +18,7 @@ project App_Tests is
       "pty_m1_commands_smoke.adb",
       "input_map_smoke.adb",
       "selection_smoke.adb",
+      "hyperlink_smoke.adb",
       "scrollback_view_smoke.adb",
       "render_policy_smoke.adb",
       "cursor_blink_smoke.adb",
