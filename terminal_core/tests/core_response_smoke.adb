@@ -81,6 +81,27 @@ begin
          "DSR status should drain");
    end;
 
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[?5n"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DEC DSR status feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 5,
+      "DEC DSR status response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 8);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[?0n"),
+         "DEC DSR status");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "DEC DSR status should drain");
+   end;
+
    Terminal.Core.Feed
      (T,
       To_Bytes (ASCII.ESC & "[3;4H" & ASCII.ESC & "[6n"),

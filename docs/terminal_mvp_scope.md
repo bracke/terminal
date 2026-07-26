@@ -33,9 +33,9 @@
   in mode state and queryable. The GLFW app defers live terminal redraws while
   it is active, while app-owned local redraws such as selection and scrollback
   remain immediate.
-- DSR status (`CSI 5 n`), cursor-position report (`CSI 6 n`), DEC private
-  cursor-position report (`CSI ? 6 n`), primary DA (`CSI c`), and secondary DA
-  (`CSI > c`) responses.
+- DSR status (`CSI 5 n`), DEC private operating status (`CSI ? 5 n`),
+  cursor-position report (`CSI 6 n`), DEC private cursor-position report
+  (`CSI ? 6 n`), primary DA (`CSI c`), and secondary DA (`CSI > c`) responses.
 - DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode,
   line-feed/new-line mode, known DEC private modes, and stateless `?1048`
   save/restore cursor mode.

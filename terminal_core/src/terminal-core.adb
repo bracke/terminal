@@ -1613,6 +1613,12 @@ package body Terminal.Core is
                Append_Response_Char (T, '[');
                Append_Response_Char (T, '0');
                Append_Response_Char (T, 'n');
+            elsif T.CSI_Private = '?' then
+               Append_Response_Char (T, ASCII.ESC);
+               Append_Response_Char (T, '[');
+               Append_Response_Char (T, '?');
+               Append_Response_Char (T, '0');
+               Append_Response_Char (T, 'n');
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
