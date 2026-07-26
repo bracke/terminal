@@ -271,6 +271,25 @@ begin
          "primary DA");
    end;
 
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[0;1c"
+            & ASCII.ESC & "[>0;1c"),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "malformed DA feed failed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "malformed DA should not queue responses");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 2,
+         "malformed DA should be diagnosed");
+   end;
+
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "Z"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "DECID feed failed");
    Assert

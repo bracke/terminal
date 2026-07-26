@@ -1731,9 +1731,15 @@ package body Terminal.Core is
      (T : in out Terminal)
    is
    begin
-      if T.CSI_Private = ASCII.NUL and then Param (T, 1, 0) = 0 then
+      if T.CSI_Private = ASCII.NUL
+        and then T.CSI_Count <= 1
+        and then Param (T, 1, 0) = 0
+      then
          Append_Response_String (T, ASCII.ESC & "[?62;4;22c");
-      elsif T.CSI_Private = '>' and then Param (T, 1, 0) = 0 then
+      elsif T.CSI_Private = '>'
+        and then T.CSI_Count <= 1
+        and then Param (T, 1, 0) = 0
+      then
          Append_Response_String (T, ASCII.ESC & "[>0;1;0c");
       else
          T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
