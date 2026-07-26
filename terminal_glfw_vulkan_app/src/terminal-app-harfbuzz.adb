@@ -187,6 +187,12 @@ package body Terminal.App.HarfBuzz is
             return "hebr";
          when RM.Script_Arabic =>
             return "arab";
+         when RM.Script_Syriac =>
+            return "syrc";
+         when RM.Script_Thaana =>
+            return "thaa";
+         when RM.Script_NKo =>
+            return "nkoo";
          when RM.Script_Devanagari =>
             return "deva";
          when RM.Script_Bengali =>
@@ -249,6 +255,12 @@ package body Terminal.App.HarfBuzz is
             return "he";
          when RM.Script_Arabic =>
             return "ar";
+         when RM.Script_Syriac =>
+            return "syr";
+         when RM.Script_Thaana =>
+            return "dv";
+         when RM.Script_NKo =>
+            return "nqo";
          when RM.Script_Devanagari =>
             return "hi";
          when RM.Script_Bengali =>

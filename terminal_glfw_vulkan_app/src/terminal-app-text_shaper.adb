@@ -138,6 +138,16 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#FB50# .. 16#FDFF#)
       or else (C in 16#FE70# .. 16#FEFF#));
 
+   function Is_Syriac (C : Natural) return Boolean is
+     ((C in 16#0700# .. 16#074F#)
+      or else C in 16#0860# .. 16#086F#);
+
+   function Is_Thaana (C : Natural) return Boolean is
+     (C in 16#0780# .. 16#07BF#);
+
+   function Is_NKo (C : Natural) return Boolean is
+     (C in 16#07C0# .. 16#07FF#);
+
    function Is_Complex_Script (C : Natural) return Boolean is
      ((C in 16#0900# .. 16#0D7F#)
       or else (C in 16#0D80# .. 16#0DFF#)
@@ -361,6 +371,12 @@ package body Terminal.App.Text_Shaper is
          begin
             if Is_Hebrew (C) then
                return RM.Script_Hebrew;
+            elsif Is_Syriac (C) then
+               return RM.Script_Syriac;
+            elsif Is_Thaana (C) then
+               return RM.Script_Thaana;
+            elsif Is_NKo (C) then
+               return RM.Script_NKo;
             elsif Is_Arabic (C) then
                return RM.Script_Arabic;
             elsif C in 16#0900# .. 16#097F# then

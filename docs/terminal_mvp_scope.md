@@ -156,11 +156,12 @@ The app-layer HarfBuzz adapter shapes those runs against the selected font file
 with direction, script, and script-derived language tags, and returns real font
 glyph IDs, source clusters, advances, and offsets in the bounded shaped-glyph
 output. Script tags are specific for Latin, Greek, Cyrillic, Armenian,
-Georgian, Ethiopic, Cherokee, Hebrew, Arabic, Devanagari, Bengali, Gurmukhi,
-Gujarati, Oriya/Odia, Tamil, Telugu, Kannada, Malayalam, Sinhala, Thai, Lao,
-Myanmar, Khmer, Javanese, Cham, CJK/Han, and emoji/common runs. The shaping
-adapter also tries configured fallback font faces in the same order as
-`textrender` when the primary face shapes a run with `.notdef` glyphs.
+Georgian, Ethiopic, Cherokee, Hebrew, Arabic, Syriac, Thaana, NKo,
+Devanagari, Bengali, Gurmukhi, Gujarati, Oriya/Odia, Tamil, Telugu, Kannada,
+Malayalam, Sinhala, Thai, Lao, Myanmar, Khmer, Javanese, Cham, CJK/Han, and
+emoji/common runs. The shaping adapter also tries configured fallback font
+faces in the same order as `textrender` when the primary face shapes a run
+with `.notdef` glyphs.
 The default fallback list includes generic sans/symbol fonts plus script-specific
 Noto fonts for Arabic, Hebrew, Indic, Southeast Asian, and CJK/Han coverage when
 those files are installed and loadable by `textrender`. Each shaped glyph stores

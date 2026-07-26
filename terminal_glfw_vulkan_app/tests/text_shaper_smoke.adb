@@ -90,6 +90,9 @@ procedure Text_Shaper_Smoke is
    Ethiopic  : RM.Text_Run_Command := Run (16#12A0#, 16#12A1#);
    Cherokee  : RM.Text_Run_Command := Run (16#13A0#, 16#13A1#);
    Arabic    : RM.Text_Run_Command := Run (16#0627#);
+   Syriac    : RM.Text_Run_Command := Run (16#0710#);
+   Thaana    : RM.Text_Run_Command := Run (16#0786#);
+   NKo       : RM.Text_Run_Command := Run (16#07CA#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
    Bengali   : RM.Text_Run_Command := Run (16#0995#);
    Gurmukhi  : RM.Text_Run_Command := Run (16#0A15#);
@@ -383,6 +386,30 @@ begin
      (Arabic.Direction = RM.Direction_Right_To_Left,
       "Arabic direction");
    Assert (Arabic.Script = RM.Script_Arabic, "Arabic script");
+
+   Assert (TS.Classify (Syriac) = RM.Bidi_Text, "Syriac class");
+   TS.Prepare (Syriac, Status);
+   Assert_Shaped_Or_Needs_Backend (Syriac, Status, "Syriac");
+   Assert
+     (Syriac.Direction = RM.Direction_Right_To_Left,
+      "Syriac direction");
+   Assert (Syriac.Script = RM.Script_Syriac, "Syriac script");
+
+   Assert (TS.Classify (Thaana) = RM.Bidi_Text, "Thaana class");
+   TS.Prepare (Thaana, Status);
+   Assert_Shaped_Or_Needs_Backend (Thaana, Status, "Thaana");
+   Assert
+     (Thaana.Direction = RM.Direction_Right_To_Left,
+      "Thaana direction");
+   Assert (Thaana.Script = RM.Script_Thaana, "Thaana script");
+
+   Assert (TS.Classify (NKo) = RM.Bidi_Text, "NKo class");
+   TS.Prepare (NKo, Status);
+   Assert_Shaped_Or_Needs_Backend (NKo, Status, "NKo");
+   Assert
+     (NKo.Direction = RM.Direction_Right_To_Left,
+      "NKo direction");
+   Assert (NKo.Script = RM.Script_NKo, "NKo script");
 
    Assert_Complex_Script (Deva, RM.Script_Devanagari, "Devanagari");
    Assert_Complex_Script (Bengali, RM.Script_Bengali, "Bengali");
