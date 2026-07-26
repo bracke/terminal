@@ -301,11 +301,17 @@ begin
         (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
          "single shift consume prefix");
       Assert
-        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
-         "SS2 following byte should not leak");
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#78#,
+         "SS2 should invoke G2 for the following printable byte");
       Assert
-        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#63#,
-         "SS3 following byte should not leak");
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#62#,
+         "text after SS2 should render");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 4).Text.Code_Point = 16#79#,
+         "SS3 should invoke G3 for the following printable byte");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 5).Text.Code_Point = 16#63#,
+         "text after SS3 should render");
       Assert
         (D.Ignored_Escape = 0,
          "SS2/SS3 should not count as ignored escapes");
@@ -336,11 +342,17 @@ begin
         (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
          "C1 single shift consume prefix");
       Assert
-        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
-         "C1 SS2 following byte should not leak");
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#78#,
+         "C1 SS2 should invoke G2 for the following printable byte");
       Assert
-        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#63#,
-         "C1 SS3 following byte should not leak");
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#62#,
+         "text after C1 SS2 should render");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 4).Text.Code_Point = 16#79#,
+         "C1 SS3 should invoke G3 for the following printable byte");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 5).Text.Code_Point = 16#63#,
+         "text after C1 SS3 should render");
       Assert
         (D.Malformed_UTF8 = 0,
          "C1 SS2/SS3 should not count as malformed UTF-8");
@@ -365,8 +377,35 @@ begin
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
       Assert
-        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#7A#,
-         "UTF-8 encoded SS2 should consume the following byte");
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "UTF-8 encoded SS2 should render the following byte");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#7A#,
+         "text after UTF-8 encoded SS2 should render");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "G2 single shift charset initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#1B#, 2 => Byte (Character'Pos ('*')),
+       3 => Byte (Character'Pos ('0')),
+       4 => 16#1B#, 5 => Byte (Character'Pos ('N')),
+       6 => Byte (Character'Pos ('q')),
+       7 => Byte (Character'Pos ('x'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "G2 single shift charset feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#2500#,
+         "SS2 should map through designated DEC special graphics G2");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#78#,
+         "single shift should restore the previous charset after one byte");
       Terminal.Core.Release (S);
    end;
 
