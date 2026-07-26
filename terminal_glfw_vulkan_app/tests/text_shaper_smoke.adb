@@ -85,6 +85,12 @@ procedure Text_Shaper_Smoke is
    RLM_Text  : RM.Text_Run_Command := Run (16#200F#, Character'Pos ('A'));
    Greek     : RM.Text_Run_Command := Run (16#03B1#, 16#03B2#);
    Cyrillic  : RM.Text_Run_Command := Run (16#0430#, 16#0431#);
+   Glagolitic : RM.Text_Run_Command := Run (16#2C00#);
+   Coptic    : RM.Text_Run_Command := Run (16#2C81#);
+   Gothic    : RM.Text_Run_Command := Run (16#10330#);
+   Old_Italic : RM.Text_Run_Command := Run (16#10300#);
+   Old_Persian : RM.Text_Run_Command := Run (16#103A0#);
+   Ugaritic  : RM.Text_Run_Command := Run (16#10380#);
    Armenian  : RM.Text_Run_Command := Run (16#0561#, 16#0562#);
    Georgian  : RM.Text_Run_Command := Run (16#10D0#, 16#10D1#);
    Ethiopic  : RM.Text_Run_Command := Run (16#12A0#, 16#12A1#);
@@ -344,6 +350,52 @@ begin
    Assert
      (Cyrillic.Shaped_Glyph_Count > 0,
       "Cyrillic text shaped glyph count");
+
+   Assert (TS.Classify (Glagolitic) = RM.Simple_Glyph, "Glagolitic class");
+   TS.Prepare (Glagolitic, Status);
+   Assert (Status = RM.Shape_Ok, "Glagolitic simple status");
+   Assert
+     (Glagolitic.Direction = RM.Direction_Left_To_Right,
+      "Glagolitic direction");
+   Assert (Glagolitic.Script = RM.Script_Glagolitic, "Glagolitic script");
+
+   Assert (TS.Classify (Coptic) = RM.Simple_Glyph, "Coptic class");
+   TS.Prepare (Coptic, Status);
+   Assert (Status = RM.Shape_Ok, "Coptic simple status");
+   Assert (Coptic.Direction = RM.Direction_Left_To_Right, "Coptic direction");
+   Assert (Coptic.Script = RM.Script_Coptic, "Coptic script");
+
+   Assert (TS.Classify (Gothic) = RM.Simple_Glyph, "Gothic class");
+   TS.Prepare (Gothic, Status);
+   Assert (Status = RM.Shape_Ok, "Gothic simple status");
+   Assert (Gothic.Direction = RM.Direction_Left_To_Right, "Gothic direction");
+   Assert (Gothic.Script = RM.Script_Gothic, "Gothic script");
+
+   Assert (TS.Classify (Old_Italic) = RM.Simple_Glyph, "Old Italic class");
+   TS.Prepare (Old_Italic, Status);
+   Assert (Status = RM.Shape_Ok, "Old Italic simple status");
+   Assert
+     (Old_Italic.Direction = RM.Direction_Left_To_Right,
+      "Old Italic direction");
+   Assert (Old_Italic.Script = RM.Script_Old_Italic, "Old Italic script");
+
+   Assert (TS.Classify (Old_Persian) = RM.Simple_Glyph, "Old Persian class");
+   TS.Prepare (Old_Persian, Status);
+   Assert (Status = RM.Shape_Ok, "Old Persian simple status");
+   Assert
+     (Old_Persian.Direction = RM.Direction_Left_To_Right,
+      "Old Persian direction");
+   Assert
+     (Old_Persian.Script = RM.Script_Old_Persian,
+      "Old Persian script");
+
+   Assert (TS.Classify (Ugaritic) = RM.Simple_Glyph, "Ugaritic class");
+   TS.Prepare (Ugaritic, Status);
+   Assert (Status = RM.Shape_Ok, "Ugaritic simple status");
+   Assert
+     (Ugaritic.Direction = RM.Direction_Left_To_Right,
+      "Ugaritic direction");
+   Assert (Ugaritic.Script = RM.Script_Ugaritic, "Ugaritic script");
 
    Assert (TS.Classify (Armenian) = RM.Simple_Text, "Armenian text class");
    TS.Prepare (Armenian, Status);

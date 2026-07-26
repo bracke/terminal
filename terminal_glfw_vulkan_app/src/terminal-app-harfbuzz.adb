@@ -175,6 +175,18 @@ package body Terminal.App.HarfBuzz is
             return "grek";
          when RM.Script_Cyrillic =>
             return "cyrl";
+         when RM.Script_Glagolitic =>
+            return "glag";
+         when RM.Script_Coptic =>
+            return "copt";
+         when RM.Script_Gothic =>
+            return "goth";
+         when RM.Script_Old_Italic =>
+            return "ital";
+         when RM.Script_Old_Persian =>
+            return "xpeo";
+         when RM.Script_Ugaritic =>
+            return "ugar";
          when RM.Script_Armenian =>
             return "armn";
          when RM.Script_Georgian =>
@@ -271,6 +283,14 @@ package body Terminal.App.HarfBuzz is
             return "el";
          when RM.Script_Cyrillic =>
             return "ru";
+         when RM.Script_Coptic =>
+            return "cop";
+         when RM.Script_Glagolitic
+            | RM.Script_Gothic
+            | RM.Script_Old_Italic
+            | RM.Script_Old_Persian
+            | RM.Script_Ugaritic =>
+            return "und";
          when RM.Script_Armenian =>
             return "hy";
          when RM.Script_Georgian =>

@@ -155,7 +155,8 @@ they do not get folded into adjacent RTL shaping runs.
 The app-layer HarfBuzz adapter shapes those runs against the selected font file
 with direction, script, and script-derived language tags, and returns real font
 glyph IDs, source clusters, advances, and offsets in the bounded shaped-glyph
-output. Script tags are specific for Latin, Greek, Cyrillic, Armenian,
+output. Script tags are specific for Latin, Greek, Cyrillic, Glagolitic,
+Coptic, Gothic, Old Italic, Old Persian, Ugaritic, Armenian,
 Georgian, Ethiopic, Cherokee, Hebrew, Arabic, Syriac, Thaana, NKo,
 Tibetan, Devanagari, Bengali, Gurmukhi, Gujarati, Oriya/Odia, Tamil, Telugu,
 Kannada, Malayalam, Sinhala, Thai, Lao, Myanmar, Mongolian, Khmer, Javanese,

@@ -178,6 +178,26 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#2DE0# .. 16#2DFF#)
       or else (C in 16#A640# .. 16#A69F#));
 
+   function Is_Glagolitic (C : Natural) return Boolean is
+     ((C in 16#2C00# .. 16#2C5F#)
+      or else (C in 16#1E000# .. 16#1E02F#));
+
+   function Is_Coptic (C : Natural) return Boolean is
+     ((C in 16#03E2# .. 16#03EF#)
+      or else (C in 16#2C80# .. 16#2CFF#));
+
+   function Is_Gothic (C : Natural) return Boolean is
+     (C in 16#10330# .. 16#1034F#);
+
+   function Is_Old_Italic (C : Natural) return Boolean is
+     (C in 16#10300# .. 16#1032F#);
+
+   function Is_Old_Persian (C : Natural) return Boolean is
+     (C in 16#103A0# .. 16#103DF#);
+
+   function Is_Ugaritic (C : Natural) return Boolean is
+     (C in 16#10380# .. 16#1039F#);
+
    function Is_Armenian (C : Natural) return Boolean is
      ((C in 16#0530# .. 16#058F#)
       or else (C in 16#FB13# .. 16#FB17#));
@@ -378,6 +398,12 @@ package body Terminal.App.Text_Shaper is
            or else Is_Runic (Run.Codepoints (I))
            or else Is_Tifinagh (Run.Codepoints (I))
            or else Is_Vai (Run.Codepoints (I))
+           or else Is_Glagolitic (Run.Codepoints (I))
+           or else Is_Coptic (Run.Codepoints (I))
+           or else Is_Gothic (Run.Codepoints (I))
+           or else Is_Old_Italic (Run.Codepoints (I))
+           or else Is_Old_Persian (Run.Codepoints (I))
+           or else Is_Ugaritic (Run.Codepoints (I))
            or else Is_CJK (Run.Codepoints (I))
            or else Is_Emoji (Run.Codepoints (I))
            or else Is_Complex_Script (Run.Codepoints (I))
@@ -461,6 +487,18 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Greek;
             elsif Is_Cyrillic (C) then
                return RM.Script_Cyrillic;
+            elsif Is_Glagolitic (C) then
+               return RM.Script_Glagolitic;
+            elsif Is_Coptic (C) then
+               return RM.Script_Coptic;
+            elsif Is_Gothic (C) then
+               return RM.Script_Gothic;
+            elsif Is_Old_Italic (C) then
+               return RM.Script_Old_Italic;
+            elsif Is_Old_Persian (C) then
+               return RM.Script_Old_Persian;
+            elsif Is_Ugaritic (C) then
+               return RM.Script_Ugaritic;
             elsif Is_Armenian (C) then
                return RM.Script_Armenian;
             elsif Is_Georgian (C) then
