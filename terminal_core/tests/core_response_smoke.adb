@@ -104,6 +104,32 @@ begin
 
    Terminal.Core.Feed
      (T,
+      To_Bytes (ASCII.ESC & "P$q" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "empty DECRQSS feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 7,
+      "empty DECRQSS response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 8);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "P0$r" & ASCII.ESC & "\"),
+         "empty DECRQSS");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "empty DECRQSS should drain");
+   end;
+
+   Terminal.Core.Feed
+     (T,
       To_Bytes
         (ASCII.ESC & "[?15n"
          & ASCII.ESC & "[?25n"

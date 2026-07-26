@@ -1554,11 +1554,14 @@ package body Terminal.Core is
       end Cursor_Style_Param;
    begin
       if T.Ignored_String_Is_DCS
-        and then T.Ignored_String_Count >= 3
+        and then T.Ignored_String_Count >= 2
         and then T.Ignored_String_Data (1) = '$'
         and then T.Ignored_String_Data (2) = 'q'
       then
-         if T.Ignored_String_Count = 4
+         if T.Ignored_String_Count = 2 then
+            Append_DECRQSS_Start (T, Valid => False);
+            Append_DECRQSS_End (T);
+         elsif T.Ignored_String_Count = 4
            and then T.Ignored_String_Data (3) = ' '
            and then T.Ignored_String_Data (4) = 'q'
          then
