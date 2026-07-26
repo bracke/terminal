@@ -73,6 +73,33 @@ begin
    Feed_Text (ASCII.ESC & "c" & (1 => ASCII.HT), "reset tabs feed failed");
    Assert_Cursor_Col (9, "reset should restore default tab stops");
 
+   Feed_Text
+     (ASCII.ESC & "[5G" & ASCII.ESC & "H"
+      & ASCII.ESC & "[13G" & ASCII.ESC & "H",
+      "TBC parameter list setup feed failed");
+   Feed_Text
+     (ASCII.ESC & "[5G" & ASCII.ESC & "[0;3g" & ASCII.ESC & "[G"
+      & (1 => ASCII.HT),
+      "TBC parameter list feed failed");
+   Assert_Cursor_Col (20, "TBC parameter list should clear all tab stops");
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Feed_Text
+        (ASCII.ESC & "c"
+         & ASCII.ESC & "[5G" & ASCII.ESC & "H"
+         & ASCII.ESC & "[9;0g" & ASCII.ESC & "[G" & (1 => ASCII.HT),
+         "TBC mixed unsupported parameter feed failed");
+      Assert_Cursor_Col
+        (9,
+         "TBC mixed unsupported parameter should still clear supported stops");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
+         "TBC unsupported parameter should be diagnosed once");
+   end;
+
    Terminal.Core.Initialize (T, 1, 20, 10, Init);
    Assert (Init = Terminal.Core.Ok, "C1 HTS initialize failed");
    Feed_Text (ASCII.ESC & "[5G", "C1 HTS setup cursor feed failed");

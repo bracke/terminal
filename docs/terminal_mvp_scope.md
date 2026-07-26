@@ -79,7 +79,7 @@
 - Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.
 - Default tab stops every eight columns, plus `ESC H` tab-set and `CSI g`
-  tab-clear handling.
+  tab-clear handling across bounded parameter lists.
 - Autowrap with pending-wrap behavior.
 - ANSI line-feed/new-line mode (`CSI 20 h`/`CSI 20 l`) controls whether LF,
   VT, and FF preserve the current column or first return to column one.

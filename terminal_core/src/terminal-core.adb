@@ -2455,22 +2455,24 @@ package body Terminal.Core is
                when others => T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end case;
          when 'g' =>
-            N := Param (T, 1, 0);
-            case N is
-               when 0 =>
-                  if T.Tab_Stops /= null then
-                     T.Tab_Stops (T.Cursor_Col) := False;
-                  end if;
-               when 3 =>
-                  if T.Tab_Stops /= null then
-                     for C in T.Tab_Stops'Range loop
-                        T.Tab_Stops (C) := False;
-                     end loop;
-                  end if;
-               when others =>
-                  T.Diag.Unsupported_Sequence :=
-                    T.Diag.Unsupported_Sequence + 1;
-            end case;
+            for I in 1 .. Natural'Max (T.CSI_Count, 1) loop
+               N := Param (T, I, 0);
+               case N is
+                  when 0 =>
+                     if T.Tab_Stops /= null then
+                        T.Tab_Stops (T.Cursor_Col) := False;
+                     end if;
+                  when 3 =>
+                     if T.Tab_Stops /= null then
+                        for C in T.Tab_Stops'Range loop
+                           T.Tab_Stops (C) := False;
+                        end loop;
+                     end if;
+                  when others =>
+                     T.Diag.Unsupported_Sequence :=
+                       T.Diag.Unsupported_Sequence + 1;
+               end case;
+            end loop;
          when 'L' =>
             Insert_Blank_Lines
               (T,
