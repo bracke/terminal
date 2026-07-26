@@ -25,7 +25,8 @@
   ICH, DCH, ECH, IL, DL, REP, SU, SD, SGR, DECSET/DECRST known modes,
   SM/RM insert mode including bounded parameter lists, DECSTBM margins with at
   least two rows, media-copy/printer-control requests (`CSI Ps i` and
-  `CSI ? Ps i`) as no-ops, and DECSTR soft reset (`CSI ! p`).
+  `CSI ? Ps i`) as no-ops across bounded parameter lists, and DECSTR soft
+  reset (`CSI ! p`).
 - DEC origin mode constrains vertical cursor movement to the active scrolling
   region for CUP/HVP, CUU/CUD, CNL/CPL, VPA, and VPR.
 - DECSCUSR cursor-shape requests (`CSI Ps SP q`) select block, underline, or

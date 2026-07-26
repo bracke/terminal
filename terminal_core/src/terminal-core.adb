@@ -2535,21 +2535,25 @@ package body Terminal.Core is
             end;
          when 'i' =>
             if T.CSI_Private = ASCII.NUL then
-               case Param (T, 1, 0) is
-                  when 0 | 4 | 5 =>
-                     null;
-                  when others =>
-                     T.Diag.Unsupported_Sequence :=
-                       T.Diag.Unsupported_Sequence + 1;
-               end case;
+               for I in 1 .. Natural'Max (T.CSI_Count, 1) loop
+                  case Param (T, I, 0) is
+                     when 0 | 4 | 5 =>
+                        null;
+                     when others =>
+                        T.Diag.Unsupported_Sequence :=
+                          T.Diag.Unsupported_Sequence + 1;
+                  end case;
+               end loop;
             elsif T.CSI_Private = '?' then
-               case Param (T, 1, 0) is
-                  when 1 | 4 | 5 | 10 | 11 =>
-                     null;
-                  when others =>
-                     T.Diag.Unsupported_Sequence :=
-                       T.Diag.Unsupported_Sequence + 1;
-               end case;
+               for I in 1 .. Natural'Max (T.CSI_Count, 1) loop
+                  case Param (T, I, 0) is
+                     when 1 | 4 | 5 | 10 | 11 =>
+                        null;
+                     when others =>
+                        T.Diag.Unsupported_Sequence :=
+                          T.Diag.Unsupported_Sequence + 1;
+                  end case;
+               end loop;
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;

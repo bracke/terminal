@@ -178,7 +178,9 @@ begin
             & ASCII.ESC & "[?4i"
             & ASCII.ESC & "[?5i"
             & ASCII.ESC & "[?10i"
-            & ASCII.ESC & "[?11i"),
+            & ASCII.ESC & "[?11i"
+            & ASCII.ESC & "[0;4;5i"
+            & ASCII.ESC & "[?1;4;5;10;11i"),
          Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "media-copy no-op feed failed");
       Assert
@@ -188,10 +190,15 @@ begin
         (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before,
          "media-copy no-ops should be recognized");
 
-      Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[?99i"), Feed_Status);
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[9;4i"
+            & ASCII.ESC & "[?1;99;11i"),
+         Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "unknown media-copy feed failed");
       Assert
-        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 2,
          "unknown media-copy should be diagnosed");
    end;
 
