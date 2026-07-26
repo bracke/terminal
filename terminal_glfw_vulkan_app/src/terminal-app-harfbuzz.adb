@@ -237,6 +237,26 @@ package body Terminal.App.HarfBuzz is
             return "mlym";
          when RM.Script_Sinhala =>
             return "sinh";
+         when RM.Script_Brahmi =>
+            return "brah";
+         when RM.Script_Kaithi =>
+            return "kthi";
+         when RM.Script_Chakma =>
+            return "cakm";
+         when RM.Script_Mahajani =>
+            return "mahj";
+         when RM.Script_Sharada =>
+            return "shrd";
+         when RM.Script_Khojki =>
+            return "khoj";
+         when RM.Script_Khudawadi =>
+            return "sind";
+         when RM.Script_Grantha =>
+            return "gran";
+         when RM.Script_Newa =>
+            return "newa";
+         when RM.Script_Tirhuta =>
+            return "tirh";
          when RM.Script_Thai =>
             return "thai";
          when RM.Script_Lao =>
@@ -367,6 +387,20 @@ package body Terminal.App.HarfBuzz is
             return "ml";
          when RM.Script_Sinhala =>
             return "si";
+         when RM.Script_Brahmi | RM.Script_Mahajani =>
+            return "und";
+         when RM.Script_Kaithi =>
+            return "bho";
+         when RM.Script_Chakma =>
+            return "ccp";
+         when RM.Script_Sharada | RM.Script_Grantha =>
+            return "sa";
+         when RM.Script_Khojki | RM.Script_Khudawadi =>
+            return "sd";
+         when RM.Script_Newa =>
+            return "new";
+         when RM.Script_Tirhuta =>
+            return "mai";
          when RM.Script_Thai =>
             return "th";
          when RM.Script_Lao =>
