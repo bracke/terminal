@@ -626,8 +626,13 @@ package body Terminal.App.Main_Loop is
                                        Terminal.Core.Release (Link_Snap);
                                     end;
                                  else
-                                    Terminal.App.Selection.Begin_Selection
-                                      (Selection, Pos);
+                                    if Event.Button_Event.Modifiers.Shift then
+                                       Terminal.App.Selection.Extend_Selection
+                                         (Selection, Pos);
+                                    else
+                                       Terminal.App.Selection.Begin_Selection
+                                         (Selection, Pos);
+                                    end if;
                                     Dirty := True;
                                     Need_Redraw := True;
                                     Local_Redraw := True;

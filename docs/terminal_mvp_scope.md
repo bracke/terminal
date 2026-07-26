@@ -183,7 +183,9 @@ visible grid. Selected cells are rendered with inverse video, and releasing the
 left button copies the selected visible text to the system clipboard as UTF-8.
 Wide-character cells are selected as a pair and copied once even when the drag
 range starts or ends on the continuation cell. Selection is app-owned and does
-not mutate terminal core state.
+not mutate terminal core state. `Shift+Left Click` extends an existing
+selection from its original anchor, or starts a new selection when no range is
+active.
 
 Mouse-aware terminal programs can enable basic xterm mouse reporting through
 DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates

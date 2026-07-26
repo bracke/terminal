@@ -65,6 +65,19 @@ package body Terminal.App.Selection is
       end if;
    end Update_Selection;
 
+   procedure Extend_Selection
+     (Selection : in out Selection_State;
+      Position  : Cell_Position)
+   is
+   begin
+      if not Selection.Has_Range then
+         Begin_Selection (Selection, Position);
+      else
+         Selection.Active := True;
+         Selection.Focus := Position;
+      end if;
+   end Extend_Selection;
+
    procedure Finish_Selection
      (Selection : in out Selection_State;
       Position  : Cell_Position)

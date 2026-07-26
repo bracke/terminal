@@ -25,6 +25,10 @@ package Terminal.App.Selection is
      (Selection : in out Selection_State;
       Position  : Cell_Position);
 
+   procedure Extend_Selection
+     (Selection : in out Selection_State;
+      Position  : Cell_Position);
+
    procedure Finish_Selection
      (Selection : in out Selection_State;
       Position  : Cell_Position);

@@ -84,6 +84,41 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 1));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 1));
+      Terminal.App.Selection.Extend_Selection
+        (Sel, (Row => 2, Col => 1));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 2, Col => 1));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         "ab" & ASCII.LF & "c",
+         "extended selection should keep original anchor");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Extend_Selection
+        (Sel, (Row => 2, Col => 2));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 2, Col => 2));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = "d",
+         "extend without prior range should start selection");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 4, 10, Init);
    Assert (Init = Terminal.Core.Ok, "cluster selection initialize failed");
    Terminal.Core.Feed
