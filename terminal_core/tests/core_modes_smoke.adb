@@ -501,6 +501,22 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Feed_Text
+     (ASCII.ESC & "[?66;67;2004h"
+      & ASCII.ESC & "[2h"
+      & ASCII.ESC & "c",
+      "RIS keyboard modes feed failed");
+   declare
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert (not M.Application_Keypad, "RIS should reset app keypad");
+      Assert (not M.Backarrow_Key_Backspace, "RIS should reset DECBKM");
+      Assert (not M.Bracketed_Paste, "RIS should reset bracketed paste");
+      Assert (not M.Keyboard_Locked, "RIS should reset keyboard lock");
+      Assert (M.Autowrap, "RIS should enable autowrap");
+      Assert (M.Cursor_Visible, "RIS should show cursor");
+   end;
+
    Feed_Text (ASCII.ESC & "[6 q", "DECSCUSR reinitialize setup feed failed");
    Terminal.Core.Initialize (T, 5, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "DECSCUSR reinitialize failed");

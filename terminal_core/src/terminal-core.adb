@@ -196,10 +196,34 @@ package body Terminal.Core is
       Mark_Cursor_Move (T, Old_Row);
    end Restore_Cursor_State;
 
+   function Default_Modes
+     (Alternate_Screen : Boolean := False) return Mode_Snapshot is
+   begin
+      return
+        (Application_Cursor       => False,
+         Application_Keypad       => False,
+         Backarrow_Key_Backspace  => False,
+         Bracketed_Paste          => False,
+         Mouse_Button             => False,
+         Mouse_Drag               => False,
+         Mouse_Any_Event          => False,
+         Mouse_SGR                => False,
+         Focus_Reporting          => False,
+         Synchronized_Update      => False,
+         Alternate_Screen         => Alternate_Screen,
+         Origin_Mode              => False,
+         Autowrap                 => True,
+         Cursor_Visible           => True,
+         Cursor_Blinking          => False,
+         Keyboard_Locked          => False,
+         Insert_Mode              => False,
+         Linefeed_New_Line        => False);
+   end Default_Modes;
+
    procedure Reset_Terminal (T : in out Terminal) is
    begin
       T.Active := Primary;
-      T.Current_Modes := (others => <>);
+      T.Current_Modes := Default_Modes;
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
       T.Current_Cursor_Shape := Cursor_Block;
@@ -2274,24 +2298,7 @@ package body Terminal.Core is
       T.Current_Style := (others => <>);
       T.Saved_Style := (others => <>);
       T.Current_Modes :=
-        (Application_Cursor => False,
-         Application_Keypad => False,
-         Backarrow_Key_Backspace => False,
-         Bracketed_Paste    => False,
-         Mouse_Button       => False,
-         Mouse_Drag         => False,
-         Mouse_Any_Event    => False,
-         Mouse_SGR          => False,
-         Focus_Reporting    => False,
-         Synchronized_Update => False,
-         Alternate_Screen   => Keep_Alternate,
-         Origin_Mode        => False,
-         Autowrap           => True,
-         Cursor_Visible     => True,
-         Cursor_Blinking    => False,
-         Keyboard_Locked    => False,
-         Insert_Mode        => False,
-         Linefeed_New_Line  => False);
+        Default_Modes (Alternate_Screen => Keep_Alternate);
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
       T.Current_Cursor_Shape := Cursor_Block;
