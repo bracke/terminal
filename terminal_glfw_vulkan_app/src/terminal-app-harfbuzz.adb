@@ -235,6 +235,40 @@ package body Terminal.App.HarfBuzz is
             return "thaa";
          when RM.Script_NKo =>
             return "nkoo";
+         when RM.Script_Samaritan =>
+            return "samr";
+         when RM.Script_Mandaic =>
+            return "mand";
+         when RM.Script_Adlam =>
+            return "adlm";
+         when RM.Script_Hanifi_Rohingya =>
+            return "rohg";
+         when RM.Script_Imperial_Aramaic =>
+            return "armi";
+         when RM.Script_Palmyrene =>
+            return "palm";
+         when RM.Script_Nabataean =>
+            return "nbat";
+         when RM.Script_Hatran =>
+            return "hatr";
+         when RM.Script_Phoenician =>
+            return "phnx";
+         when RM.Script_Lydian =>
+            return "lydi";
+         when RM.Script_Avestan =>
+            return "avst";
+         when RM.Script_Inscriptional_Parthian =>
+            return "prti";
+         when RM.Script_Inscriptional_Pahlavi =>
+            return "phli";
+         when RM.Script_Psalter_Pahlavi =>
+            return "phlp";
+         when RM.Script_Old_South_Arabian =>
+            return "sarb";
+         when RM.Script_Old_North_Arabian =>
+            return "narb";
+         when RM.Script_Manichaean =>
+            return "mani";
          when RM.Script_Tibetan =>
             return "tibt";
          when RM.Script_Devanagari =>
@@ -421,6 +455,29 @@ package body Terminal.App.HarfBuzz is
             return "dv";
          when RM.Script_NKo =>
             return "nqo";
+         when RM.Script_Samaritan =>
+            return "sam";
+         when RM.Script_Mandaic =>
+            return "mid";
+         when RM.Script_Adlam =>
+            return "ff";
+         when RM.Script_Hanifi_Rohingya =>
+            return "rhg";
+         when RM.Script_Avestan =>
+            return "ae";
+         when RM.Script_Imperial_Aramaic
+            | RM.Script_Palmyrene
+            | RM.Script_Nabataean
+            | RM.Script_Hatran
+            | RM.Script_Phoenician
+            | RM.Script_Lydian
+            | RM.Script_Inscriptional_Parthian
+            | RM.Script_Inscriptional_Pahlavi
+            | RM.Script_Psalter_Pahlavi
+            | RM.Script_Old_South_Arabian
+            | RM.Script_Old_North_Arabian
+            | RM.Script_Manichaean =>
+            return "und";
          when RM.Script_Tibetan =>
             return "bo";
          when RM.Script_Devanagari =>

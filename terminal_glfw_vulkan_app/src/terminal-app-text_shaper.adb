@@ -125,7 +125,12 @@ package body Terminal.App.Text_Shaper is
    function Is_RTL_Script (C : Natural) return Boolean is
      ((C in 16#0590# .. 16#08FF#)
       or else (C in 16#FB1D# .. 16#FDFF#)
-      or else (C in 16#FE70# .. 16#FEFF#));
+      or else (C in 16#FE70# .. 16#FEFF#)
+      or else (C in 16#10840# .. 16#1093F#)
+      or else (C in 16#10A60# .. 16#10AFF#)
+      or else (C in 16#10B00# .. 16#10BAF#)
+      or else (C in 16#10D00# .. 16#10D3F#)
+      or else (C in 16#1E900# .. 16#1E95F#));
 
    function Is_Bidi_Control_Or_RTL (C : Natural) return Boolean is
      (Is_RTL_Script (C) or else Is_Bidi_Control (C));
@@ -147,6 +152,57 @@ package body Terminal.App.Text_Shaper is
 
    function Is_NKo (C : Natural) return Boolean is
      (C in 16#07C0# .. 16#07FF#);
+
+   function Is_Samaritan (C : Natural) return Boolean is
+     (C in 16#0800# .. 16#083F#);
+
+   function Is_Mandaic (C : Natural) return Boolean is
+     (C in 16#0840# .. 16#085F#);
+
+   function Is_Adlam (C : Natural) return Boolean is
+     (C in 16#1E900# .. 16#1E95F#);
+
+   function Is_Hanifi_Rohingya (C : Natural) return Boolean is
+     (C in 16#10D00# .. 16#10D3F#);
+
+   function Is_Imperial_Aramaic (C : Natural) return Boolean is
+     (C in 16#10840# .. 16#1085F#);
+
+   function Is_Palmyrene (C : Natural) return Boolean is
+     (C in 16#10860# .. 16#1087F#);
+
+   function Is_Nabataean (C : Natural) return Boolean is
+     (C in 16#10880# .. 16#108AF#);
+
+   function Is_Hatran (C : Natural) return Boolean is
+     (C in 16#108E0# .. 16#108FF#);
+
+   function Is_Phoenician (C : Natural) return Boolean is
+     (C in 16#10900# .. 16#1091F#);
+
+   function Is_Lydian (C : Natural) return Boolean is
+     (C in 16#10920# .. 16#1093F#);
+
+   function Is_Avestan (C : Natural) return Boolean is
+     (C in 16#10B00# .. 16#10B3F#);
+
+   function Is_Inscriptional_Parthian (C : Natural) return Boolean is
+     (C in 16#10B40# .. 16#10B5F#);
+
+   function Is_Inscriptional_Pahlavi (C : Natural) return Boolean is
+     (C in 16#10B60# .. 16#10B7F#);
+
+   function Is_Psalter_Pahlavi (C : Natural) return Boolean is
+     (C in 16#10B80# .. 16#10BAF#);
+
+   function Is_Old_South_Arabian (C : Natural) return Boolean is
+     (C in 16#10A60# .. 16#10A7F#);
+
+   function Is_Old_North_Arabian (C : Natural) return Boolean is
+     (C in 16#10A80# .. 16#10A9F#);
+
+   function Is_Manichaean (C : Natural) return Boolean is
+     (C in 16#10AC0# .. 16#10AFF#);
 
    function Is_Complex_Script (C : Natural) return Boolean is
      ((C in 16#0900# .. 16#0D7F#)
@@ -502,6 +558,40 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Thaana;
             elsif Is_NKo (C) then
                return RM.Script_NKo;
+            elsif Is_Samaritan (C) then
+               return RM.Script_Samaritan;
+            elsif Is_Mandaic (C) then
+               return RM.Script_Mandaic;
+            elsif Is_Adlam (C) then
+               return RM.Script_Adlam;
+            elsif Is_Hanifi_Rohingya (C) then
+               return RM.Script_Hanifi_Rohingya;
+            elsif Is_Imperial_Aramaic (C) then
+               return RM.Script_Imperial_Aramaic;
+            elsif Is_Palmyrene (C) then
+               return RM.Script_Palmyrene;
+            elsif Is_Nabataean (C) then
+               return RM.Script_Nabataean;
+            elsif Is_Hatran (C) then
+               return RM.Script_Hatran;
+            elsif Is_Phoenician (C) then
+               return RM.Script_Phoenician;
+            elsif Is_Lydian (C) then
+               return RM.Script_Lydian;
+            elsif Is_Avestan (C) then
+               return RM.Script_Avestan;
+            elsif Is_Inscriptional_Parthian (C) then
+               return RM.Script_Inscriptional_Parthian;
+            elsif Is_Inscriptional_Pahlavi (C) then
+               return RM.Script_Inscriptional_Pahlavi;
+            elsif Is_Psalter_Pahlavi (C) then
+               return RM.Script_Psalter_Pahlavi;
+            elsif Is_Old_South_Arabian (C) then
+               return RM.Script_Old_South_Arabian;
+            elsif Is_Old_North_Arabian (C) then
+               return RM.Script_Old_North_Arabian;
+            elsif Is_Manichaean (C) then
+               return RM.Script_Manichaean;
             elsif Is_Arabic (C) then
                return RM.Script_Arabic;
             elsif C in 16#0F00# .. 16#0FFF# then

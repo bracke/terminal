@@ -114,6 +114,23 @@ procedure Text_Shaper_Smoke is
    Syriac    : RM.Text_Run_Command := Run (16#0710#);
    Thaana    : RM.Text_Run_Command := Run (16#0786#);
    NKo       : RM.Text_Run_Command := Run (16#07CA#);
+   Samaritan : RM.Text_Run_Command := Run (16#0800#);
+   Mandaic   : RM.Text_Run_Command := Run (16#0840#);
+   Adlam     : RM.Text_Run_Command := Run (16#1E900#);
+   Rohingya  : RM.Text_Run_Command := Run (16#10D00#);
+   Aramaic   : RM.Text_Run_Command := Run (16#10840#);
+   Palmyrene : RM.Text_Run_Command := Run (16#10860#);
+   Nabataean : RM.Text_Run_Command := Run (16#10880#);
+   Hatran    : RM.Text_Run_Command := Run (16#108E0#);
+   Phoenician : RM.Text_Run_Command := Run (16#10900#);
+   Lydian    : RM.Text_Run_Command := Run (16#10920#);
+   Avestan   : RM.Text_Run_Command := Run (16#10B00#);
+   Parthian  : RM.Text_Run_Command := Run (16#10B40#);
+   Pahlavi   : RM.Text_Run_Command := Run (16#10B60#);
+   Psalter   : RM.Text_Run_Command := Run (16#10B80#);
+   Old_South : RM.Text_Run_Command := Run (16#10A60#);
+   Old_North : RM.Text_Run_Command := Run (16#10A80#);
+   Manichaean : RM.Text_Run_Command := Run (16#10AC0#);
    Tibetan   : RM.Text_Run_Command := Run (16#0F40#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
    Bengali   : RM.Text_Run_Command := Run (16#0995#);
@@ -230,6 +247,21 @@ procedure Text_Shaper_Smoke is
          Label & " direction");
       Assert (Text.Script = Script, Label & " script");
    end Assert_Simple_Script;
+
+   procedure Assert_Bidi_Script
+     (Text     : in out RM.Text_Run_Command;
+      Script   : RM.Text_Run_Script;
+      Label    : String)
+   is
+   begin
+      Assert (TS.Classify (Text) = RM.Bidi_Text, Label & " class");
+      TS.Prepare (Text, Status);
+      Assert_Shaped_Or_Needs_Backend (Text, Status, Label);
+      Assert
+        (Text.Direction = RM.Direction_Right_To_Left,
+         Label & " direction");
+      Assert (Text.Script = Script, Label & " script");
+   end Assert_Bidi_Script;
 begin
    TS.Configure_Font
      (Path       => Terminal.App.Fonts.Default_Font_Path,
@@ -589,6 +621,33 @@ begin
      (NKo.Direction = RM.Direction_Right_To_Left,
       "NKo direction");
    Assert (NKo.Script = RM.Script_NKo, "NKo script");
+
+   Assert_Bidi_Script (Samaritan, RM.Script_Samaritan, "Samaritan");
+   Assert_Bidi_Script (Mandaic, RM.Script_Mandaic, "Mandaic");
+   Assert_Bidi_Script (Adlam, RM.Script_Adlam, "Adlam");
+   Assert_Bidi_Script
+     (Rohingya, RM.Script_Hanifi_Rohingya, "Hanifi Rohingya");
+   Assert_Bidi_Script
+     (Aramaic, RM.Script_Imperial_Aramaic, "Imperial Aramaic");
+   Assert_Bidi_Script (Palmyrene, RM.Script_Palmyrene, "Palmyrene");
+   Assert_Bidi_Script (Nabataean, RM.Script_Nabataean, "Nabataean");
+   Assert_Bidi_Script (Hatran, RM.Script_Hatran, "Hatran");
+   Assert_Bidi_Script (Phoenician, RM.Script_Phoenician, "Phoenician");
+   Assert_Bidi_Script (Lydian, RM.Script_Lydian, "Lydian");
+   Assert_Bidi_Script (Avestan, RM.Script_Avestan, "Avestan");
+   Assert_Bidi_Script
+     (Parthian, RM.Script_Inscriptional_Parthian,
+      "Inscriptional Parthian");
+   Assert_Bidi_Script
+     (Pahlavi, RM.Script_Inscriptional_Pahlavi,
+      "Inscriptional Pahlavi");
+   Assert_Bidi_Script
+     (Psalter, RM.Script_Psalter_Pahlavi, "Psalter Pahlavi");
+   Assert_Bidi_Script
+     (Old_South, RM.Script_Old_South_Arabian, "Old South Arabian");
+   Assert_Bidi_Script
+     (Old_North, RM.Script_Old_North_Arabian, "Old North Arabian");
+   Assert_Bidi_Script (Manichaean, RM.Script_Manichaean, "Manichaean");
 
    Assert_Complex_Script (Tibetan, RM.Script_Tibetan, "Tibetan");
    Assert_Complex_Script (Deva, RM.Script_Devanagari, "Devanagari");
