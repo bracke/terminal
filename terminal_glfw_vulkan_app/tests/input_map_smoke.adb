@@ -232,6 +232,23 @@ begin
         (Key_Event (GI.V, Action => GI.Release, Shift => True, Control => True)),
       "released paste shortcut should be ignored");
 
+   Assert
+     (IM.Is_Copy_Shortcut (Key_Event (GI.C, Shift => True, Control => True)),
+      "ctrl-shift-c should copy");
+   Assert
+     (IM.Is_Copy_Shortcut (Key_Event (GI.C, Super => True)),
+      "super-c should copy");
+   Assert
+     (not IM.Is_Copy_Shortcut (Key_Event (GI.C, Control => True)),
+      "ctrl-c is left to terminal programs");
+   Assert
+     (not IM.Is_Copy_Shortcut
+        (Key_Event (GI.C, Action => GI.Release, Shift => True, Control => True)),
+      "released copy shortcut should be ignored");
+
+   IM.Encode_Key (Key_Event (GI.C, Shift => True, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#03#), "ctrl-shift-c encodes if not intercepted");
+
    IM.Encode_Character ((Code_Point => Wide_Wide_Character'Val (16#00E9#)), Chunk);
    Assert_Bytes (Chunk, (1 => 16#C3#, 2 => 16#A9#), "utf8 e-acute");
 

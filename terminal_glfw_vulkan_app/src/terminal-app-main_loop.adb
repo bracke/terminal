@@ -322,6 +322,20 @@ package body Terminal.App.Main_Loop is
              else GLFW_Vulkan.Windows.Default_Cursor),
             Cursor_Status);
       end Apply_Hovered_Link;
+
+      procedure Copy_Selection is
+         Copy_Snap : Terminal.Core.Render_Snapshot :=
+           Terminal.App.Scrollback_View.Snapshot (T, Scroll_Offset);
+         Text : constant String :=
+           Terminal.App.Selection.Selected_Text (Copy_Snap, Selection);
+      begin
+         if Text'Length > 0 then
+            GLFW_Vulkan.Clipboard.Set_Text (W, Text);
+            Terminal.App.Clipboard_OSC52.Store_Local_Selection
+              (Clipboard_Targets, Text);
+         end if;
+         Terminal.Core.Release (Copy_Snap);
+      end Copy_Selection;
    begin
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
       if Init_Status /= GLFW_Vulkan.Ok then
@@ -533,6 +547,13 @@ package body Terminal.App.Main_Loop is
                              (GLFW_Vulkan.Clipboard.Get_Text (W),
                               Terminal.Core.Modes (T),
                               Chunk);
+                        elsif Terminal.App.Input_Map.Is_Copy_Shortcut
+                          (Event.Key_Event)
+                        then
+                           if Terminal.App.Selection.Has_Selection (Selection) then
+                              Copy_Selection;
+                           end if;
+                           Chunk := (others => <>);
                         else
                            Scroll_Offset := 0;
                            if Terminal.App.Selection.Has_Selection (Selection) then
@@ -642,22 +663,7 @@ package body Terminal.App.Main_Loop is
                               then
                                  Terminal.App.Selection.Finish_Selection
                                    (Selection, Pos);
-                                 declare
-                                    Copy_Snap : Terminal.Core.Render_Snapshot :=
-                                      Terminal.App.Scrollback_View.Snapshot
-                                        (T, Scroll_Offset);
-                                    Text : constant String :=
-                                      Terminal.App.Selection.Selected_Text
-                                        (Copy_Snap, Selection);
-                                 begin
-                                    if Text'Length > 0 then
-                                       GLFW_Vulkan.Clipboard.Set_Text (W, Text);
-                                       Terminal.App.Clipboard_OSC52
-                                         .Store_Local_Selection
-                                           (Clipboard_Targets, Text);
-                                    end if;
-                                    Terminal.Core.Release (Copy_Snap);
-                                 end;
+                                 Copy_Selection;
                                  Dirty := True;
                                  Need_Redraw := True;
                                  Local_Redraw := True;

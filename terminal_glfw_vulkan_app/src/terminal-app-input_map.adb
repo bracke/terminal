@@ -249,6 +249,16 @@ package body Terminal.App.Input_Map is
            or else Event.Modifiers.Super);
    end Is_Paste_Shortcut;
 
+   function Is_Copy_Shortcut
+     (Event : GLFW_Vulkan.Input.Key_Event) return Boolean is
+   begin
+      return Event.Action /= Release
+        and then Event.Key = C
+        and then
+          ((Event.Modifiers.Control and then Event.Modifiers.Shift)
+           or else Event.Modifiers.Super);
+   end Is_Copy_Shortcut;
+
    procedure Encode_Key
      (Event : GLFW_Vulkan.Input.Key_Event;
       Modes : Terminal.Core.Mode_Snapshot;

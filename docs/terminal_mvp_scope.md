@@ -186,7 +186,8 @@ range starts or ends on the continuation cell. Selection is app-owned and does
 not mutate terminal core state. `Shift+Left Click` extends an existing
 selection from its original anchor, or starts a new selection when no range is
 active. Releasing a non-empty local selection also updates the app-owned OSC 52
-primary and selection target slots.
+primary and selection target slots. `Ctrl+Shift+C` and `Super+C` copy the
+current selection without sending bytes to the PTY.
 
 Mouse-aware terminal programs can enable basic xterm mouse reporting through
 DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates
@@ -237,6 +238,9 @@ Modified F1-F4 use `CSI 1 ; modifier P/Q/R/S`; modified F5-F12 use
 Mouse reporting is app-owned and encoded from GLFW mouse events using xterm
 legacy `CSI M` packets or SGR `CSI < ... M/m` packets according to the current
 core mode snapshot.
+`Ctrl+Shift+C`/`Super+C` are app-owned copy shortcuts and
+`Ctrl+Shift+V`/`Super+V` are app-owned paste shortcuts. Plain `Ctrl+C` remains
+terminal input.
 GLFW character events are encoded as UTF-8 only when they are valid Unicode
 scalar values; surrogate code points and values above `U+10FFFF` are dropped at
 the app boundary. Plain printable space is sent through the character callback;
