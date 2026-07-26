@@ -285,6 +285,25 @@ begin
    begin
       Terminal.Core.Feed
         (T,
+         To_Bytes (ASCII.ESC & "]52;c;?x" & ASCII.BEL),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "ambiguous OSC 52 query feed failed");
+      Assert
+        (not Terminal.Core.Clipboard (T).Pending,
+         "ambiguous OSC 52 query should not request clipboard");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
+         "ambiguous OSC 52 query should be diagnosed");
+   end;
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
          To_Bytes (ASCII.ESC & "]52;x;?" & ASCII.BEL),
          Feed_Status);
       Assert

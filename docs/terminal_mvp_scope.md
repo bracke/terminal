@@ -126,10 +126,11 @@ aliases for the semicolon forms.
 OSC payloads are bounded. BEL and ST (`ESC \`) termination are recognized.
 OSC 0/1/2 update the app window title. OSC 52 clipboard set requests are
 decoded from bounded base64 payloads by the core and applied to the system
-clipboard by the GLFW app. OSC 52 clipboard query requests are detected by the
-core and answered by the app with a bounded base64 OSC 52 response generated
-from GLFW clipboard text. OSC 52 targets `c`, `p`, and `s` are recognized and
-exposed on the core request snapshot; `c` uses the GLFW system clipboard, while
+clipboard by the GLFW app. OSC 52 clipboard query requests use a lone `?`
+payload; they are detected by the core and answered by the app with a bounded
+base64 OSC 52 response generated from GLFW clipboard text. OSC 52 targets `c`,
+`p`, and `s` are recognized and exposed on the core request snapshot; `c` uses
+the GLFW system clipboard, while
 `p` and `s` use bounded app-owned target slots so they can round-trip
 independently. Query responses preserve the requested `c`/`p`/`s` target
 designator in the OSC 52 response. Unsupported OSC 52 target bytes are
