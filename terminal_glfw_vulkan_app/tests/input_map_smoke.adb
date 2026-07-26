@@ -184,8 +184,27 @@ begin
    Assert_Bytes (Chunk, (1 => 16#0D#), "keypad enter");
 
    Modes.Application_Keypad := True;
+   IM.Encode_Key (Key_Event (GI.Kp_1), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "Oq"), "application keypad one");
+
+   IM.Encode_Key (Key_Event (GI.Kp_Add), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "Ok"), "application keypad add");
+
+   IM.Encode_Key (Key_Event (GI.Kp_Equal, Alt => True), Modes, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & ASCII.ESC & "OX"),
+      "alt application keypad equal");
+
    IM.Encode_Key (Key_Event (GI.Kp_Enter), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "OM"), "application keypad enter");
+   Assert
+     (IM.Suppressed_Character (Key_Event (GI.Kp_1), Modes) = '1',
+      "application keypad one should suppress matching character event");
+   Assert
+     (IM.Suppressed_Character (Key_Event (GI.Kp_Enter), Modes) =
+        Wide_Wide_Character'Val (0),
+      "application keypad enter should not suppress character event");
    Modes.Application_Keypad := False;
 
    IM.Encode_Key

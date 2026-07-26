@@ -86,6 +86,70 @@ package body Terminal.App.Input_Map is
       end if;
    end Append_CSI_Tilde;
 
+   function Keypad_Application_Final
+     (Key : GLFW_Vulkan.Input.Key) return Character is
+   begin
+      case Key is
+         when Kp_0        => return 'p';
+         when Kp_1        => return 'q';
+         when Kp_2        => return 'r';
+         when Kp_3        => return 's';
+         when Kp_4        => return 't';
+         when Kp_5        => return 'u';
+         when Kp_6        => return 'v';
+         when Kp_7        => return 'w';
+         when Kp_8        => return 'x';
+         when Kp_9        => return 'y';
+         when Kp_Decimal  => return 'n';
+         when Kp_Divide   => return 'o';
+         when Kp_Multiply => return 'j';
+         when Kp_Subtract => return 'm';
+         when Kp_Add      => return 'k';
+         when Kp_Enter    => return 'M';
+         when Kp_Equal    => return 'X';
+         when others      => return ASCII.NUL;
+      end case;
+   end Keypad_Application_Final;
+
+   function Keypad_Printable
+     (Key : GLFW_Vulkan.Input.Key) return Wide_Wide_Character is
+   begin
+      case Key is
+         when Kp_0        => return '0';
+         when Kp_1        => return '1';
+         when Kp_2        => return '2';
+         when Kp_3        => return '3';
+         when Kp_4        => return '4';
+         when Kp_5        => return '5';
+         when Kp_6        => return '6';
+         when Kp_7        => return '7';
+         when Kp_8        => return '8';
+         when Kp_9        => return '9';
+         when Kp_Decimal  => return '.';
+         when Kp_Divide   => return '/';
+         when Kp_Multiply => return '*';
+         when Kp_Subtract => return '-';
+         when Kp_Add      => return '+';
+         when Kp_Equal    => return '=';
+         when others      => return Wide_Wide_Character'Val (0);
+      end case;
+   end Keypad_Printable;
+
+   procedure Append_Keypad_Application
+     (Chunk : in out Terminal.App.Queues.Byte_Chunk;
+      Event : GLFW_Vulkan.Input.Key_Event)
+   is
+      Final : constant Character := Keypad_Application_Final (Event.Key);
+   begin
+      if Final /= ASCII.NUL then
+         if Event.Modifiers.Alt then
+            Append (Chunk, 16#1B#);
+         end if;
+         Append_String (Chunk, ASCII.ESC & "O");
+         Append (Chunk, Byte (Character'Pos (Final)));
+      end if;
+   end Append_Keypad_Application;
+
    function Mouse_Button_Code
      (Button : GLFW_Vulkan.Input.Mouse_Button) return Natural
    is
@@ -317,6 +381,21 @@ package body Terminal.App.Input_Map is
         and then not Event.Modifiers.Super;
    end Is_Primary_Paste_Button;
 
+   function Suppressed_Character
+     (Event : GLFW_Vulkan.Input.Key_Event;
+      Modes : Terminal.Core.Mode_Snapshot) return Wide_Wide_Character is
+   begin
+      if Event.Action /= Release
+        and then Modes.Application_Keypad
+        and then not Event.Modifiers.Control
+        and then not Event.Modifiers.Super
+      then
+         return Keypad_Printable (Event.Key);
+      else
+         return Wide_Wide_Character'Val (0);
+      end if;
+   end Suppressed_Character;
+
    procedure Encode_Key
      (Event : GLFW_Vulkan.Input.Key_Event;
       Modes : Terminal.Core.Mode_Snapshot;
@@ -326,6 +405,15 @@ package body Terminal.App.Input_Map is
    begin
       Chunk := (others => <>);
       if Event.Action = Release then
+         return;
+      end if;
+
+      if Modes.Application_Keypad
+        and then Keypad_Application_Final (Event.Key) /= ASCII.NUL
+        and then not Event.Modifiers.Control
+        and then not Event.Modifiers.Super
+      then
+         Append_Keypad_Application (Chunk, Event);
          return;
       end if;
 
@@ -382,11 +470,7 @@ package body Terminal.App.Input_Map is
             if Event.Modifiers.Alt then
                Append (Chunk, 16#1B#);
             end if;
-            if Modes.Application_Keypad then
-               Append_String (Chunk, ASCII.ESC & "OM");
-            else
-               Append (Chunk, 16#0D#);
-            end if;
+            Append (Chunk, 16#0D#);
          when Backspace  => Append (Chunk, 16#7F#);
          when Space      =>
             if Event.Modifiers.Alt then

@@ -308,6 +308,8 @@ package body Terminal.App.Main_Loop is
       Mouse_Button_Down : Boolean := False;
       Mouse_Button_Code_Value : Natural := 0;
       Mouse_Modifiers : GLFW_Vulkan.Input.Modifier_Set;
+      Suppress_Character : Wide_Wide_Character :=
+        Wide_Wide_Character'Val (0);
       Blink_Origin : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
       Last_Blink_Tick : Natural := 0;
       Blinking_Text_Active : Boolean := False;
@@ -573,16 +575,28 @@ package body Terminal.App.Main_Loop is
                            end if;
                            Terminal.App.Input_Map.Encode_Key
                              (Event.Key_Event, Terminal.Core.Modes (T), Chunk);
+                           Suppress_Character :=
+                             Terminal.App.Input_Map.Suppressed_Character
+                               (Event.Key_Event, Terminal.Core.Modes (T));
                         end if;
                      when Terminal.App.Queues.Character =>
                         Scroll_Offset := 0;
-                        if Terminal.App.Selection.Has_Selection (Selection) then
-                           Terminal.App.Selection.Clear (Selection);
-                           Dirty := True;
-                           Local_Redraw := True;
+                        if Suppress_Character /= Wide_Wide_Character'Val (0)
+                          and then Event.Character_Event.Code_Point =
+                            Suppress_Character
+                        then
+                           Chunk := (others => <>);
+                           Suppress_Character := Wide_Wide_Character'Val (0);
+                        else
+                           Suppress_Character := Wide_Wide_Character'Val (0);
+                           if Terminal.App.Selection.Has_Selection (Selection) then
+                              Terminal.App.Selection.Clear (Selection);
+                              Dirty := True;
+                              Local_Redraw := True;
+                           end if;
+                           Terminal.App.Input_Map.Encode_Character
+                             (Event.Character_Event, Chunk);
                         end if;
-                        Terminal.App.Input_Map.Encode_Character
-                          (Event.Character_Event, Chunk);
                      when Terminal.App.Queues.Bytes =>
                         Chunk := Event.Bytes;
                      when Terminal.App.Queues.Mouse_Button =>

@@ -24,8 +24,9 @@
   range to Unicode box-drawing and symbol code points across G0 through G3.
 - Saved cursor state includes row, column, and current SGR style.
 - The app exposes keypad Enter as CR in numeric keypad mode and `ESC O M` in
-  application keypad mode. Printable keypad digits and operators remain on the
-  character callback path to avoid duplicate input.
+  application keypad mode. Printable keypad digits and operators use the
+  character callback path in numeric mode and xterm-style `ESC O` application
+  keypad sequences in application mode.
 - Saved cursor state also preserves the active G-set and G0 through G3 charset
   designations. CSI save/restore is supported as `CSI s` and `CSI u`; private
   or parameterized variants are diagnosed.
