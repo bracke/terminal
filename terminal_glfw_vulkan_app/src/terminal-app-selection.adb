@@ -83,6 +83,11 @@ package body Terminal.App.Selection is
       Row      : Positive;
       Col      : Positive) return Boolean;
 
+   function Is_Wide_Head
+     (Snapshot : Terminal.Core.Render_Snapshot;
+      Row      : Positive;
+      Col      : Positive) return Boolean;
+
    function Is_Token_Code_Point
      (Code : Terminal.Common.Code_Point) return Boolean
    is
@@ -104,7 +109,13 @@ package body Terminal.App.Selection is
         or else C = Character'Pos ('?')
         or else C = Character'Pos ('&')
         or else C = Character'Pos ('=')
-        or else C = Character'Pos ('#');
+        or else C = Character'Pos ('#')
+        or else
+          (C > 16#7F#
+           and then C not in 16#00A0# .. 16#00BF#
+           and then C not in 16#2000# .. 16#206F#
+           and then C not in 16#2190# .. 16#27BF#
+           and then C not in 16#1F000# .. 16#1FAFF#);
    end Is_Token_Code_Point;
 
    function Is_Token_Cell
@@ -128,6 +139,7 @@ package body Terminal.App.Selection is
       Col   : Positive;
       First : Positive;
       Last  : Positive;
+      Wide_Token : Boolean;
    begin
       if Snapshot.Rows = 0
         or else Snapshot.Cols = 0
@@ -149,16 +161,45 @@ package body Terminal.App.Selection is
          return;
       end if;
 
+      Wide_Token := Is_Wide_Head (Snapshot, Row, Col);
       First := Col;
-      while First > 1 and then Is_Token_Cell (Snapshot, Row, First - 1) loop
-         First := First - 1;
+      loop
+         exit when First = 1;
+         declare
+            Candidate : Positive := First - 1;
+         begin
+            if Is_Wide_Continuation (Snapshot, Row, Candidate) then
+               exit when Candidate = 1;
+               Candidate := Candidate - 1;
+            end if;
+
+            exit when not Is_Token_Cell (Snapshot, Row, Candidate)
+              or else (Wide_Token
+                       and then not Is_Wide_Head (Snapshot, Row, Candidate))
+              or else ((not Wide_Token)
+                       and then Is_Wide_Head (Snapshot, Row, Candidate));
+            First := Candidate;
+         end;
       end loop;
 
       Last := Col;
-      while Last < Positive (Snapshot.Cols)
-        and then Is_Token_Cell (Snapshot, Row, Last + 1)
       loop
-         Last := Last + 1;
+         exit when Last >= Positive (Snapshot.Cols);
+         declare
+            Candidate : Positive := Last + 1;
+         begin
+            if Is_Wide_Continuation (Snapshot, Row, Candidate) then
+               exit when Candidate >= Positive (Snapshot.Cols);
+               Candidate := Candidate + 1;
+            end if;
+
+            exit when not Is_Token_Cell (Snapshot, Row, Candidate)
+              or else (Wide_Token
+                       and then not Is_Wide_Head (Snapshot, Row, Candidate))
+              or else ((not Wide_Token)
+                       and then Is_Wide_Head (Snapshot, Row, Candidate));
+            Last := Candidate;
+         end;
       end loop;
 
       Selection.Active := False;

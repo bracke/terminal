@@ -211,12 +211,13 @@ selection from its original anchor, or starts a new selection when no range is
 active. Releasing a non-empty local selection also updates the app-owned OSC 52
 primary and selection target slots. `Ctrl+Shift+C`, `Super+C`, and
 `Ctrl+Insert` copy the current selection without sending bytes to the PTY.
-Double-clicking selects the
-ASCII token under the pointer, where token characters are letters, digits,
-underscore, and common shell path/URI characters. Double-clicking punctuation
-outside that set selects that single cell. Triple-clicking selects the visible
-row. Middle-click pastes the app-owned primary selection slot when terminal
-mouse reporting is disabled.
+Double-clicking selects the token under the pointer, where token characters
+are letters, digits,
+underscore, common shell path/URI characters, and non-ASCII letter-like cells.
+Wide-character token runs can be selected across continuation cells.
+Double-clicking punctuation outside that set selects that single cell.
+Triple-clicking selects the visible row. Middle-click pastes the app-owned
+primary selection slot when terminal mouse reporting is disabled.
 
 Mouse-aware terminal programs can enable basic xterm mouse reporting through
 DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates
@@ -227,10 +228,10 @@ modes; enabling one clears the other two. SGR coordinates are an independent
 encoding mode. Mouse wheel events are encoded as xterm wheel button packets
 when reporting is enabled; otherwise the GLFW app uses the wheel for app-owned
 scrollback viewing.
-Advanced selection behavior is postponed. OSC 52 clipboard set and query
-requests are supported for bounded text payloads, and `c`/`p`/`s` targets are
-recognized. Distinct platform-native primary and selection clipboards remain
-postponed; app-owned bounded target slots are used for `p` and `s`.
+OSC 52 clipboard set and query requests are supported for bounded text
+payloads, and `c`/`p`/`s` targets are recognized. Distinct platform-native
+primary and selection clipboards remain postponed; app-owned bounded target
+slots are used for `p` and `s`.
 
 Focus reporting via DEC private mode `?1004` is supported. When enabled, the
 app sends xterm focus-in and focus-out reports to the PTY as window focus

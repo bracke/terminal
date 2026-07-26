@@ -167,6 +167,60 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 16, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "unicode word selection initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1  => Byte (Character'Pos ('c')),
+       2  => Byte (Character'Pos ('a')),
+       3  => Byte (Character'Pos ('f')),
+       4  => 16#C3#, 5 => 16#A9#,
+       6  => Byte (Character'Pos (' ')),
+       7  => 16#E9#, 8 => 16#9B#, 9 => 16#B6#,
+       10 => 16#E5#, 11 => 16#A3#, 12 => 16#B9#,
+       13 => Byte (Character'Pos ('!'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "unicode word selection feed failed");
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 4));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         To_String
+           ((1 => 16#63#, 2 => 16#61#, 3 => 16#66#,
+             4 => 16#C3#, 5 => 16#A9#)),
+         "word selection should include accented Latin letters");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 7));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         To_String
+           ((1 => 16#E9#, 2 => 16#9B#, 3 => 16#B6#,
+             4 => 16#E5#, 5 => 16#A3#, 6 => 16#B9#)),
+         "word selection should cross CJK wide continuations");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 10));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = "!",
+         "unicode punctuation should stay a single-cell selection");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 2, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "line selection initialize failed");
    Terminal.Core.Feed
