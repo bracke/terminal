@@ -347,6 +347,36 @@ begin
    Terminal.Core.Feed
      (T,
       To_Bytes
+        (ASCII.ESC & "P$qmextra" & ASCII.ESC & "\"
+         & ASCII.ESC & "P$qr0" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "malformed DECRQSS feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 14,
+      "malformed DECRQSS response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes
+           (ASCII.ESC & "P0$r" & ASCII.ESC & "\"
+            & ASCII.ESC & "P0$r" & ASCII.ESC & "\"),
+         "malformed DECRQSS");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "malformed DECRQSS should drain");
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
         (ASCII.ESC & "[5 q"
          & ASCII.ESC & "P$q q" & ASCII.ESC & "\"),
       Feed_Status);

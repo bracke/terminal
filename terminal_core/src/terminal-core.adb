@@ -1570,16 +1570,26 @@ package body Terminal.Core is
          else
             case T.Ignored_String_Data (3) is
                when 'm' =>
-                  Append_DECRQSS_Start (T, Valid => True);
-                  Append_SGR_Status (T);
-                  Append_DECRQSS_End (T);
+                  if T.Ignored_String_Count = 3 then
+                     Append_DECRQSS_Start (T, Valid => True);
+                     Append_SGR_Status (T);
+                     Append_DECRQSS_End (T);
+                  else
+                     Append_DECRQSS_Start (T, Valid => False);
+                     Append_DECRQSS_End (T);
+                  end if;
                when 'r' =>
-                  Append_DECRQSS_Start (T, Valid => True);
-                  Append_Response_Natural (T, T.Top_Margin);
-                  Append_Response_Char (T, ';');
-                  Append_Response_Natural (T, T.Bottom_Margin);
-                  Append_Response_Char (T, 'r');
-                  Append_DECRQSS_End (T);
+                  if T.Ignored_String_Count = 3 then
+                     Append_DECRQSS_Start (T, Valid => True);
+                     Append_Response_Natural (T, T.Top_Margin);
+                     Append_Response_Char (T, ';');
+                     Append_Response_Natural (T, T.Bottom_Margin);
+                     Append_Response_Char (T, 'r');
+                     Append_DECRQSS_End (T);
+                  else
+                     Append_DECRQSS_Start (T, Valid => False);
+                     Append_DECRQSS_End (T);
+                  end if;
                when others =>
                   Append_DECRQSS_Start (T, Valid => False);
                   Append_DECRQSS_End (T);

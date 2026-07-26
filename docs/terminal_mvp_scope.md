@@ -42,7 +42,8 @@
 - DECRQSS status-string reports (`DCS $ q m ST`, `DCS $ q r ST`, and
   `DCS $ q SP q ST`) return current SGR state, scrolling margins, and
   DECSCUSR cursor style; unsupported DECRQSS queries receive a negative
-  `DCS 0 $ r ST` response.
+  `DCS 0 $ r ST` response. Malformed longer variants of otherwise supported
+  DECRQSS payloads are rejected with the same negative response.
 - XTWINOPS window-state report (`CSI 11 t`) returns normal state as
   `CSI 1 t`. XTWINOPS window action requests (`CSI 1 t` through `CSI 10 t`,
   including move and resize parameters) are recognized and ignored by the core
