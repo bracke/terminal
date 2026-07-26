@@ -196,6 +196,40 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 1, 8, 100, Init);
+   Assert
+     (Init = Terminal.Core.Ok,
+      "unsupported coding system initialize failed");
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Ignored_Escape;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes ("a" & ASCII.ESC & "%/b"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Parser_Recovered,
+         "unsupported coding system should recover");
+      Assert
+        (Terminal.Core.Diagnostics (T).Ignored_Escape = Before + 1,
+         "unsupported coding system should be diagnosed");
+   end;
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#61#,
+         "unsupported coding system prefix");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#62#,
+         "unsupported coding system selector should not leak");
+      Assert (S.Cursor.Col = 3, "unsupported coding system cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 8, 100, Init);
    Assert (Init = Terminal.Core.Ok, "keypad mode consume initialize failed");
 
    Terminal.Core.Feed
