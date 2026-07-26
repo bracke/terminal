@@ -1605,6 +1605,14 @@ package body Terminal.Core is
      (T    : in out Terminal;
       Kind : Natural)
    is
+      procedure Append_Private_DSR (Text : String) is
+      begin
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '[');
+         Append_Response_Char (T, '?');
+         Append_Response_String (T, Text);
+         Append_Response_Char (T, 'n');
+      end Append_Private_DSR;
    begin
       case Kind is
          when 5 =>
@@ -1635,6 +1643,36 @@ package body Terminal.Core is
             Append_Response_Char (T, ';');
             Append_Response_Natural (T, T.Cursor_Col);
             Append_Response_Char (T, 'R');
+         when 15 =>
+            if T.CSI_Private = '?' then
+               Append_Private_DSR ("11");
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
+         when 25 =>
+            if T.CSI_Private = '?' then
+               Append_Private_DSR ("20");
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
+         when 26 =>
+            if T.CSI_Private = '?' then
+               Append_Private_DSR ("27;1;0;0");
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
+         when 53 | 55 =>
+            if T.CSI_Private = '?' then
+               Append_Private_DSR ("50");
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
+         when 56 =>
+            if T.CSI_Private = '?' then
+               Append_Private_DSR ("57;0");
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
          when others =>
             T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end case;

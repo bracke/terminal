@@ -104,6 +104,42 @@ begin
 
    Terminal.Core.Feed
      (T,
+      To_Bytes
+        (ASCII.ESC & "[?15n"
+         & ASCII.ESC & "[?25n"
+         & ASCII.ESC & "[?26n"
+         & ASCII.ESC & "[?53n"
+         & ASCII.ESC & "[?55n"
+         & ASCII.ESC & "[?56n"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DEC DSR probes feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 44,
+      "DEC DSR probes response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 48);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes
+           (ASCII.ESC & "[?11n"
+            & ASCII.ESC & "[?20n"
+            & ASCII.ESC & "[?27;1;0;0n"
+            & ASCII.ESC & "[?50n"
+            & ASCII.ESC & "[?50n"
+            & ASCII.ESC & "[?57;0n"),
+         "DEC DSR probes");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "DEC DSR probes should drain");
+   end;
+
+   Terminal.Core.Feed
+     (T,
       To_Bytes (ASCII.ESC & "[3;4H" & ASCII.ESC & "[6n"),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "CPR feed failed");

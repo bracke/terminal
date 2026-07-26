@@ -36,6 +36,12 @@
 - DSR status (`CSI 5 n`), DEC private operating status (`CSI ? 5 n`),
   cursor-position report (`CSI 6 n`), DEC private cursor-position report
   (`CSI ? 6 n`), primary DA (`CSI c`), and secondary DA (`CSI > c`) responses.
+- DEC-specific DSR hardware/status probes return deterministic emulator
+  defaults: printer not ready (`CSI ? 15 n` -> `CSI ? 11 n`), UDK unlocked
+  (`CSI ? 25 n` -> `CSI ? 20 n`), North American keyboard
+  (`CSI ? 26 n` -> `CSI ? 27 ; 1 ; 0 ; 0 n`), no locator
+  (`CSI ? 53 n`/`CSI ? 55 n` -> `CSI ? 50 n`), and unknown locator type
+  (`CSI ? 56 n` -> `CSI ? 57 ; 0 n`).
 - DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode,
   line-feed/new-line mode, known DEC private modes, and stateless `?1048`
   save/restore cursor mode.
