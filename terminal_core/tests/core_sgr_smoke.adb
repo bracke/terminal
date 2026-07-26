@@ -150,6 +150,23 @@ begin
          and then D_Cell.Text.Code_Point = 16#44#,
          "SGR underline color selectors should not leak into text");
       Assert
+        (A.Style.Underline_Color.Kind = Terminal.Core.Indexed
+         and then A.Style.Underline_Color.Index = 196,
+         "SGR indexed underline color");
+      Assert
+        (B.Style.Underline_Color.Kind = Terminal.Core.RGB
+         and then B.Style.Underline_Color.R = 1
+         and then B.Style.Underline_Color.G = 2
+         and then B.Style.Underline_Color.B = 3,
+         "SGR truecolor underline color");
+      Assert
+        (C.Style.Underline_Color.Kind = Terminal.Core.Indexed
+         and then C.Style.Underline_Color.Index = 42,
+         "colon SGR indexed underline color");
+      Assert
+        (D_Cell.Style.Underline_Color.Kind = Terminal.Core.Default,
+         "SGR 59 should reset underline color");
+      Assert
         (D.Unsupported_Sequence = 0,
          "SGR underline color selectors should not increment diagnostics");
       Terminal.Core.Release (S);

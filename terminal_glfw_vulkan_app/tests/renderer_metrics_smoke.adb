@@ -351,7 +351,7 @@ begin
    Assert (Core_Status = Terminal.Core.Ok, "decoration core initialize failed");
    Terminal.Core.Feed
      (T,
-      To_Bytes (ASCII.ESC & "[4mA" & ASCII.ESC & "[24;9mB"),
+      To_Bytes (ASCII.ESC & "[58;2;1;2;3;4mA" & ASCII.ESC & "[24;9mB"),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "decoration feed failed");
 
@@ -375,6 +375,18 @@ begin
         (Frame.Rectangles (3).Width =
            Float (Terminal.App.Renderer.Cell_Width (R)),
          "underline decoration should span the cell");
+      Assert_Close
+        (Frame.Rectangles (3).Color.R,
+         1.0 / 255.0,
+         "underline decoration red");
+      Assert_Close
+        (Frame.Rectangles (3).Color.G,
+         2.0 / 255.0,
+         "underline decoration green");
+      Assert_Close
+        (Frame.Rectangles (3).Color.B,
+         3.0 / 255.0,
+         "underline decoration blue");
       Assert
         (Frame.Rectangles (5).Height = 1.0,
          "strikethrough decoration should be one pixel high");

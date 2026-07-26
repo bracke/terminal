@@ -195,6 +195,15 @@ package body Terminal.App.Renderer is
       end if;
    end Background;
 
+   function Underline_Color
+     (Cell       : Terminal.Core.Cell;
+      Foreground : RM.Pixel_Color)
+      return RM.Pixel_Color
+   is
+   begin
+      return Resolve_Color (Cell.Style.Underline_Color, Foreground);
+   end Underline_Color;
+
    function Is_Cursor_Cell
      (Snapshot : Terminal.Core.Render_Snapshot;
       Row      : Positive;
@@ -1111,7 +1120,7 @@ package body Terminal.App.Renderer is
                         Y      => Y + Float (R.CH - 2),
                         Width  => Float (Cell_W),
                         Height => 1.0,
-                        Color  => FG);
+                        Color  => Underline_Color (Cell, FG));
                   end if;
 
                   if Cell.Style.Strikethrough then

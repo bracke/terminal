@@ -1508,6 +1508,27 @@ package body Terminal.Core is
                Param (C.B);
          end case;
       end Color_Params;
+
+      procedure Extended_Color_Params
+        (C        : Color;
+         Selector : Natural)
+      is
+      begin
+         case C.Kind is
+            when Default =>
+               null;
+            when Indexed =>
+               Param (Selector);
+               Param (5);
+               Param (C.Index);
+            when RGB =>
+               Param (Selector);
+               Param (2);
+               Param (C.R);
+               Param (C.G);
+               Param (C.B);
+         end case;
+      end Extended_Color_Params;
    begin
       if T.Current_Style.Bold then
          Param (1);
@@ -1539,6 +1560,7 @@ package body Terminal.Core is
 
       Color_Params (T.Current_Style.Foreground, 30, 90, 38);
       Color_Params (T.Current_Style.Background, 40, 100, 48);
+      Extended_Color_Params (T.Current_Style.Underline_Color, 58);
 
       if First then
          Param (0);
@@ -2113,7 +2135,7 @@ package body Terminal.Core is
             when 55 =>
                T.Current_Style.Overline := False;
             when 59 =>
-               null;
+               T.Current_Style.Underline_Color := (others => <>);
             when 30 .. 37 =>
                T.Current_Style.Foreground := (Kind => Indexed, Index => P - 30, R => 0, G => 0, B => 0);
             when 40 .. 47 =>
@@ -2128,36 +2150,41 @@ package body Terminal.Core is
                T.Current_Style.Background := (others => <>);
             when 38 | 48 | 58 =>
                if I + 2 <= T.CSI_Count and then Param (T, I + 1, 0) = 5 then
-                  if P /= 58 then
-                     declare
-                        N : constant Natural := Param (T, I + 2, 0);
-                        C : constant Color := (Kind => Indexed, Index => Natural'Min (N, 255), R => 0, G => 0, B => 0);
-                     begin
-                        if P = 38 then
-                           T.Current_Style.Foreground := C;
-                        else
-                           T.Current_Style.Background := C;
-                        end if;
-                     end;
-                  end if;
+                  declare
+                     N : constant Natural := Param (T, I + 2, 0);
+                     C : constant Color :=
+                       (Kind => Indexed,
+                        Index => Natural'Min (N, 255),
+                        R => 0,
+                        G => 0,
+                        B => 0);
+                  begin
+                     if P = 38 then
+                        T.Current_Style.Foreground := C;
+                     elsif P = 48 then
+                        T.Current_Style.Background := C;
+                     else
+                        T.Current_Style.Underline_Color := C;
+                     end if;
+                  end;
                   I := I + 2;
                elsif I + 4 <= T.CSI_Count and then Param (T, I + 1, 0) = 2 then
-                  if P /= 58 then
-                     declare
-                        C : constant Color :=
-                          (Kind  => RGB,
-                           Index => 0,
-                           R     => Natural'Min (Param (T, I + 2, 0), 255),
-                           G     => Natural'Min (Param (T, I + 3, 0), 255),
-                           B     => Natural'Min (Param (T, I + 4, 0), 255));
-                     begin
-                        if P = 38 then
-                           T.Current_Style.Foreground := C;
-                        else
-                           T.Current_Style.Background := C;
-                        end if;
-                     end;
-                  end if;
+                  declare
+                     C : constant Color :=
+                       (Kind  => RGB,
+                        Index => 0,
+                        R     => Natural'Min (Param (T, I + 2, 0), 255),
+                        G     => Natural'Min (Param (T, I + 3, 0), 255),
+                        B     => Natural'Min (Param (T, I + 4, 0), 255));
+                  begin
+                     if P = 38 then
+                        T.Current_Style.Foreground := C;
+                     elsif P = 48 then
+                        T.Current_Style.Background := C;
+                     else
+                        T.Current_Style.Underline_Color := C;
+                     end if;
+                  end;
                   I := I + 4;
                else
                   T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;

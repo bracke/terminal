@@ -32,6 +32,7 @@ package Terminal.Core is
    type Style is record
       Foreground : Color;
       Background : Color;
+      Underline_Color : Color;
       Bold       : Boolean := False;
       Faint      : Boolean := False;
       Blink      : Boolean := False;
