@@ -314,6 +314,7 @@ package body Terminal.App.Main_Loop is
       Last_Click_Time : Ada.Real_Time.Time := Blink_Origin;
       Last_Click_Pos  : Terminal.App.Selection.Cell_Position;
       Have_Last_Click : Boolean := False;
+      Click_Count     : Natural := 0;
 
       procedure Apply_Hovered_Link (Link : Terminal.Core.Hyperlink) is
          Cursor_Status : GLFW_Vulkan.Windows.Cursor_Status;
@@ -656,16 +657,45 @@ package body Terminal.App.Main_Loop is
                                        Terminal.Core.Release (Link_Snap);
                                     end;
                                  else
+                                    declare
+                                       Now : constant Ada.Real_Time.Time :=
+                                         Ada.Real_Time.Clock;
+                                       Repeated_Click : constant Boolean :=
+                                         Have_Last_Click
+                                         and then Same_Position
+                                           (Last_Click_Pos, Pos)
+                                         and then
+                                           Ada.Real_Time.To_Duration
+                                             (Now - Last_Click_Time)
+                                             <= Double_Click_Interval;
+                                    begin
+                                       if Repeated_Click then
+                                          Click_Count :=
+                                            Natural'Min (Click_Count + 1, 3);
+                                       else
+                                          Click_Count := 1;
+                                       end if;
+                                       Last_Click_Time := Now;
+                                       Last_Click_Pos := Pos;
+                                       Have_Last_Click := True;
+                                    end;
+
                                     if Event.Button_Event.Modifiers.Shift then
                                        Terminal.App.Selection.Extend_Selection
                                          (Selection, Pos);
-                                    elsif Have_Last_Click
-                                      and then Same_Position (Last_Click_Pos, Pos)
-                                      and then
-                                        Ada.Real_Time.To_Duration
-                                          (Ada.Real_Time.Clock - Last_Click_Time)
-                                          <= Double_Click_Interval
+                                    elsif Click_Count >= 3
                                     then
+                                       declare
+                                          Line_Snap :
+                                            Terminal.Core.Render_Snapshot :=
+                                              Terminal.App.Scrollback_View
+                                                .Snapshot (T, Scroll_Offset);
+                                       begin
+                                          Terminal.App.Selection.Select_Line
+                                            (Selection, Line_Snap, Pos);
+                                          Terminal.Core.Release (Line_Snap);
+                                       end;
+                                    elsif Click_Count = 2 then
                                        declare
                                           Word_Snap :
                                             Terminal.Core.Render_Snapshot :=
@@ -680,9 +710,6 @@ package body Terminal.App.Main_Loop is
                                        Terminal.App.Selection.Begin_Selection
                                          (Selection, Pos);
                                     end if;
-                                    Last_Click_Time := Ada.Real_Time.Clock;
-                                    Last_Click_Pos := Pos;
-                                    Have_Last_Click := True;
                                     Dirty := True;
                                     Need_Redraw := True;
                                     Local_Redraw := True;

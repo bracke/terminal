@@ -155,6 +155,28 @@ package body Terminal.App.Selection is
       Selection.Focus := (Row => Row, Col => Last);
    end Select_Word;
 
+   procedure Select_Line
+     (Selection : in out Selection_State;
+      Snapshot  : Terminal.Core.Render_Snapshot;
+      Position  : Cell_Position)
+   is
+      Row : Positive;
+   begin
+      if Snapshot.Rows = 0
+        or else Snapshot.Cols = 0
+        or else Snapshot.Cells = null
+      then
+         Clear (Selection);
+         return;
+      end if;
+
+      Row := Clamp_Pos (Position.Row, Positive (Snapshot.Rows));
+      Selection.Active := False;
+      Selection.Has_Range := True;
+      Selection.Anchor := (Row => Row, Col => 1);
+      Selection.Focus := (Row => Row, Col => Positive (Snapshot.Cols));
+   end Select_Line;
+
    procedure Finish_Selection
      (Selection : in out Selection_State;
       Position  : Cell_Position)

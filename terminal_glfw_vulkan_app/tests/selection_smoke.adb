@@ -156,6 +156,35 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 2, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "line selection initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes ("one" & ASCII.CR & ASCII.LF & "two"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "line selection feed failed");
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Select_Line (Sel, S, (Row => 2, Col => 2));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = "two",
+         "line selection should copy visible row text");
+      Terminal.App.Selection.Apply_To_Snapshot (S, Sel);
+      Assert
+        (Terminal.Core.Cell_At (S, 2, 1).Style.Inverse,
+         "line selection should highlight row start");
+      Assert
+        (Terminal.Core.Cell_At (S, 2, 8).Style.Inverse,
+         "line selection should highlight row end");
+      Assert
+        (not Terminal.Core.Cell_At (S, 1, 1).Style.Inverse,
+         "line selection should not highlight other rows");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 4, 10, Init);
    Assert (Init = Terminal.Core.Ok, "cluster selection initialize failed");
    Terminal.Core.Feed

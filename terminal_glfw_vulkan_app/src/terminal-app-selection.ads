@@ -34,6 +34,11 @@ package Terminal.App.Selection is
       Snapshot  : Terminal.Core.Render_Snapshot;
       Position  : Cell_Position);
 
+   procedure Select_Line
+     (Selection : in out Selection_State;
+      Snapshot  : Terminal.Core.Render_Snapshot;
+      Position  : Cell_Position);
+
    procedure Finish_Selection
      (Selection : in out Selection_State;
       Position  : Cell_Position);
