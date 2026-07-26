@@ -84,6 +84,39 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 2, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "non-1 feed initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (10 => Byte (Character'Pos ('r')),
+       11 => Byte (Character'Pos ('a')),
+       12 => Byte (Character'Pos ('n')),
+       13 => Byte (Character'Pos ('g')),
+       14 => Byte (Character'Pos ('e')),
+       15 => 13,
+       16 => 10,
+       17 => Byte (Character'Pos ('z'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "non-1 feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#72#,
+         "non-1 feed first cell");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 5).Text.Code_Point = 16#65#,
+         "non-1 feed fifth cell");
+      Assert
+        (Terminal.Core.Cell_At (S, 2, 1).Text.Code_Point = 16#7A#,
+         "non-1 feed second row");
+      Assert
+        (S.Cursor.Row = 2 and then S.Cursor.Col = 2,
+         "non-1 feed cursor");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 3, 4, 100, Init);
    Assert (Init = Terminal.Core.Ok, "invalid DECALN initialize failed");
    declare
