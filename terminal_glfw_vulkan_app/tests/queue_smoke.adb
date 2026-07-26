@@ -91,6 +91,22 @@ begin
    PTY.Pop (Empty_Chunk, Available);
    Assert (not Available, "pty empty");
 
+   for I in 1 .. Q.Max_Chunks / 2 loop
+      Push_PTY_Byte (Byte (I));
+   end loop;
+   for I in 1 .. Q.Max_Chunks / 4 loop
+      Assert_PTY_Byte (Byte (I), "pty wrap pre-drain");
+   end loop;
+   for I in Q.Max_Chunks / 2 + 1 .. Q.Max_Chunks / 2 + Q.Max_Chunks / 4 loop
+      Push_PTY_Byte (Byte (I));
+   end loop;
+   Assert (PTY.Length = Q.Max_Chunks / 2, "pty wrapped length");
+   for I in Q.Max_Chunks / 4 + 1 .. Q.Max_Chunks / 2 + Q.Max_Chunks / 4 loop
+      Assert_PTY_Byte (Byte (I), "pty wrapped order");
+   end loop;
+   PTY.Pop (Empty_Chunk, Available);
+   Assert (not Available, "pty wrapped empty");
+
    for I in 1 .. Q.Max_Input_Events loop
       Push_Input_Byte (Byte (I mod 256));
    end loop;
@@ -106,4 +122,24 @@ begin
    end loop;
    Input.Pop (Empty_Event, Available);
    Assert (not Available, "input empty");
+
+   for I in 1 .. Q.Max_Input_Events / 2 loop
+      Push_Input_Byte (Byte (I mod 256));
+   end loop;
+   for I in 1 .. Q.Max_Input_Events / 4 loop
+      Assert_Input_Byte (Byte (I mod 256), "input wrap pre-drain");
+   end loop;
+   for I in Q.Max_Input_Events / 2 + 1 ..
+     Q.Max_Input_Events / 2 + Q.Max_Input_Events / 4
+   loop
+      Push_Input_Byte (Byte (I mod 256));
+   end loop;
+   Assert (Input.Length = Q.Max_Input_Events / 2, "input wrapped length");
+   for I in Q.Max_Input_Events / 4 + 1 ..
+     Q.Max_Input_Events / 2 + Q.Max_Input_Events / 4
+   loop
+      Assert_Input_Byte (Byte (I mod 256), "input wrapped order");
+   end loop;
+   Input.Pop (Empty_Event, Available);
+   Assert (not Available, "input wrapped empty");
 end Queue_Smoke;
