@@ -36,6 +36,17 @@ package body GLFW_Vulkan.Input is
          when 259 => return Backspace;
          when 256 => return Escape;
          when 32  => return Space;
+         when 39  => return Apostrophe;
+         when 44  => return Comma;
+         when 45  => return Minus;
+         when 46  => return Period;
+         when 47  => return Slash;
+         when 59  => return Semicolon;
+         when 61  => return Equal;
+         when 91  => return Left_Bracket;
+         when 92  => return Backslash;
+         when 93  => return Right_Bracket;
+         when 96  => return Grave_Accent;
          when 265 => return Up;
          when 264 => return Down;
          when 263 => return Left;

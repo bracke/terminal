@@ -168,6 +168,37 @@ begin
    IM.Encode_Key (Key_Event (GI.X, Shift => True, Alt => True), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "X"), "alt-shift-x");
 
+   IM.Encode_Key (Key_Event (GI.Minus, Alt => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "-"), "alt-minus");
+
+   IM.Encode_Key (Key_Event (GI.Minus, Shift => True, Alt => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "_"), "alt-shift-minus");
+
+   IM.Encode_Key (Key_Event (GI.Slash, Shift => True, Alt => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "?"), "alt-shift-slash");
+
+   IM.Encode_Key
+     (Key_Event (GI.Left_Bracket, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#1B#), "ctrl-left-bracket");
+
+   IM.Encode_Key
+     (Key_Event (GI.Backslash, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#1C#), "ctrl-backslash");
+
+   IM.Encode_Key
+     (Key_Event (GI.Right_Bracket, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#1D#), "ctrl-right-bracket");
+
+   IM.Encode_Key (Key_Event (GI.Num_6, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#1E#), "ctrl-6");
+
+   IM.Encode_Key (Key_Event (GI.Minus, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#1F#), "ctrl-minus");
+
+   IM.Encode_Key
+     (Key_Event (GI.Slash, Control => True, Shift => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#7F#), "ctrl-question");
+
    IM.Encode_Key (Key_Event (GI.Up), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[A"), "normal up");
 
