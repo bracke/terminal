@@ -27,6 +27,8 @@
   application keypad mode. Printable keypad digits and operators use the
   character callback path in numeric mode and xterm-style `ESC O` application
   keypad sequences in application mode.
+- DEC backarrow-key mode (`DECSET`/`DECRST ?67`) is tracked and queryable.
+  Backspace sends DEL by default and BS while backarrow-key mode is enabled.
 - Saved cursor state also preserves the active G-set and G0 through G3 charset
   designations. CSI save/restore is supported as `CSI s` and `CSI u`; private
   or parameterized variants are diagnosed.
@@ -61,9 +63,9 @@
   (`CSI ? 56 n` -> `CSI ? 57 ; 0 n`).
 - DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for keyboard action
   mode, insert mode, line-feed/new-line mode, known DEC private modes including
-  application keypad mode `?66`, and stateless `?1048` save/restore cursor
-  mode. Missing, extra, and unsupported-private DECRQM parameters are
-  diagnosed.
+  application keypad mode `?66` and backarrow-key mode `?67`, and stateless
+  `?1048` save/restore cursor mode. Missing, extra, and unsupported-private
+  DECRQM parameters are diagnosed.
 - Terminal-generated response bytes are held in a bounded core queue. If the
   queue is full, newest response bytes are dropped, already-queued byte
   ordering is preserved, and parser-overflow diagnostics are incremented.

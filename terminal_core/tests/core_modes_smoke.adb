@@ -65,6 +65,16 @@ begin
      (not Terminal.Core.Modes (T).Application_Keypad,
       "DECNKM numeric keypad mode");
 
+   Feed_Text (ASCII.ESC & "[?67h", "DECBKM backspace feed failed");
+   Assert
+     (Terminal.Core.Modes (T).Backarrow_Key_Backspace,
+      "DECBKM backspace mode");
+
+   Feed_Text (ASCII.ESC & "[?67l", "DECBKM delete feed failed");
+   Assert
+     (not Terminal.Core.Modes (T).Backarrow_Key_Backspace,
+      "DECBKM delete mode");
+
    Feed_Text
      (ASCII.ESC & "[?2026h",
       "synchronized update mode set feed failed");
@@ -283,7 +293,7 @@ begin
       & ASCII.ESC & "[31;1m"
       & ASCII.ESC & "[2;4r"
       & ASCII.ESC & "="
-      & ASCII.ESC & "[?1;6;7;25;2004;2026h"
+      & ASCII.ESC & "[?1;6;7;25;67;2004;2026h"
       & ASCII.ESC & "[2h"
       & ASCII.ESC & "[4h"
       & ASCII.ESC & "[4;5H"
@@ -313,6 +323,7 @@ begin
          "DECSTR should reset current foreground");
       Assert (not M.Application_Cursor, "DECSTR should reset app cursor");
       Assert (not M.Application_Keypad, "DECSTR should reset app keypad");
+      Assert (not M.Backarrow_Key_Backspace, "DECSTR should reset DECBKM");
       Assert (not M.Bracketed_Paste, "DECSTR should reset bracketed paste");
       Assert (not M.Mouse_Button, "DECSTR should reset mouse button");
       Assert (not M.Mouse_Drag, "DECSTR should reset mouse drag");

@@ -1884,6 +1884,8 @@ package body Terminal.Core is
                return (if T.Current_Modes.Cursor_Visible then 1 else 2);
             when 66 =>
                return (if T.Current_Modes.Application_Keypad then 1 else 2);
+            when 67 =>
+               return (if T.Current_Modes.Backarrow_Key_Backspace then 1 else 2);
             when 47 | 1047 | 1049 =>
                return (if T.Current_Modes.Alternate_Screen then 1 else 2);
             when 1048 =>
@@ -2050,6 +2052,8 @@ package body Terminal.Core is
             end if;
          when 66 =>
             T.Current_Modes.Application_Keypad := Enable;
+         when 67 =>
+            T.Current_Modes.Backarrow_Key_Backspace := Enable;
          when 1000 =>
             T.Current_Modes.Mouse_Button := Enable;
             if Enable then
@@ -2272,6 +2276,7 @@ package body Terminal.Core is
       T.Current_Modes :=
         (Application_Cursor => False,
          Application_Keypad => False,
+         Backarrow_Key_Backspace => False,
          Bracketed_Paste    => False,
          Mouse_Button       => False,
          Mouse_Drag         => False,

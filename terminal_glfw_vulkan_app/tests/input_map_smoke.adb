@@ -93,6 +93,17 @@ begin
    IM.Encode_Key (Key_Event (GI.Backspace), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#7F#), "backspace");
 
+   Modes.Backarrow_Key_Backspace := True;
+   IM.Encode_Key (Key_Event (GI.Backspace), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#08#), "DECBKM backspace");
+
+   IM.Encode_Key (Key_Event (GI.Backspace, Alt => True), Modes, Chunk);
+   Assert_Bytes
+     (Chunk,
+      (1 => 16#1B#, 2 => 16#08#),
+      "DECBKM alt-backspace");
+   Modes.Backarrow_Key_Backspace := False;
+
    IM.Encode_Key (Key_Event (GI.Backspace, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#08#), "ctrl-backspace");
 

@@ -434,7 +434,12 @@ package body Terminal.App.Input_Map is
          if Event.Modifiers.Alt then
             Append (Chunk, 16#1B#);
          end if;
-         Append (Chunk, (if Event.Modifiers.Control then 16#08# else 16#7F#));
+         Append
+           (Chunk,
+            (if Event.Modifiers.Control
+             or else Modes.Backarrow_Key_Backspace
+             then 16#08#
+             else 16#7F#));
          return;
       end if;
 
@@ -482,7 +487,10 @@ package body Terminal.App.Input_Map is
                Append (Chunk, 16#1B#);
             end if;
             Append_Return (Chunk, Modes);
-         when Backspace  => Append (Chunk, 16#7F#);
+         when Backspace  =>
+            Append
+              (Chunk,
+               (if Modes.Backarrow_Key_Backspace then 16#08# else 16#7F#));
          when Space      =>
             if Event.Modifiers.Alt then
                Append (Chunk, 16#1B#);
