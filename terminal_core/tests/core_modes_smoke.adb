@@ -297,6 +297,33 @@ begin
    end;
 
    Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "malformed DECSTR initialize failed");
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Feed_Text
+        (ASCII.ESC & "[31;1m"
+         & ASCII.ESC & "[4h"
+         & ASCII.ESC & "[4;5H"
+         & ASCII.ESC & "[0!p",
+         "malformed DECSTR feed failed");
+      declare
+         S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+         M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+      begin
+         Assert
+           (S.Cursor.Row = 4 and then S.Cursor.Col = 5,
+            "malformed DECSTR should not home cursor");
+         Assert (M.Insert_Mode, "malformed DECSTR should not reset insert mode");
+         Assert
+           (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
+            "malformed DECSTR should be diagnosed");
+         Terminal.Core.Release (S);
+      end;
+   end;
+
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "DECSCUSR initialize failed");
    Feed_Text (ASCII.ESC & "[ q", "DECSCUSR default feed failed");
    declare
@@ -362,6 +389,29 @@ begin
          "DECSCUSR 6 should select bar cursor");
       Assert (not S.Cursor.Blinking, "DECSCUSR 6 should select steady cursor");
       Terminal.Core.Release (S);
+   end;
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Feed_Text
+        (ASCII.ESC & "[6;0 q",
+         "malformed DECSCUSR feed failed");
+      declare
+         S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Assert
+           (S.Cursor.Shape = Terminal.Core.Cursor_Bar,
+            "malformed DECSCUSR should not change cursor shape");
+         Assert
+           (not S.Cursor.Blinking,
+            "malformed DECSCUSR should not change cursor blinking");
+         Assert
+           (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
+            "malformed DECSCUSR should be diagnosed");
+         Terminal.Core.Release (S);
+      end;
    end;
 
    Feed_Text (ASCII.ESC & "[?12h", "cursor blink mode set feed failed");

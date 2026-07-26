@@ -2321,11 +2321,13 @@ package body Terminal.Core is
          if T.CSI_Intermediate_Count = 1 then
             if T.CSI_Intermediates (1) = '!'
               and then T.CSI_Private = ASCII.NUL
+              and then T.CSI_Count = 0
               and then Final = 'p'
             then
                Soft_Reset (T);
             elsif T.CSI_Intermediates (1) = ' '
               and then T.CSI_Private = ASCII.NUL
+              and then T.CSI_Count <= 1
               and then Final = 'q'
             then
                case Param (T, 1, 1) is

@@ -27,11 +27,12 @@
   SM/RM insert mode including bounded parameter lists, DECSTBM margins with at
   least two rows, media-copy/printer-control requests (`CSI Ps i` and
   `CSI ? Ps i`) as no-ops across bounded parameter lists, and DECSTR soft
-  reset (`CSI ! p`).
+  reset (`CSI ! p`) with no parameters.
 - DEC origin mode constrains vertical cursor movement to the active scrolling
   region for CUP/HVP, CUU/CUD, CNL/CPL, VPA, and VPR.
 - DECSCUSR cursor-shape requests (`CSI Ps SP q`) select block, underline, or
-  bar cursor shapes in the render snapshot.
+  bar cursor shapes in the render snapshot. Extra DECSCUSR parameters are
+  diagnosed.
 - Xterm synchronized-update private mode (`DECSET`/`DECRST ?2026`) is tracked
   in mode state and queryable. The GLFW app defers live terminal redraws while
   it is active, while app-owned local redraws such as selection and scrollback
