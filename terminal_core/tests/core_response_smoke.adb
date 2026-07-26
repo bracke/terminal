@@ -364,6 +364,27 @@ begin
          "XTWINOPS window size should drain");
    end;
 
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[15t"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS screen size feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 12,
+      "XTWINOPS screen size response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[5;480;640t"),
+         "XTWINOPS screen size");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "XTWINOPS screen size should drain");
+   end;
+
    Terminal.Core.Feed
      (T,
       To_Bytes

@@ -43,8 +43,10 @@
   `CSI 1 t`, and window-position report (`CSI 13 t`) returns unknown position
   as `CSI 3 ; 0 ; 0 t`. Window pixel-size report (`CSI 14 t`) returns the
   app-provided framebuffer height and width as `CSI 4 ; height ; width t`.
-  Character-cell size report (`CSI 16 t`) returns the app-provided renderer
-  cell height and width as `CSI 6 ; height ; width t`. Text-area size report
+  Screen pixel-size report (`CSI 15 t`) returns the same app-provided
+  framebuffer size as `CSI 5 ; height ; width t`. Character-cell size report
+  (`CSI 16 t`) returns the app-provided renderer cell height and width as
+  `CSI 6 ; height ; width t`. Text-area size report
   (`CSI 18 t`) returns current rows and columns as `CSI 8 ; rows ; cols t`.
   Screen-size report (`CSI 19 t`) returns the same grid size as
   `CSI 9 ; rows ; cols t`. Icon-label report (`CSI 20 t`) and window-title
