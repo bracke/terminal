@@ -84,6 +84,46 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 3, 4, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "invalid DECALN initialize failed");
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Ignored_Escape;
+   begin
+      Terminal.Core.Feed
+        (T,
+         (1 => Byte (Character'Pos ('x')),
+          2 => 16#1B#,
+          3 => Byte (Character'Pos ('#')),
+          4 => Byte (Character'Pos ('9')),
+          5 => Byte (Character'Pos ('y'))),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Parser_Recovered,
+         "invalid DECALN selector should recover");
+      Assert
+        (Terminal.Core.Diagnostics (T).Ignored_Escape = Before + 1,
+         "invalid DECALN selector should be diagnosed");
+   end;
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "invalid DECALN should preserve prior text");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#79#,
+         "invalid DECALN selector should not leak");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Kind = Terminal.Core.Empty,
+         "invalid DECALN should not fill the screen");
+      Assert
+        (S.Cursor.Row = 1 and then S.Cursor.Col = 3,
+         "invalid DECALN cursor");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 2, 4, 100, Init);
    Assert (Init = Terminal.Core.Ok, "C1 RIS initialize failed");
    Terminal.Core.Feed

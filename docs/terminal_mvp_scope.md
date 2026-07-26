@@ -12,7 +12,8 @@
   as byte-oriented controls.
 - ESC: reset, save/restore cursor, index, next line, reverse index, DECID
   device attributes (`ESC Z`), CSI, OSC, DEC screen alignment test
-  (`ESC # 8`), keypad mode toggles, and G-set charset designation for ASCII
+  (`ESC # 8`), with unsupported screen-alignment selectors diagnosed and
+  ignored, keypad mode toggles, and G-set charset designation for ASCII
   (`B`/`@`) and DEC special graphics (`0`). Unsupported G-set charset
   selectors are diagnosed without changing the previous designation.
   Coding-system designations `ESC % G` and `ESC % @` are consumed safely;
