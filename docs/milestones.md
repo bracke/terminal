@@ -34,6 +34,9 @@
   and Vulkan device are available; the smoke skips cleanly in headless runs.
 - Validate real shell `echo`, `cat`, `ls --color`, SGR color, and
   clear-sequence behavior through a non-GUI PTY/core command smoke.
+- Validate broader program progression through a non-GUI PTY/core smoke:
+  deterministic `git status --short` output plus installed `less`, `nano`,
+  `vim`, and `top` command output markers.
 - Cover app-owned key, character, cursor-mode, control-key, Alt-key, and
   bracketed-paste byte mappings with a non-GUI smoke test.
 - Cover app-owned visible-grid mouse selection, render highlighting, and UTF-8
@@ -64,11 +67,11 @@
 1. `echo`, `cat`, `ls --color`
 2. Shell prompt and line editing
 3. `clear`
-4. `git status`
-5. `less`
-6. `nano`
-7. `vim`
-8. `top`
+4. `git status` - covered non-interactively through PTY/core smoke
+5. `less` - covered as installed command output through PTY/core smoke
+6. `nano` - covered as installed command output through PTY/core smoke
+7. `vim` - covered as installed command output through PTY/core smoke
+8. `top` - covered as installed command output through PTY/core smoke
 9. Later: `htop`, `tig`, `lazygit`
 10. Much later: `tmux`, `screen`
 

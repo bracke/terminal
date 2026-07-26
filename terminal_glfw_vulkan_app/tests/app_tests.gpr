@@ -16,6 +16,7 @@ project App_Tests is
       "renderer_metrics_smoke.adb",
       "pty_core_integration_smoke.adb",
       "pty_m1_commands_smoke.adb",
+      "pty_program_progression_smoke.adb",
       "input_map_smoke.adb",
       "selection_smoke.adb",
       "hyperlink_smoke.adb",
