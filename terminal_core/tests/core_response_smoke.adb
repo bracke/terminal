@@ -368,22 +368,25 @@ begin
      (T,
       To_Bytes
         (ASCII.ESC & "]2;Ada Terminal" & ASCII.BEL
+         & ASCII.ESC & "[20t"
          & ASCII.ESC & "[21t"),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS title feed failed");
    Assert
-     (Terminal.Core.Pending_Response_Length (T) = 17,
+     (Terminal.Core.Pending_Response_Length (T) = 34,
       "XTWINOPS title response length");
 
    declare
-      Buffer : Byte_Array (1 .. 32);
+      Buffer : Byte_Array (1 .. 40);
       Last   : Natural;
    begin
       Terminal.Core.Read_Response (T, Buffer, Last);
       Assert_Bytes
         (Buffer,
          Last,
-         To_Bytes (ASCII.ESC & "]lAda Terminal" & ASCII.ESC & "\"),
+         To_Bytes
+           (ASCII.ESC & "]LAda Terminal" & ASCII.ESC & "\"
+            & ASCII.ESC & "]lAda Terminal" & ASCII.ESC & "\"),
          "XTWINOPS title");
       Assert
         (Terminal.Core.Pending_Response_Length (T) = 0,
