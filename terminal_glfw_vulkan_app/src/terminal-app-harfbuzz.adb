@@ -193,6 +193,8 @@ package body Terminal.App.HarfBuzz is
             return "thaa";
          when RM.Script_NKo =>
             return "nkoo";
+         when RM.Script_Tibetan =>
+            return "tibt";
          when RM.Script_Devanagari =>
             return "deva";
          when RM.Script_Bengali =>
@@ -219,6 +221,8 @@ package body Terminal.App.HarfBuzz is
             return "laoo";
          when RM.Script_Myanmar =>
             return "mymr";
+         when RM.Script_Mongolian =>
+            return "mong";
          when RM.Script_Khmer =>
             return "khmr";
          when RM.Script_Javanese =>
@@ -261,6 +265,8 @@ package body Terminal.App.HarfBuzz is
             return "dv";
          when RM.Script_NKo =>
             return "nqo";
+         when RM.Script_Tibetan =>
+            return "bo";
          when RM.Script_Devanagari =>
             return "hi";
          when RM.Script_Bengali =>
@@ -287,6 +293,8 @@ package body Terminal.App.HarfBuzz is
             return "lo";
          when RM.Script_Myanmar =>
             return "my";
+         when RM.Script_Mongolian =>
+            return "mn";
          when RM.Script_Khmer =>
             return "km";
          when RM.Script_Javanese =>

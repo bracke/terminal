@@ -93,6 +93,7 @@ procedure Text_Shaper_Smoke is
    Syriac    : RM.Text_Run_Command := Run (16#0710#);
    Thaana    : RM.Text_Run_Command := Run (16#0786#);
    NKo       : RM.Text_Run_Command := Run (16#07CA#);
+   Tibetan   : RM.Text_Run_Command := Run (16#0F40#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
    Bengali   : RM.Text_Run_Command := Run (16#0995#);
    Gurmukhi  : RM.Text_Run_Command := Run (16#0A15#);
@@ -106,6 +107,7 @@ procedure Text_Shaper_Smoke is
    Thai      : RM.Text_Run_Command := Run (16#0E01#);
    Lao       : RM.Text_Run_Command := Run (16#0E81#);
    Myanmar   : RM.Text_Run_Command := Run (16#1000#);
+   Mongolian : RM.Text_Run_Command := Run (16#1820#);
    Khmer     : RM.Text_Run_Command := Run (16#1780#);
    Javanese  : RM.Text_Run_Command := Run (16#A984#);
    Cham      : RM.Text_Run_Command := Run (16#AA00#);
@@ -411,6 +413,7 @@ begin
       "NKo direction");
    Assert (NKo.Script = RM.Script_NKo, "NKo script");
 
+   Assert_Complex_Script (Tibetan, RM.Script_Tibetan, "Tibetan");
    Assert_Complex_Script (Deva, RM.Script_Devanagari, "Devanagari");
    Assert_Complex_Script (Bengali, RM.Script_Bengali, "Bengali");
    Assert_Complex_Script (Gurmukhi, RM.Script_Gurmukhi, "Gurmukhi");
@@ -424,6 +427,7 @@ begin
    Assert_Complex_Script (Thai, RM.Script_Thai, "Thai");
    Assert_Complex_Script (Lao, RM.Script_Lao, "Lao");
    Assert_Complex_Script (Myanmar, RM.Script_Myanmar, "Myanmar");
+   Assert_Complex_Script (Mongolian, RM.Script_Mongolian, "Mongolian");
    Assert_Complex_Script (Khmer, RM.Script_Khmer, "Khmer");
    Assert_Complex_Script (Javanese, RM.Script_Javanese, "Javanese");
    Assert_Complex_Script (Cham, RM.Script_Cham, "Cham");

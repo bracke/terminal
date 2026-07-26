@@ -151,9 +151,11 @@ package body Terminal.App.Text_Shaper is
    function Is_Complex_Script (C : Natural) return Boolean is
      ((C in 16#0900# .. 16#0D7F#)
       or else (C in 16#0D80# .. 16#0DFF#)
+      or else (C in 16#0F00# .. 16#0FFF#)
       or else (C in 16#0E00# .. 16#0E7F#)
       or else (C in 16#0E80# .. 16#0EFF#)
       or else (C in 16#1000# .. 16#109F#)
+      or else (C in 16#1800# .. 16#18AF#)
       or else (C in 16#1780# .. 16#17FF#)
       or else (C in 16#A980# .. 16#A9DF#)
       or else (C in 16#AA00# .. 16#AA5F#));
@@ -379,6 +381,8 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_NKo;
             elsif Is_Arabic (C) then
                return RM.Script_Arabic;
+            elsif C in 16#0F00# .. 16#0FFF# then
+               return RM.Script_Tibetan;
             elsif C in 16#0900# .. 16#097F# then
                return RM.Script_Devanagari;
             elsif C in 16#0980# .. 16#09FF# then
@@ -405,6 +409,8 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Lao;
             elsif C in 16#1000# .. 16#109F# then
                return RM.Script_Myanmar;
+            elsif C in 16#1800# .. 16#18AF# then
+               return RM.Script_Mongolian;
             elsif C in 16#1780# .. 16#17FF# then
                return RM.Script_Khmer;
             elsif C in 16#A980# .. 16#A9DF# then
