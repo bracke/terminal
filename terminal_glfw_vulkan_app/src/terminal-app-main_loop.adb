@@ -286,6 +286,18 @@ package body Terminal.App.Main_Loop is
       end if;
 
       Terminal.App.Renderer.Initialize (R, Vk_Ctx, Renderer_Status);
+      if Renderer_Status /= Terminal.App.Renderer.Ok then
+         Terminal.App.Diagnostics.Log_Startup_Failure
+           ("renderer",
+            Terminal.App.Renderer.Init_Status'Image (Renderer_Status));
+         Terminal.App.Renderer.Finalize (R);
+         Terminal.App.Vulkan_Presenter.Finalize (Presenter);
+         Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
+         GLFW_Vulkan.Windows.Destroy (W);
+         GLFW_Vulkan.Finalize (Ctx);
+         return;
+      end if;
+
       Terminal.App.Resize.Startup_Cells
         (Pixel_Width  => FB_Width,
          Pixel_Height => FB_Height,
@@ -297,6 +309,18 @@ package body Terminal.App.Main_Loop is
       Last_Rows := Initial_Rows;
       Last_Cols := Initial_Cols;
       Terminal.Core.Initialize (T, Initial_Rows, Initial_Cols, 10_000, Core_Status);
+      if Core_Status /= Terminal.Core.Ok then
+         Terminal.App.Diagnostics.Log_Startup_Failure
+           ("terminal-core",
+            Terminal.Core.Initialize_Status'Image (Core_Status));
+         Terminal.App.Renderer.Finalize (R);
+         Terminal.App.Vulkan_Presenter.Finalize (Presenter);
+         Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
+         GLFW_Vulkan.Windows.Destroy (W);
+         GLFW_Vulkan.Finalize (Ctx);
+         return;
+      end if;
+
       Terminal.Core.Set_Cell_Pixel_Size
         (T,
          Terminal.App.Renderer.Cell_Width (R),
@@ -305,26 +329,12 @@ package body Terminal.App.Main_Loop is
       Terminal.PTY.POSIX.Spawn_Default_Shell
         (S, Initial_Rows, Initial_Cols, Spawn_Status);
 
-      if Core_Status /= Terminal.Core.Ok
-        or else Spawn_Status /= Terminal.PTY.POSIX.Ok
-        or else Renderer_Status /= Terminal.App.Renderer.Ok
-      then
-         if Core_Status /= Terminal.Core.Ok then
-            Terminal.App.Diagnostics.Log_Startup_Failure
-              ("terminal-core",
-               Terminal.Core.Initialize_Status'Image (Core_Status));
-         end if;
-         if Spawn_Status /= Terminal.PTY.POSIX.Ok then
-            Terminal.App.Diagnostics.Log_Startup_Failure
-              ("pty",
-               Terminal.PTY.POSIX.Spawn_Status'Image (Spawn_Status));
-         end if;
-         if Renderer_Status /= Terminal.App.Renderer.Ok then
-            Terminal.App.Diagnostics.Log_Startup_Failure
-              ("renderer",
-               Terminal.App.Renderer.Init_Status'Image (Renderer_Status));
-         end if;
+      if Spawn_Status /= Terminal.PTY.POSIX.Ok then
+         Terminal.App.Diagnostics.Log_Startup_Failure
+           ("pty",
+            Terminal.PTY.POSIX.Spawn_Status'Image (Spawn_Status));
          Terminal.PTY.POSIX.Close (S);
+         Terminal.App.Renderer.Finalize (R);
          Terminal.App.Vulkan_Presenter.Finalize (Presenter);
          Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
          GLFW_Vulkan.Windows.Destroy (W);
