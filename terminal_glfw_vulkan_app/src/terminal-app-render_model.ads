@@ -80,6 +80,8 @@ package Terminal.App.Render_Model is
    type Text_Run_Script is
      (Script_Common,
       Script_Latin,
+      Script_Greek,
+      Script_Cyrillic,
       Script_Hebrew,
       Script_Arabic,
       Script_Devanagari,

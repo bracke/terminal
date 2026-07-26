@@ -83,6 +83,8 @@ procedure Text_Shaper_Smoke is
    RTL       : RM.Text_Run_Command := Run (16#05D0#);
    LRM_Text  : RM.Text_Run_Command := Run (16#200E#, Character'Pos ('A'));
    RLM_Text  : RM.Text_Run_Command := Run (16#200F#, Character'Pos ('A'));
+   Greek     : RM.Text_Run_Command := Run (16#03B1#, 16#03B2#);
+   Cyrillic  : RM.Text_Run_Command := Run (16#0430#, 16#0431#);
    Arabic    : RM.Text_Run_Command := Run (16#0627#);
    Deva      : RM.Text_Run_Command := Run (16#0915#);
    Bengali   : RM.Text_Run_Command := Run (16#0995#);
@@ -295,6 +297,32 @@ begin
      (RLM_Text.Direction = RM.Direction_Right_To_Left,
       "RLM text direction");
    Assert (RLM_Text.Script = RM.Script_Latin, "RLM text script");
+
+   Assert (TS.Classify (Greek) = RM.Simple_Text, "Greek text class");
+   TS.Prepare (Greek, Status);
+   Assert (Status = RM.Shape_Ok, "Greek text should shape through HarfBuzz");
+   Assert
+     (Greek.Direction = RM.Direction_Left_To_Right,
+      "Greek text direction");
+   Assert (Greek.Script = RM.Script_Greek, "Greek text script");
+   Assert
+     (Greek.Shaped_Glyph_Count > 0,
+      "Greek text shaped glyph count");
+
+   Assert (TS.Classify (Cyrillic) = RM.Simple_Text, "Cyrillic text class");
+   TS.Prepare (Cyrillic, Status);
+   Assert
+     (Status = RM.Shape_Ok,
+      "Cyrillic text should shape through HarfBuzz");
+   Assert
+     (Cyrillic.Direction = RM.Direction_Left_To_Right,
+      "Cyrillic text direction");
+   Assert
+     (Cyrillic.Script = RM.Script_Cyrillic,
+      "Cyrillic text script");
+   Assert
+     (Cyrillic.Shaped_Glyph_Count > 0,
+      "Cyrillic text shaped glyph count");
 
    Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
    TS.Prepare (Arabic, Status);

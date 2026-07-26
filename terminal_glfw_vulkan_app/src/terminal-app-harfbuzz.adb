@@ -171,6 +171,10 @@ package body Terminal.App.HarfBuzz is
       case Script is
          when RM.Script_Latin =>
             return "latn";
+         when RM.Script_Greek =>
+            return "grek";
+         when RM.Script_Cyrillic =>
+            return "cyrl";
          when RM.Script_Hebrew =>
             return "hebr";
          when RM.Script_Arabic =>
@@ -221,6 +225,10 @@ package body Terminal.App.HarfBuzz is
       case Script is
          when RM.Script_Latin =>
             return "en";
+         when RM.Script_Greek =>
+            return "el";
+         when RM.Script_Cyrillic =>
+            return "ru";
          when RM.Script_Hebrew =>
             return "he";
          when RM.Script_Arabic =>
