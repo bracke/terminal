@@ -386,7 +386,10 @@ begin
          & ASCII.ESC & "[?67h"
          & ASCII.ESC & "[?2026h"
          & ASCII.ESC & "[?12h"
+         & ASCII.ESC & "[?25l"
+         & ASCII.ESC & "[?7$p"
          & ASCII.ESC & "[?12$p"
+         & ASCII.ESC & "[?25$p"
          & ASCII.ESC & "[?66$p"
          & ASCII.ESC & "[?67$p"
          & ASCII.ESC & "[?2004$p"
@@ -401,11 +404,11 @@ begin
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "DECRQM feed failed");
    Assert
-     (Terminal.Core.Pending_Response_Length (T) = 104,
+     (Terminal.Core.Pending_Response_Length (T) = 121,
       "DECRQM response length");
 
    declare
-      Buffer : Byte_Array (1 .. 112);
+      Buffer : Byte_Array (1 .. 128);
       Last   : Natural;
    begin
       Terminal.Core.Read_Response (T, Buffer, Last);
@@ -413,7 +416,9 @@ begin
         (Buffer,
          Last,
          To_Bytes
-            (ASCII.ESC & "[?12;1$y"
+            (ASCII.ESC & "[?7;1$y"
+            & ASCII.ESC & "[?12;1$y"
+            & ASCII.ESC & "[?25;2$y"
             & ASCII.ESC & "[?66;1$y"
             & ASCII.ESC & "[?67;1$y"
             & ASCII.ESC & "[?2004;1$y"
