@@ -19,6 +19,14 @@ procedure Font_Discovery_Smoke is
      "/usr/share/fonts/truetype/noto/NotoSansNewa-Regular.ttf";
    Noto_Tirhuta : constant String :=
      "/usr/share/fonts/truetype/noto/NotoSansTirhuta-Regular.ttf";
+   Noto_Siddham : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansSiddham-Regular.ttf";
+   Noto_Modi : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansModi-Regular.ttf";
+   Noto_Dogra : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansDogra-Regular.ttf";
+   Noto_Soyombo : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansSoyombo-Regular.ttf";
    Noto_Khmer : constant String :=
      "/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf";
    Noto_Tai_Viet : constant String :=
@@ -74,6 +82,10 @@ begin
    Assert_Contains_If_Installed (Noto_Sharada, "Sharada");
    Assert_Contains_If_Installed (Noto_Newa, "Newa");
    Assert_Contains_If_Installed (Noto_Tirhuta, "Tirhuta");
+   Assert_Contains_If_Installed (Noto_Siddham, "Siddham");
+   Assert_Contains_If_Installed (Noto_Modi, "Modi");
+   Assert_Contains_If_Installed (Noto_Dogra, "Dogra");
+   Assert_Contains_If_Installed (Noto_Soyombo, "Soyombo");
    Assert_Contains_If_Installed (Noto_Khmer, "Khmer");
    Assert_Contains_If_Installed (Noto_Tai_Viet, "Tai Viet");
    Assert_Contains_If_Installed (Noto_Meetei, "Meetei Mayek");

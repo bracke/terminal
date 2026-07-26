@@ -41,6 +41,16 @@ package body Terminal.App.Fonts is
    Noto_Grantha   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansGrantha-Regular.ttf";
    Noto_Newa      : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansNewa-Regular.ttf";
    Noto_Tirhuta   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansTirhuta-Regular.ttf";
+   Noto_Siddham   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSiddham-Regular.ttf";
+   Noto_Modi      : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansModi-Regular.ttf";
+   Noto_Takri     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansTakri-Regular.ttf";
+   Noto_Ahom      : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansAhom-Regular.ttf";
+   Noto_Dogra     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansDogra-Regular.ttf";
+   Noto_Warang    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansWarangCiti-Regular.ttf";
+   Noto_Dives     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansDivesAkuru-Regular.ttf";
+   Noto_Nandinagari : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansNandinagari-Regular.ttf";
+   Noto_Zanabazar : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansZanabazarSquare-Regular.ttf";
+   Noto_Soyombo   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSoyombo-Regular.ttf";
    Noto_Thai     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf";
    Noto_Lao      : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLao-Regular.ttf";
    Noto_Myanmar  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf";
@@ -103,6 +113,16 @@ package body Terminal.App.Fonts is
       Noto_Grantha'Access,
       Noto_Newa'Access,
       Noto_Tirhuta'Access,
+      Noto_Siddham'Access,
+      Noto_Modi'Access,
+      Noto_Takri'Access,
+      Noto_Ahom'Access,
+      Noto_Dogra'Access,
+      Noto_Warang'Access,
+      Noto_Dives'Access,
+      Noto_Nandinagari'Access,
+      Noto_Zanabazar'Access,
+      Noto_Soyombo'Access,
       Noto_Thai'Access,
       Noto_Lao'Access,
       Noto_Myanmar'Access,
