@@ -228,6 +228,8 @@ package body Terminal.App.Main_Loop is
       Renderer_Status : Terminal.App.Renderer.Init_Status;
       FB_Width  : Natural := 0;
       FB_Height : Natural := 0;
+      Initial_Rows : Positive := 24;
+      Initial_Cols : Positive := 80;
       Last_Rows : Positive := 24;
       Last_Cols : Positive := 80;
       Need_Redraw : Boolean := True;
@@ -284,13 +286,24 @@ package body Terminal.App.Main_Loop is
       end if;
 
       Terminal.App.Renderer.Initialize (R, Vk_Ctx, Renderer_Status);
-      Terminal.Core.Initialize (T, 24, 80, 10_000, Core_Status);
+      Terminal.App.Resize.Startup_Cells
+        (Pixel_Width  => FB_Width,
+         Pixel_Height => FB_Height,
+         Cell_Width   => Terminal.App.Renderer.Cell_Width (R),
+         Cell_Height  => Terminal.App.Renderer.Cell_Height (R),
+         Margin       => Terminal.App.Renderer.Content_Margin,
+         Rows         => Initial_Rows,
+         Cols         => Initial_Cols);
+      Last_Rows := Initial_Rows;
+      Last_Cols := Initial_Cols;
+      Terminal.Core.Initialize (T, Initial_Rows, Initial_Cols, 10_000, Core_Status);
       Terminal.Core.Set_Cell_Pixel_Size
         (T,
          Terminal.App.Renderer.Cell_Width (R),
          Terminal.App.Renderer.Cell_Height (R));
       Terminal.Core.Set_Window_Pixel_Size (T, FB_Width, FB_Height);
-      Terminal.PTY.POSIX.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
+      Terminal.PTY.POSIX.Spawn_Default_Shell
+        (S, Initial_Rows, Initial_Cols, Spawn_Status);
 
       if Core_Status /= Terminal.Core.Ok
         or else Spawn_Status /= Terminal.PTY.POSIX.Ok

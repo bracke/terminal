@@ -51,4 +51,41 @@ begin
       Cols         => Cols);
    Assert (Rows = 36, "vertical margin reduces usable rows");
    Assert (Cols = 118, "horizontal margin reduces usable cols");
+
+   Terminal.App.Resize.Startup_Cells
+     (Pixel_Width  => 960,
+      Pixel_Height => 600,
+      Cell_Width   => 8,
+      Cell_Height  => 16,
+      Margin       => 6,
+      Rows         => Rows,
+      Cols         => Cols);
+   Assert (Rows = 36, "startup should use framebuffer-derived rows");
+   Assert (Cols = 118, "startup should use framebuffer-derived cols");
+
+   Terminal.App.Resize.Startup_Cells
+     (Pixel_Width  => 0,
+      Pixel_Height => 600,
+      Cell_Width   => 8,
+      Cell_Height  => 16,
+      Margin       => 6,
+      Default_Rows => 24,
+      Default_Cols => 80,
+      Rows         => Rows,
+      Cols         => Cols);
+   Assert (Rows = 24, "startup zero framebuffer width falls back to rows");
+   Assert (Cols = 80, "startup zero framebuffer width falls back to cols");
+
+   Terminal.App.Resize.Startup_Cells
+     (Pixel_Width  => 960,
+      Pixel_Height => 0,
+      Cell_Width   => 8,
+      Cell_Height  => 16,
+      Margin       => 6,
+      Default_Rows => 30,
+      Default_Cols => 100,
+      Rows         => Rows,
+      Cols         => Cols);
+   Assert (Rows = 30, "startup zero framebuffer height falls back to rows");
+   Assert (Cols = 100, "startup zero framebuffer height falls back to cols");
 end Resize_Smoke;
