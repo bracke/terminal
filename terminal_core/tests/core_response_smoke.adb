@@ -371,6 +371,38 @@ begin
 
    Terminal.Core.Feed
      (T,
+      (1 => 16#1B#,
+       2 => Byte (Character'Pos ('[')),
+       3 => Byte (Character'Pos ('0')),
+       4 => Byte (Character'Pos ('m')),
+       5 => 16#90#,
+       6 => Byte (Character'Pos ('$')),
+       7 => Byte (Character'Pos ('q')),
+       8 => Byte (Character'Pos ('m')),
+       9 => 16#9C#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 DECRQSS SGR feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 9,
+      "C1 DECRQSS SGR response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "P1$r0m" & ASCII.ESC & "\"),
+         "C1 DECRQSS SGR");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "C1 DECRQSS SGR should drain");
+   end;
+
+   Terminal.Core.Feed
+     (T,
       To_Bytes
         (ASCII.ESC & "[2;4r"
          & ASCII.ESC & "P$qr" & ASCII.ESC & "\"),

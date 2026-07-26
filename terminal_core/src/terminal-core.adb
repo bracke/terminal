@@ -1461,6 +1461,12 @@ package body Terminal.Core is
       Append_Response_Char (T, '\');
    end Append_DECRQSS_End;
 
+   procedure Append_DECRQSS_Negative (T : in out Terminal) is
+   begin
+      Append_DECRQSS_Start (T, Valid => False);
+      Append_DECRQSS_End (T);
+   end Append_DECRQSS_Negative;
+
    procedure Append_SGR_Status (T : in out Terminal) is
       First : Boolean := True;
 
@@ -1559,8 +1565,7 @@ package body Terminal.Core is
         and then T.Ignored_String_Data (2) = 'q'
       then
          if T.Ignored_String_Count = 2 then
-            Append_DECRQSS_Start (T, Valid => False);
-            Append_DECRQSS_End (T);
+            Append_DECRQSS_Negative (T);
          elsif T.Ignored_String_Count = 4
            and then T.Ignored_String_Data (3) = ' '
            and then T.Ignored_String_Data (4) = 'q'
@@ -1578,8 +1583,7 @@ package body Terminal.Core is
                      Append_SGR_Status (T);
                      Append_DECRQSS_End (T);
                   else
-                     Append_DECRQSS_Start (T, Valid => False);
-                     Append_DECRQSS_End (T);
+                     Append_DECRQSS_Negative (T);
                   end if;
                when 'r' =>
                   if T.Ignored_String_Count = 3 then
@@ -1590,12 +1594,10 @@ package body Terminal.Core is
                      Append_Response_Char (T, 'r');
                      Append_DECRQSS_End (T);
                   else
-                     Append_DECRQSS_Start (T, Valid => False);
-                     Append_DECRQSS_End (T);
+                     Append_DECRQSS_Negative (T);
                   end if;
                when others =>
-                  Append_DECRQSS_Start (T, Valid => False);
-                  Append_DECRQSS_End (T);
+                  Append_DECRQSS_Negative (T);
             end case;
          end if;
       end if;
