@@ -45,6 +45,16 @@ begin
    Assert (Feed_Status = Terminal.Core.Ok, "feed failed");
    Assert (Terminal.Core.Modes (T).Bracketed_Paste, "bracketed paste");
 
+   Feed_Text (ASCII.ESC & "=", "application keypad mode feed failed");
+   Assert
+     (Terminal.Core.Modes (T).Application_Keypad,
+      "application keypad mode");
+
+   Feed_Text (ASCII.ESC & ">", "numeric keypad mode feed failed");
+   Assert
+     (not Terminal.Core.Modes (T).Application_Keypad,
+      "numeric keypad mode");
+
    Feed_Text
      (ASCII.ESC & "[?2026h",
       "synchronized update mode set feed failed");
@@ -252,6 +262,7 @@ begin
      ("z"
       & ASCII.ESC & "[31;1m"
       & ASCII.ESC & "[2;4r"
+      & ASCII.ESC & "="
       & ASCII.ESC & "[?1;6;7;25;2004;2026h"
       & ASCII.ESC & "[4h"
       & ASCII.ESC & "[4;5H"
@@ -280,6 +291,7 @@ begin
         (X.Style.Foreground.Kind = Terminal.Core.Default,
          "DECSTR should reset current foreground");
       Assert (not M.Application_Cursor, "DECSTR should reset app cursor");
+      Assert (not M.Application_Keypad, "DECSTR should reset app keypad");
       Assert (not M.Bracketed_Paste, "DECSTR should reset bracketed paste");
       Assert (not M.Mouse_Button, "DECSTR should reset mouse button");
       Assert (not M.Mouse_Drag, "DECSTR should reset mouse drag");

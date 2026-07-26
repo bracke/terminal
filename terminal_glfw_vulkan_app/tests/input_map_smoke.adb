@@ -177,6 +177,17 @@ begin
    IM.Encode_Key (Key_Event (GI.Slash, Shift => True, Alt => True), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "?"), "alt-shift-slash");
 
+   IM.Encode_Key (Key_Event (GI.Kp_Add, Alt => True), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "+"), "alt-keypad-add");
+
+   IM.Encode_Key (Key_Event (GI.Kp_Enter), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#0D#), "keypad enter");
+
+   Modes.Application_Keypad := True;
+   IM.Encode_Key (Key_Event (GI.Kp_Enter), Modes, Chunk);
+   Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "OM"), "application keypad enter");
+   Modes.Application_Keypad := False;
+
    IM.Encode_Key
      (Key_Event (GI.Left_Bracket, Control => True), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#1B#), "ctrl-left-bracket");

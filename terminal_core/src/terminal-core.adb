@@ -2265,6 +2265,7 @@ package body Terminal.Core is
       T.Saved_Style := (others => <>);
       T.Current_Modes :=
         (Application_Cursor => False,
+         Application_Keypad => False,
          Bracketed_Paste    => False,
          Mouse_Button       => False,
          Mouse_Drag         => False,
@@ -3068,7 +3069,11 @@ package body Terminal.Core is
                      T.State := Coding_System;
                   when '#' =>
                      T.State := Screen_Alignment;
-                  when '=' | '>' =>
+                  when '=' =>
+                     T.Current_Modes.Application_Keypad := True;
+                     T.State := Ground;
+                  when '>' =>
+                     T.Current_Modes.Application_Keypad := False;
                      T.State := Ground;
                   when others =>
                      T.Diag.Ignored_Escape := T.Diag.Ignored_Escape + 1;

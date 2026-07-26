@@ -200,6 +200,22 @@ package body Terminal.App.Input_Map is
          when Num_7 => return '7';
          when Num_8 => return '8';
          when Num_9 => return '9';
+         when Kp_0 => return '0';
+         when Kp_1 => return '1';
+         when Kp_2 => return '2';
+         when Kp_3 => return '3';
+         when Kp_4 => return '4';
+         when Kp_5 => return '5';
+         when Kp_6 => return '6';
+         when Kp_7 => return '7';
+         when Kp_8 => return '8';
+         when Kp_9 => return '9';
+         when Kp_Decimal => return '.';
+         when Kp_Divide => return '/';
+         when Kp_Multiply => return '*';
+         when Kp_Subtract => return '-';
+         when Kp_Add => return '+';
+         when Kp_Equal => return '=';
          when Space => return ' ';
          when Apostrophe => return (if Event.Modifiers.Shift then '"' else ''');
          when Comma => return (if Event.Modifiers.Shift then '<' else ',');
@@ -361,6 +377,15 @@ package body Terminal.App.Input_Map is
                Append_String (Chunk, ASCII.ESC & "[Z");
             else
                Append (Chunk, 16#09#);
+            end if;
+         when Kp_Enter   =>
+            if Event.Modifiers.Alt then
+               Append (Chunk, 16#1B#);
+            end if;
+            if Modes.Application_Keypad then
+               Append_String (Chunk, ASCII.ESC & "OM");
+            else
+               Append (Chunk, 16#0D#);
             end if;
          when Backspace  => Append (Chunk, 16#7F#);
          when Space      =>

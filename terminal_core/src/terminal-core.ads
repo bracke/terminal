@@ -102,6 +102,7 @@ package Terminal.Core is
 
    type Mode_Snapshot is record
       Application_Cursor : Boolean := False;
+      Application_Keypad : Boolean := False;
       Bracketed_Paste    : Boolean := False;
       Mouse_Button       : Boolean := False;
       Mouse_Drag         : Boolean := False;

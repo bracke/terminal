@@ -13,7 +13,8 @@
 - ESC: reset, save/restore cursor, index, next line, reverse index, DECID
   device attributes (`ESC Z`), CSI, OSC, DEC screen alignment test
   (`ESC # 8`), with unsupported screen-alignment selectors diagnosed and
-  ignored, keypad mode toggles, and G-set charset designation for ASCII
+  ignored, application/numeric keypad mode toggles, and G-set charset
+  designation for ASCII
   (`B`/`@`) and DEC special graphics (`0`). Unsupported G-set charset
   selectors are diagnosed without changing the previous designation.
   Coding-system designations `ESC % G` and `ESC % @` are consumed safely;
@@ -22,6 +23,9 @@
   byte through G2/G3. DEC special graphics maps the common VT100 line-drawing
   range to Unicode box-drawing and symbol code points across G0 through G3.
 - Saved cursor state includes row, column, and current SGR style.
+- The app exposes keypad Enter as CR in numeric keypad mode and `ESC O M` in
+  application keypad mode. Printable keypad digits and operators remain on the
+  character callback path to avoid duplicate input.
 - Saved cursor state also preserves the active G-set and G0 through G3 charset
   designations. CSI save/restore is supported as `CSI s` and `CSI u`; private
   or parameterized variants are diagnosed.

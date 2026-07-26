@@ -20,7 +20,10 @@ package GLFW_Vulkan.Input is
       F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
       A, B, C, D, E, F, G, H, I, J, K, L, M,
       N, O, P, Q, R, S, T, U, V, W, X, Y, Z,
-      Num_0, Num_1, Num_2, Num_3, Num_4, Num_5, Num_6, Num_7, Num_8, Num_9);
+      Num_0, Num_1, Num_2, Num_3, Num_4, Num_5, Num_6, Num_7, Num_8, Num_9,
+      Kp_0, Kp_1, Kp_2, Kp_3, Kp_4, Kp_5, Kp_6, Kp_7, Kp_8, Kp_9,
+      Kp_Decimal, Kp_Divide, Kp_Multiply, Kp_Subtract, Kp_Add,
+      Kp_Enter, Kp_Equal);
 
    type Key_Event is record
       Key       : GLFW_Vulkan.Input.Key := Unknown;
