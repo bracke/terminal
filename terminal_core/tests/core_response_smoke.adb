@@ -438,4 +438,43 @@ begin
         (Terminal.Core.Pending_Response_Length (T) = 0,
          "XTWINOPS title should drain");
    end;
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "]2;saved" & ASCII.BEL
+            & ASCII.ESC & "[22t"
+            & ASCII.ESC & "]2;temporary" & ASCII.BEL
+            & ASCII.ESC & "[23t"
+            & ASCII.ESC & "[21t"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "XTWINOPS title stack feed failed");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before,
+         "XTWINOPS title stack should be recognized");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 10,
+         "XTWINOPS restored title response length");
+
+      declare
+         Buffer : Byte_Array (1 .. 16);
+         Last   : Natural;
+      begin
+         Terminal.Core.Read_Response (T, Buffer, Last);
+         Assert_Bytes
+           (Buffer,
+            Last,
+            To_Bytes (ASCII.ESC & "]lsaved" & ASCII.ESC & "\"),
+            "XTWINOPS restored title");
+         Assert
+           (Terminal.Core.Pending_Response_Length (T) = 0,
+            "XTWINOPS restored title should drain");
+      end;
+   end;
 end Core_Response_Smoke;

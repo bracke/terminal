@@ -227,6 +227,8 @@ package body Terminal.Core is
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
+      T.Saved_Window_Title := (others => <>);
+      T.Saved_Window_Title_Valid := False;
       T.Clipboard_Data := (others => <>);
       T.Current_Link := (others => <>);
       T.Response_Length := 0;
@@ -347,6 +349,8 @@ package body Terminal.Core is
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
+      T.Saved_Window_Title := (others => <>);
+      T.Saved_Window_Title_Valid := False;
       T.Clipboard_Data := (others => <>);
       T.Current_Link := (others => <>);
       T.Response_Length := 0;
@@ -1570,6 +1574,13 @@ package body Terminal.Core is
          end loop;
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '\');
+      elsif T.CSI_Private = ASCII.NUL and then Number = 22 then
+         T.Saved_Window_Title := T.Window_Title;
+         T.Saved_Window_Title_Valid := True;
+      elsif T.CSI_Private = ASCII.NUL and then Number = 23 then
+         if T.Saved_Window_Title_Valid then
+            T.Window_Title := T.Saved_Window_Title;
+         end if;
       else
          T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end if;

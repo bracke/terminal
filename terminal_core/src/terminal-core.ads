@@ -302,6 +302,8 @@ private
       Last_Printable : Common.Code_Point := 0;
       Has_Last_Printable : Boolean := False;
       Window_Title  : Title_Text;
+      Saved_Window_Title : Title_Text;
+      Saved_Window_Title_Valid : Boolean := False;
       Clipboard_Data : Clipboard_Request;
       Current_Link : Hyperlink;
       Responses     : Response_Buffer := (others => 0);

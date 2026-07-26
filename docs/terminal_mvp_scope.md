@@ -54,7 +54,8 @@
   Screen-size report (`CSI 19 t`) returns the same grid size as
   `CSI 9 ; rows ; cols t`. Icon-label report (`CSI 20 t`) and window-title
   report (`CSI 21 t`) return the bounded OSC title as `OSC L title ST` and
-  `OSC l title ST`; the current app has no separate icon label.
+  `OSC l title ST`; the current app has no separate icon label. Title stack
+  operations (`CSI 22 t` and `CSI 23 t`) save and restore one bounded title.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
 - Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.
