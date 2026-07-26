@@ -46,8 +46,9 @@
   Character-cell size report (`CSI 16 t`) returns the app-provided renderer
   cell height and width as `CSI 6 ; height ; width t`. Text-area size report
   (`CSI 18 t`) returns current rows and columns as `CSI 8 ; rows ; cols t`.
-  Window-title report (`CSI 21 t`) returns the bounded OSC title as
-  `OSC l title ST`.
+  Screen-size report (`CSI 19 t`) returns the same grid size as
+  `CSI 9 ; rows ; cols t`. Window-title report (`CSI 21 t`) returns the
+  bounded OSC title as `OSC l title ST`.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
 - Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.

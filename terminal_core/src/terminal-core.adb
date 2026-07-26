@@ -1528,6 +1528,15 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Cols);
          Append_Response_Char (T, 't');
+      elsif T.CSI_Private = ASCII.NUL and then Number = 19 then
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '[');
+         Append_Response_Char (T, '9');
+         Append_Response_Char (T, ';');
+         Append_Response_Natural (T, T.Rows);
+         Append_Response_Char (T, ';');
+         Append_Response_Natural (T, T.Cols);
+         Append_Response_Char (T, 't');
       elsif T.CSI_Private = ASCII.NUL and then Number = 21 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, ']');

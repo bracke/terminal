@@ -255,6 +255,27 @@ begin
          "XTWINOPS text area should drain");
    end;
 
+   Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[19t"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS screen area feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 9,
+      "XTWINOPS screen area response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "[9;5;10t"),
+         "XTWINOPS screen area");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "XTWINOPS screen area should drain");
+   end;
+
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[11t"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS window state feed failed");
    Assert
