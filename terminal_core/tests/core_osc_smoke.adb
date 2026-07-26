@@ -93,6 +93,60 @@ begin
 
    Terminal.Core.Feed
      (T,
+      To_Bytes (ASCII.ESC & "]52;c;aGVsbG8=" & ASCII.BEL),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "OSC 52 clipboard feed failed");
+
+   declare
+      Clip : constant Terminal.Core.Clipboard_Request :=
+        Terminal.Core.Clipboard (T);
+   begin
+      Assert (Clip.Pending, "OSC 52 clipboard request pending");
+      Assert (Clip.Length = 5, "OSC 52 clipboard request length");
+      Assert
+        (Clip.Text (1 .. Clip.Length) = "hello",
+         "OSC 52 clipboard request text");
+   end;
+
+   Terminal.Core.Clear_Clipboard (T);
+   Assert
+     (not Terminal.Core.Clipboard (T).Pending,
+      "cleared OSC 52 clipboard request");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "]52;c;" & ASCII.BEL),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "empty OSC 52 feed failed");
+
+   declare
+      Clip : constant Terminal.Core.Clipboard_Request :=
+        Terminal.Core.Clipboard (T);
+   begin
+      Assert (Clip.Pending, "empty OSC 52 clipboard request pending");
+      Assert (Clip.Length = 0, "empty OSC 52 clipboard request length");
+   end;
+   Terminal.Core.Clear_Clipboard (T);
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "]52;c;%%%" & ASCII.BEL),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "invalid OSC 52 feed failed");
+      Assert
+        (not Terminal.Core.Clipboard (T).Pending,
+         "invalid OSC 52 should not request clipboard");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
+         "invalid OSC 52 should be diagnosed");
+   end;
+
+   Terminal.Core.Feed
+     (T,
       (1 => 16#9D#, 2 => Byte (Character'Pos ('2')),
        3 => Byte (Character'Pos (';')),
        4 => Byte (Character'Pos ('c')),

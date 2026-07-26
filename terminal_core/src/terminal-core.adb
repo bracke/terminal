@@ -225,6 +225,7 @@ package body Terminal.Core is
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
+      T.Clipboard_Data := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Private := ASCII.NUL;
@@ -343,6 +344,7 @@ package body Terminal.Core is
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
+      T.Clipboard_Data := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Private := ASCII.NUL;
@@ -391,6 +393,100 @@ package body Terminal.Core is
       Command : Natural := 0;
       Payload_First : Natural := 0;
       Title_Length : Natural;
+
+      function Base64_Value (Ch : Standard.Character) return Integer is
+      begin
+         case Ch is
+            when 'A' .. 'Z' =>
+               return Standard.Character'Pos (Ch) - Standard.Character'Pos ('A');
+            when 'a' .. 'z' =>
+               return 26 + Standard.Character'Pos (Ch) - Standard.Character'Pos ('a');
+            when '0' .. '9' =>
+               return 52 + Standard.Character'Pos (Ch) - Standard.Character'Pos ('0');
+            when '+' =>
+               return 62;
+            when '/' =>
+               return 63;
+            when others =>
+               return -1;
+         end case;
+      end Base64_Value;
+
+      procedure Decode_OSC52
+        (First : Natural;
+         Last  : Natural)
+      is
+         Enc_First : Natural := 0;
+         Out_Len   : Natural := 0;
+         Bits      : Natural := 0;
+         Bit_Count : Natural := 0;
+         Invalid   : Boolean := False;
+         Done      : Boolean := False;
+
+         procedure Append_Decoded (Value : Natural) is
+         begin
+            if Out_Len >= Max_Clipboard_Length then
+               T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+               Invalid := True;
+            else
+               Out_Len := Out_Len + 1;
+               T.Clipboard_Data.Text (Out_Len) :=
+                 Standard.Character'Val (Value);
+            end if;
+         end Append_Decoded;
+      begin
+         for I in First .. Last loop
+            if T.OSC_Data (I) = ';' then
+               Enc_First := I + 1;
+               exit;
+            end if;
+         end loop;
+
+         if Enc_First = 0 then
+            T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            return;
+         end if;
+
+         T.Clipboard_Data := (others => <>);
+         if Enc_First <= Last then
+            for I in Enc_First .. Last loop
+               declare
+                  Ch : constant Standard.Character := T.OSC_Data (I);
+                  V  : constant Integer := Base64_Value (Ch);
+               begin
+                  if Ch = '=' then
+                     Done := True;
+                  elsif Ch = ASCII.CR or else Ch = ASCII.LF or else Ch = ' ' then
+                     null;
+                  elsif Done or else V < 0 then
+                     Invalid := True;
+                  else
+                     Bits := Bits * 64 + Natural (V);
+                     Bit_Count := Bit_Count + 6;
+                     while Bit_Count >= 8 loop
+                        Bit_Count := Bit_Count - 8;
+                        Append_Decoded ((Bits / (2 ** Bit_Count)) mod 256);
+                     end loop;
+                     if Bit_Count = 0 then
+                        Bits := 0;
+                     else
+                        Bits := Bits mod (2 ** Bit_Count);
+                     end if;
+                  end if;
+               end;
+
+               exit when Invalid;
+            end loop;
+         end if;
+
+         if Invalid then
+            T.Clipboard_Data := (others => <>);
+            T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+         else
+            T.Clipboard_Data.Pending := True;
+            T.Clipboard_Data.Length := Out_Len;
+         end if;
+      end Decode_OSC52;
    begin
       if T.OSC_Count < 3 then
          T.State := Ground;
@@ -429,6 +525,8 @@ package body Terminal.Core is
          for I in 1 .. Title_Length loop
             T.Window_Title.Text (I) := T.OSC_Data (Payload_First + I - 1);
          end loop;
+      elsif Command = 52 then
+         Decode_OSC52 (Payload_First, T.OSC_Count);
       end if;
 
       T.State := Ground;
@@ -2717,6 +2815,16 @@ package body Terminal.Core is
    begin
       return T.Window_Title;
    end Title;
+
+   function Clipboard (T : Terminal) return Clipboard_Request is
+   begin
+      return T.Clipboard_Data;
+   end Clipboard;
+
+   procedure Clear_Clipboard (T : in out Terminal) is
+   begin
+      T.Clipboard_Data := (others => <>);
+   end Clear_Clipboard;
 
    function Scrollback_Row_Count (T : Terminal) return Natural is
    begin

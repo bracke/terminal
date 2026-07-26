@@ -184,6 +184,24 @@ package body Terminal.App.Main_Loop is
       Last_Title := New_Title;
    end Apply_Title;
 
+   procedure Apply_Clipboard_Request
+     (W : GLFW_Vulkan.Windows.Window;
+      T : in out Terminal.Core.Terminal)
+   is
+      Request : constant Terminal.Core.Clipboard_Request :=
+        Terminal.Core.Clipboard (T);
+   begin
+      if Request.Pending then
+         if Request.Length = 0 then
+            GLFW_Vulkan.Clipboard.Set_Text (W, "");
+         else
+            GLFW_Vulkan.Clipboard.Set_Text
+              (W, Request.Text (1 .. Request.Length));
+         end if;
+         Terminal.Core.Clear_Clipboard (T);
+      end if;
+   end Apply_Clipboard_Request;
+
    function Is_Scrollback_Key
      (Event : GLFW_Vulkan.Input.Key_Event) return Boolean
    is
@@ -396,6 +414,7 @@ package body Terminal.App.Main_Loop is
                   end if;
                end loop;
                Apply_Title (W, Terminal.Core.Title (T), Last_Title);
+               Apply_Clipboard_Request (W, T);
 
                while Terminal.Core.Pending_Response_Length (T) > 0 loop
                   Chunk := (others => <>);

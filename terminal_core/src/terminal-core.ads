@@ -110,6 +110,15 @@ package Terminal.Core is
       Text   : String (1 .. Max_Title_Length) := (others => ' ');
    end record;
 
+   Max_Clipboard_Length : constant := 3072;
+   subtype Clipboard_Length_Range is Natural range 0 .. Max_Clipboard_Length;
+
+   type Clipboard_Request is record
+      Pending : Boolean := False;
+      Length  : Clipboard_Length_Range := 0;
+      Text    : String (1 .. Max_Clipboard_Length) := (others => ' ');
+   end record;
+
    type Cell_Array is array (Positive range <>) of Cell;
    type Dirty_Row_Array is array (Positive range <>) of Boolean;
    type Tab_Stop_Array is array (Positive range <>) of Boolean;
@@ -162,6 +171,8 @@ package Terminal.Core is
    function Modes (T : Terminal) return Mode_Snapshot;
    function Diagnostics (T : Terminal) return Diagnostic_Snapshot;
    function Title (T : Terminal) return Title_Text;
+   function Clipboard (T : Terminal) return Clipboard_Request;
+   procedure Clear_Clipboard (T : in out Terminal);
    function Scrollback_Row_Count (T : Terminal) return Natural;
    function Pending_Response_Length (T : Terminal) return Natural;
 
@@ -267,6 +278,7 @@ private
       Last_Printable : Common.Code_Point := 0;
       Has_Last_Printable : Boolean := False;
       Window_Title  : Title_Text;
+      Clipboard_Data : Clipboard_Request;
       Responses     : Response_Buffer := (others => 0);
       Response_Length : Natural range 0 .. Max_Response_Length := 0;
 
