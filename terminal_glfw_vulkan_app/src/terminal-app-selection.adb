@@ -83,7 +83,7 @@ package body Terminal.App.Selection is
       Row      : Positive;
       Col      : Positive) return Boolean;
 
-   function Is_Word_Code_Point
+   function Is_Token_Code_Point
      (Code : Terminal.Common.Code_Point) return Boolean
    is
       C : constant Natural := Natural (Code);
@@ -92,10 +92,22 @@ package body Terminal.App.Selection is
         (C in Character'Pos ('A') .. Character'Pos ('Z'))
         or else (C in Character'Pos ('a') .. Character'Pos ('z'))
         or else (C in Character'Pos ('0') .. Character'Pos ('9'))
-        or else C = Character'Pos ('_');
-   end Is_Word_Code_Point;
+        or else C = Character'Pos ('_')
+        or else C = Character'Pos ('-')
+        or else C = Character'Pos ('.')
+        or else C = Character'Pos ('/')
+        or else C = Character'Pos (':')
+        or else C = Character'Pos ('@')
+        or else C = Character'Pos ('%')
+        or else C = Character'Pos ('+')
+        or else C = Character'Pos ('~')
+        or else C = Character'Pos ('?')
+        or else C = Character'Pos ('&')
+        or else C = Character'Pos ('=')
+        or else C = Character'Pos ('#');
+   end Is_Token_Code_Point;
 
-   function Is_Word_Cell
+   function Is_Token_Cell
      (Snapshot : Terminal.Core.Render_Snapshot;
       Row      : Positive;
       Col      : Positive) return Boolean
@@ -104,8 +116,8 @@ package body Terminal.App.Selection is
         Terminal.Core.Cell_At (Snapshot, Row, Col);
    begin
       return Cell.Kind = Terminal.Core.Character
-        and then Is_Word_Code_Point (Cell.Text.Code_Point);
-   end Is_Word_Cell;
+        and then Is_Token_Code_Point (Cell.Text.Code_Point);
+   end Is_Token_Cell;
 
    procedure Select_Word
      (Selection : in out Selection_State;
@@ -131,20 +143,20 @@ package body Terminal.App.Selection is
          Col := Col - 1;
       end if;
 
-      if not Is_Word_Cell (Snapshot, Row, Col) then
+      if not Is_Token_Cell (Snapshot, Row, Col) then
          Begin_Selection (Selection, (Row => Row, Col => Col));
          Selection.Active := False;
          return;
       end if;
 
       First := Col;
-      while First > 1 and then Is_Word_Cell (Snapshot, Row, First - 1) loop
+      while First > 1 and then Is_Token_Cell (Snapshot, Row, First - 1) loop
          First := First - 1;
       end loop;
 
       Last := Col;
       while Last < Positive (Snapshot.Cols)
-        and then Is_Word_Cell (Snapshot, Row, Last + 1)
+        and then Is_Token_Cell (Snapshot, Row, Last + 1)
       loop
          Last := Last + 1;
       end loop;

@@ -188,10 +188,11 @@ selection from its original anchor, or starts a new selection when no range is
 active. Releasing a non-empty local selection also updates the app-owned OSC 52
 primary and selection target slots. `Ctrl+Shift+C` and `Super+C` copy the
 current selection without sending bytes to the PTY. Double-clicking selects the
-ASCII word under the pointer, where word characters are letters, digits, and
-underscore; double-clicking punctuation selects that single cell. Triple-clicking
-selects the visible row. Middle-click pastes the app-owned primary selection
-slot when terminal mouse reporting is disabled.
+ASCII token under the pointer, where token characters are letters, digits,
+underscore, and common shell path/URI characters. Double-clicking punctuation
+outside that set selects that single cell. Triple-clicking selects the visible
+row. Middle-click pastes the app-owned primary selection slot when terminal
+mouse reporting is disabled.
 
 Mouse-aware terminal programs can enable basic xterm mouse reporting through
 DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates

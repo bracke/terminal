@@ -119,9 +119,9 @@ begin
       Terminal.Core.Release (S);
    end;
 
-   Terminal.Core.Initialize (T, 1, 12, 10, Init);
+   Terminal.Core.Initialize (T, 1, 24, 10, Init);
    Assert (Init = Terminal.Core.Ok, "word selection initialize failed");
-   Terminal.Core.Feed (T, To_Bytes ("ab_cd xy!"), Feed_Status);
+   Terminal.Core.Feed (T, To_Bytes ("ab_cd ./a-b?x=1!"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "word selection feed failed");
 
    declare
@@ -149,7 +149,18 @@ begin
       Sel : Terminal.App.Selection.Selection_State;
       S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
-      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 9));
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 11));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = "./a-b?x=1",
+         "word selection should expand over path and URI token characters");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 16));
       Assert
         (Terminal.App.Selection.Selected_Text (S, Sel) = "!",
          "non-word double click should select the clicked cell");
