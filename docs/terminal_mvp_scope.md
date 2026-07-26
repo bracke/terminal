@@ -122,7 +122,9 @@ independently. Query responses preserve the requested `c`/`p`/`s` target
 designator in the OSC 52 response. Unsupported OSC 52 targets are diagnosed and
 ignored. OSC 8 hyperlinks are parsed into bounded per-cell snapshot metadata.
 Unknown OSC, escape, and CSI sequences are consumed safely and recorded in
-diagnostics where applicable.
+diagnostics where applicable. Unsupported private CSI markers such as `<` and
+`=` are recognized as private prefixes so their payloads do not leak into the
+screen or execute unrelated public CSI finals.
 
 ## Unicode And Text
 

@@ -2295,6 +2295,11 @@ package body Terminal.Core is
          return (if T.Current_Modes.Origin_Mode then T.Bottom_Margin else T.Rows);
       end Max_Row;
    begin
+      if T.CSI_Private = '<' or else T.CSI_Private = '=' then
+         T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+         return;
+      end if;
+
       if T.CSI_Intermediate_Count > 0 then
          if T.CSI_Intermediate_Count = 1 then
             if T.CSI_Intermediates (1) = '!'
@@ -3029,7 +3034,7 @@ package body Terminal.Core is
                      T.State := Ground;
                end case;
             when CSI =>
-               if (Ch = '?' or else Ch = '>')
+               if Ch in '<' .. '?'
                  and then T.CSI_Count = 0
                  and then T.CSI_Private = ASCII.NUL
                then

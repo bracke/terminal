@@ -12,6 +12,15 @@ procedure Core_UTF8_Smoke is
    T : Terminal.Core.Terminal;
    Init : Terminal.Core.Initialize_Status;
    Feed_Status : Terminal.Core.Feed_Status;
+
+   function To_Bytes (Text : String) return Byte_Array is
+      Result : Byte_Array (1 .. Text'Length);
+   begin
+      for I in Text'Range loop
+         Result (I - Text'First + 1) := Byte (Character'Pos (Text (I)));
+      end loop;
+      return Result;
+   end To_Bytes;
 begin
    Terminal.Core.Initialize (T, 2, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "initialize failed");
@@ -116,6 +125,36 @@ begin
         (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#63#,
          "charset selector should not leak before c");
       Assert (S.Cursor.Col = 4, "cursor after charset consume");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 3, 6, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "private CSI consume initialize failed");
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[<0;1;1M"
+            & ASCII.ESC & "[=3;3H"
+            & "x"),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "private CSI consume feed failed");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 2,
+         "private CSI forms should be diagnosed");
+   end;
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "private CSI marker should not leak or move cursor");
+      Assert (S.Cursor.Col = 2, "private CSI consume cursor");
       Terminal.Core.Release (S);
    end;
 
