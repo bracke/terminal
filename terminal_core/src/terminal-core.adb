@@ -2586,11 +2586,19 @@ package body Terminal.Core is
          when 'n' =>
             Queue_Device_Status_Report (T, Param (T, 1, 0));
          when 's' =>
-            Save_Cursor_State (T);
+            if T.CSI_Private = ASCII.NUL and then T.CSI_Count = 0 then
+               Save_Cursor_State (T);
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
          when 't' =>
             Queue_Window_Operation_Report (T, Param (T, 1, 0));
          when 'u' =>
-            Restore_Cursor_State (T);
+            if T.CSI_Private = ASCII.NUL and then T.CSI_Count = 0 then
+               Restore_Cursor_State (T);
+            else
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end if;
          when 'h' | 'l' =>
             if T.CSI_Private = '?' then
                for I in 1 .. Natural'Max (T.CSI_Count, 1) loop

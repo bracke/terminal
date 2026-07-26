@@ -141,4 +141,33 @@ begin
      (ASCII.ESC & "[20l" & "de" & ASCII.LF & "f",
       "LNM reset LF feed failed");
    Assert_Cursor (3, 5, "reset LNM LF should preserve the current column again");
+
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "CSI save/restore initialize failed");
+
+   Feed_Text
+     (ASCII.ESC & "[4;3H" & ASCII.ESC & "[s"
+      & ASCII.ESC & "[5;9H" & ASCII.ESC & "[u",
+      "CSI save/restore feed failed");
+   Assert_Cursor (4, 3, "CSI save/restore should preserve cursor");
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Feed_Text
+        (ASCII.ESC & "[2;2H"
+         & ASCII.ESC & "[1s"
+         & ASCII.ESC & "[?s"
+         & ASCII.ESC & "[4;8H"
+         & ASCII.ESC & "[1u"
+         & ASCII.ESC & "[?u",
+         "malformed CSI save/restore feed failed");
+      Assert_Cursor
+        (4, 8,
+         "malformed CSI save/restore should not save or restore cursor");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 4,
+         "malformed CSI save/restore should be diagnosed");
+   end;
 end Core_Cursor_Smoke;

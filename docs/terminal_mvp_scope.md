@@ -20,7 +20,8 @@
   range to Unicode box-drawing and symbol code points across G0 through G3.
 - Saved cursor state includes row, column, and current SGR style.
 - Saved cursor state also preserves the active G-set and G0 through G3 charset
-  designations.
+  designations. CSI save/restore is supported as `CSI s` and `CSI u`; private
+  or parameterized variants are diagnosed.
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL,
   ICH, DCH, ECH, IL, DL, REP, SU, SD, SGR, DECSET/DECRST known modes,
   SM/RM insert mode including bounded parameter lists, DECSTBM margins with at
