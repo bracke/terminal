@@ -72,6 +72,24 @@ package body Terminal.App.Fonts is
    Noto_Cham     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansCham-Regular.ttf";
    Noto_Tai_Viet : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansTaiViet-Regular.ttf";
    Noto_Meetei   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMeeteiMayek-Regular.ttf";
+   Noto_Linear_A : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLinearA-Regular.ttf";
+   Noto_Linear_B : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLinearB-Regular.ttf";
+   Noto_Cuneiform : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansCuneiform-Regular.ttf";
+   Noto_Lycian   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLycian-Regular.ttf";
+   Noto_Carian   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansCarian-Regular.ttf";
+   Noto_Old_Turkic : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansOldTurkic-Regular.ttf";
+   Noto_Medefaidrin : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMedefaidrin-Regular.ttf";
+   Noto_Wancho   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansWancho-Regular.ttf";
+   Noto_Deseret  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansDeseret-Regular.ttf";
+   Noto_Shavian  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansShavian-Regular.ttf";
+   Noto_Osmanya  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansOsmanya-Regular.ttf";
+   Noto_Osage    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansOsage-Regular.ttf";
+   Noto_Bamum    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansBamum-Regular.ttf";
+   Noto_Lisu     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLisu-Regular.ttf";
+   Noto_Miao     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMiao-Regular.ttf";
+   Noto_Nushu    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansNushu-Regular.ttf";
+   Noto_Tangut   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSerifTangut-Regular.ttf";
+   Noto_Khitan   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSerifKhitanSmallScript-Regular.ttf";
    Noto_CJK      : aliased constant String := "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
    VL_Gothic     : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-Gothic-Regular.ttf";
    VL_PGothic    : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-PGothic-Regular.ttf";
@@ -144,6 +162,24 @@ package body Terminal.App.Fonts is
       Noto_Cham'Access,
       Noto_Tai_Viet'Access,
       Noto_Meetei'Access,
+      Noto_Linear_A'Access,
+      Noto_Linear_B'Access,
+      Noto_Cuneiform'Access,
+      Noto_Lycian'Access,
+      Noto_Carian'Access,
+      Noto_Old_Turkic'Access,
+      Noto_Medefaidrin'Access,
+      Noto_Wancho'Access,
+      Noto_Deseret'Access,
+      Noto_Shavian'Access,
+      Noto_Osmanya'Access,
+      Noto_Osage'Access,
+      Noto_Bamum'Access,
+      Noto_Lisu'Access,
+      Noto_Miao'Access,
+      Noto_Nushu'Access,
+      Noto_Tangut'Access,
+      Noto_Khitan'Access,
       Noto_CJK'Access];
 
    Cached_Default_Path  : Font_Path;
@@ -178,7 +214,9 @@ package body Terminal.App.Fonts is
    function Is_Font_File (Path : String) return Boolean is
       Lower : constant String := To_Lower (Path);
    begin
-      return Has_Suffix (Lower, ".ttf") or else Has_Suffix (Lower, ".ttc");
+      return Has_Suffix (Lower, ".ttf")
+        or else Has_Suffix (Lower, ".ttc")
+        or else Has_Suffix (Lower, ".otf");
    end Is_Font_File;
 
    function Is_Ordinary_File (Path : String) return Boolean is

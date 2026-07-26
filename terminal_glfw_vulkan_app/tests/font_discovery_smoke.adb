@@ -33,6 +33,40 @@ procedure Font_Discovery_Smoke is
      "/usr/share/fonts/truetype/noto/NotoSansTaiViet-Regular.ttf";
    Noto_Meetei : constant String :=
      "/usr/share/fonts/truetype/noto/NotoSansMeeteiMayek-Regular.ttf";
+   Noto_Linear_A : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansLinearA-Regular.ttf";
+   Noto_Linear_B : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansLinearB-Regular.ttf";
+   Noto_Cuneiform : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansCuneiform-Regular.ttf";
+   Noto_Lycian : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansLycian-Regular.ttf";
+   Noto_Carian : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansCarian-Regular.ttf";
+   Noto_Old_Turkic : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansOldTurkic-Regular.ttf";
+   Noto_Medefaidrin : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansMedefaidrin-Regular.ttf";
+   Noto_Wancho : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansWancho-Regular.ttf";
+   Noto_Deseret : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansDeseret-Regular.ttf";
+   Noto_Shavian : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansShavian-Regular.ttf";
+   Noto_Osmanya : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansOsmanya-Regular.ttf";
+   Noto_Osage : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansOsage-Regular.ttf";
+   Noto_Bamum : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansBamum-Regular.ttf";
+   Noto_Lisu : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansLisu-Regular.ttf";
+   Noto_Miao : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansMiao-Regular.ttf";
+   Noto_Nushu : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansNushu-Regular.ttf";
+   Noto_Tangut : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSerifTangut-Regular.ttf";
 
    Default_Path : constant String := Fonts.Default_Font_Path;
    Fallbacks    : constant Fonts.Font_Path_Array := Fonts.Fallback_Font_Paths;
@@ -89,4 +123,21 @@ begin
    Assert_Contains_If_Installed (Noto_Khmer, "Khmer");
    Assert_Contains_If_Installed (Noto_Tai_Viet, "Tai Viet");
    Assert_Contains_If_Installed (Noto_Meetei, "Meetei Mayek");
+   Assert_Contains_If_Installed (Noto_Linear_A, "Linear A");
+   Assert_Contains_If_Installed (Noto_Linear_B, "Linear B");
+   Assert_Contains_If_Installed (Noto_Cuneiform, "Cuneiform");
+   Assert_Contains_If_Installed (Noto_Lycian, "Lycian");
+   Assert_Contains_If_Installed (Noto_Carian, "Carian");
+   Assert_Contains_If_Installed (Noto_Old_Turkic, "Old Turkic");
+   Assert_Contains_If_Installed (Noto_Medefaidrin, "Medefaidrin");
+   Assert_Contains_If_Installed (Noto_Wancho, "Wancho");
+   Assert_Contains_If_Installed (Noto_Deseret, "Deseret");
+   Assert_Contains_If_Installed (Noto_Shavian, "Shavian");
+   Assert_Contains_If_Installed (Noto_Osmanya, "Osmanya");
+   Assert_Contains_If_Installed (Noto_Osage, "Osage");
+   Assert_Contains_If_Installed (Noto_Bamum, "Bamum");
+   Assert_Contains_If_Installed (Noto_Lisu, "Lisu");
+   Assert_Contains_If_Installed (Noto_Miao, "Miao");
+   Assert_Contains_If_Installed (Noto_Nushu, "Nushu");
+   Assert_Contains_If_Installed (Noto_Tangut, "Tangut");
 end Font_Discovery_Smoke;
