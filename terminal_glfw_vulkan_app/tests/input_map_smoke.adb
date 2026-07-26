@@ -88,6 +88,22 @@ begin
    IM.Encode_Key (Key_Event (GI.Backspace), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#7F#), "backspace");
 
+   IM.Encode_Key (Key_Event (GI.Backspace, Control => True), Modes, Chunk);
+   Assert_Bytes (Chunk, (1 => 16#08#), "ctrl-backspace");
+
+   IM.Encode_Key (Key_Event (GI.Backspace, Alt => True), Modes, Chunk);
+   Assert_Bytes
+     (Chunk,
+      (1 => 16#1B#, 2 => 16#7F#),
+      "alt-backspace");
+
+   IM.Encode_Key
+     (Key_Event (GI.Backspace, Control => True, Alt => True), Modes, Chunk);
+   Assert_Bytes
+     (Chunk,
+      (1 => 16#1B#, 2 => 16#08#),
+      "ctrl-alt-backspace");
+
    IM.Encode_Key (Key_Event (GI.Space), Modes, Chunk);
    Assert (Chunk.Length = 0, "plain space is sent by character callback");
 

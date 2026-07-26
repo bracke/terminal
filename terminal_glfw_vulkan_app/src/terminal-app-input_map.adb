@@ -261,6 +261,16 @@ package body Terminal.App.Input_Map is
          return;
       end if;
 
+      if Event.Key = Backspace
+        and then (Event.Modifiers.Control or else Event.Modifiers.Alt)
+      then
+         if Event.Modifiers.Alt then
+            Append (Chunk, 16#1B#);
+         end if;
+         Append (Chunk, (if Event.Modifiers.Control then 16#08# else 16#7F#));
+         return;
+      end if;
+
       if Event.Modifiers.Control then
          if Event.Key = Space then
             Append (Chunk, 16#00#);
