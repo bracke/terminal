@@ -104,6 +104,34 @@ begin
          "DEC DSR status should drain");
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "[5n"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "non-1 response buffer feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 4,
+      "non-1 response buffer response length");
+
+   declare
+      Buffer : Byte_Array (10 .. 13);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert (Last = 4, "non-1 response buffer drain length");
+      Assert
+        (Buffer (10) = Byte (Character'Pos (ASCII.ESC))
+         and then Buffer (11) = Byte (Character'Pos ('['))
+         and then Buffer (12) = Byte (Character'Pos ('0'))
+         and then Buffer (13) = Byte (Character'Pos ('n')),
+         "non-1 response buffer contents");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "non-1 response buffer should drain");
+   end;
+
    declare
       Before : constant Natural :=
         Terminal.Core.Diagnostics (T).Unsupported_Sequence;
