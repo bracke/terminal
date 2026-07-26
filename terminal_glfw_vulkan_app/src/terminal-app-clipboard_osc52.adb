@@ -3,6 +3,7 @@ with Terminal.Common.Bytes;
 
 package body Terminal.App.Clipboard_OSC52 is
    use Terminal.Common.Bytes;
+   use type Terminal.Core.Clipboard_Target;
 
    Alphabet : constant String :=
      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -43,6 +44,44 @@ package body Terminal.App.Clipboard_OSC52 is
          Append (Chunk, '=');
       end if;
    end Append_Base64_Quartet;
+
+   procedure Store
+     (State  : in out Target_Store;
+      Target : Terminal.Core.Clipboard_Target;
+      Text   : String)
+   is
+      Count : constant Natural :=
+        Natural'Min (Text'Length, Terminal.Core.Max_Clipboard_Length);
+
+      procedure Copy (Slot : in out Stored_Text) is
+      begin
+         Slot := (others => <>);
+         Slot.Length := Count;
+         for I in 1 .. Count loop
+            Slot.Data (I) := Text (Text'First + I - 1);
+         end loop;
+      end Copy;
+   begin
+      if Target = Terminal.Core.Clipboard_Primary then
+         Copy (State.Primary);
+      elsif Target = Terminal.Core.Clipboard_Selection then
+         Copy (State.Selection);
+      end if;
+   end Store;
+
+   function Text
+     (State  : Target_Store;
+      Target : Terminal.Core.Clipboard_Target) return String
+   is
+   begin
+      if Target = Terminal.Core.Clipboard_Primary then
+         return State.Primary.Data (1 .. State.Primary.Length);
+      elsif Target = Terminal.Core.Clipboard_Selection then
+         return State.Selection.Data (1 .. State.Selection.Length);
+      else
+         return "";
+      end if;
+   end Text;
 
    procedure Build_Query_Response
      (Text  : String;

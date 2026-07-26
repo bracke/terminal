@@ -3,6 +3,7 @@ with AUnit.Assertions;
 with Terminal.App.Clipboard_OSC52;
 with Terminal.App.Queues;
 with Terminal.Common.Bytes;
+with Terminal.Core;
 
 procedure Clipboard_OSC52_Smoke is
    use AUnit.Assertions;
@@ -18,6 +19,7 @@ procedure Clipboard_OSC52_Smoke is
    end Text_Of;
 
    Chunk : Terminal.App.Queues.Byte_Chunk;
+   Store : Terminal.App.Clipboard_OSC52.Target_Store;
    Long_Text : String
      (1 .. Terminal.App.Clipboard_OSC52.Max_Query_Text_Bytes + 20) :=
        (others => 'x');
@@ -44,4 +46,29 @@ begin
       and then Chunk.Data (Chunk.Length - 1) = 16#1B#
       and then Chunk.Data (Chunk.Length) = Byte (Character'Pos ('\')),
       "bounded OSC 52 response framing");
+
+   Terminal.App.Clipboard_OSC52.Store
+     (Store, Terminal.Core.Clipboard_Primary, "primary");
+   Terminal.App.Clipboard_OSC52.Store
+     (Store, Terminal.Core.Clipboard_Selection, "selection");
+   Assert
+     (Terminal.App.Clipboard_OSC52.Text
+        (Store, Terminal.Core.Clipboard_Primary) = "primary",
+      "primary target should round-trip independently");
+   Assert
+     (Terminal.App.Clipboard_OSC52.Text
+        (Store, Terminal.Core.Clipboard_Selection) = "selection",
+      "selection target should round-trip independently");
+   Assert
+     (Terminal.App.Clipboard_OSC52.Text
+        (Store, Terminal.Core.Clipboard_Clipboard) = "",
+      "system clipboard target is not stored in app target cache");
+
+   Terminal.App.Clipboard_OSC52.Store
+     (Store, Terminal.Core.Clipboard_Primary, Long_Text);
+   Assert
+     (Terminal.App.Clipboard_OSC52.Text
+        (Store, Terminal.Core.Clipboard_Primary)'Length =
+          Terminal.Core.Max_Clipboard_Length,
+      "stored primary target text should be bounded");
 end Clipboard_OSC52_Smoke;
