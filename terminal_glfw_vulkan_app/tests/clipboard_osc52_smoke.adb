@@ -30,6 +30,18 @@ begin
         Character'Val (16#1B#) & "\",
       "OSC 52 query response should base64 encode clipboard text");
 
+   Terminal.App.Clipboard_OSC52.Build_Query_Response ("f", Chunk);
+   Assert
+     (Text_Of (Chunk) = Character'Val (16#1B#) & "]52;c;Zg==" &
+        Character'Val (16#1B#) & "\",
+      "OSC 52 query response should pad one-byte text");
+
+   Terminal.App.Clipboard_OSC52.Build_Query_Response ("fo", Chunk);
+   Assert
+     (Text_Of (Chunk) = Character'Val (16#1B#) & "]52;c;Zm8=" &
+        Character'Val (16#1B#) & "\",
+      "OSC 52 query response should pad two-byte text");
+
    Terminal.App.Clipboard_OSC52.Build_Query_Response ("", Chunk);
    Assert
      (Text_Of (Chunk) = Character'Val (16#1B#) & "]52;c;" &
