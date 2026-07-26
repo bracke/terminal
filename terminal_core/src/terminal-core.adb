@@ -1760,17 +1760,22 @@ package body Terminal.Core is
    is
       Target : constant Natural := Param (T, 2, 0);
 
+      function Valid_Report return Boolean is
+        (T.CSI_Private = ASCII.NUL and then T.CSI_Count <= 1);
+
       function Valid_Title_Stack_Target return Boolean is
-        (T.CSI_Count <= 2 and then Target in 0 .. 2);
+        (T.CSI_Private = ASCII.NUL
+         and then T.CSI_Count <= 2
+         and then Target in 0 .. 2);
    begin
       if T.CSI_Private = ASCII.NUL and then Number in 1 .. 10 then
          null;
-      elsif T.CSI_Private = ASCII.NUL and then Number = 11 then
+      elsif Valid_Report and then Number = 11 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '1');
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 13 then
+      elsif Valid_Report and then Number = 13 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '3');
@@ -1779,7 +1784,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Char (T, '0');
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 14 then
+      elsif Valid_Report and then Number = 14 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '4');
@@ -1788,7 +1793,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Window_Pixel_Width);
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 15 then
+      elsif Valid_Report and then Number = 15 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '5');
@@ -1797,7 +1802,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Window_Pixel_Width);
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 16 then
+      elsif Valid_Report and then Number = 16 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '6');
@@ -1806,7 +1811,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Cell_Pixel_Width);
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 18 then
+      elsif Valid_Report and then Number = 18 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '8');
@@ -1815,7 +1820,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Cols);
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 19 then
+      elsif Valid_Report and then Number = 19 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '9');
@@ -1824,7 +1829,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Cols);
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 20 then
+      elsif Valid_Report and then Number = 20 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, ']');
          Append_Response_Char (T, 'L');
@@ -1833,7 +1838,7 @@ package body Terminal.Core is
          end loop;
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '\');
-      elsif T.CSI_Private = ASCII.NUL and then Number = 21 then
+      elsif Valid_Report and then Number = 21 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, ']');
          Append_Response_Char (T, 'l');
@@ -1842,14 +1847,12 @@ package body Terminal.Core is
          end loop;
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '\');
-      elsif T.CSI_Private = ASCII.NUL
-        and then Number = 22
+      elsif Number = 22
         and then Valid_Title_Stack_Target
       then
          T.Saved_Window_Title := T.Window_Title;
          T.Saved_Window_Title_Valid := True;
-      elsif T.CSI_Private = ASCII.NUL
-        and then Number = 23
+      elsif Number = 23
         and then Valid_Title_Stack_Target
       then
          if T.Saved_Window_Title_Valid then

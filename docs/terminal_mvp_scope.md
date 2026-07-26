@@ -76,7 +76,8 @@
   report (`CSI 21 t`) return the bounded OSC title as `OSC L title ST` and
   `OSC l title ST`; the current app has no separate icon label. Title stack
   operations (`CSI 22 t`, `CSI 23 t`, and their `;0`, `;1`, `;2` variants)
-  save and restore one bounded title.
+  save and restore one bounded title. Extra XTWINOPS report parameters and
+  overlong title-stack parameter lists are diagnosed.
 - Bounded OSC 0/1/2 window-title capture, applied by the GLFW app.
 - Bounded DCS, SOS, PM, and APC payload consumption with BEL, ST, and C1 ST
   termination; payloads are ignored.

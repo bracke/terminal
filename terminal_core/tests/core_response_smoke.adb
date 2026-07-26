@@ -964,4 +964,34 @@ begin
         (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 2,
          "XTWINOPS unsupported title stack targets should be diagnosed");
    end;
+
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[11;0t"
+            & ASCII.ESC & "[13;0t"
+            & ASCII.ESC & "[14;0t"
+            & ASCII.ESC & "[15;0t"
+            & ASCII.ESC & "[16;0t"
+            & ASCII.ESC & "[18;0t"
+            & ASCII.ESC & "[19;0t"
+            & ASCII.ESC & "[20;0t"
+            & ASCII.ESC & "[21;0t"
+            & ASCII.ESC & "[22;0;0t"
+            & ASCII.ESC & "[23;0;0t"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "malformed XTWINOPS reports feed failed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "malformed XTWINOPS reports should not queue responses");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 11,
+         "malformed XTWINOPS reports should be diagnosed");
+   end;
 end Core_Response_Smoke;
