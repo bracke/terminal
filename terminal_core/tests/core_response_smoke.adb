@@ -427,6 +427,34 @@ begin
          "DECRQSS margins should drain");
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[1;5r"
+         & ASCII.ESC & "P$qr" & ASCII.BEL),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "BEL DECRQSS margins feed failed");
+   Assert
+     (Terminal.Core.Pending_Response_Length (T) = 11,
+      "BEL DECRQSS margins response length");
+
+   declare
+      Buffer : Byte_Array (1 .. 16);
+      Last   : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Buffer, Last);
+      Assert_Bytes
+        (Buffer,
+         Last,
+         To_Bytes (ASCII.ESC & "P1$r1;5r" & ASCII.ESC & "\"),
+         "BEL DECRQSS margins");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "BEL DECRQSS margins should drain");
+   end;
+
    declare
       Before : constant Natural :=
         Terminal.Core.Diagnostics (T).Unsupported_Sequence;

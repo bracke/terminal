@@ -47,10 +47,11 @@
   save/restore cursor mode.
 - DECRQSS status-string reports (`DCS $ q m ST`, `DCS $ q r ST`, and
   `DCS $ q SP q ST`) return current SGR state, scrolling margins, and
-  DECSCUSR cursor style using either 7-bit DCS/ST framing or C1 DCS/ST bytes;
-  unsupported DECRQSS queries receive a negative `DCS 0 $ r ST` response.
-  Malformed longer variants of otherwise supported DECRQSS payloads and missing
-  status-string designators are rejected with the same negative response.
+  DECSCUSR cursor style using 7-bit DCS/ST framing, BEL termination, or C1
+  DCS/ST bytes; unsupported DECRQSS queries receive a negative
+  `DCS 0 $ r ST` response. Malformed longer variants of otherwise supported
+  DECRQSS payloads and missing status-string designators are rejected with the
+  same negative response.
 - XTWINOPS window-state report (`CSI 11 t`) returns normal state as
   `CSI 1 t`. XTWINOPS window action requests (`CSI 1 t` through `CSI 10 t`,
   including move and resize parameters) are recognized and ignored by the core
