@@ -245,6 +245,12 @@ package body Terminal.App.HarfBuzz is
             return "mymr";
          when RM.Script_Mongolian =>
             return "mong";
+         when RM.Script_Limbu =>
+            return "limb";
+         when RM.Script_Tai_Le =>
+            return "tale";
+         when RM.Script_New_Tai_Lue =>
+            return "talu";
          when RM.Script_Khmer =>
             return "khmr";
          when RM.Script_Balinese =>
@@ -257,6 +263,16 @@ package body Terminal.App.HarfBuzz is
             return "lepc";
          when RM.Script_Ol_Chiki =>
             return "olck";
+         when RM.Script_Syloti_Nagri =>
+            return "sylo";
+         when RM.Script_Phags_Pa =>
+            return "phag";
+         when RM.Script_Saurashtra =>
+            return "saur";
+         when RM.Script_Kayah_Li =>
+            return "kali";
+         when RM.Script_Rejang =>
+            return "rjng";
          when RM.Script_Buginese =>
             return "bugi";
          when RM.Script_Tai_Tham =>
@@ -265,6 +281,10 @@ package body Terminal.App.HarfBuzz is
             return "java";
          when RM.Script_Cham =>
             return "cham";
+         when RM.Script_Tai_Viet =>
+            return "tavt";
+         when RM.Script_Meetei_Mayek =>
+            return "mtei";
          when RM.Script_Hiragana =>
             return "hira";
          when RM.Script_Katakana =>
@@ -355,6 +375,12 @@ package body Terminal.App.HarfBuzz is
             return "my";
          when RM.Script_Mongolian =>
             return "mn";
+         when RM.Script_Limbu =>
+            return "lif";
+         when RM.Script_Tai_Le =>
+            return "tdd";
+         when RM.Script_New_Tai_Lue =>
+            return "khb";
          when RM.Script_Khmer =>
             return "km";
          when RM.Script_Balinese =>
@@ -367,6 +393,16 @@ package body Terminal.App.HarfBuzz is
             return "lep";
          when RM.Script_Ol_Chiki =>
             return "sat";
+         when RM.Script_Syloti_Nagri =>
+            return "syl";
+         when RM.Script_Phags_Pa =>
+            return "und";
+         when RM.Script_Saurashtra =>
+            return "saz";
+         when RM.Script_Kayah_Li =>
+            return "eky";
+         when RM.Script_Rejang =>
+            return "rej";
          when RM.Script_Buginese =>
             return "bug";
          when RM.Script_Tai_Tham =>
@@ -375,6 +411,10 @@ package body Terminal.App.HarfBuzz is
             return "jv";
          when RM.Script_Cham =>
             return "cjm";
+         when RM.Script_Tai_Viet =>
+            return "blt";
+         when RM.Script_Meetei_Mayek =>
+            return "mni";
          when RM.Script_Hiragana | RM.Script_Katakana =>
             return "ja";
          when RM.Script_Bopomofo =>

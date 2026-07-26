@@ -160,9 +160,10 @@ Coptic, Gothic, Old Italic, Old Persian, Ugaritic, Armenian,
 Georgian, Ethiopic, Cherokee, Hebrew, Arabic, Syriac, Thaana, NKo,
 Tibetan, Devanagari, Bengali, Gurmukhi, Gujarati, Oriya/Odia, Tamil, Telugu,
 Kannada, Malayalam, Sinhala, Thai, Lao, Myanmar, Mongolian, Khmer, Javanese,
-Balinese, Sundanese, Batak, Lepcha, Ol Chiki, Buginese, Tai Tham, Cham,
-Hiragana, Katakana, Bopomofo, Hangul, Yi, Canadian Aboriginal syllabics, Ogham,
-Runic, Tifinagh, Vai, CJK/Han, and
+Limbu, Tai Le, New Tai Lue, Balinese, Sundanese, Batak, Lepcha, Ol Chiki,
+Syloti Nagri, Phags-pa, Saurashtra, Kayah Li, Rejang, Buginese, Tai Tham,
+Cham, Tai Viet, Meetei Mayek, Hiragana, Katakana, Bopomofo, Hangul, Yi,
+Canadian Aboriginal syllabics, Ogham, Runic, Tifinagh, Vai, CJK/Han, and
 emoji/common runs. The shaping adapter also tries configured fallback font
 faces in the same order as `textrender` when the primary face shapes a run
 with `.notdef` glyphs.

@@ -156,12 +156,15 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#0E80# .. 16#0EFF#)
       or else (C in 16#1000# .. 16#109F#)
       or else (C in 16#1800# .. 16#18AF#)
+      or else (C in 16#1900# .. 16#19DF#)
       or else (C in 16#1A00# .. 16#1AAF#)
       or else (C in 16#1B00# .. 16#1BFF#)
       or else (C in 16#1C00# .. 16#1C7F#)
       or else (C in 16#1780# .. 16#17FF#)
+      or else (C in 16#A800# .. 16#A95F#)
       or else (C in 16#A980# .. 16#A9DF#)
-      or else (C in 16#AA00# .. 16#AA5F#));
+      or else (C in 16#AA00# .. 16#AAFF#)
+      or else (C in 16#ABC0# .. 16#ABFF#));
 
    function Is_Latin (C : Natural) return Boolean is
      ((C in Character'Pos ('A') .. Character'Pos ('Z'))
@@ -489,6 +492,12 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Myanmar;
             elsif C in 16#1800# .. 16#18AF# then
                return RM.Script_Mongolian;
+            elsif C in 16#1900# .. 16#194F# then
+               return RM.Script_Limbu;
+            elsif C in 16#1950# .. 16#197F# then
+               return RM.Script_Tai_Le;
+            elsif C in 16#1980# .. 16#19DF# then
+               return RM.Script_New_Tai_Lue;
             elsif C in 16#1780# .. 16#17FF# then
                return RM.Script_Khmer;
             elsif C in 16#1B00# .. 16#1B7F# then
@@ -501,6 +510,16 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Lepcha;
             elsif C in 16#1C50# .. 16#1C7F# then
                return RM.Script_Ol_Chiki;
+            elsif C in 16#A800# .. 16#A82F# then
+               return RM.Script_Syloti_Nagri;
+            elsif C in 16#A840# .. 16#A87F# then
+               return RM.Script_Phags_Pa;
+            elsif C in 16#A880# .. 16#A8DF# then
+               return RM.Script_Saurashtra;
+            elsif C in 16#A900# .. 16#A92F# then
+               return RM.Script_Kayah_Li;
+            elsif C in 16#A930# .. 16#A95F# then
+               return RM.Script_Rejang;
             elsif C in 16#1A00# .. 16#1A1F# then
                return RM.Script_Buginese;
             elsif C in 16#1A20# .. 16#1AAF# then
@@ -509,6 +528,12 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Javanese;
             elsif C in 16#AA00# .. 16#AA5F# then
                return RM.Script_Cham;
+            elsif C in 16#AA80# .. 16#AADF# then
+               return RM.Script_Tai_Viet;
+            elsif (C in 16#AAE0# .. 16#AAFF#)
+              or else (C in 16#ABC0# .. 16#ABFF#)
+            then
+               return RM.Script_Meetei_Mayek;
             elsif Is_Hiragana (C) then
                return RM.Script_Hiragana;
             elsif Is_Katakana (C) then
