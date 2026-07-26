@@ -38,7 +38,8 @@
 - DSR status (`CSI 5 n`), DEC private operating status (`CSI ? 5 n`),
   cursor-position report (`CSI 6 n`), DEC private cursor-position report
   (`CSI ? 6 n`), primary DA (`CSI c`/`CSI 0 c`), and secondary DA
-  (`CSI > c`/`CSI > 0 c`) responses. Extra DA parameters are diagnosed.
+  (`CSI > c`/`CSI > 0 c`) responses. Extra DSR and DA parameters are
+  diagnosed.
 - DEC-specific DSR hardware/status probes return deterministic emulator
   defaults: printer not ready (`CSI ? 15 n` -> `CSI ? 11 n`), UDK unlocked
   (`CSI ? 25 n` -> `CSI ? 20 n`), North American keyboard

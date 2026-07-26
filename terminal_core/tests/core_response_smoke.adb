@@ -102,6 +102,26 @@ begin
          "DEC DSR status should drain");
    end;
 
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[5;0n"
+            & ASCII.ESC & "[6;0n"
+            & ASCII.ESC & "[?15;0n"),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "malformed DSR feed failed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "malformed DSR should not queue responses");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 3,
+         "malformed DSR should be diagnosed");
+   end;
+
    Terminal.Core.Feed
      (T,
       To_Bytes (ASCII.ESC & "P$q" & ASCII.ESC & "\"),

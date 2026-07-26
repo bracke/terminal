@@ -1654,6 +1654,8 @@ package body Terminal.Core is
      (T    : in out Terminal;
       Kind : Natural)
    is
+      Valid_Report : constant Boolean := T.CSI_Count <= 1;
+
       procedure Append_Private_DSR (Text : String) is
       begin
          Append_Response_Char (T, ASCII.ESC);
@@ -1665,7 +1667,9 @@ package body Terminal.Core is
    begin
       case Kind is
          when 5 =>
-            if T.CSI_Private = ASCII.NUL then
+            if not Valid_Report then
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            elsif T.CSI_Private = ASCII.NUL then
                Append_Response_Char (T, ASCII.ESC);
                Append_Response_Char (T, '[');
                Append_Response_Char (T, '0');
@@ -1680,6 +1684,10 @@ package body Terminal.Core is
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
          when 6 =>
+            if not Valid_Report then
+               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+               return;
+            end if;
             Append_Response_Char (T, ASCII.ESC);
             Append_Response_Char (T, '[');
             if T.CSI_Private = '?' then
@@ -1693,31 +1701,31 @@ package body Terminal.Core is
             Append_Response_Natural (T, T.Cursor_Col);
             Append_Response_Char (T, 'R');
          when 15 =>
-            if T.CSI_Private = '?' then
+            if T.CSI_Private = '?' and then Valid_Report then
                Append_Private_DSR ("11");
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
          when 25 =>
-            if T.CSI_Private = '?' then
+            if T.CSI_Private = '?' and then Valid_Report then
                Append_Private_DSR ("20");
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
          when 26 =>
-            if T.CSI_Private = '?' then
+            if T.CSI_Private = '?' and then Valid_Report then
                Append_Private_DSR ("27;1;0;0");
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
          when 53 | 55 =>
-            if T.CSI_Private = '?' then
+            if T.CSI_Private = '?' and then Valid_Report then
                Append_Private_DSR ("50");
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
          when 56 =>
-            if T.CSI_Private = '?' then
+            if T.CSI_Private = '?' and then Valid_Report then
                Append_Private_DSR ("57;0");
             else
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
