@@ -289,6 +289,39 @@ package body Terminal.App.Text_Shaper is
    function Is_Pahawh_Hmong (C : Natural) return Boolean is
      (C in 16#16B00# .. 16#16B8F#);
 
+   function Is_Deseret (C : Natural) return Boolean is
+     (C in 16#10400# .. 16#1044F#);
+
+   function Is_Shavian (C : Natural) return Boolean is
+     (C in 16#10450# .. 16#1047F#);
+
+   function Is_Osmanya (C : Natural) return Boolean is
+     (C in 16#10480# .. 16#104AF#);
+
+   function Is_Osage (C : Natural) return Boolean is
+     (C in 16#104B0# .. 16#104FF#);
+
+   function Is_Bamum (C : Natural) return Boolean is
+     ((C in 16#A6A0# .. 16#A6FF#)
+      or else (C in 16#16800# .. 16#16A3F#));
+
+   function Is_Lisu (C : Natural) return Boolean is
+     ((C in 16#A4D0# .. 16#A4FF#)
+      or else (C in 16#11FB0# .. 16#11FBF#));
+
+   function Is_Miao (C : Natural) return Boolean is
+     (C in 16#16F00# .. 16#16F9F#);
+
+   function Is_Nushu (C : Natural) return Boolean is
+     (C in 16#1B170# .. 16#1B2FF#);
+
+   function Is_Tangut (C : Natural) return Boolean is
+     ((C in 16#17000# .. 16#187FF#)
+      or else (C in 16#18800# .. 16#18AFF#));
+
+   function Is_Khitan_Small (C : Natural) return Boolean is
+     (C in 16#18B00# .. 16#18CFF#);
+
    function Is_Armenian (C : Natural) return Boolean is
      ((C in 16#0530# .. 16#058F#)
       or else (C in 16#FB13# .. 16#FB17#));
@@ -528,6 +561,16 @@ package body Terminal.App.Text_Shaper is
            or else Is_Mro (Run.Codepoints (I))
            or else Is_Bassa_Vah (Run.Codepoints (I))
            or else Is_Pahawh_Hmong (Run.Codepoints (I))
+           or else Is_Deseret (Run.Codepoints (I))
+           or else Is_Shavian (Run.Codepoints (I))
+           or else Is_Osmanya (Run.Codepoints (I))
+           or else Is_Osage (Run.Codepoints (I))
+           or else Is_Bamum (Run.Codepoints (I))
+           or else Is_Lisu (Run.Codepoints (I))
+           or else Is_Miao (Run.Codepoints (I))
+           or else Is_Nushu (Run.Codepoints (I))
+           or else Is_Tangut (Run.Codepoints (I))
+           or else Is_Khitan_Small (Run.Codepoints (I))
            or else Is_Hiragana (Run.Codepoints (I))
            or else Is_Katakana (Run.Codepoints (I))
            or else Is_Bopomofo (Run.Codepoints (I))
@@ -754,6 +797,26 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Bassa_Vah;
             elsif Is_Pahawh_Hmong (C) then
                return RM.Script_Pahawh_Hmong;
+            elsif Is_Deseret (C) then
+               return RM.Script_Deseret;
+            elsif Is_Shavian (C) then
+               return RM.Script_Shavian;
+            elsif Is_Osmanya (C) then
+               return RM.Script_Osmanya;
+            elsif Is_Osage (C) then
+               return RM.Script_Osage;
+            elsif Is_Bamum (C) then
+               return RM.Script_Bamum;
+            elsif Is_Lisu (C) then
+               return RM.Script_Lisu;
+            elsif Is_Miao (C) then
+               return RM.Script_Miao;
+            elsif Is_Nushu (C) then
+               return RM.Script_Nushu;
+            elsif Is_Tangut (C) then
+               return RM.Script_Tangut;
+            elsif Is_Khitan_Small (C) then
+               return RM.Script_Khitan_Small;
             elsif Is_Armenian (C) then
                return RM.Script_Armenian;
             elsif Is_Georgian (C) then

@@ -101,6 +101,16 @@ procedure Text_Shaper_Smoke is
    Mro       : RM.Text_Run_Command := Run (16#16A40#);
    Bassa     : RM.Text_Run_Command := Run (16#16AD0#);
    Pahawh    : RM.Text_Run_Command := Run (16#16B00#);
+   Deseret   : RM.Text_Run_Command := Run (16#10400#);
+   Shavian   : RM.Text_Run_Command := Run (16#10450#);
+   Osmanya   : RM.Text_Run_Command := Run (16#10480#);
+   Osage     : RM.Text_Run_Command := Run (16#104B0#);
+   Bamum     : RM.Text_Run_Command := Run (16#A6A0#);
+   Lisu      : RM.Text_Run_Command := Run (16#A4D0#);
+   Miao      : RM.Text_Run_Command := Run (16#16F00#);
+   Nushu     : RM.Text_Run_Command := Run (16#1B170#);
+   Tangut    : RM.Text_Run_Command := Run (16#17000#);
+   Khitan    : RM.Text_Run_Command := Run (16#18B00#);
    Armenian  : RM.Text_Run_Command := Run (16#0561#, 16#0562#);
    Georgian  : RM.Text_Run_Command := Run (16#10D0#, 16#10D1#);
    Ethiopic  : RM.Text_Run_Command := Run (16#12A0#, 16#12A1#);
@@ -503,6 +513,16 @@ begin
    Assert_Simple_Script (Mro, RM.Script_Mro, "Mro");
    Assert_Simple_Script (Bassa, RM.Script_Bassa_Vah, "Bassa Vah");
    Assert_Simple_Script (Pahawh, RM.Script_Pahawh_Hmong, "Pahawh Hmong");
+   Assert_Simple_Script (Deseret, RM.Script_Deseret, "Deseret");
+   Assert_Simple_Script (Shavian, RM.Script_Shavian, "Shavian");
+   Assert_Simple_Script (Osmanya, RM.Script_Osmanya, "Osmanya");
+   Assert_Simple_Script (Osage, RM.Script_Osage, "Osage");
+   Assert_Simple_Script (Bamum, RM.Script_Bamum, "Bamum");
+   Assert_Simple_Script (Lisu, RM.Script_Lisu, "Lisu");
+   Assert_Simple_Script (Miao, RM.Script_Miao, "Miao");
+   Assert_Simple_Script (Nushu, RM.Script_Nushu, "Nushu");
+   Assert_Simple_Script (Tangut, RM.Script_Tangut, "Tangut");
+   Assert_Simple_Script (Khitan, RM.Script_Khitan_Small, "Khitan Small");
 
    Assert (TS.Classify (Armenian) = RM.Simple_Text, "Armenian text class");
    TS.Prepare (Armenian, Status);

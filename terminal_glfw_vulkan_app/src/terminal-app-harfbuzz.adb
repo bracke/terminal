@@ -207,6 +207,26 @@ package body Terminal.App.HarfBuzz is
             return "bass";
          when RM.Script_Pahawh_Hmong =>
             return "hmng";
+         when RM.Script_Deseret =>
+            return "dsrt";
+         when RM.Script_Shavian =>
+            return "shaw";
+         when RM.Script_Osmanya =>
+            return "osma";
+         when RM.Script_Osage =>
+            return "osge";
+         when RM.Script_Bamum =>
+            return "bamu";
+         when RM.Script_Lisu =>
+            return "lisu";
+         when RM.Script_Miao =>
+            return "plrd";
+         when RM.Script_Nushu =>
+            return "nshu";
+         when RM.Script_Tangut =>
+            return "tang";
+         when RM.Script_Khitan_Small =>
+            return "kits";
          when RM.Script_Armenian =>
             return "armn";
          when RM.Script_Georgian =>
@@ -431,6 +451,22 @@ package body Terminal.App.HarfBuzz is
             return "bsq";
          when RM.Script_Pahawh_Hmong =>
             return "hmn";
+         when RM.Script_Deseret | RM.Script_Shavian =>
+            return "en";
+         when RM.Script_Osmanya =>
+            return "so";
+         when RM.Script_Osage =>
+            return "osa";
+         when RM.Script_Bamum =>
+            return "bax";
+         when RM.Script_Lisu =>
+            return "lis";
+         when RM.Script_Miao =>
+            return "hmn";
+         when RM.Script_Nushu =>
+            return "zh";
+         when RM.Script_Tangut | RM.Script_Khitan_Small =>
+            return "und";
          when RM.Script_Armenian =>
             return "hy";
          when RM.Script_Georgian =>
