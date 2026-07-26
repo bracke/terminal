@@ -59,10 +59,26 @@ package Terminal.Core is
       Attachments : Cluster_Attachment_Array := (others => 0);
    end record;
 
+   Max_Hyperlink_URI_Length : constant := 512;
+   Max_Hyperlink_ID_Length  : constant := 128;
+   subtype Hyperlink_URI_Length_Range is
+     Natural range 0 .. Max_Hyperlink_URI_Length;
+   subtype Hyperlink_ID_Length_Range is
+     Natural range 0 .. Max_Hyperlink_ID_Length;
+
+   type Hyperlink is record
+      Active     : Boolean := False;
+      URI_Length : Hyperlink_URI_Length_Range := 0;
+      URI        : String (1 .. Max_Hyperlink_URI_Length) := (others => ' ');
+      ID_Length  : Hyperlink_ID_Length_Range := 0;
+      ID         : String (1 .. Max_Hyperlink_ID_Length) := (others => ' ');
+   end record;
+
    type Cell is record
       Kind  : Cell_Kind := Empty;
       Text  : Text_Cluster;
       Style : Cell_Style;
+      Link  : Hyperlink;
    end record;
 
    type Cursor_Shape is (Cursor_Block, Cursor_Underline, Cursor_Bar);
@@ -279,6 +295,7 @@ private
       Has_Last_Printable : Boolean := False;
       Window_Title  : Title_Text;
       Clipboard_Data : Clipboard_Request;
+      Current_Link : Hyperlink;
       Responses     : Response_Buffer := (others => 0);
       Response_Length : Natural range 0 .. Max_Response_Length := 0;
 

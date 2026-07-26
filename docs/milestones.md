@@ -74,7 +74,7 @@
 
 ## Postponed
 
-Sixel, kitty graphics, iTerm2 images, OSC 8 hyperlinks, richer OSC 52
-clipboard query/selection-target behavior, ligatures, full emoji shaping, BiDi,
-advanced mouse/selection behavior, tabs, splits, themes, config, Windows
-ConPTY, and terminal multiplexer behavior.
+Sixel, kitty graphics, iTerm2 images, OSC 8 hyperlink activation UI, richer
+OSC 52 clipboard query/selection-target behavior, ligatures, full emoji
+shaping, BiDi, advanced mouse/selection behavior, tabs, splits, themes, config,
+Windows ConPTY, and terminal multiplexer behavior.

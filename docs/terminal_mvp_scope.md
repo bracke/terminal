@@ -85,9 +85,9 @@ aliases for the semicolon forms.
 OSC payloads are bounded. BEL and ST (`ESC \`) termination are recognized.
 OSC 0/1/2 update the app window title. OSC 52 clipboard set requests are
 decoded from bounded base64 payloads by the core and applied to the system
-clipboard by the GLFW app. OSC 8 hyperlinks are not implemented. Unknown OSC,
-escape, and CSI sequences are consumed safely and recorded in diagnostics where
-applicable.
+clipboard by the GLFW app. OSC 8 hyperlinks are parsed into bounded per-cell
+snapshot metadata. Unknown OSC, escape, and CSI sequences are consumed safely
+and recorded in diagnostics where applicable.
 
 ## Unicode And Text
 
@@ -192,6 +192,14 @@ behavior remains postponed.
 Focus reporting via DEC private mode `?1004` is supported. When enabled, the
 app sends xterm focus-in and focus-out reports to the PTY as window focus
 changes arrive from GLFW.
+
+## Hyperlinks
+
+OSC 8 hyperlink ranges are preserved by the platform-independent core as
+bounded URI/id metadata on rendered cells. Starting `OSC 8 ; params ; uri ST`
+applies the current hyperlink to subsequently printed cells; `OSC 8 ;; ST`
+clears it. The renderer and app do not yet expose hover, click, tooltip, or
+open-link behavior.
 
 ## TERM and Environment
 

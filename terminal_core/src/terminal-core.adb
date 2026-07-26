@@ -73,6 +73,7 @@ package body Terminal.Core is
       C.Text.Attachment_Count := 0;
       C.Text.Attachments := (others => 0);
       C.Style := Style;
+      C.Link := (others => <>);
       return C;
    end Blank_Cell;
 
@@ -132,7 +133,8 @@ package body Terminal.Core is
          Cells (I) :=
            (Kind  => Character,
             Text  => (Code_Point => 16#45#, Width => Width_One, others => <>),
-            Style => T.Current_Style);
+            Style => T.Current_Style,
+            Link  => T.Current_Link);
       end loop;
       T.Pending_Wrap := False;
       Mark_All_Dirty (T);
@@ -226,6 +228,7 @@ package body Terminal.Core is
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
       T.Clipboard_Data := (others => <>);
+      T.Current_Link := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Private := ASCII.NUL;
@@ -345,6 +348,7 @@ package body Terminal.Core is
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
       T.Clipboard_Data := (others => <>);
+      T.Current_Link := (others => <>);
       T.Response_Length := 0;
       T.State := Ground;
       T.CSI_Private := ASCII.NUL;
@@ -487,6 +491,104 @@ package body Terminal.Core is
             T.Clipboard_Data.Length := Out_Len;
          end if;
       end Decode_OSC52;
+
+      procedure Decode_OSC8
+        (First : Natural;
+         Last  : Natural)
+      is
+         URI_First : Natural := 0;
+         Link      : Hyperlink;
+
+         procedure Copy_URI (From : Natural; To : Natural) is
+            Count : Natural := 0;
+         begin
+            if From > To then
+               return;
+            end if;
+
+            for I in From .. To loop
+               if Count < Max_Hyperlink_URI_Length then
+                  Count := Count + 1;
+                  Link.URI (Count) := T.OSC_Data (I);
+               else
+                  T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+                  exit;
+               end if;
+            end loop;
+            Link.URI_Length := Count;
+         end Copy_URI;
+
+         procedure Copy_ID (From : Natural; To : Natural) is
+            Count : Natural := 0;
+         begin
+            if From > To then
+               return;
+            end if;
+
+            for I in From .. To loop
+               if Count < Max_Hyperlink_ID_Length then
+                  Count := Count + 1;
+                  Link.ID (Count) := T.OSC_Data (I);
+               else
+                  T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+                  exit;
+               end if;
+            end loop;
+            Link.ID_Length := Count;
+         end Copy_ID;
+
+         procedure Parse_Params (From : Natural; To : Natural) is
+            I : Natural := From;
+            Param_Start : Natural;
+            Param_End   : Natural;
+         begin
+            if From > To then
+               return;
+            end if;
+
+            while I <= To loop
+               Param_Start := I;
+               while I <= To and then T.OSC_Data (I) /= ':' loop
+                  I := I + 1;
+               end loop;
+               Param_End := I - 1;
+               if Param_End >= Param_Start + 3
+                 and then T.OSC_Data (Param_Start) = 'i'
+                 and then T.OSC_Data (Param_Start + 1) = 'd'
+                 and then T.OSC_Data (Param_Start + 2) = '='
+               then
+                  Copy_ID (Param_Start + 3, Param_End);
+               end if;
+               I := I + 1;
+            end loop;
+         end Parse_Params;
+      begin
+         for I in First .. Last loop
+            if T.OSC_Data (I) = ';' then
+               URI_First := I + 1;
+               exit;
+            end if;
+         end loop;
+
+         if URI_First = 0 then
+            T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            return;
+         elsif URI_First > Last then
+            T.Current_Link := (others => <>);
+            return;
+         end if;
+
+         Link := (others => <>);
+         Link.Active := True;
+         Parse_Params (First, URI_First - 2);
+         Copy_URI (URI_First, Last);
+
+         if Link.URI_Length = 0 then
+            T.Current_Link := (others => <>);
+         else
+            T.Current_Link := Link;
+         end if;
+      end Decode_OSC8;
    begin
       if T.OSC_Count < 3 then
          T.State := Ground;
@@ -525,6 +627,8 @@ package body Terminal.Core is
          for I in 1 .. Title_Length loop
             T.Window_Title.Text (I) := T.OSC_Data (Payload_First + I - 1);
          end loop;
+      elsif Command = 8 then
+         Decode_OSC8 (Payload_First, T.OSC_Count);
       elsif Command = 52 then
          Decode_OSC52 (Payload_First, T.OSC_Count);
       end if;
@@ -1068,7 +1172,8 @@ package body Terminal.Core is
                Text  => (Code_Point => 0,
                          Width      => Width_Zero,
                          others     => <>),
-               Style => Cells (Cell_Index).Style);
+               Style => Cells (Cell_Index).Style,
+               Link  => Cells (Cell_Index).Link);
 
             if T.Cursor_Col = Next_Col then
                if Next_Col = T.Cols then
@@ -1172,7 +1277,8 @@ package body Terminal.Core is
       Cells (Index (T, T.Cursor_Row, T.Cursor_Col)) :=
         (Kind  => Character,
          Text  => (Code_Point => CP, Width => W, others => <>),
-         Style => T.Current_Style);
+         Style => T.Current_Style,
+         Link  => T.Current_Link);
       T.Last_Printable := CP;
       T.Has_Last_Printable := True;
       Mark_Dirty (T, T.Cursor_Row);
@@ -1182,7 +1288,8 @@ package body Terminal.Core is
             Cells (Index (T, T.Cursor_Row, T.Cursor_Col + 1)) :=
               (Kind => Wide_Continuation,
                Text => (Code_Point => 0, Width => Width_Zero, others => <>),
-               Style => T.Current_Style);
+               Style => T.Current_Style,
+               Link  => T.Current_Link);
          end if;
          if T.Cursor_Col + 1 >= T.Cols then
             T.Cursor_Col := T.Cols;

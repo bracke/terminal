@@ -91,6 +91,39 @@ begin
          "unknown OSC must not change title");
    end;
 
+   Terminal.Core.Initialize (T, 1, 8, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "OSC 8 initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "]8;id=abc;https://example.test" & ASCII.ESC & "\"
+         & "hi"
+         & ASCII.ESC & "]8;;" & ASCII.ESC & "\"
+         & "!"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "OSC 8 feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      H : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      I : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+      Bang : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 3);
+   begin
+      Assert (H.Text.Code_Point = 16#68#, "OSC 8 linked h");
+      Assert (I.Text.Code_Point = 16#69#, "OSC 8 linked i");
+      Assert (H.Link.Active, "OSC 8 first cell link active");
+      Assert (I.Link.Active, "OSC 8 second cell link active");
+      Assert (H.Link.URI_Length = 20, "OSC 8 URI length");
+      Assert
+        (H.Link.URI (1 .. H.Link.URI_Length) = "https://example.test",
+         "OSC 8 URI");
+      Assert (H.Link.ID_Length = 3, "OSC 8 id length");
+      Assert (H.Link.ID (1 .. H.Link.ID_Length) = "abc", "OSC 8 id");
+      Assert (Bang.Text.Code_Point = 16#21#, "OSC 8 trailing bang");
+      Assert (not Bang.Link.Active, "OSC 8 close should clear current link");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Feed
      (T,
       To_Bytes (ASCII.ESC & "]52;c;aGVsbG8=" & ASCII.BEL),
@@ -144,6 +177,11 @@ begin
         (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
          "invalid OSC 52 should be diagnosed");
    end;
+
+   Terminal.Core.Initialize (T, 2, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "C1 OSC title initialize failed");
+   Terminal.Core.Feed (T, To_Bytes ("x"), Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "C1 OSC title prefix feed failed");
 
    Terminal.Core.Feed
      (T,
