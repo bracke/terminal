@@ -183,6 +183,16 @@ package body Terminal.App.HarfBuzz is
             return "ethi";
          when RM.Script_Cherokee =>
             return "cher";
+         when RM.Script_Canadian_Aboriginal =>
+            return "cans";
+         when RM.Script_Ogham =>
+            return "ogam";
+         when RM.Script_Runic =>
+            return "runr";
+         when RM.Script_Tifinagh =>
+            return "tfng";
+         when RM.Script_Vai =>
+            return "vaii";
          when RM.Script_Hebrew =>
             return "hebr";
          when RM.Script_Arabic =>
@@ -255,6 +265,12 @@ package body Terminal.App.HarfBuzz is
             return "am";
          when RM.Script_Cherokee =>
             return "chr";
+         when RM.Script_Canadian_Aboriginal =>
+            return "cr";
+         when RM.Script_Vai =>
+            return "vai";
+         when RM.Script_Ogham | RM.Script_Runic | RM.Script_Tifinagh =>
+            return "und";
          when RM.Script_Hebrew =>
             return "he";
          when RM.Script_Arabic =>

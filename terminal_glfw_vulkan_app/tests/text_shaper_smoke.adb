@@ -89,6 +89,11 @@ procedure Text_Shaper_Smoke is
    Georgian  : RM.Text_Run_Command := Run (16#10D0#, 16#10D1#);
    Ethiopic  : RM.Text_Run_Command := Run (16#12A0#, 16#12A1#);
    Cherokee  : RM.Text_Run_Command := Run (16#13A0#, 16#13A1#);
+   Canadian  : RM.Text_Run_Command := Run (16#14C0#, 16#14C1#);
+   Ogham     : RM.Text_Run_Command := Run (16#1681#, 16#1682#);
+   Runic     : RM.Text_Run_Command := Run (16#16A0#, 16#16A1#);
+   Tifinagh  : RM.Text_Run_Command := Run (16#2D30#, 16#2D31#);
+   Vai       : RM.Text_Run_Command := Run (16#A500#, 16#A501#);
    Arabic    : RM.Text_Run_Command := Run (16#0627#);
    Syriac    : RM.Text_Run_Command := Run (16#0710#);
    Thaana    : RM.Text_Run_Command := Run (16#0786#);
@@ -380,6 +385,44 @@ begin
    Assert
      (Cherokee.Script = RM.Script_Cherokee,
       "Cherokee text script");
+
+   Assert (TS.Classify (Canadian) = RM.Simple_Text, "Canadian text class");
+   TS.Prepare (Canadian, Status);
+   Assert
+     (Status = RM.Shape_Ok,
+      "Canadian text should shape or fall back as simple text");
+   Assert
+     (Canadian.Direction = RM.Direction_Left_To_Right,
+      "Canadian text direction");
+   Assert
+     (Canadian.Script = RM.Script_Canadian_Aboriginal,
+      "Canadian text script");
+
+   Assert (TS.Classify (Ogham) = RM.Simple_Text, "Ogham text class");
+   TS.Prepare (Ogham, Status);
+   Assert (Status = RM.Shape_Ok, "Ogham text simple status");
+   Assert (Ogham.Direction = RM.Direction_Left_To_Right, "Ogham direction");
+   Assert (Ogham.Script = RM.Script_Ogham, "Ogham script");
+
+   Assert (TS.Classify (Runic) = RM.Simple_Text, "Runic text class");
+   TS.Prepare (Runic, Status);
+   Assert (Status = RM.Shape_Ok, "Runic text simple status");
+   Assert (Runic.Direction = RM.Direction_Left_To_Right, "Runic direction");
+   Assert (Runic.Script = RM.Script_Runic, "Runic script");
+
+   Assert (TS.Classify (Tifinagh) = RM.Simple_Text, "Tifinagh text class");
+   TS.Prepare (Tifinagh, Status);
+   Assert (Status = RM.Shape_Ok, "Tifinagh text simple status");
+   Assert
+     (Tifinagh.Direction = RM.Direction_Left_To_Right,
+      "Tifinagh direction");
+   Assert (Tifinagh.Script = RM.Script_Tifinagh, "Tifinagh script");
+
+   Assert (TS.Classify (Vai) = RM.Simple_Text, "Vai text class");
+   TS.Prepare (Vai, Status);
+   Assert (Status = RM.Shape_Ok, "Vai text simple status");
+   Assert (Vai.Direction = RM.Direction_Left_To_Right, "Vai direction");
+   Assert (Vai.Script = RM.Script_Vai, "Vai script");
 
    Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
    TS.Prepare (Arabic, Status);

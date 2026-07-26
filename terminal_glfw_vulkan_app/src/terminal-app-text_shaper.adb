@@ -194,6 +194,22 @@ package body Terminal.App.Text_Shaper is
      ((C in 16#13A0# .. 16#13FF#)
       or else (C in 16#AB70# .. 16#ABBF#));
 
+   function Is_Canadian_Aboriginal (C : Natural) return Boolean is
+     ((C in 16#1400# .. 16#167F#)
+      or else (C in 16#18B0# .. 16#18FF#));
+
+   function Is_Ogham (C : Natural) return Boolean is
+     (C in 16#1680# .. 16#169F#);
+
+   function Is_Runic (C : Natural) return Boolean is
+     (C in 16#16A0# .. 16#16FF#);
+
+   function Is_Tifinagh (C : Natural) return Boolean is
+     (C in 16#2D30# .. 16#2D7F#);
+
+   function Is_Vai (C : Natural) return Boolean is
+     (C in 16#A500# .. 16#A63F#);
+
    function Is_ASCII_Digit (C : Natural) return Boolean is
      (C in Character'Pos ('0') .. Character'Pos ('9'));
 
@@ -354,6 +370,11 @@ package body Terminal.App.Text_Shaper is
            or else Is_Georgian (Run.Codepoints (I))
            or else Is_Ethiopic (Run.Codepoints (I))
            or else Is_Cherokee (Run.Codepoints (I))
+           or else Is_Canadian_Aboriginal (Run.Codepoints (I))
+           or else Is_Ogham (Run.Codepoints (I))
+           or else Is_Runic (Run.Codepoints (I))
+           or else Is_Tifinagh (Run.Codepoints (I))
+           or else Is_Vai (Run.Codepoints (I))
            or else Is_CJK (Run.Codepoints (I))
            or else Is_Emoji (Run.Codepoints (I))
            or else Is_Complex_Script (Run.Codepoints (I))
@@ -431,6 +452,16 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Ethiopic;
             elsif Is_Cherokee (C) then
                return RM.Script_Cherokee;
+            elsif Is_Canadian_Aboriginal (C) then
+               return RM.Script_Canadian_Aboriginal;
+            elsif Is_Ogham (C) then
+               return RM.Script_Ogham;
+            elsif Is_Runic (C) then
+               return RM.Script_Runic;
+            elsif Is_Tifinagh (C) then
+               return RM.Script_Tifinagh;
+            elsif Is_Vai (C) then
+               return RM.Script_Vai;
             elsif Is_CJK (C) then
                return RM.Script_CJK;
             elsif Is_Emoji (C) then
