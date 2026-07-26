@@ -132,8 +132,9 @@ from GLFW clipboard text. OSC 52 targets `c`, `p`, and `s` are recognized and
 exposed on the core request snapshot; `c` uses the GLFW system clipboard, while
 `p` and `s` use bounded app-owned target slots so they can round-trip
 independently. Query responses preserve the requested `c`/`p`/`s` target
-designator in the OSC 52 response. Unsupported OSC 52 targets are diagnosed and
-ignored. OSC 8 hyperlinks are parsed into bounded per-cell snapshot metadata.
+designator in the OSC 52 response. Unsupported OSC 52 target bytes are
+diagnosed and the request is ignored. OSC 8 hyperlinks are parsed into bounded
+per-cell snapshot metadata.
 Unknown OSC, escape, and CSI sequences are consumed safely and recorded in
 diagnostics where applicable. Unsupported private CSI markers such as `<`, `=`,
 `?`, and `>` are recognized as private prefixes so their payloads do not leak

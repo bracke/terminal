@@ -459,7 +459,7 @@ package body Terminal.Core is
                      end if;
                      Saw_Supported := True;
                   when others =>
-                     null;
+                     return False;
                end case;
             end loop;
 

@@ -298,6 +298,25 @@ begin
          "unsupported OSC 52 target should be diagnosed");
    end;
 
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "]52;cx;?" & ASCII.BEL),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "mixed unsupported OSC 52 target feed failed");
+      Assert
+        (not Terminal.Core.Clipboard (T).Pending,
+         "mixed unsupported OSC 52 target should not request clipboard");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 1,
+         "mixed unsupported OSC 52 target should be diagnosed");
+   end;
+
    Terminal.Core.Initialize (T, 2, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "C1 OSC title initialize failed");
    Terminal.Core.Feed (T, To_Bytes ("x"), Feed_Status);
