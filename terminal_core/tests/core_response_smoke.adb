@@ -690,6 +690,44 @@ begin
          "XTWINOPS window position should drain");
    end;
 
+   declare
+      Before : constant Natural :=
+        Terminal.Core.Diagnostics (T).Unsupported_Sequence;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "[14t" & ASCII.ESC & "[15t" & ASCII.ESC & "[16t"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "XTWINOPS unknown pixel metrics feed failed");
+      Assert
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before,
+         "XTWINOPS unknown pixel metrics should be recognized");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 24,
+         "XTWINOPS unknown pixel metrics response length");
+
+      declare
+         Buffer : Byte_Array (1 .. 32);
+         Last   : Natural;
+      begin
+         Terminal.Core.Read_Response (T, Buffer, Last);
+         Assert_Bytes
+           (Buffer,
+            Last,
+            To_Bytes
+              (ASCII.ESC & "[4;0;0t"
+               & ASCII.ESC & "[5;0;0t"
+               & ASCII.ESC & "[6;0;0t"),
+            "XTWINOPS unknown pixel metrics");
+         Assert
+           (Terminal.Core.Pending_Response_Length (T) = 0,
+            "XTWINOPS unknown pixel metrics should drain");
+      end;
+   end;
+
    Terminal.Core.Set_Cell_Pixel_Size (T, Width => 8, Height => 15);
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[16t"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "XTWINOPS cell size feed failed");

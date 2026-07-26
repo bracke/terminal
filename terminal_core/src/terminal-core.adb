@@ -1765,11 +1765,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Char (T, '0');
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL
-        and then Number = 14
-        and then T.Window_Pixel_Width > 0
-        and then T.Window_Pixel_Height > 0
-      then
+      elsif T.CSI_Private = ASCII.NUL and then Number = 14 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '4');
@@ -1778,11 +1774,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Window_Pixel_Width);
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL
-        and then Number = 15
-        and then T.Window_Pixel_Width > 0
-        and then T.Window_Pixel_Height > 0
-      then
+      elsif T.CSI_Private = ASCII.NUL and then Number = 15 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '5');
@@ -1791,11 +1783,7 @@ package body Terminal.Core is
          Append_Response_Char (T, ';');
          Append_Response_Natural (T, T.Window_Pixel_Width);
          Append_Response_Char (T, 't');
-      elsif T.CSI_Private = ASCII.NUL
-        and then Number = 16
-        and then T.Cell_Pixel_Width > 0
-        and then T.Cell_Pixel_Height > 0
-      then
+      elsif T.CSI_Private = ASCII.NUL and then Number = 16 then
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '[');
          Append_Response_Char (T, '6');
