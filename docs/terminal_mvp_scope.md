@@ -168,8 +168,9 @@ emoji/common runs. The shaping adapter also tries configured fallback font
 faces in the same order as `textrender` when the primary face shapes a run
 with `.notdef` glyphs.
 The default fallback list includes generic sans/symbol fonts plus script-specific
-Noto fonts for Arabic, Hebrew, Indic, Southeast Asian, and CJK/Han coverage when
-those files are installed and loadable by `textrender`. Each shaped glyph stores
+Noto fonts for Arabic, Hebrew, Indic, Southeast Asian, Central Asian, minority
+scripts, and CJK/Han coverage when those files are installed and loadable by
+`textrender`. Each shaped glyph stores
 the selected font index so the renderer can rasterize it from the matching
 primary or fallback face. If HarfBuzz cannot load or shape the selected font or
 run, the command remains explicitly marked as

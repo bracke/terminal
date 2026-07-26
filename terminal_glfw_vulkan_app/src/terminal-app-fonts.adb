@@ -34,9 +34,24 @@ package body Terminal.App.Fonts is
    Noto_Thai     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf";
    Noto_Lao      : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLao-Regular.ttf";
    Noto_Myanmar  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf";
+   Noto_Limbu    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLimbu-Regular.ttf";
+   Noto_Tai_Le   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansTaiLe-Regular.ttf";
+   Noto_New_Tai_Lue : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansNewTaiLue-Regular.ttf";
    Noto_Khmer    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf";
+   Noto_Balinese : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansBalinese-Regular.ttf";
+   Noto_Sundanese : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSundanese-Regular.ttf";
+   Noto_Batak    : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansBatak-Regular.ttf";
+   Noto_Lepcha   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansLepcha-Regular.ttf";
+   Noto_Ol_Chiki : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansOlChiki-Regular.ttf";
+   Noto_Syloti   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSylotiNagri-Regular.ttf";
+   Noto_Phags_Pa : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansPhagsPa-Regular.ttf";
+   Noto_Saurashtra : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSaurashtra-Regular.ttf";
+   Noto_Kayah_Li : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansKayahLi-Regular.ttf";
+   Noto_Rejang   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansRejang-Regular.ttf";
    Noto_Javanese : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansJavanese-Regular.ttf";
    Noto_Cham     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansCham-Regular.ttf";
+   Noto_Tai_Viet : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansTaiViet-Regular.ttf";
+   Noto_Meetei   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansMeeteiMayek-Regular.ttf";
    Noto_CJK      : aliased constant String := "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc";
    VL_Gothic     : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-Gothic-Regular.ttf";
    VL_PGothic    : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-PGothic-Regular.ttf";
@@ -71,9 +86,24 @@ package body Terminal.App.Fonts is
       Noto_Thai'Access,
       Noto_Lao'Access,
       Noto_Myanmar'Access,
+      Noto_Limbu'Access,
+      Noto_Tai_Le'Access,
+      Noto_New_Tai_Lue'Access,
       Noto_Khmer'Access,
+      Noto_Balinese'Access,
+      Noto_Sundanese'Access,
+      Noto_Batak'Access,
+      Noto_Lepcha'Access,
+      Noto_Ol_Chiki'Access,
+      Noto_Syloti'Access,
+      Noto_Phags_Pa'Access,
+      Noto_Saurashtra'Access,
+      Noto_Kayah_Li'Access,
+      Noto_Rejang'Access,
       Noto_Javanese'Access,
       Noto_Cham'Access,
+      Noto_Tai_Viet'Access,
+      Noto_Meetei'Access,
       Noto_CJK'Access];
 
    Cached_Default_Path  : Font_Path;

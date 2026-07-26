@@ -11,6 +11,12 @@ procedure Font_Discovery_Smoke is
 
    Noto_Devanagari : constant String :=
      "/usr/share/fonts/truetype/noto/NotoSansDevanagari-Regular.ttf";
+   Noto_Khmer : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansKhmer-Regular.ttf";
+   Noto_Tai_Viet : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansTaiViet-Regular.ttf";
+   Noto_Meetei : constant String :=
+     "/usr/share/fonts/truetype/noto/NotoSansMeeteiMayek-Regular.ttf";
 
    Default_Path : constant String := Fonts.Default_Font_Path;
    Fallbacks    : constant Fonts.Font_Path_Array := Fonts.Fallback_Font_Paths;
@@ -25,6 +31,15 @@ procedure Font_Discovery_Smoke is
 
       return False;
    end Contains;
+
+   procedure Assert_Contains_If_Installed (Path : String; Label : String) is
+   begin
+      if Ada.Directories.Exists (Path) then
+         Assert
+           (Contains (Path),
+            "installed " & Label & " fallback should be discovered");
+      end if;
+   end Assert_Contains_If_Installed;
 begin
    Assert (Default_Path /= "", "default font path should resolve");
    Assert
@@ -46,9 +61,8 @@ begin
       end;
    end loop;
 
-   if Ada.Directories.Exists (Noto_Devanagari) then
-      Assert
-        (Contains (Noto_Devanagari),
-         "installed Devanagari fallback should be discovered");
-   end if;
+   Assert_Contains_If_Installed (Noto_Devanagari, "Devanagari");
+   Assert_Contains_If_Installed (Noto_Khmer, "Khmer");
+   Assert_Contains_If_Installed (Noto_Tai_Viet, "Tai Viet");
+   Assert_Contains_If_Installed (Noto_Meetei, "Meetei Mayek");
 end Font_Discovery_Smoke;
