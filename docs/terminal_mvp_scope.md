@@ -273,9 +273,10 @@ encoding mode. Mouse wheel events are encoded as xterm wheel button packets
 when reporting is enabled; otherwise the GLFW app uses the wheel for app-owned
 scrollback viewing.
 OSC 52 clipboard set and query requests are supported for bounded text
-payloads, and `c`/`p`/`s` targets are recognized. Distinct platform-native
-primary and selection clipboards remain postponed; app-owned bounded target
-slots are used for `p` and `s`.
+payloads, and `c`/`p`/`s` targets are recognized. Query responses are capped so
+their OSC framing and base64 payload fit in one bounded app byte chunk.
+Distinct platform-native primary and selection clipboards remain postponed;
+app-owned bounded target slots are used for `p` and `s`.
 
 Focus reporting via DEC private mode `?1004` is supported. When enabled, the
 app sends xterm focus-in and focus-out reports to the PTY as window focus

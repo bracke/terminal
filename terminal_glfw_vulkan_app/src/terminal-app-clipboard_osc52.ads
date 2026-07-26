@@ -2,7 +2,9 @@ with Terminal.App.Queues;
 with Terminal.Core;
 
 package Terminal.App.Clipboard_OSC52 is
-   Max_Query_Text_Bytes : constant := 3_063;
+   Max_Query_Response_Frame_Bytes : constant := 9;
+   Max_Query_Text_Bytes : constant :=
+     ((Terminal.App.Queues.Max_Chunk_Length - Max_Query_Response_Frame_Bytes) / 4) * 3;
 
    type Target_Store is private;
 

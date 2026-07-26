@@ -23,6 +23,9 @@ procedure Clipboard_OSC52_Smoke is
    Long_Text : String
      (1 .. Terminal.App.Clipboard_OSC52.Max_Query_Text_Bytes + 20) :=
        (others => 'x');
+   Expected_Long_Response_Length : constant Natural :=
+     Terminal.App.Clipboard_OSC52.Max_Query_Response_Frame_Bytes +
+       4 * ((Terminal.App.Clipboard_OSC52.Max_Query_Text_Bytes + 2) / 3);
 begin
    Terminal.App.Clipboard_OSC52.Build_Query_Response ("hello", Chunk);
    Assert
@@ -64,8 +67,9 @@ begin
 
    Terminal.App.Clipboard_OSC52.Build_Query_Response (Long_Text, Chunk);
    Assert
-     (Chunk.Length = 4_093,
-      "long OSC 52 query response should be bounded");
+     (Expected_Long_Response_Length <= Terminal.App.Queues.Max_Chunk_Length
+      and then Chunk.Length = Expected_Long_Response_Length,
+      "long OSC 52 query response should be bounded by queue chunk capacity");
    Assert
      (Chunk.Data (1) = 16#1B#
       and then Chunk.Data (2) = Byte (Character'Pos (']'))
