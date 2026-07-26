@@ -200,6 +200,7 @@ package body Terminal.App.Input_Map is
          when Num_7 => return '7';
          when Num_8 => return '8';
          when Num_9 => return '9';
+         when Space => return ' ';
          when others => return ASCII.NUL;
       end case;
    end Alt_Printable;
@@ -233,6 +234,7 @@ package body Terminal.App.Input_Map is
          when X => return 16#18#;
          when Y => return 16#19#;
          when Z => return 16#1A#;
+         when Space => return 16#00#;
          when others => return 0;
       end case;
    end Control_Byte;
@@ -260,6 +262,11 @@ package body Terminal.App.Input_Map is
       end if;
 
       if Event.Modifiers.Control then
+         if Event.Key = Space then
+            Append (Chunk, 16#00#);
+            return;
+         end if;
+
          declare
             Ctrl : constant Byte := Control_Byte (Event.Key);
          begin
@@ -288,6 +295,11 @@ package body Terminal.App.Input_Map is
                Append (Chunk, 16#09#);
             end if;
          when Backspace  => Append (Chunk, 16#7F#);
+         when Space      =>
+            if Event.Modifiers.Alt then
+               Append (Chunk, 16#1B#);
+               Append (Chunk, Byte (Character'Pos (' ')));
+            end if;
          when Escape     => Append (Chunk, 16#1B#);
          when Up         =>
             Append_CSI_Final

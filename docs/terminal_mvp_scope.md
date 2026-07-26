@@ -227,4 +227,6 @@ legacy `CSI M` packets or SGR `CSI < ... M/m` packets according to the current
 core mode snapshot.
 GLFW character events are encoded as UTF-8 only when they are valid Unicode
 scalar values; surrogate code points and values above `U+10FFFF` are dropped at
-the app boundary.
+the app boundary. Plain printable space is sent through the character callback;
+modified Space is handled by the key callback for `Ctrl+Space` (`NUL`) and
+`Alt+Space` (`ESC SP`).

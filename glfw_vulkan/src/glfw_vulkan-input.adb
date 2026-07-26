@@ -35,6 +35,7 @@ package body GLFW_Vulkan.Input is
          when 258 => return Tab;
          when 259 => return Backspace;
          when 256 => return Escape;
+         when 32  => return Space;
          when 265 => return Up;
          when 264 => return Down;
          when 263 => return Left;
