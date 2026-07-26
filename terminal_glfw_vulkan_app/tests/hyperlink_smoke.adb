@@ -113,6 +113,15 @@ begin
      (not Terminal.App.Hyperlinks.Supported_URI ("file:///tmp/x"),
       "file URI should not be opened by default");
    Assert
+     (not Terminal.App.Hyperlinks.Supported_URI ("http://"),
+      "bare http scheme should not be opened");
+   Assert
+     (not Terminal.App.Hyperlinks.Supported_URI ("https://"),
+      "bare https scheme should not be opened");
+   Assert
+     (not Terminal.App.Hyperlinks.Supported_URI ("mailto:"),
+      "bare mailto scheme should not be opened");
+   Assert
      (not Terminal.App.Hyperlinks.Supported_URI ("https://example.test/a b"),
       "URI with spaces should not be opened");
    Assert

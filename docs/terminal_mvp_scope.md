@@ -211,8 +211,8 @@ applies the current hyperlink to subsequently printed cells; `OSC 8 ;; ST`
 clears it. The GLFW app resolves links under the pointer from snapshots and
 opens `http`, `https`, and `mailto` links with `Ctrl+Left Click` through the
 desktop opener. Supported URI scheme matching is case-insensitive, and URIs
-with spaces or control bytes are rejected before launcher command construction.
-Hover styling, tooltips, and richer link UI remain postponed.
+with bare schemes, spaces, or control bytes are rejected before launcher command
+construction. Hover styling, tooltips, and richer link UI remain postponed.
 
 ## TERM and Environment
 

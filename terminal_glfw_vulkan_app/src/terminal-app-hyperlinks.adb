@@ -59,7 +59,7 @@ package body Terminal.App.Hyperlinks is
       Prefix : String) return Boolean
    is
    begin
-      if Text'Length < Prefix'Length then
+      if Text'Length <= Prefix'Length then
          return False;
       end if;
 
