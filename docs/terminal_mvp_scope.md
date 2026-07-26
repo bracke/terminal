@@ -57,9 +57,9 @@
   (`CSI ? 53 n`/`CSI ? 55 n` -> `CSI ? 50 n`), and unknown locator type
   (`CSI ? 56 n` -> `CSI ? 57 ; 0 n`).
 - DECRQM mode reports (`CSI Ps $ p` and `CSI ? Ps $ p`) for insert mode,
-  line-feed/new-line mode, known DEC private modes, and stateless `?1048`
-  save/restore cursor mode. Missing, extra, and unsupported-private DECRQM
-  parameters are diagnosed.
+  line-feed/new-line mode, known DEC private modes including application keypad
+  mode `?66`, and stateless `?1048` save/restore cursor mode. Missing, extra,
+  and unsupported-private DECRQM parameters are diagnosed.
 - Terminal-generated response bytes are held in a bounded core queue. If the
   queue is full, newest response bytes are dropped, already-queued byte
   ordering is preserved, and parser-overflow diagnostics are incremented.

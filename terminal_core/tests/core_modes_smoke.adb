@@ -55,6 +55,16 @@ begin
      (not Terminal.Core.Modes (T).Application_Keypad,
       "numeric keypad mode");
 
+   Feed_Text (ASCII.ESC & "[?66h", "DECNKM application keypad feed failed");
+   Assert
+     (Terminal.Core.Modes (T).Application_Keypad,
+      "DECNKM application keypad mode");
+
+   Feed_Text (ASCII.ESC & "[?66l", "DECNKM numeric keypad feed failed");
+   Assert
+     (not Terminal.Core.Modes (T).Application_Keypad,
+      "DECNKM numeric keypad mode");
+
    Feed_Text
      (ASCII.ESC & "[?2026h",
       "synchronized update mode set feed failed");

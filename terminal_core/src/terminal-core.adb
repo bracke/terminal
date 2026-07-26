@@ -1882,6 +1882,8 @@ package body Terminal.Core is
                return (if T.Current_Modes.Cursor_Blinking then 1 else 2);
             when 25 =>
                return (if T.Current_Modes.Cursor_Visible then 1 else 2);
+            when 66 =>
+               return (if T.Current_Modes.Application_Keypad then 1 else 2);
             when 47 | 1047 | 1049 =>
                return (if T.Current_Modes.Alternate_Screen then 1 else 2);
             when 1048 =>
@@ -2044,6 +2046,8 @@ package body Terminal.Core is
                Mark_Dirty (T, T.Cursor_Row);
                T.Current_Modes.Cursor_Visible := Enable;
             end if;
+         when 66 =>
+            T.Current_Modes.Application_Keypad := Enable;
          when 1000 =>
             T.Current_Modes.Mouse_Button := Enable;
             if Enable then
