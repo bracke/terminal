@@ -3,6 +3,7 @@ with System;
 
 with Terminal.Common;
 with Terminal.App.Fonts;
+with Terminal.App.Hyperlinks;
 with Terminal.App.Render_Model;
 with Terminal.App.Text_Shaper;
 with Terminal.App.Vulkan_Submit;
@@ -239,6 +240,12 @@ package body Terminal.App.Renderer is
 
    function Cell_Column_Span (Cell : Terminal.Core.Cell) return Positive is
      (if Cell.Text.Width = Terminal.Core.Width_Two then 2 else 1);
+
+   function Is_Hovered_Link_Cell
+     (R    : Renderer;
+      Cell : Terminal.Core.Cell) return Boolean is
+     (Cell.Link.Active
+      and then Terminal.App.Hyperlinks.Same_Link (Cell.Link, R.Hovered_Link));
 
    procedure Set_Render_Status
      (R      : in out Renderer;
@@ -1097,7 +1104,7 @@ package body Terminal.App.Renderer is
                         Color  => FG);
                   end if;
 
-                  if Cell.Style.Underline then
+                  if Cell.Style.Underline or else Is_Hovered_Link_Cell (R, Cell) then
                      Add_Rectangle
                        (R,
                         X      => X,
@@ -1149,6 +1156,13 @@ package body Terminal.App.Renderer is
       R.Target_Frame_Height := Height;
    end Set_Framebuffer_Size;
 
+   procedure Set_Hovered_Link
+     (R    : in out Renderer;
+      Link : Terminal.Core.Hyperlink) is
+   begin
+      R.Hovered_Link := Link;
+   end Set_Hovered_Link;
+
    procedure Finalize (R : in out Renderer) is
    begin
       Release_Frame (R);
@@ -1165,6 +1179,7 @@ package body Terminal.App.Renderer is
       R.Missing_Glyph_Count := 0;
       R.Target_Frame_Width := 0;
       R.Target_Frame_Height := 0;
+      R.Hovered_Link := (others => <>);
       R.Atlas_Dirty := False;
       R.Last_Render_Status := Not_Initialized;
    end Finalize;

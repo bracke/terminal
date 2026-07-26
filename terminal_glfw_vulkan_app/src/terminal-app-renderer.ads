@@ -52,6 +52,9 @@ package Terminal.App.Renderer is
      (R      : in out Renderer;
       Width  : Natural;
       Height : Natural);
+   procedure Set_Hovered_Link
+     (R    : in out Renderer;
+      Link : Terminal.Core.Hyperlink);
    procedure Present
      (R         : Renderer;
       Context   : Terminal.App.Vulkan_Context.Context;
@@ -90,6 +93,7 @@ private
       Last_Frame_Height : Natural := 0;
       Target_Frame_Width : Natural := 0;
       Target_Frame_Height : Natural := 0;
+      Hovered_Link : Terminal.Core.Hyperlink;
       Atlas_Dirty : Boolean := False;
       Last_Render_Status : Render_Status := Not_Initialized;
    end record;

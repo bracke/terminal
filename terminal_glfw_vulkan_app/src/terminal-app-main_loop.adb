@@ -285,6 +285,7 @@ package body Terminal.App.Main_Loop is
       Last_Title : Terminal.Core.Title_Text;
       Clipboard_Targets : Terminal.App.Clipboard_OSC52.Target_Store;
       Selection : Terminal.App.Selection.Selection_State;
+      Hovered_Link : Terminal.Core.Hyperlink;
       Mouse_Button_Down : Boolean := False;
       Mouse_Button_Code_Value : Natural := 0;
       Mouse_Modifiers : GLFW_Vulkan.Input.Modifier_Set;
@@ -658,6 +659,27 @@ package body Terminal.App.Main_Loop is
                               Dirty := True;
                               Need_Redraw := True;
                               Local_Redraw := True;
+                           else
+                              declare
+                                 Hover_Snap : Terminal.Core.Render_Snapshot :=
+                                   Terminal.App.Scrollback_View.Snapshot
+                                     (T, Scroll_Offset);
+                                 New_Link : constant Terminal.Core.Hyperlink :=
+                                   Terminal.App.Hyperlinks.Link_At
+                                     (Hover_Snap, Pos);
+                              begin
+                                 Terminal.Core.Release (Hover_Snap);
+                                 if not Terminal.App.Hyperlinks.Same_Link
+                                   (Hovered_Link, New_Link)
+                                 then
+                                    Hovered_Link := New_Link;
+                                    Terminal.App.Renderer.Set_Hovered_Link
+                                      (R, Hovered_Link);
+                                    Dirty := True;
+                                    Need_Redraw := True;
+                                    Local_Redraw := True;
+                                 end if;
+                              end;
                            end if;
                         end;
                      when Terminal.App.Queues.Scroll =>
@@ -756,6 +778,8 @@ package body Terminal.App.Main_Loop is
                              Terminal.App.Scrollback_View.Clamp_Offset
                                (T, Scroll_Offset);
                            Terminal.App.Selection.Clear (Selection);
+                           Hovered_Link := (others => <>);
+                           Terminal.App.Renderer.Set_Hovered_Link (R, Hovered_Link);
                            Dirty := True;
                            Need_Redraw := True;
                            Local_Redraw := True;

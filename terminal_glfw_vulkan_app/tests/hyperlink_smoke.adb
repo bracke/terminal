@@ -139,4 +139,26 @@ begin
      (Terminal.App.Hyperlinks.Open_Command ("https://example.test/a'b")
       = "xdg-open 'https://example.test/a'\''b'",
       "open command should quote apostrophes");
+
+   declare
+      Left  : Terminal.Core.Hyperlink :=
+        (Active     => True,
+         URI_Length => 14,
+         URI        => (1 .. Terminal.Core.Max_Hyperlink_URI_Length => ' '),
+         ID_Length  => 1,
+         ID         => (1 .. Terminal.Core.Max_Hyperlink_ID_Length => ' '));
+      Right : Terminal.Core.Hyperlink := Left;
+   begin
+      Left.URI (1 .. Left.URI_Length) := "https://same/x";
+      Left.ID (1) := 'a';
+      Right.URI (1 .. Right.URI_Length) := "https://same/x";
+      Right.ID (1) := 'a';
+      Assert
+        (Terminal.App.Hyperlinks.Same_Link (Left, Right),
+         "same link should match");
+      Right.ID (1) := 'b';
+      Assert
+        (not Terminal.App.Hyperlinks.Same_Link (Left, Right),
+         "different link id should not match");
+   end;
 end Hyperlink_Smoke;

@@ -1,6 +1,7 @@
 with AUnit.Assertions;
 with Terminal.Common.Bytes;
 with Terminal.Core;
+with Terminal.App.Hyperlinks;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
 
@@ -382,6 +383,57 @@ begin
            Float (Terminal.App.Renderer.Cell_Width (R)),
          "strikethrough decoration should span the cell");
    end;
+
+   Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "hover link core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (Character'Val (16#1B#) & "[?25l"
+         & Character'Val (16#1B#) & "]8;id=hover;https://example.test"
+         & Character'Val (16#1B#) & "\"
+         & "ab"
+         & Character'Val (16#1B#) & "]8;;"
+         & Character'Val (16#1B#) & "\"
+         & "c"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "hover link feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Link : constant Terminal.Core.Hyperlink :=
+        Terminal.App.Hyperlinks.Link_At (Snap, (Row => 1, Col => 1));
+   begin
+      Terminal.App.Renderer.Set_Hovered_Link (R, Link);
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "hover link render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Frame.Rectangle_Count >= 6, "expected hover link underlines");
+      Assert
+        (Frame.Rectangles (3).Height = 1.0,
+         "hover underline first cell should be one pixel high");
+      Assert
+        (Frame.Rectangles (3).Y =
+           Float
+             (Terminal.App.Renderer.Content_Margin
+              + Terminal.App.Renderer.Cell_Height (R) - 2),
+         "hover underline first cell baseline");
+      Assert
+        (Frame.Rectangles (5).Height = 1.0,
+         "hover underline second cell should be one pixel high");
+      Assert
+        (Frame.Rectangles (5).Width =
+           Float (Terminal.App.Renderer.Cell_Width (R)),
+         "hover underline second cell width");
+   end;
+
+   Terminal.App.Renderer.Set_Hovered_Link (R, (others => <>));
 
    Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "indexed color core initialize failed");

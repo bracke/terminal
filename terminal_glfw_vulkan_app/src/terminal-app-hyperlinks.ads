@@ -16,6 +16,10 @@ package Terminal.App.Hyperlinks is
       Position : Terminal.App.Selection.Cell_Position)
       return Terminal.Core.Hyperlink;
 
+   function Same_Link
+     (Left  : Terminal.Core.Hyperlink;
+      Right : Terminal.Core.Hyperlink) return Boolean;
+
    function Supported_URI (URI : String) return Boolean;
 
    function Open_Command (URI : String) return String;

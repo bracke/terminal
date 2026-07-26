@@ -39,6 +39,35 @@ package body Terminal.App.Hyperlinks is
       end if;
    end Link_At;
 
+   function Same_Link
+     (Left  : Terminal.Core.Hyperlink;
+      Right : Terminal.Core.Hyperlink) return Boolean
+   is
+   begin
+      if Left.Active /= Right.Active
+        or else Left.URI_Length /= Right.URI_Length
+        or else Left.ID_Length /= Right.ID_Length
+      then
+         return False;
+      elsif not Left.Active then
+         return True;
+      end if;
+
+      for I in 1 .. Left.URI_Length loop
+         if Left.URI (I) /= Right.URI (I) then
+            return False;
+         end if;
+      end loop;
+
+      for I in 1 .. Left.ID_Length loop
+         if Left.ID (I) /= Right.ID (I) then
+            return False;
+         end if;
+      end loop;
+
+      return True;
+   end Same_Link;
+
    function Is_URI_Graphic (Ch : Character) return Boolean is
      (Character'Pos (Ch) > 16#20# and then Character'Pos (Ch) < 16#7F#);
 
