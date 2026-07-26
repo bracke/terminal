@@ -64,6 +64,12 @@ procedure Text_Shaper_Smoke is
         Character'Pos ('b'),
         Character'Pos ('c'),
         Width => 30.0);
+   Digit_Text : RM.Text_Run_Command :=
+     Run
+       (Character'Pos ('1'),
+        Character'Pos ('2'),
+        Character'Pos ('3'),
+        Width => 30.0);
    Ligature  : RM.Text_Run_Command :=
      Run
        (Character'Pos ('f'),
@@ -193,6 +199,17 @@ begin
      (Text.Shaped_Glyphs (2).X_Advance > 0.0,
       "simple text per-cell advance");
    Assert (not Text.Fallback_Glyphs, "simple text fallback flag");
+
+   Assert (TS.Classify (Digit_Text) = RM.Simple_Text, "digit text class");
+   TS.Prepare (Digit_Text, Status);
+   Assert (Status = RM.Shape_Ok, "digit text status");
+   Assert
+     (Digit_Text.Direction = RM.Direction_Left_To_Right,
+      "digit text should remain LTR for mixed bidi rows");
+   Assert (Digit_Text.Script = RM.Script_Common, "digit text script");
+   Assert
+     (Digit_Text.Shaped_Glyph_Count = 3,
+      "digit text shaped glyph count");
 
    Assert
      (TS.Classify (Ligature) = RM.Ligature_Candidate,

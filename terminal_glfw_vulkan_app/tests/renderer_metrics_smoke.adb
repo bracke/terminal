@@ -740,6 +740,59 @@ begin
    Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
    Assert
      (Core_Status = Terminal.Core.Ok,
+      "RTL digit split core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#D7#,
+       2 => 16#90#,
+       3 => Byte (Character'Pos ('1')),
+       4 => Byte (Character'Pos ('2')),
+       5 => 16#D7#,
+       6 => 16#91#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "RTL digit split feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "RTL digit split render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Text_Run_Count = 3,
+         "ASCII digits should split from neighboring RTL runs");
+      Assert
+        (Frame.Text_Runs (1).Direction =
+           Terminal.App.Render_Model.Direction_Right_To_Left,
+         "RTL digit split first direction");
+      Assert
+        (Frame.Text_Runs (2).Codepoint_Count = 2,
+         "RTL digit split digit run count");
+      Assert
+        (Frame.Text_Runs (2).Direction =
+           Terminal.App.Render_Model.Direction_Left_To_Right,
+         "RTL digit split digit direction");
+      Assert
+        (Frame.Text_Runs (2).Script =
+           Terminal.App.Render_Model.Script_Common,
+         "RTL digit split digit script");
+      Assert
+        (Frame.Text_Runs (3).Direction =
+           Terminal.App.Render_Model.Direction_Right_To_Left,
+         "RTL digit split third direction");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
       "ligature text run core initialize failed");
    Terminal.Core.Feed
      (T,

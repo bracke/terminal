@@ -154,6 +154,9 @@ package body Terminal.App.Text_Shaper is
       or else (C in 16#00C0# .. 16#024F#)
       or else (C in 16#1E00# .. 16#1EFF#));
 
+   function Is_ASCII_Digit (C : Natural) return Boolean is
+     (C in Character'Pos ('0') .. Character'Pos ('9'));
+
    function Is_CJK (C : Natural) return Boolean is
      ((C in 16#1100# .. 16#11FF#)
       or else (C in 16#2E80# .. 16#A4CF#)
@@ -205,6 +208,8 @@ package body Terminal.App.Text_Shaper is
          begin
             if C > 16#10FFFF# then
                return RM.Invalid_Run;
+            elsif Is_ASCII_Digit (C) then
+               null;
             elsif Is_Bidi_Control_Or_RTL (C) then
                return RM.Bidi_Text;
             elsif Is_ZWJ (C) then
@@ -299,6 +304,8 @@ package body Terminal.App.Text_Shaper is
          then
             return RM.Direction_Right_To_Left;
          elsif Is_LTR_Directional_Control (Run.Codepoints (I)) then
+            return RM.Direction_Left_To_Right;
+         elsif Is_ASCII_Digit (Run.Codepoints (I)) then
             return RM.Direction_Left_To_Right;
          elsif Is_Latin (Run.Codepoints (I))
            or else Is_CJK (Run.Codepoints (I))

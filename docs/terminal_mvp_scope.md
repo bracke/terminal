@@ -119,7 +119,9 @@ coalesced up to the bounded text-run capacity, so ordinary text is available as
 a run rather than only as one cell at a time. Coalescing splits at style,
 cluster width, cursor, inferred script, and inferred direction boundaries.
 Explicit LTR and RTL directional controls are distinguished during run
-direction inference instead of treating every bidi control as RTL.
+direction inference instead of treating every bidi control as RTL. ASCII digit
+sequences are treated as strong left-to-right runs for renderer segmentation, so
+they do not get folded into adjacent RTL shaping runs.
 The app-layer HarfBuzz adapter shapes those runs against the selected font file
 with direction, script, and script-derived language tags, and returns real font
 glyph IDs, source clusters, advances, and offsets in the bounded shaped-glyph
