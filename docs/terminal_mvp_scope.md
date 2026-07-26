@@ -55,6 +55,9 @@
   line-feed/new-line mode, known DEC private modes, and stateless `?1048`
   save/restore cursor mode. Missing, extra, and unsupported-private DECRQM
   parameters are diagnosed.
+- Terminal-generated response bytes are held in a bounded core queue. If the
+  queue is full, newest response bytes are dropped and parser-overflow
+  diagnostics are incremented.
 - DECRQSS status-string reports (`DCS $ q m ST`, `DCS $ q r ST`, and
   `DCS $ q SP q ST`) return current SGR state, scrolling margins, and
   DECSCUSR cursor style using 7-bit DCS/ST framing, BEL termination, or C1

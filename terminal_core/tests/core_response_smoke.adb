@@ -8,6 +8,8 @@ procedure Core_Response_Smoke is
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
 
+   Response_Capacity : constant Natural := Terminal.Core.Max_Title_Length + 16;
+
    T : Terminal.Core.Terminal;
    Init : Terminal.Core.Initialize_Status;
    Feed_Status : Terminal.Core.Feed_Status;
@@ -1015,5 +1017,36 @@ begin
       Assert
         (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 11,
          "malformed XTWINOPS reports should be diagnosed");
+   end;
+
+   Terminal.Core.Initialize (T, 5, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "response overflow initialize failed");
+
+   declare
+      Fixture : Byte_Array (1 .. 400);
+      Index   : Positive := Fixture'First;
+      Before  : constant Natural :=
+        Terminal.Core.Diagnostics (T).Parser_Overflow;
+   begin
+      for N in 1 .. 100 loop
+         Fixture (Index) := Byte (Character'Pos (ASCII.ESC));
+         Index := Index + 1;
+         Fixture (Index) := Byte (Character'Pos ('['));
+         Index := Index + 1;
+         Fixture (Index) := Byte (Character'Pos ('5'));
+         Index := Index + 1;
+         Fixture (Index) := Byte (Character'Pos ('n'));
+         Index := Index + 1;
+      end loop;
+
+      Terminal.Core.Feed (T, Fixture, Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "response overflow feed failed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = Response_Capacity,
+         "response queue should cap at bounded capacity");
+      Assert
+        (Terminal.Core.Diagnostics (T).Parser_Overflow =
+           Before + Fixture'Length - Response_Capacity,
+         "response queue overflow should be diagnosed per dropped byte");
    end;
 end Core_Response_Smoke;
