@@ -4,15 +4,20 @@ with "../terminal_pty_posix/terminal_pty_posix.gpr";
 with "../glfw_vulkan/glfw_vulkan.gpr";
 with "../../textrender/textrender.gpr";
 with "df_vulkan";
+with "config/terminal_glfw_vulkan_app_config.gpr";
 
 project Terminal_GLFW_Vulkan_App is
+   --  cryptolib keeps its OS_Random backend in src-<os> (getrandom on Linux,
+   --  getentropy on macOS, BCrypt on Windows). We compile cryptolib's sources
+   --  directly, so pick the same per-host directory it would -- hardcoding
+   --  src-linux left macOS/Windows linking against the Linux syscalls.
    for Source_Dirs use
      ("src",
       "../../zlib/src",
       "../../zlib/config",
       "../../cryptolib/src",
       "../../cryptolib/config",
-      "../../cryptolib/src-linux");
+      "../../cryptolib/src-" & Terminal_Glfw_Vulkan_App_Config.Alire_Host_OS);
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
    for Main use ("terminal_app_main.adb");

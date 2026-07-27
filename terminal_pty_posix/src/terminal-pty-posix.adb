@@ -82,8 +82,8 @@ package body Terminal.PTY.POSIX is
      with Import, Convention => C, External_Name => "execv";
    procedure c_exit (Status : int)
      with Import, Convention => C, External_Name => "_exit";
-   function errno_location return access int
-     with Import, Convention => C, External_Name => "__errno_location";
+   function C_Last_Errno return int
+     with Import, Convention => C, External_Name => "terminal_pty_posix_last_errno";
 
    procedure Close_FD (FD : int) is
       Ignored : int;
@@ -94,7 +94,7 @@ package body Terminal.PTY.POSIX is
 
    function Last_Errno return int is
    begin
-      return errno_location.all;
+      return C_Last_Errno;
    end Last_Errno;
 
    function Capabilities return Backend_Capabilities is
