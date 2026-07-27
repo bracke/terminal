@@ -21,13 +21,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out terminal
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with: { path: terminal }
       - name: Check out textrender sibling
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
       - name: Set up Alire
-        uses: alire-project/setup-alire@v5
+        uses: alire-project/setup-alire@v6
         with:
           toolchain: gnat_native=15.2.1 gprbuild
       - name: Install system libraries (Linux)
@@ -72,12 +72,12 @@ jobs:
     # macos-latest is arm64; gnat_native=15.2.1 ships no aarch64-darwin binary.
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { path: terminal }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
       - name: Set up Alire
-        uses: alire-project/setup-alire@v5
+        uses: alire-project/setup-alire@v6
         with:
           toolchain: gnat_native=15.2.1 gprbuild
       - name: Install system libraries (macOS)
@@ -112,12 +112,12 @@ jobs:
     # ConPTY backend exists) without redding the workflow.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { path: terminal }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
       - name: Set up Alire
-        uses: alire-project/setup-alire@v5
+        uses: alire-project/setup-alire@v6
         with:
           toolchain: gnat_native=15.2.1 gprbuild
       - name: Install system libraries (Windows)
