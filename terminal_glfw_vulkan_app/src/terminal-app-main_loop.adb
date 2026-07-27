@@ -60,8 +60,18 @@ package body Terminal.App.Main_Loop is
    --  microseconds after the real one, double-firing selection/paste.
    Last_Left_Press_Time : Ada.Real_Time.Time := Ada.Real_Time.Clock;
 
+   --  Present-grace window (frames). Refilled by input (in the On_* callbacks)
+   --  and counted down one per loop iteration; while non-zero the loop keeps
+   --  presenting every frame even when nothing changed, which keeps us on the
+   --  compositor's frame clock so input stays paced to the display. Refilled by
+   --  INPUT, not by the blink/redraw signal, so a blinking cursor still presents
+   --  only on its own toggle and does not hold the window open. ~24 = ~0.4s.
+   Present_Grace_Frames : constant := 24;
+   Input_Grace : Natural := 0;
+
    procedure On_Key (Event : GLFW_Vulkan.Input.Key_Event) is
    begin
+      Input_Grace := Present_Grace_Frames;
       if Input_Queue /= null then
          Input_Queue.Push
            ((Kind            => Terminal.App.Queues.Key,
@@ -79,6 +89,7 @@ package body Terminal.App.Main_Loop is
 
    procedure On_Character (Event : GLFW_Vulkan.Input.Character_Event) is
    begin
+      Input_Grace := Present_Grace_Frames;
       if Input_Queue /= null then
          Input_Queue.Push
            ((Kind            => Terminal.App.Queues.Character,
@@ -96,6 +107,7 @@ package body Terminal.App.Main_Loop is
 
    procedure On_Mouse_Button (Event : GLFW_Vulkan.Input.Mouse_Button_Event) is
    begin
+      Input_Grace := Present_Grace_Frames;
       if Event.Action = GLFW_Vulkan.Input.Press
         and then Event.Button = GLFW_Vulkan.Input.Left
       then
@@ -148,6 +160,7 @@ package body Terminal.App.Main_Loop is
 
    procedure On_Scroll (Event : GLFW_Vulkan.Input.Scroll_Event) is
    begin
+      Input_Grace := Present_Grace_Frames;
       if Input_Queue /= null then
          Input_Queue.Push
            ((Kind            => Terminal.App.Queues.Scroll,
@@ -1080,8 +1093,16 @@ package body Terminal.App.Main_Loop is
                        Selection_Active     =>
                          Terminal.App.Selection.Has_Selection (Selection),
                        Local_Redraw_Request => Local_Redraw);
+                  --  Whether the input grace window is still open this frame; while
+                  --  it is we present unconditionally (bypassing the defer policy)
+                  --  so the compositor keeps waking us and input stays responsive.
+                  Grace_Active : constant Boolean := Input_Grace > 0;
                begin
+               if Input_Grace > 0 then
+                  Input_Grace := Input_Grace - 1;
+               end if;
                if Dirty
+                 and then not Grace_Active
                  and then Terminal.App.Render_Policy.Should_Defer_Render
                    (Modes                => Terminal.Core.Modes (T),
                     Scrollback_Offset    => Scroll_Offset,
@@ -1090,7 +1111,7 @@ package body Terminal.App.Main_Loop is
                     Local_Redraw_Request => Local_Redraw)
                then
                   Need_Redraw := True;
-               elsif Dirty then
+               elsif Dirty or else Grace_Active then
                   declare
                      Snap : Terminal.Core.Render_Snapshot :=
                        Terminal.App.Scrollback_View.Snapshot
