@@ -1,6 +1,24 @@
 with Terminal.Core;
 
 package body Terminal.App.Scrollback_View is
+   function Natural_Image (Value : Natural) return String is
+      Image : constant String := Natural'Image (Value);
+   begin
+      return Image (Image'First + 1 .. Image'Last);
+   end Natural_Image;
+
+   function Bounded (Text : String) return String is
+      Result : String (1 .. Max_Status_Label_Length);
+      Last   : Natural := 0;
+   begin
+      for Ch of Text loop
+         exit when Last = Result'Last;
+         Last := Last + 1;
+         Result (Last) := Ch;
+      end loop;
+      return Result (1 .. Last);
+   end Bounded;
+
    function Max_Offset (T : Terminal.Core.Terminal) return Natural is
    begin
       return Terminal.Core.Scrollback_Row_Count (T);
@@ -67,4 +85,29 @@ package body Terminal.App.Scrollback_View is
          Terminal.Core.Release (Result);
          return Terminal.Core.Snapshot (T);
    end Snapshot;
+
+   function Status_Label
+     (T      : Terminal.Core.Terminal;
+      Offset : Natural) return String
+   is
+      Max : constant Natural := Max_Offset (T);
+      Effective : constant Natural := Natural'Min (Offset, Max);
+   begin
+      if Effective = 0 then
+         return "Scrollback live";
+      elsif Effective = Offset then
+         return Bounded
+           ("Scrollback "
+            & Natural_Image (Effective)
+            & "/"
+            & Natural_Image (Max));
+      else
+         return Bounded
+           ("Scrollback "
+            & Natural_Image (Effective)
+            & "/"
+            & Natural_Image (Max)
+            & " (clamped)");
+      end if;
+   end Status_Label;
 end Terminal.App.Scrollback_View;

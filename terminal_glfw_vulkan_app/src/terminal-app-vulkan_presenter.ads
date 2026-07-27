@@ -1,8 +1,12 @@
+with Terminal.Common.Bytes;
+with Terminal.App.Render_Model;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Device;
 with Terminal.App.Vulkan_Submit;
 
 package Terminal.App.Vulkan_Presenter is
+   Max_Status_Label_Length : constant := 96;
+
    type Presenter is limited private;
 
    type Init_Status is
@@ -75,6 +79,32 @@ package Terminal.App.Vulkan_Presenter is
       Rejected_Frames   : Natural := 0;
       Last_Status       : Present_Status := Not_Initialized;
       Last_Vertex_Count : Natural := 0;
+      Last_Image_Command_Count : Natural := 0;
+      Last_Image_Vertex_Count : Natural := 0;
+      Last_Image_Texture_Vertex_Count : Natural := 0;
+      Last_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
+        Terminal.App.Render_Model.Image_Sixel;
+      Last_Image_Width : Natural := 0;
+      Last_Image_Height : Natural := 0;
+      Last_Image_Raw_Format : Natural := 0;
+      Last_Image_Pixel_Width : Natural := 0;
+      Last_Image_Pixel_Height : Natural := 0;
+      Last_Image_Payload_Length : Natural := 0;
+      Last_Image_Payload_Preview_Complete : Boolean := False;
+      Last_Image_Encoded_Preview_Length : Natural := 0;
+      Last_Image_Decoded_Preview_Length : Natural := 0;
+      Last_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+        (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
+          (others => 0);
+      Last_Image_Preview_Decode_Complete : Boolean := False;
+      Last_Image_Decode_Status :
+        Terminal.App.Render_Model.Image_Decode_Status :=
+          Terminal.App.Render_Model.Image_Decode_Not_Attempted;
+      Last_Image_Placeholder : Boolean := False;
+      Last_Image_Texture_Downgraded : Boolean := False;
+      Last_Image_Texture_Source :
+        Terminal.App.Vulkan_Submit.Texture_Source :=
+          Terminal.App.Vulkan_Submit.Texture_None;
       Last_Text_Run_Count : Natural := 0;
       Last_Shaped_Glyph_Count : Natural := 0;
       Last_Frame_Width  : Natural := 0;
@@ -101,6 +131,13 @@ package Terminal.App.Vulkan_Presenter is
    procedure Finalize (P : in out Presenter);
 
    function Diagnostics (P : Presenter) return Diagnostic_Snapshot;
+   function Status_Label (Status : Present_Status) return String;
+   function Image_Status_Label
+     (Diagnostics : Diagnostic_Snapshot) return String;
+   function Image_Texture_Status_Label
+     (Diagnostics : Diagnostic_Snapshot) return String;
+   function Image_Texture_Resource_Status_Label
+     (Diagnostics : Diagnostic_Snapshot) return String;
 
 private
    type Presenter is limited record
@@ -111,6 +148,32 @@ private
       Rejected_Frames   : Natural := 0;
       Last_Status       : Present_Status := Not_Initialized;
       Last_Vertex_Count : Natural := 0;
+      Last_Image_Command_Count : Natural := 0;
+      Last_Image_Vertex_Count : Natural := 0;
+      Last_Image_Texture_Vertex_Count : Natural := 0;
+      Last_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
+        Terminal.App.Render_Model.Image_Sixel;
+      Last_Image_Width : Natural := 0;
+      Last_Image_Height : Natural := 0;
+      Last_Image_Raw_Format : Natural := 0;
+      Last_Image_Pixel_Width : Natural := 0;
+      Last_Image_Pixel_Height : Natural := 0;
+      Last_Image_Payload_Length : Natural := 0;
+      Last_Image_Payload_Preview_Complete : Boolean := False;
+      Last_Image_Encoded_Preview_Length : Natural := 0;
+      Last_Image_Decoded_Preview_Length : Natural := 0;
+      Last_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+        (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
+          (others => 0);
+      Last_Image_Preview_Decode_Complete : Boolean := False;
+      Last_Image_Decode_Status :
+        Terminal.App.Render_Model.Image_Decode_Status :=
+          Terminal.App.Render_Model.Image_Decode_Not_Attempted;
+      Last_Image_Placeholder : Boolean := False;
+      Last_Image_Texture_Downgraded : Boolean := False;
+      Last_Image_Texture_Source :
+        Terminal.App.Vulkan_Submit.Texture_Source :=
+          Terminal.App.Vulkan_Submit.Texture_None;
       Last_Text_Run_Count : Natural := 0;
       Last_Shaped_Glyph_Count : Natural := 0;
       Last_Frame_Width  : Natural := 0;

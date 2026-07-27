@@ -54,9 +54,11 @@ procedure Input_Map_Smoke is
          Y         => 0.0);
    end Mouse_Event;
 
-   function Scroll_Event (Y_Offset : Float) return GI.Scroll_Event is
+   function Scroll_Event
+     (Y_Offset : Float;
+      X_Offset : Float := 0.0) return GI.Scroll_Event is
    begin
-      return (X_Offset => 0.0, Y_Offset => Y_Offset, X => 0.0, Y => 0.0);
+      return (X_Offset => X_Offset, Y_Offset => Y_Offset, X => 0.0, Y => 0.0);
    end Scroll_Event;
 
    function To_Bytes (Text : String) return Byte_Array is
@@ -82,12 +84,25 @@ procedure Input_Map_Smoke is
       end loop;
    end Assert_Bytes;
 begin
+   Assert
+     (IM.Key_Mode_Status_Label (Modes) =
+      "Keys: normal cursor, numeric keypad, Backspace=DEL, LF sends LF",
+      "default key mode status label");
+   Assert
+     (IM.Key_Mode_Status_Label (Modes)'Length <=
+      IM.Max_Input_Status_Label_Length,
+      "key mode status label should be bounded");
+
    IM.Encode_Key (Key_Event (GI.Enter), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#0D#), "enter");
 
    Modes.Linefeed_New_Line := True;
    IM.Encode_Key (Key_Event (GI.Enter), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#0D#, 2 => 16#0A#), "LNM enter");
+   Assert
+     (IM.Key_Mode_Status_Label (Modes) =
+      "Keys: normal cursor, numeric keypad, Backspace=DEL, LF sends CRLF",
+      "LNM key mode status label");
    Modes.Linefeed_New_Line := False;
 
    IM.Encode_Key (Key_Event (GI.Backspace), Modes, Chunk);
@@ -96,6 +111,10 @@ begin
    Modes.Backarrow_Key_Backspace := True;
    IM.Encode_Key (Key_Event (GI.Backspace), Modes, Chunk);
    Assert_Bytes (Chunk, (1 => 16#08#), "DECBKM backspace");
+   Assert
+     (IM.Key_Mode_Status_Label (Modes) =
+      "Keys: normal cursor, numeric keypad, Backspace=BS, LF sends LF",
+      "DECBKM key mode status label");
 
    IM.Encode_Key (Key_Event (GI.Backspace, Alt => True), Modes, Chunk);
    Assert_Bytes
@@ -207,6 +226,10 @@ begin
    Modes.Application_Keypad := True;
    IM.Encode_Key (Key_Event (GI.Kp_1), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "Oq"), "application keypad one");
+   Assert
+     (IM.Key_Mode_Status_Label (Modes) =
+      "Keys: normal cursor, app keypad, Backspace=DEL, LF sends LF",
+      "application keypad status label");
 
    IM.Encode_Key (Key_Event (GI.Kp_Add), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "Ok"), "application keypad add");
@@ -271,6 +294,10 @@ begin
    Modes.Application_Cursor := True;
    IM.Encode_Key (Key_Event (GI.Up), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "OA"), "application up");
+   Assert
+     (IM.Key_Mode_Status_Label (Modes) =
+      "Keys: app cursor, numeric keypad, Backspace=DEL, LF sends LF",
+      "application cursor status label");
 
    IM.Encode_Key (Key_Event (GI.Up, Shift => True), Modes, Chunk);
    Assert_Bytes
@@ -372,6 +399,21 @@ begin
      (not IM.Is_Primary_Paste_Button
         (Mouse_Event (GI.Middle, Control => True)),
       "modified middle press should not paste primary selection");
+   Assert
+     (IM.Local_Mouse_Selection_Override
+        (Mouse_Event (GI.Left, Shift => True)),
+      "shift left mouse should override reporting for local selection");
+   Assert
+     (IM.Local_Mouse_Selection_Override
+        (Mouse_Event (GI.Left, Shift => True, Alt => True)),
+      "shift alt left mouse should keep local selection override");
+   Assert
+     (not IM.Local_Mouse_Selection_Override
+        (Mouse_Event (GI.Left, Control => True)),
+      "ctrl left mouse should not force local selection");
+   Assert
+     (not IM.Local_Mouse_Selection_Override (Mouse_Event (GI.Middle)),
+      "middle mouse should not force local selection");
 
    IM.Encode_Character ((Code_Point => Wide_Wide_Character'Val (16#00E9#)), Chunk);
    Assert_Bytes (Chunk, (1 => 16#C3#, 2 => 16#A9#), "utf8 e-acute");
@@ -390,6 +432,35 @@ begin
 
    IM.Encode_Paste_Text ("abc", Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes ("abc"), "plain paste");
+   Assert
+     (IM.Paste_Status_Label (Modes) = "Plain paste active",
+      "plain paste status label");
+   Assert
+     (IM.Paste_Status_Label (Modes)'Length <= IM.Max_Input_Status_Label_Length,
+      "paste status label should be bounded");
+   Assert
+     (IM.Keyboard_Status_Label (Modes) = "Keyboard input active",
+      "active keyboard status label");
+   Assert
+     (IM.Keyboard_Status_Label (Modes)'Length <= IM.Max_Input_Status_Label_Length,
+      "keyboard status label should be bounded");
+   Assert
+     (IM.Input_Status_Label (Modes) =
+      "Input: keyboard active, plain paste, focus local, local mouse",
+      "default input status label");
+   Assert
+     (IM.Input_Status_Label (Modes)'Length <= IM.Max_Input_Status_Label_Length,
+      "input status label should be bounded");
+
+   Modes.Keyboard_Locked := True;
+   Assert
+     (IM.Keyboard_Status_Label (Modes) = "Keyboard input locked",
+      "locked keyboard status label");
+   Assert
+     (IM.Input_Status_Label (Modes) =
+      "Input: keyboard locked, plain paste, focus local, local mouse",
+      "keyboard-locked input status label");
+   Modes.Keyboard_Locked := False;
 
    Modes.Bracketed_Paste := True;
    IM.Encode_Paste_Text ("abc", Modes, Chunk);
@@ -397,15 +468,37 @@ begin
      (Chunk,
       To_Bytes (ASCII.ESC & "[200~abc" & ASCII.ESC & "[201~"),
       "bracketed paste");
+   Assert
+     (IM.Paste_Status_Label (Modes) = "Bracketed paste active",
+      "bracketed paste status label");
+   Assert
+     (IM.Input_Status_Label (Modes) =
+      "Input: keyboard active, bracketed paste, focus local, local mouse",
+      "bracketed input status label");
 
    Modes := (others => <>);
    Assert (not IM.Mouse_Reporting_Enabled (Modes), "mouse reporting disabled");
+   Assert
+     (IM.Mouse_Status_Label (Modes) =
+      "Local selection active; wheel scrolls scrollback",
+      "local mouse status label");
+   Assert
+     (IM.Mouse_Status_Label (Modes)'Length <= IM.Max_Mouse_Status_Label_Length,
+      "mouse status label should be bounded");
    IM.Encode_Mouse_Button (Mouse_Event (GI.Left), Modes, 2, 3, Chunk);
    Assert (Chunk.Length = 0, "disabled mouse should not encode");
 
    Modes.Mouse_Button := True;
    Modes.Mouse_SGR := True;
    Assert (IM.Mouse_Reporting_Enabled (Modes), "mouse reporting enabled");
+   Assert
+     (IM.Mouse_Status_Label (Modes) =
+      "Mouse reporting active; Shift+Left keeps local selection",
+      "reported mouse status label");
+   Assert
+     (IM.Input_Status_Label (Modes) =
+      "Input: keyboard active, plain paste, focus local, mouse reporting",
+      "mouse-reporting input status label");
    IM.Encode_Mouse_Button (Mouse_Event (GI.Other), Modes, 2, 3, Chunk);
    Assert (Chunk.Length = 0, "unknown mouse button should not encode");
 
@@ -459,14 +552,39 @@ begin
       To_Bytes (ASCII.ESC & "[<65;5;4M"),
       "sgr wheel down");
 
+   IM.Encode_Mouse_Wheel (Scroll_Event (0.0, X_Offset => 1.0), Modes, 4, 5, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[<66;5;4M"),
+      "sgr wheel right");
+
+   IM.Encode_Mouse_Wheel (Scroll_Event (0.0, X_Offset => -1.0), Modes, 4, 5, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[<67;5;4M"),
+      "sgr wheel left");
+
    IM.Encode_Mouse_Wheel (Scroll_Event (0.0), Modes, 4, 5, Chunk);
    Assert (Chunk.Length = 0, "zero scroll should not encode");
 
    Modes := (others => <>);
    IM.Encode_Focus ((Focused => True), Modes, Chunk);
    Assert (Chunk.Length = 0, "disabled focus should not encode");
+   Assert
+     (IM.Focus_Status_Label (Modes) = "Focus reporting inactive",
+      "inactive focus status label");
+   Assert
+     (IM.Focus_Status_Label (Modes)'Length <= IM.Max_Input_Status_Label_Length,
+      "focus status label should be bounded");
 
    Modes.Focus_Reporting := True;
+   Assert
+     (IM.Focus_Status_Label (Modes) = "Focus reporting active",
+      "active focus status label");
+   Assert
+     (IM.Input_Status_Label (Modes) =
+      "Input: keyboard active, plain paste, focus reporting, local mouse",
+      "focus-reporting input status label");
    IM.Encode_Focus ((Focused => True), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[I"), "focus in");
 

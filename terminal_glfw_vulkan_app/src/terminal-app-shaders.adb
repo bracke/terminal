@@ -1,3 +1,4 @@
+with Ada.Characters.Handling;
 with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -8,6 +9,39 @@ package body Terminal.App.Shaders is
    use type Ada.Streams.Stream_Element_Offset;
    use type Interfaces.Unsigned_32;
    use type Word_Array_Access;
+
+   function Humanize (Text : String) return String is
+      Result : String (1 .. Text'Length);
+      At_Word_Start : Boolean := True;
+   begin
+      for I in Text'Range loop
+         declare
+            Ch : constant Character := Text (I);
+            Out_Index : constant Positive := I - Text'First + 1;
+         begin
+            if Ch = '_' then
+               Result (Out_Index) := ' ';
+               At_Word_Start := True;
+            elsif At_Word_Start then
+               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
+               At_Word_Start := False;
+            else
+               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
+            end if;
+         end;
+      end loop;
+      return Result;
+   end Humanize;
+
+   function Status_Label (Status : Load_Status) return String is
+      Label : constant String := "Shader load: " & Humanize (Load_Status'Image (Status));
+   begin
+      if Label'Length > Max_Status_Label_Length then
+         return Label (1 .. Max_Status_Label_Length);
+      else
+         return Label;
+      end if;
+   end Status_Label;
 
    procedure Free_Words is new Ada.Unchecked_Deallocation
      (Word_Array, Word_Array_Access);

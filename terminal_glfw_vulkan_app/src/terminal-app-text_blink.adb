@@ -18,6 +18,20 @@ package body Terminal.App.Text_Blink is
       return False;
    end Contains_Blinking_Text;
 
+   function Status_Label
+     (Snapshot     : Terminal.Core.Render_Snapshot;
+      Current_Tick : Natural) return String
+   is
+   begin
+      if not Contains_Blinking_Text (Snapshot) then
+         return "Text blink inactive";
+      elsif Current_Tick mod 2 = 0 then
+         return "Text blink visible";
+      else
+         return "Text blink hidden";
+      end if;
+   end Status_Label;
+
    procedure Apply
      (Snapshot     : in out Terminal.Core.Render_Snapshot;
       Current_Tick : Natural)

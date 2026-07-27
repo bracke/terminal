@@ -7,6 +7,7 @@ project PTY_Tests is
    for Exec_Dir use "bin";
    for Main use
      ("pty_status_smoke.adb",
+      "pty_env_smoke.adb",
       "pty_resize_smoke.adb",
       "pty_close_smoke.adb");
 

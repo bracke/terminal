@@ -1,8 +1,13 @@
 with Interfaces;
+with Ada.Characters.Handling;
+with Ada.Unchecked_Deallocation;
 with Interfaces.C;
 with Interfaces.C.Strings;
 with System;
 with System.Address_To_Access_Conversions;
+with Terminal.Common.Bytes;
+with Terminal.Common.Status;
+with Terminal.App.Graphics;
 with Terminal.App.Shaders;
 
 package body Terminal.App.Vulkan_Device is
@@ -43,6 +48,64 @@ package body Terminal.App.Vulkan_Device is
    use type Vk.Surface_Transform_Flags_KHR_T;
    use type Vk.Swapchain_KHR_T;
 
+   package RM renames Terminal.App.Render_Model;
+   use type RM.Image_Data_Access;
+   use type RM.Image_Decoded_Source_Kind;
+   use type Terminal.App.Graphics.Data_Decode_Status;
+
+   function Trimmed_Natural (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Trimmed_Natural;
+
+   function Humanize (Text : String) return String is
+      Result : String (1 .. Text'Length);
+      At_Word_Start : Boolean := True;
+   begin
+      for I in Text'Range loop
+         declare
+            Ch : constant Character := Text (I);
+            Out_Index : constant Positive := I - Text'First + 1;
+         begin
+            if Ch = '_' then
+               Result (Out_Index) := ' ';
+               At_Word_Start := True;
+            elsif At_Word_Start then
+               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
+               At_Word_Start := False;
+            else
+               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
+            end if;
+         end;
+      end loop;
+      return Result;
+   end Humanize;
+
+   function Bounded (Text : String) return String is
+   begin
+      if Text'Length > Max_Status_Label_Length then
+         return Text (Text'First .. Text'First + Max_Status_Label_Length - 1);
+      else
+         return Text;
+      end if;
+   end Bounded;
+
+   function Select_Status_Label (Status : Select_Status) return String is
+   begin
+      return Bounded ("Select device: " & Humanize (Select_Status'Image (Status)));
+   end Select_Status_Label;
+
+   function Create_Status_Label (Status : Create_Status) return String is
+   begin
+      return Bounded ("Create device: " & Humanize (Create_Status'Image (Status)));
+   end Create_Status_Label;
+
+   function Render_Status_Label (Status : Render_Status) return String is
+   begin
+      return Bounded ("Render device: " & Humanize (Render_Status'Image (Status)));
+   end Render_Status_Label;
+
    package VC renames Terminal.App.Vulkan_Context;
    package Shaders renames Terminal.App.Shaders;
    package VS renames Terminal.App.Vulkan_Submit;
@@ -66,12 +129,15 @@ package body Terminal.App.Vulkan_Device is
      Vk.Structure_Type_T (1_000_001_008);
    Image_Layout_Present_Source : constant Vk.Image_Layout_T :=
      Vk.Image_Layout_T (1_000_001_002);
+   Format_R8G8B8A8_Unorm : constant Vk.Format_T := Vk.Format_T (37);
    Suboptimal_KHR : constant Vk.Result_T := Vk.Result_T (1_000_001_003);
    Error_Out_Of_Date_KHR : constant Vk.Result_T := Vk.Result_T (-1_000_001_004);
    Subpass_External : constant Interfaces.Unsigned_32 := Interfaces.Unsigned_32'Last;
    UInt32_Max : constant Interfaces.Unsigned_32 := Interfaces.Unsigned_32'Last;
    Packed_Vertex_Bytes : constant Interfaces.Unsigned_64 := 40;
    Max_Atlas_Bytes : constant := 16 * 1024 * 1024;
+   Max_Image_Texture_Bytes : constant :=
+     RM.Max_Image_Decoded_Data_Length * 4;
    Queue_Family_Ignored : constant Interfaces.Unsigned_32 :=
      Interfaces.Unsigned_32'Last;
 
@@ -122,6 +188,12 @@ package body Terminal.App.Vulkan_Device is
    type Descriptor_Pool_Size_Array is
      array (Positive range 1 .. 1) of Vk.Descriptor_Pool_Size_T
      with Convention => C;
+   type Descriptor_Set_Layout_Binding_Array is
+     array (Positive range 1 .. 2) of Vk.Descriptor_Set_Layout_Binding_T
+     with Convention => C;
+   type Image_Texture_Byte_Array is
+     array (Positive range 1 .. Max_Image_Texture_Bytes) of Interfaces.Unsigned_8
+     with Convention => C;
    type Byte_Array is array (Positive range 1 .. Max_Atlas_Bytes)
      of Interfaces.Unsigned_8
      with Convention => C;
@@ -145,6 +217,9 @@ package body Terminal.App.Vulkan_Device is
      (Packed_Vertex_Array);
    package Byte_Mapping is new System.Address_To_Access_Conversions
      (Byte_Array);
+   package Image_Texture_Byte_Mapping is new System.Address_To_Access_Conversions
+     (Image_Texture_Byte_Array);
+   use type Image_Texture_Byte_Mapping.Object_Pointer;
 
    type Chars_Ptr_Array is array (Positive range <>) of Interfaces.C.Strings.chars_ptr
      with Convention => C;
@@ -184,6 +259,20 @@ package body Terminal.App.Vulkan_Device is
       return 0.0;
    end To_Float;
 
+   function Texture_ID
+     (Source : VS.Texture_Source) return Interfaces.C.C_float
+   is
+   begin
+      case Source is
+         when VS.Texture_None =>
+            return 0.0;
+         when VS.Texture_Text_Atlas =>
+            return 1.0;
+         when VS.Texture_Image =>
+            return 2.0;
+      end case;
+   end Texture_ID;
+
    function Sample_Count_Value
      (Samples : Vk.Sample_Count_Flag_Bits_T)
       return Natural
@@ -210,6 +299,7 @@ package body Terminal.App.Vulkan_Device is
      (Result = Suboptimal_KHR or else Result = Error_Out_Of_Date_KHR);
 
    procedure Destroy_Atlas_Image (Device : in out Logical_Device);
+   procedure Destroy_Image_Texture (Device : in out Logical_Device);
 
    procedure Upload_Atlas_Data
      (Device        : in out Logical_Device;
@@ -220,6 +310,26 @@ package body Terminal.App.Vulkan_Device is
       Pixels        : System.Address;
       Dirty         : Boolean;
       Status        : out Create_Status);
+
+   procedure Upload_Image_Texture_Data
+     (Device        : in out Logical_Device;
+      Choice        : Selection;
+      Width         : Natural;
+      Height        : Natural;
+      Bytes_Natural : Natural;
+      Pixels        : System.Address;
+      Status        : out Create_Status);
+
+   procedure Upload_Image_Texture_Rows
+     (Device           : in out Logical_Device;
+      Choice           : Selection;
+      Width            : Natural;
+      Height           : Natural;
+      Source_Bytes_Per_Pixel : Natural;
+      Row_Stride_Bytes : Natural;
+      Bytes_Natural    : Natural;
+      Pixels           : System.Address;
+      Status           : out Create_Status);
 
    procedure Reset
      (Choice : out Selection;
@@ -553,6 +663,14 @@ package body Terminal.App.Vulkan_Device is
          Device.Atlas_Memory := System.Null_Address;
          Device.Atlas_View := System.Null_Address;
          Device.Atlas_Sampler := System.Null_Address;
+         Device.Image_Texture_Image := System.Null_Address;
+         Device.Image_Texture_Memory := System.Null_Address;
+         Device.Image_Texture_View := System.Null_Address;
+         Device.Image_Texture_Width := 0;
+         Device.Image_Texture_Height := 0;
+         Device.Image_Texture_Bytes := 0;
+         Device.Image_Texture_Descriptor_Capacity := 0;
+         Device.Image_Texture_Descriptor_Bound_Count := 0;
          Device.Swapchain_Images := (others => System.Null_Address);
          Device.Swapchain_Views := (others => System.Null_Address);
          Device.Framebuffers := (others => System.Null_Address);
@@ -570,6 +688,8 @@ package body Terminal.App.Vulkan_Device is
          Device.Uploaded_Vertex_Count := 0;
          Device.Uploaded_Text_Run_Count := 0;
          Device.Uploaded_Shaped_Glyph_Count := 0;
+         Device.Uploaded_Image_Vertex_Count := 0;
+         Device.Uploaded_Image_Texture_Vertex_Count := 0;
          Device.Swapchain_Width := 0;
          Device.Swapchain_Height := 0;
          Device.Last_Status := Status_Value;
@@ -767,29 +887,38 @@ package body Terminal.App.Vulkan_Device is
               (Handle, Device.Descriptor_Set_Layout, System.Null_Address);
             Device.Descriptor_Set_Layout := System.Null_Address;
          end if;
+         Device.Image_Texture_Descriptor_Capacity := 0;
+         Device.Image_Texture_Descriptor_Bound_Count := 0;
       end Destroy_Descriptor_Resources;
 
       function Create_Descriptor_Resources
         (Handle : Vk.Device_T)
          return Create_Status
       is
-         Binding : aliased Vk.Descriptor_Set_Layout_Binding_T :=
-           (binding => 0,
-            descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            descriptor_Count => 1,
-            stage_Flags => Vk.SHADER_STAGE_FRAGMENT_BIT,
-            p_Immutable_Samplers => System.Null_Address);
+         Bindings : aliased Descriptor_Set_Layout_Binding_Array :=
+           (1 =>
+              (binding => 0,
+               descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+               descriptor_Count => 1,
+               stage_Flags => Vk.SHADER_STAGE_FRAGMENT_BIT,
+               p_Immutable_Samplers => System.Null_Address),
+            2 =>
+              (binding => 1,
+               descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+               descriptor_Count => 1,
+               stage_Flags => Vk.SHADER_STAGE_FRAGMENT_BIT,
+               p_Immutable_Samplers => System.Null_Address));
          Layout_Info : aliased Vk.Descriptor_Set_Layout_Create_Info_T :=
            (s_Type => Vk.STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
             p_Next => System.Null_Address,
             flags => 0,
-            binding_Count => 1,
-            p_Bindings => Binding'Address);
+            binding_Count => Bindings'Length,
+            p_Bindings => Bindings'Address);
          Layout : aliased Vk.Descriptor_Set_Layout_T := System.Null_Address;
          Pool_Size : aliased Descriptor_Pool_Size_Array :=
            (1 =>
               (type_F => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-               descriptor_Count => 1));
+               descriptor_Count => 2));
          Pool_Info : aliased Vk.Descriptor_Pool_Create_Info_T :=
            (s_Type => Vk.STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
             p_Next => System.Null_Address,
@@ -864,6 +993,8 @@ package body Terminal.App.Vulkan_Device is
             return Create_Atlas_Sampler_Failed;
          end if;
          Device.Atlas_Sampler := Sampler;
+         Device.Image_Texture_Descriptor_Capacity := 2;
+         Device.Image_Texture_Descriptor_Bound_Count := 0;
 
          return Ok;
       end Create_Descriptor_Resources;
@@ -2045,6 +2176,21 @@ package body Terminal.App.Vulkan_Device is
                  (Device.Device, Device.Atlas_Memory, System.Null_Address);
             end if;
 
+            if Device.Image_Texture_View /= System.Null_Address then
+               Vk.Destroy_Image_View
+                 (Device.Device, Device.Image_Texture_View, System.Null_Address);
+            end if;
+
+            if Device.Image_Texture_Image /= System.Null_Address then
+               Vk.Destroy_Image
+                 (Device.Device, Device.Image_Texture_Image, System.Null_Address);
+            end if;
+
+            if Device.Image_Texture_Memory /= System.Null_Address then
+               Vk.Free_Memory
+                 (Device.Device, Device.Image_Texture_Memory, System.Null_Address);
+            end if;
+
             if Device.Atlas_Sampler /= System.Null_Address then
                Vk.Destroy_Sampler
                  (Device.Device, Device.Atlas_Sampler, System.Null_Address);
@@ -2134,6 +2280,14 @@ package body Terminal.App.Vulkan_Device is
       Device.Atlas_Memory := System.Null_Address;
       Device.Atlas_View := System.Null_Address;
       Device.Atlas_Sampler := System.Null_Address;
+      Device.Image_Texture_Image := System.Null_Address;
+      Device.Image_Texture_Memory := System.Null_Address;
+      Device.Image_Texture_View := System.Null_Address;
+      Device.Image_Texture_Width := 0;
+      Device.Image_Texture_Height := 0;
+      Device.Image_Texture_Bytes := 0;
+      Device.Image_Texture_Descriptor_Capacity := 0;
+      Device.Image_Texture_Descriptor_Bound_Count := 0;
       Device.Swapchain_Images := (others => System.Null_Address);
       Device.Swapchain_Views := (others => System.Null_Address);
       Device.Framebuffers := (others => System.Null_Address);
@@ -2235,6 +2389,34 @@ package body Terminal.App.Vulkan_Device is
       Device.Atlas_Bytes := 0;
    end Destroy_Atlas_Image;
 
+   procedure Destroy_Image_Texture (Device : in out Logical_Device) is
+   begin
+      if Device.Image_Texture_View /= System.Null_Address then
+         Vk.Destroy_Image_View
+           (Device.Device, Device.Image_Texture_View, System.Null_Address);
+         Device.Image_Texture_View := System.Null_Address;
+      end if;
+
+      if Device.Image_Texture_Image /= System.Null_Address then
+         Vk.Destroy_Image
+           (Device.Device, Device.Image_Texture_Image, System.Null_Address);
+         Device.Image_Texture_Image := System.Null_Address;
+      end if;
+
+      if Device.Image_Texture_Memory /= System.Null_Address then
+         Vk.Free_Memory
+           (Device.Device, Device.Image_Texture_Memory, System.Null_Address);
+         Device.Image_Texture_Memory := System.Null_Address;
+      end if;
+
+      Device.Image_Texture_Width := 0;
+      Device.Image_Texture_Height := 0;
+      Device.Image_Texture_Bytes := 0;
+      if Device.Image_Texture_Descriptor_Bound_Count > 1 then
+         Device.Image_Texture_Descriptor_Bound_Count := 1;
+      end if;
+   end Destroy_Image_Texture;
+
    procedure Upload_Atlas_Data
      (Device        : in out Logical_Device;
       Choice        : Selection;
@@ -2292,6 +2474,7 @@ package body Terminal.App.Vulkan_Device is
             Image_Memory := System.Null_Address;
          end if;
       end Cleanup_New_Image;
+
    begin
       if Width = 0
         or else Height = 0
@@ -2688,6 +2871,9 @@ package body Terminal.App.Vulkan_Device is
       Device.Atlas_Height := Height;
       Device.Atlas_Bytes := Bytes_Natural;
       Device.Atlas_Upload_Count := Device.Atlas_Upload_Count + 1;
+      if Device.Image_Texture_Descriptor_Bound_Count = 0 then
+         Device.Image_Texture_Descriptor_Bound_Count := 1;
+      end if;
       Image := System.Null_Address;
       Image_Memory := System.Null_Address;
       Image_View := System.Null_Address;
@@ -2711,6 +2897,917 @@ package body Terminal.App.Vulkan_Device is
          Dirty         => VS.Atlas_Dirty (Batch),
          Status        => Status);
    end Upload_Atlas;
+
+   procedure Upload_Image_Texture_Staging_Source
+     (Device        : in out Logical_Device;
+      Choice        : Selection;
+      Width         : Natural;
+      Height        : Natural;
+      Source_Bytes_Per_Pixel : Natural;
+      Row_Stride_Bytes : Natural;
+      Bytes_Natural : Natural;
+      Fill_Staging  : not null access procedure
+        (Target : Image_Texture_Byte_Mapping.Object_Pointer;
+         Status : out Create_Status);
+      Status        : out Create_Status)
+   is
+      Image : aliased Vk.Image_T := System.Null_Address;
+      Image_Memory : aliased Vk.Device_Memory_T := System.Null_Address;
+      Image_View : aliased Vk.Image_View_T := System.Null_Address;
+      Staging_Buffer : aliased Vk.Buffer_T := System.Null_Address;
+      Staging_Memory : aliased Vk.Device_Memory_T := System.Null_Address;
+      Data : aliased System.Address := System.Null_Address;
+      Memory_Requirements : aliased Vk.Memory_Requirements_T;
+      Memory_Properties : aliased Vk.Physical_Device_Memory_Properties_T;
+      Memory_Type_Index : Interfaces.Unsigned_32 := 0;
+      Source_Row_Bytes : Natural := 0;
+      Target_Row_Bytes : Natural := 0;
+      Upload_Bytes_Natural : Natural := 0;
+      Staging_Bytes_Natural : Natural := 0;
+      Vulkan_Buffer_Row_Length : Interfaces.Unsigned_32 := 0;
+      Required_Source_Bytes : Natural := 0;
+      Bytes : Interfaces.Unsigned_64 := 0;
+      Result : Vk.Result_T;
+
+      procedure Destroy_Staging is
+      begin
+         if Staging_Buffer /= System.Null_Address then
+            Vk.Destroy_Buffer
+              (Device.Device, Staging_Buffer, System.Null_Address);
+            Staging_Buffer := System.Null_Address;
+         end if;
+
+         if Staging_Memory /= System.Null_Address then
+            Vk.Free_Memory
+              (Device.Device, Staging_Memory, System.Null_Address);
+            Staging_Memory := System.Null_Address;
+         end if;
+      end Destroy_Staging;
+
+      procedure Cleanup_New_Image is
+      begin
+         if Image_View /= System.Null_Address then
+            Vk.Destroy_Image_View
+              (Device.Device, Image_View, System.Null_Address);
+            Image_View := System.Null_Address;
+         end if;
+
+         if Image /= System.Null_Address then
+            Vk.Destroy_Image (Device.Device, Image, System.Null_Address);
+            Image := System.Null_Address;
+         end if;
+
+         if Image_Memory /= System.Null_Address then
+            Vk.Free_Memory
+              (Device.Device, Image_Memory, System.Null_Address);
+            Image_Memory := System.Null_Address;
+         end if;
+      end Cleanup_New_Image;
+
+   begin
+      if Width = 0
+        or else Height = 0
+      then
+         Status := Atlas_Too_Large;
+         return;
+      end if;
+
+      if Source_Bytes_Per_Pixel /= 3
+        and then Source_Bytes_Per_Pixel /= 4
+      then
+         Status := Atlas_Too_Large;
+         return;
+      end if;
+
+      if Width > Max_Image_Texture_Bytes / 4
+        or else Width > Max_Image_Texture_Bytes / Source_Bytes_Per_Pixel
+      then
+         Status := Atlas_Too_Large;
+         return;
+      end if;
+
+      Target_Row_Bytes := Width * 4;
+      Source_Row_Bytes := Width * Source_Bytes_Per_Pixel;
+      if Target_Row_Bytes = 0
+        or else Source_Row_Bytes = 0
+        or else Height > Max_Image_Texture_Bytes / Target_Row_Bytes
+        or else Row_Stride_Bytes < Source_Row_Bytes
+        or else Row_Stride_Bytes > Max_Image_Texture_Bytes
+        or else
+          (Height > 1
+           and then
+             Row_Stride_Bytes >
+               (Max_Image_Texture_Bytes - Source_Row_Bytes) / (Height - 1))
+      then
+         Status := Atlas_Too_Large;
+         return;
+      end if;
+
+      Upload_Bytes_Natural := Target_Row_Bytes * Height;
+      Required_Source_Bytes :=
+        (Height - 1) * Row_Stride_Bytes + Source_Row_Bytes;
+      if Source_Bytes_Per_Pixel = 4
+        and then Row_Stride_Bytes > Target_Row_Bytes
+        and then Row_Stride_Bytes mod 4 = 0
+      then
+         Staging_Bytes_Natural := Required_Source_Bytes;
+         Vulkan_Buffer_Row_Length :=
+           Interfaces.Unsigned_32 (Row_Stride_Bytes / 4);
+      else
+         Staging_Bytes_Natural := Upload_Bytes_Natural;
+         Vulkan_Buffer_Row_Length := 0;
+      end if;
+      Bytes := Interfaces.Unsigned_64 (Staging_Bytes_Natural);
+      if Upload_Bytes_Natural = 0
+        or else Upload_Bytes_Natural > Max_Image_Texture_Bytes
+        or else Staging_Bytes_Natural = 0
+        or else Staging_Bytes_Natural > Max_Image_Texture_Bytes
+        or else Bytes_Natural < Required_Source_Bytes
+        or else Bytes_Natural > Max_Image_Texture_Bytes
+      then
+         Status := Atlas_Too_Large;
+         return;
+      end if;
+
+      Result := Vk.Queue_Wait_Idle (Device.Queue);
+      if Result /= Vk.SUCCESS then
+         Status := Copy_Atlas_Failed;
+         return;
+      end if;
+
+      declare
+         Buffer_Info : aliased Vk.Buffer_Create_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            p_Next => System.Null_Address,
+            flags => 0,
+            size => Bytes,
+            usage => Vk.BUFFER_USAGE_TRANSFER_SRC_BIT,
+            sharing_Mode => Vk.SHARING_MODE_EXCLUSIVE,
+            queue_Family_Index_Count => 0,
+            p_Queue_Family_Indices => System.Null_Address);
+      begin
+         Result :=
+           Vk.Create_Buffer
+             (Device.Device,
+              Buffer_Info'Address,
+              System.Null_Address,
+              Staging_Buffer'Address);
+         if Result /= Vk.SUCCESS or else Staging_Buffer = System.Null_Address then
+            Status := Create_Atlas_Staging_Buffer_Failed;
+            return;
+         end if;
+      end;
+
+      Vk.Get_Buffer_Memory_Requirements
+        (Device.Device, Staging_Buffer, Memory_Requirements'Address);
+      Vk.Get_Physical_Device_Memory_Properties
+        (Choice.Physical_Device, Memory_Properties'Address);
+
+      if not Has_Memory_Type
+        (Memory_Properties,
+         Memory_Requirements.memory_Type_Bits,
+         Vk.MEMORY_PROPERTY_HOST_VISIBLE_BIT or
+           Vk.MEMORY_PROPERTY_HOST_COHERENT_BIT,
+         Memory_Type_Index)
+      then
+         Destroy_Staging;
+         Status := Allocate_Atlas_Staging_Memory_Failed;
+         return;
+      end if;
+
+      declare
+         Allocate_Info : aliased Vk.Memory_Allocate_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            p_Next => System.Null_Address,
+            allocation_Size => Memory_Requirements.size,
+            memory_Type_Index => Memory_Type_Index);
+      begin
+         Result :=
+           Vk.Allocate_Memory
+             (Device.Device,
+              Allocate_Info'Address,
+              System.Null_Address,
+              Staging_Memory'Address);
+         if Result /= Vk.SUCCESS or else Staging_Memory = System.Null_Address then
+            Destroy_Staging;
+            Status := Allocate_Atlas_Staging_Memory_Failed;
+            return;
+         end if;
+      end;
+
+      Result :=
+        Vk.Bind_Buffer_Memory (Device.Device, Staging_Buffer, Staging_Memory, 0);
+      if Result /= Vk.SUCCESS then
+         Destroy_Staging;
+         Status := Bind_Atlas_Staging_Buffer_Failed;
+         return;
+      end if;
+
+      Result :=
+        Vk.Map_Memory
+          (Device.Device, Staging_Memory, 0, Bytes, 0, Data'Address);
+      if Result /= Vk.SUCCESS or else Data = System.Null_Address then
+         Destroy_Staging;
+         Status := Map_Atlas_Staging_Buffer_Failed;
+         return;
+      end if;
+
+      declare
+         Target : constant Image_Texture_Byte_Mapping.Object_Pointer :=
+           Image_Texture_Byte_Mapping.To_Pointer (Data);
+         Fill_Status : Create_Status := Ok;
+      begin
+         Fill_Staging (Target, Fill_Status);
+         if Fill_Status /= Ok then
+            Vk.Unmap_Memory (Device.Device, Staging_Memory);
+            Destroy_Staging;
+            Status := Fill_Status;
+            return;
+         end if;
+      end;
+      Vk.Unmap_Memory (Device.Device, Staging_Memory);
+
+      declare
+         Image_Info : aliased Vk.Image_Create_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            p_Next => System.Null_Address,
+            flags => 0,
+            image_Type => Vk.IMAGE_TYPE_2D,
+            format => Format_R8G8B8A8_Unorm,
+            extent =>
+              (width => Interfaces.Unsigned_32 (Width),
+               height => Interfaces.Unsigned_32 (Height),
+               depth => 1),
+            mip_Levels => 1,
+            array_Layers => 1,
+            samples => Vk.SAMPLE_COUNT_1_BIT,
+            tiling => Vk.IMAGE_TILING_OPTIMAL,
+            usage => Vk.IMAGE_USAGE_TRANSFER_DST_BIT or Vk.IMAGE_USAGE_SAMPLED_BIT,
+            sharing_Mode => Vk.SHARING_MODE_EXCLUSIVE,
+            queue_Family_Index_Count => 0,
+            p_Queue_Family_Indices => System.Null_Address,
+            initial_Layout => Vk.IMAGE_LAYOUT_UNDEFINED);
+      begin
+         Result :=
+           Vk.Create_Image
+             (Device.Device, Image_Info'Address, System.Null_Address, Image'Address);
+         if Result /= Vk.SUCCESS or else Image = System.Null_Address then
+            Destroy_Staging;
+            Status := Create_Atlas_Image_Failed;
+            return;
+         end if;
+      end;
+
+      Vk.Get_Image_Memory_Requirements
+        (Device.Device, Image, Memory_Requirements'Address);
+      if not Has_Memory_Type
+        (Memory_Properties, Memory_Requirements.memory_Type_Bits, 0, Memory_Type_Index)
+      then
+         Cleanup_New_Image;
+         Destroy_Staging;
+         Status := Allocate_Atlas_Memory_Failed;
+         return;
+      end if;
+
+      declare
+         Allocate_Info : aliased Vk.Memory_Allocate_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            p_Next => System.Null_Address,
+            allocation_Size => Memory_Requirements.size,
+            memory_Type_Index => Memory_Type_Index);
+      begin
+         Result :=
+           Vk.Allocate_Memory
+             (Device.Device,
+              Allocate_Info'Address,
+              System.Null_Address,
+              Image_Memory'Address);
+         if Result /= Vk.SUCCESS or else Image_Memory = System.Null_Address then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status := Allocate_Atlas_Memory_Failed;
+            return;
+         end if;
+      end;
+
+      Result := Vk.Bind_Image_Memory (Device.Device, Image, Image_Memory, 0);
+      if Result /= Vk.SUCCESS then
+         Cleanup_New_Image;
+         Destroy_Staging;
+         Status := Bind_Atlas_Image_Failed;
+         return;
+      end if;
+
+      declare
+         View_Info : aliased Vk.Image_View_Create_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            p_Next => System.Null_Address,
+            flags => 0,
+            image => Image,
+            view_Type => Vk.IMAGE_VIEW_TYPE_2D,
+            format => Format_R8G8B8A8_Unorm,
+            components =>
+              (r => Vk.COMPONENT_SWIZZLE_IDENTITY,
+               g => Vk.COMPONENT_SWIZZLE_IDENTITY,
+               b => Vk.COMPONENT_SWIZZLE_IDENTITY,
+               a => Vk.COMPONENT_SWIZZLE_IDENTITY),
+            subresource_Range =>
+              (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
+               base_Mip_Level => 0,
+               level_Count => 1,
+               base_Array_Layer => 0,
+               layer_Count => 1));
+      begin
+         Result :=
+           Vk.Create_Image_View
+             (Device.Device,
+              View_Info'Address,
+              System.Null_Address,
+              Image_View'Address);
+         if Result /= Vk.SUCCESS or else Image_View = System.Null_Address then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status := Create_Atlas_View_Failed;
+            return;
+         end if;
+      end;
+
+      declare
+         Command_Buffer : constant Vk.Command_Buffer_T := Device.Command_Buffers (1);
+         Begin_Info : aliased Vk.Command_Buffer_Begin_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+            p_Next => System.Null_Address,
+            flags => Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            p_Inheritance_Info => System.Null_Address);
+         To_Transfer : aliased Vk.Image_Memory_Barrier_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            p_Next => System.Null_Address,
+            src_Access_Mask => 0,
+            dst_Access_Mask => Vk.ACCESS_TRANSFER_WRITE_BIT,
+            old_Layout => Vk.IMAGE_LAYOUT_UNDEFINED,
+            new_Layout => Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            src_Queue_Family_Index => Queue_Family_Ignored,
+            dst_Queue_Family_Index => Queue_Family_Ignored,
+            image => Image,
+            subresource_Range =>
+              (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
+               base_Mip_Level => 0,
+               level_Count => 1,
+               base_Array_Layer => 0,
+               layer_Count => 1));
+         Region : aliased Vk.Buffer_Image_Copy_T :=
+           (buffer_Offset => 0,
+            buffer_Row_Length => Vulkan_Buffer_Row_Length,
+            buffer_Image_Height => 0,
+            image_Subresource =>
+              (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
+               mip_Level => 0,
+               base_Array_Layer => 0,
+               layer_Count => 1),
+            image_Offset => (x => 0, y => 0, z => 0),
+            image_Extent =>
+              (width => Interfaces.Unsigned_32 (Width),
+               height => Interfaces.Unsigned_32 (Height),
+               depth => 1));
+         To_Shader : aliased Vk.Image_Memory_Barrier_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            p_Next => System.Null_Address,
+            src_Access_Mask => Vk.ACCESS_TRANSFER_WRITE_BIT,
+            dst_Access_Mask => Vk.ACCESS_SHADER_READ_BIT,
+            old_Layout => Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            new_Layout => Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            src_Queue_Family_Index => Queue_Family_Ignored,
+            dst_Queue_Family_Index => Queue_Family_Ignored,
+            image => Image,
+            subresource_Range =>
+              (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
+               base_Mip_Level => 0,
+               level_Count => 1,
+               base_Array_Layer => 0,
+               layer_Count => 1));
+         Submit_Command_Buffers : aliased Command_Buffer_Submit_Array :=
+           (1 => Command_Buffer);
+         Submit_Info : aliased Vk.Submit_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_SUBMIT_INFO,
+            p_Next => System.Null_Address,
+            wait_Semaphore_Count => 0,
+            p_Wait_Semaphores => System.Null_Address,
+            p_Wait_Dst_Stage_Mask => System.Null_Address,
+            command_Buffer_Count => 1,
+            p_Command_Buffers => Submit_Command_Buffers'Address,
+            signal_Semaphore_Count => 0,
+            p_Signal_Semaphores => System.Null_Address);
+      begin
+         if Command_Buffer = System.Null_Address then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status := Copy_Atlas_Failed;
+            return;
+         end if;
+
+         Result := Vk.Reset_Command_Buffer (Command_Buffer, 0);
+         if Result /= Vk.SUCCESS then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status := Copy_Atlas_Failed;
+            return;
+         end if;
+
+         Result := Vk.Begin_Command_Buffer (Command_Buffer, Begin_Info'Address);
+         if Result /= Vk.SUCCESS then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status := Copy_Atlas_Failed;
+            return;
+         end if;
+
+         Vk.Cmd_Pipeline_Barrier
+           (Command_Buffer,
+            Vk.PIPELINE_STAGE_TRANSFER_BIT,
+            Vk.PIPELINE_STAGE_TRANSFER_BIT,
+            0,
+            0,
+            System.Null_Address,
+            0,
+            System.Null_Address,
+            1,
+            To_Transfer'Address);
+         Vk.Cmd_Copy_Buffer_To_Image
+           (Command_Buffer,
+            Staging_Buffer,
+            Image,
+            Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            1,
+            Region'Address);
+         Vk.Cmd_Pipeline_Barrier
+           (Command_Buffer,
+            Vk.PIPELINE_STAGE_TRANSFER_BIT,
+            Vk.PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+            0,
+            0,
+            System.Null_Address,
+            0,
+            System.Null_Address,
+            1,
+            To_Shader'Address);
+
+         Result := Vk.End_Command_Buffer (Command_Buffer);
+         if Result /= Vk.SUCCESS then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status := Copy_Atlas_Failed;
+            return;
+         end if;
+
+         Result :=
+           Vk.Queue_Submit
+             (Device.Queue, 1, Submit_Info'Address, System.Null_Address);
+         if Result /= Vk.SUCCESS then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status := Copy_Atlas_Failed;
+            return;
+         end if;
+
+         Result := Vk.Queue_Wait_Idle (Device.Queue);
+         if Result /= Vk.SUCCESS then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status := Copy_Atlas_Failed;
+            return;
+         end if;
+      end;
+
+      declare
+         Image_Info : aliased Vk.Descriptor_Image_Info_T :=
+           (sampler => Device.Atlas_Sampler,
+            image_View => Image_View,
+            image_Layout => Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+         Write : aliased Vk.Write_Descriptor_Set_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            p_Next => System.Null_Address,
+            dst_Set => Device.Descriptor_Set,
+            dst_Binding => 1,
+            dst_Array_Element => 0,
+            descriptor_Count => 1,
+            descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            p_Image_Info => Image_Info'Address,
+            p_Buffer_Info => System.Null_Address,
+            p_Texel_Buffer_View => System.Null_Address);
+      begin
+         Vk.Update_Descriptor_Sets
+           (Device.Device, 1, Write'Address, 0, System.Null_Address);
+      end;
+
+      if Device.Atlas_View = System.Null_Address then
+         declare
+            Image_Info : aliased Vk.Descriptor_Image_Info_T :=
+              (sampler => Device.Atlas_Sampler,
+               image_View => Image_View,
+               image_Layout => Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            Write : aliased Vk.Write_Descriptor_Set_T :=
+              (s_Type => Vk.STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+               p_Next => System.Null_Address,
+               dst_Set => Device.Descriptor_Set,
+               dst_Binding => 0,
+               dst_Array_Element => 0,
+               descriptor_Count => 1,
+               descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+               p_Image_Info => Image_Info'Address,
+               p_Buffer_Info => System.Null_Address,
+               p_Texel_Buffer_View => System.Null_Address);
+         begin
+            Vk.Update_Descriptor_Sets
+              (Device.Device, 1, Write'Address, 0, System.Null_Address);
+         end;
+      end if;
+
+      Destroy_Image_Texture (Device);
+      Device.Image_Texture_Image := Image;
+      Device.Image_Texture_Memory := Image_Memory;
+      Device.Image_Texture_View := Image_View;
+      Device.Image_Texture_Width := Width;
+      Device.Image_Texture_Height := Height;
+      Device.Image_Texture_Bytes := Upload_Bytes_Natural;
+      Device.Image_Texture_Descriptor_Bound_Count := 2;
+      Image := System.Null_Address;
+      Image_Memory := System.Null_Address;
+      Image_View := System.Null_Address;
+      Destroy_Staging;
+      Status := Ok;
+   end Upload_Image_Texture_Staging_Source;
+
+   procedure Upload_Image_Texture_Row_Source
+     (Device        : in out Logical_Device;
+      Choice        : Selection;
+      Width         : Natural;
+      Height        : Natural;
+      Source_Bytes_Per_Pixel : Natural;
+      Row_Stride_Bytes : Natural;
+      Bytes_Natural : Natural;
+      Source_Byte   : not null access function
+        (Row         : Natural;
+         Byte_Offset : Natural) return Interfaces.Unsigned_8;
+      Status        : out Create_Status)
+   is
+      Target_Row_Bytes : constant Natural :=
+        (if Width <= Max_Image_Texture_Bytes / 4 then Width * 4 else 0);
+      Source_Row_Bytes : constant Natural :=
+        (if Source_Bytes_Per_Pixel > 0
+           and then Width <= Max_Image_Texture_Bytes / Source_Bytes_Per_Pixel
+         then Width * Source_Bytes_Per_Pixel
+         else 0);
+      Use_Vulkan_Row_Length : constant Boolean :=
+        Source_Bytes_Per_Pixel = 4
+        and then Target_Row_Bytes > 0
+        and then Row_Stride_Bytes > Target_Row_Bytes
+        and then Row_Stride_Bytes mod 4 = 0;
+
+      procedure Fill_Row_Source_Staging
+        (Target : Image_Texture_Byte_Mapping.Object_Pointer;
+         Status : out Create_Status)
+      is
+         Target_Index : Natural := 1;
+      begin
+         Status := Ok;
+         if Target = null
+           or else Target_Row_Bytes = 0
+           or else Source_Row_Bytes = 0
+         then
+            Status := Atlas_Too_Large;
+            return;
+         end if;
+
+         if Source_Bytes_Per_Pixel = 4
+           and then Row_Stride_Bytes = Target_Row_Bytes
+         then
+            for Row in 0 .. Height - 1 loop
+               for Offset in 0 .. Target_Row_Bytes - 1 loop
+                  Target.all (Target_Index) := Source_Byte (Row, Offset);
+                  Target_Index := Target_Index + 1;
+               end loop;
+            end loop;
+         elsif Use_Vulkan_Row_Length then
+            for Row in 0 .. Height - 1 loop
+               declare
+                  Copy_Bytes : constant Natural :=
+                    (if Row = Height - 1
+                     then Source_Row_Bytes
+                     else Row_Stride_Bytes);
+               begin
+                  for Offset in 0 .. Copy_Bytes - 1 loop
+                     Target.all (Target_Index) := Source_Byte (Row, Offset);
+                     Target_Index := Target_Index + 1;
+                  end loop;
+               end;
+            end loop;
+         elsif Source_Bytes_Per_Pixel = 4 then
+            for Row in 0 .. Height - 1 loop
+               for Offset in 0 .. Target_Row_Bytes - 1 loop
+                  Target.all (Target_Index) := Source_Byte (Row, Offset);
+                  Target_Index := Target_Index + 1;
+               end loop;
+            end loop;
+         else
+            for Row in 0 .. Height - 1 loop
+               for Pixel in 0 .. Width - 1 loop
+                  declare
+                     Source_Offset : constant Natural := Pixel * 3;
+                  begin
+                     Target.all (Target_Index) :=
+                       Source_Byte (Row, Source_Offset);
+                     Target.all (Target_Index + 1) :=
+                       Source_Byte (Row, Source_Offset + 1);
+                     Target.all (Target_Index + 2) :=
+                       Source_Byte (Row, Source_Offset + 2);
+                     Target.all (Target_Index + 3) := 16#FF#;
+                     Target_Index := Target_Index + 4;
+                  end;
+               end loop;
+            end loop;
+         end if;
+      end Fill_Row_Source_Staging;
+   begin
+      Upload_Image_Texture_Staging_Source
+        (Device        => Device,
+         Choice        => Choice,
+         Width         => Width,
+         Height        => Height,
+         Source_Bytes_Per_Pixel => Source_Bytes_Per_Pixel,
+         Row_Stride_Bytes => Row_Stride_Bytes,
+         Bytes_Natural => Bytes_Natural,
+         Fill_Staging  => Fill_Row_Source_Staging'Access,
+         Status        => Status);
+   end Upload_Image_Texture_Row_Source;
+
+   procedure Upload_Image_Texture_Encoded_Source
+     (Device        : in out Logical_Device;
+      Choice        : Selection;
+      Image_Source  : RM.Image_Command;
+      Status        : out Create_Status)
+   is
+      Width : constant Natural := Image_Source.Pixel_Width;
+      Height : constant Natural := Image_Source.Pixel_Height;
+      Bytes_Per_Pixel : constant Natural :=
+        (if Image_Source.Raw_Format = 24 then 3
+         elsif Image_Source.Raw_Format = 32 then 4
+         else 0);
+      Row_Stride_Bytes : constant Natural :=
+        Image_Source.Decoded_Row_Stride_Bytes;
+      Bytes_Natural : constant Natural :=
+        RM.Image_Decoded_Source_Bytes (Image_Source);
+      Source_Row_Bytes : constant Natural :=
+        (if Bytes_Per_Pixel > 0
+           and then Width <= Max_Image_Texture_Bytes / Bytes_Per_Pixel
+         then Width * Bytes_Per_Pixel
+         else 0);
+      Target_Row_Bytes : constant Natural :=
+        (if Width <= Max_Image_Texture_Bytes / 4 then Width * 4 else 0);
+      Use_Vulkan_Row_Length : constant Boolean :=
+        Bytes_Per_Pixel = 4
+        and then Target_Row_Bytes > 0
+        and then Row_Stride_Bytes > Target_Row_Bytes
+        and then Row_Stride_Bytes mod 4 = 0;
+      Target_Stride : constant Natural :=
+        (if Use_Vulkan_Row_Length then Row_Stride_Bytes else Target_Row_Bytes);
+
+      function Encoded_Text return String is
+         Result : String (1 .. Image_Source.Encoded_Source_Length);
+      begin
+         if Image_Source.Encoded_Source_Bytes = null
+           or else Image_Source.Encoded_Source_Length = 0
+           or else Image_Source.Encoded_Source_Length >
+             Image_Source.Encoded_Source_Bytes'Length
+         then
+            return "";
+         end if;
+
+         for I in Result'Range loop
+            Result (I) :=
+              Character'Val (Image_Source.Encoded_Source_Bytes (I));
+         end loop;
+         return Result;
+      end Encoded_Text;
+
+      procedure Fill_Encoded_Staging
+        (Target : Image_Texture_Byte_Mapping.Object_Pointer;
+         Status : out Create_Status)
+      is
+         Text : constant String := Encoded_Text;
+         Data : Terminal.App.Graphics.Graphics_Data_Preview :=
+           (Header_Recognized => True,
+            Has_Data          => True,
+            Raw_Format        => Image_Source.Raw_Format,
+            Pixel_Width       => Image_Source.Pixel_Width,
+            Pixel_Height      => Image_Source.Pixel_Height,
+            others            => <>);
+         Decoded_Encoded_Length : Natural := 0;
+         PNG_Length : Natural := 0;
+         Rows_Seen : Natural := 0;
+         Fill_Failed : Boolean := False;
+
+         function Chunk_Text (Index : Positive) return String is
+         begin
+            if Index = 1 then
+               return Text;
+            else
+               return "";
+            end if;
+         end Chunk_Text;
+
+         procedure Capture_Row
+           (Y        : Natural;
+            Row      : Terminal.Common.Bytes.Byte_Array;
+            Continue : in out Boolean)
+         is
+            Target_Index : Natural := 0;
+         begin
+            if Target = null
+              or else Text'Length = 0
+              or else Source_Row_Bytes = 0
+              or else Target_Row_Bytes = 0
+              or else Target_Stride = 0
+              or else Y >= Height
+              or else Row'Length < Source_Row_Bytes
+              or else Y > (Max_Image_Texture_Bytes - 1) / Target_Stride
+            then
+               Fill_Failed := True;
+               Continue := False;
+               return;
+            end if;
+
+            Target_Index := Y * Target_Stride + 1;
+            if Target_Index > Max_Image_Texture_Bytes
+              or else Target_Row_Bytes >
+                Max_Image_Texture_Bytes - Target_Index + 1
+            then
+               Fill_Failed := True;
+               Continue := False;
+               return;
+            end if;
+
+            if Bytes_Per_Pixel = 4 then
+               for Offset in 0 .. Target_Row_Bytes - 1 loop
+                  Target.all (Target_Index + Offset) := Interfaces.Unsigned_8
+                    (Row (Row'First + Offset));
+               end loop;
+            else
+               for Pixel in 0 .. Width - 1 loop
+                  declare
+                     Source_Offset : constant Natural := Pixel * 3;
+                     Target_Offset : constant Natural := Pixel * 4;
+                  begin
+                     Target.all (Target_Index + Target_Offset) :=
+                       Interfaces.Unsigned_8 (Row (Row'First + Source_Offset));
+                     Target.all (Target_Index + Target_Offset + 1) :=
+                       Interfaces.Unsigned_8
+                         (Row (Row'First + Source_Offset + 1));
+                     Target.all (Target_Index + Target_Offset + 2) :=
+                       Interfaces.Unsigned_8
+                         (Row (Row'First + Source_Offset + 2));
+                     Target.all (Target_Index + Target_Offset + 3) := 16#FF#;
+                  end;
+               end loop;
+            end if;
+
+            if Use_Vulkan_Row_Length
+              and then Row_Stride_Bytes > Target_Row_Bytes
+            then
+               for Offset in Target_Row_Bytes .. Row_Stride_Bytes - 1 loop
+                  exit when Target_Index + Offset > Max_Image_Texture_Bytes;
+                  Target.all (Target_Index + Offset) := 0;
+               end loop;
+            end if;
+
+            Rows_Seen := Rows_Seen + 1;
+         end Capture_Row;
+      begin
+         Status := Ok;
+         if Target = null
+           or else Text'Length = 0
+           or else Bytes_Per_Pixel = 0
+           or else Source_Row_Bytes = 0
+           or else Target_Row_Bytes = 0
+           or else Target_Stride = 0
+           or else Image_Source.Decoded_Source =
+             RM.Image_Decoded_Source_Buffer
+         then
+            Status := Atlas_Too_Large;
+            return;
+         end if;
+
+         case Image_Source.Decoded_Source is
+            when RM.Image_Decoded_Source_Raw_Base64 =>
+               Terminal.App.Graphics.Decode_Base64_Raw_Rows
+                 (Text,
+                  Image_Source.Raw_Format,
+                  Width,
+                  Height,
+                  Capture_Row'Access,
+                  Data);
+            when RM.Image_Decoded_Source_PNG_Base64 =>
+               Terminal.App.Graphics.Decode_Base64_PNG_Chunk_Rows
+                 (1,
+                  Chunk_Text'Access,
+                  Decoded_Encoded_Length,
+                  PNG_Length,
+                  Capture_Row'Access,
+                  Data);
+            when RM.Image_Decoded_Source_Sixel_Text =>
+               Terminal.App.Graphics.Decode_Sixel_Rows
+                 (Text, Capture_Row'Access, Data);
+            when others =>
+               Status := Atlas_Too_Large;
+               return;
+         end case;
+
+         if Fill_Failed
+           or else not Data.Decode_Complete
+           or else Data.Decode_Status /= Terminal.App.Graphics.Decode_Ok
+           or else Rows_Seen < Height
+         then
+            Status := Atlas_Too_Large;
+         end if;
+         Terminal.App.Graphics.Release (Data);
+      exception
+         when Storage_Error =>
+            Status := Atlas_Too_Large;
+            Terminal.App.Graphics.Release (Data);
+      end Fill_Encoded_Staging;
+   begin
+      Upload_Image_Texture_Staging_Source
+        (Device        => Device,
+         Choice        => Choice,
+         Width         => Width,
+         Height        => Height,
+         Source_Bytes_Per_Pixel => Bytes_Per_Pixel,
+         Row_Stride_Bytes => Row_Stride_Bytes,
+         Bytes_Natural => Bytes_Natural,
+         Fill_Staging  => Fill_Encoded_Staging'Access,
+         Status        => Status);
+   end Upload_Image_Texture_Encoded_Source;
+
+   procedure Upload_Image_Texture_Rows
+     (Device        : in out Logical_Device;
+      Choice        : Selection;
+      Width         : Natural;
+      Height        : Natural;
+      Source_Bytes_Per_Pixel : Natural;
+      Row_Stride_Bytes : Natural;
+      Bytes_Natural : Natural;
+      Pixels        : System.Address;
+      Status        : out Create_Status)
+   is
+      Source : constant Image_Texture_Byte_Mapping.Object_Pointer :=
+        Image_Texture_Byte_Mapping.To_Pointer (Pixels);
+
+      function Flat_Source_Byte
+        (Row         : Natural;
+         Byte_Offset : Natural) return Interfaces.Unsigned_8
+      is
+      begin
+         return Source.all (Row * Row_Stride_Bytes + Byte_Offset + 1);
+      end Flat_Source_Byte;
+   begin
+      if Pixels = System.Null_Address then
+         Status := Atlas_Too_Large;
+         return;
+      end if;
+
+      Upload_Image_Texture_Row_Source
+        (Device        => Device,
+         Choice        => Choice,
+         Width         => Width,
+         Height        => Height,
+         Source_Bytes_Per_Pixel => Source_Bytes_Per_Pixel,
+         Row_Stride_Bytes => Row_Stride_Bytes,
+         Bytes_Natural => Bytes_Natural,
+         Source_Byte   => Flat_Source_Byte'Access,
+         Status        => Status);
+   end Upload_Image_Texture_Rows;
+
+   procedure Upload_Image_Texture_Data
+     (Device        : in out Logical_Device;
+      Choice        : Selection;
+      Width         : Natural;
+      Height        : Natural;
+      Bytes_Natural : Natural;
+      Pixels        : System.Address;
+      Status        : out Create_Status)
+   is
+   begin
+      Upload_Image_Texture_Rows
+        (Device           => Device,
+         Choice           => Choice,
+         Width            => Width,
+         Height           => Height,
+         Source_Bytes_Per_Pixel => 4,
+         Row_Stride_Bytes =>
+           (if Width <= Max_Image_Texture_Bytes / 4 then Width * 4 else 0),
+         Bytes_Natural    => Bytes_Natural,
+         Pixels           => Pixels,
+         Status           => Status);
+   end Upload_Image_Texture_Data;
 
    procedure Ensure_Vertex_Buffer
      (Device : in out Logical_Device;
@@ -2813,11 +3910,51 @@ package body Terminal.App.Vulkan_Device is
         or else not Choice.Selected
         or else VS.Vertices (Batch) = null
       then
+         Device.Uploaded_Image_Command_Count := 0;
+         Device.Uploaded_Image_Vertex_Count := 0;
+         Device.Uploaded_Image_Texture_Vertex_Count := 0;
+         Device.Uploaded_Image_Texture_Staging_Bytes := 0;
+         Device.Uploaded_Image_Protocol := RM.Image_Sixel;
+         Device.Uploaded_Image_Width := 0;
+         Device.Uploaded_Image_Height := 0;
+         Device.Uploaded_Image_Raw_Format := 0;
+         Device.Uploaded_Image_Pixel_Width := 0;
+         Device.Uploaded_Image_Pixel_Height := 0;
+         Device.Uploaded_Image_Payload_Length := 0;
+         Device.Uploaded_Image_Payload_Preview_Complete := False;
+         Device.Uploaded_Image_Encoded_Preview_Length := 0;
+         Device.Uploaded_Image_Decoded_Preview_Length := 0;
+         Device.Uploaded_Image_Decoded_Preview_Bytes := (others => 0);
+         Device.Uploaded_Image_Preview_Decode_Complete := False;
+         Device.Uploaded_Image_Decode_Status := RM.Image_Decode_Not_Attempted;
+         Device.Uploaded_Image_Placeholder := False;
+         Device.Uploaded_Image_Texture_Downgraded := False;
+         Device.Uploaded_Image_Texture_Source := VS.Texture_None;
          Status := Selection_Not_Ready;
          return;
       end if;
 
       if Count = 0 or else Count > Max_Upload_Vertices then
+         Device.Uploaded_Image_Command_Count := 0;
+         Device.Uploaded_Image_Vertex_Count := 0;
+         Device.Uploaded_Image_Texture_Vertex_Count := 0;
+         Device.Uploaded_Image_Texture_Staging_Bytes := 0;
+         Device.Uploaded_Image_Protocol := RM.Image_Sixel;
+         Device.Uploaded_Image_Width := 0;
+         Device.Uploaded_Image_Height := 0;
+         Device.Uploaded_Image_Raw_Format := 0;
+         Device.Uploaded_Image_Pixel_Width := 0;
+         Device.Uploaded_Image_Pixel_Height := 0;
+         Device.Uploaded_Image_Payload_Length := 0;
+         Device.Uploaded_Image_Payload_Preview_Complete := False;
+         Device.Uploaded_Image_Encoded_Preview_Length := 0;
+         Device.Uploaded_Image_Decoded_Preview_Length := 0;
+         Device.Uploaded_Image_Decoded_Preview_Bytes := (others => 0);
+         Device.Uploaded_Image_Preview_Decode_Complete := False;
+         Device.Uploaded_Image_Decode_Status := RM.Image_Decode_Not_Attempted;
+         Device.Uploaded_Image_Placeholder := False;
+         Device.Uploaded_Image_Texture_Downgraded := False;
+         Device.Uploaded_Image_Texture_Source := VS.Texture_None;
          Status := Vertex_Buffer_Too_Large;
          return;
       end if;
@@ -2827,6 +3964,103 @@ package body Terminal.App.Vulkan_Device is
          if Status /= Ok then
             return;
          end if;
+      end if;
+
+      if VS.Last_Image_Texture_Source (Batch) = VS.Texture_Image then
+         Device.Uploaded_Image_Texture_Staging_Bytes := 0;
+         declare
+            Pixel_Width : constant Natural := VS.Last_Image_Pixel_Width (Batch);
+            Pixel_Height : constant Natural := VS.Last_Image_Pixel_Height (Batch);
+            Raw_Format : constant Natural := VS.Last_Image_Raw_Format (Batch);
+            Bytes_Per_Pixel : constant Natural :=
+              (if Raw_Format = 24 then 3
+               elsif Raw_Format = 32 then 4
+               else 0);
+            Raw_Bytes : constant Natural :=
+              Pixel_Width * Pixel_Height * Bytes_Per_Pixel;
+            RGBA_Bytes : constant Natural := Pixel_Width * Pixel_Height * 4;
+            Source_Row_Stride_Bytes : constant Natural :=
+              VS.Last_Image_Decoded_Row_Stride_Bytes (Batch);
+            Source_Row_Bytes : constant Natural :=
+              Pixel_Width * Bytes_Per_Pixel;
+            Source_Bytes_Required : constant Natural :=
+              VS.Last_Image_Decoded_Source_Bytes (Batch);
+            Image_Source : constant RM.Image_Command :=
+              VS.Last_Image_Source_Command (Batch);
+
+            function Batch_Source_Byte
+              (Row         : Natural;
+               Byte_Offset : Natural) return Interfaces.Unsigned_8
+            is
+            begin
+               return Interfaces.Unsigned_8
+                 (VS.Last_Image_Decoded_Row_Byte
+                    (Batch, Row, Byte_Offset));
+            end Batch_Source_Byte;
+         begin
+            if Pixel_Width = 0
+              or else Pixel_Height = 0
+              or else Bytes_Per_Pixel = 0
+              or else Raw_Bytes = 0
+              or else Raw_Bytes > RM.Max_Image_Decoded_Data_Length
+              or else not VS.Last_Image_Decoded_Source_Available (Batch)
+              or else Source_Row_Stride_Bytes < Source_Row_Bytes
+              or else Source_Bytes_Required = 0
+              or else RGBA_Bytes > Max_Image_Texture_Bytes
+            then
+              Device.Uploaded_Image_Texture_Downgraded := True;
+              Device.Uploaded_Image_Texture_Source := VS.Texture_None;
+            elsif Image_Source.Decoded_Source =
+              RM.Image_Decoded_Source_Raw_Base64
+              or else Image_Source.Decoded_Source =
+                RM.Image_Decoded_Source_PNG_Base64
+              or else Image_Source.Decoded_Source =
+                RM.Image_Decoded_Source_Sixel_Text
+            then
+               if Raw_Format = 24 then
+                  Device.Uploaded_Image_Texture_Staging_Bytes := RGBA_Bytes;
+               end if;
+               Upload_Image_Texture_Encoded_Source
+                 (Device       => Device,
+                  Choice       => Choice,
+                  Image_Source => Image_Source,
+                  Status       => Status);
+               if Status /= Ok then
+                  return;
+               end if;
+            elsif Raw_Format = 32 then
+               Upload_Image_Texture_Row_Source
+                 (Device           => Device,
+                  Choice           => Choice,
+                  Width            => Pixel_Width,
+                  Height           => Pixel_Height,
+                  Source_Bytes_Per_Pixel => 4,
+                  Row_Stride_Bytes => Source_Row_Stride_Bytes,
+                  Bytes_Natural    => Source_Bytes_Required,
+                  Source_Byte      => Batch_Source_Byte'Access,
+                  Status           => Status);
+               if Status /= Ok then
+                  return;
+               end if;
+            else
+               Device.Uploaded_Image_Texture_Staging_Bytes := RGBA_Bytes;
+               Upload_Image_Texture_Row_Source
+                 (Device           => Device,
+                  Choice           => Choice,
+                  Width            => Pixel_Width,
+                  Height           => Pixel_Height,
+                  Source_Bytes_Per_Pixel => 3,
+                  Row_Stride_Bytes => Source_Row_Stride_Bytes,
+                  Bytes_Natural    => Source_Bytes_Required,
+                  Source_Byte      => Batch_Source_Byte'Access,
+                  Status           => Status);
+               if Status /= Ok then
+                  return;
+               end if;
+            end if;
+         end;
+      else
+         Destroy_Image_Texture (Device);
       end if;
 
       Bytes := Interfaces.Unsigned_64 (Count) * Packed_Vertex_Bytes;
@@ -2866,14 +4100,48 @@ package body Terminal.App.Vulkan_Device is
                   B          => Interfaces.C.C_float (Source.Color.B),
                   A          => Interfaces.C.C_float (Source.Color.A),
                   Textured   => To_Float (Source.Textured),
-                  Texture_ID =>
-                    (if Source.Texture = VS.Texture_Text_Atlas then 1.0 else 0.0));
+                  Texture_ID => Texture_ID (Source.Texture));
             end;
          end loop;
       end;
 
       Vk.Unmap_Memory (Device.Device, Device.Vertex_Memory);
       Device.Uploaded_Vertex_Count := Count;
+      Device.Uploaded_Image_Command_Count := VS.Image_Command_Count (Batch);
+      Device.Uploaded_Image_Vertex_Count := VS.Image_Vertex_Count (Batch);
+      Device.Uploaded_Image_Texture_Vertex_Count :=
+        VS.Image_Texture_Vertex_Count (Batch);
+      Device.Uploaded_Image_Protocol := VS.Last_Image_Protocol (Batch);
+      Device.Uploaded_Image_Width := VS.Last_Image_Width (Batch);
+      Device.Uploaded_Image_Height := VS.Last_Image_Height (Batch);
+      Device.Uploaded_Image_Raw_Format := VS.Last_Image_Raw_Format (Batch);
+      Device.Uploaded_Image_Pixel_Width := VS.Last_Image_Pixel_Width (Batch);
+      Device.Uploaded_Image_Pixel_Height := VS.Last_Image_Pixel_Height (Batch);
+      Device.Uploaded_Image_Payload_Length :=
+        VS.Last_Image_Payload_Length (Batch);
+      if VS.Last_Image_Texture_Source (Batch) /= VS.Texture_Image then
+         Device.Uploaded_Image_Texture_Staging_Bytes := 0;
+      end if;
+      Device.Uploaded_Image_Payload_Preview_Complete :=
+        VS.Last_Image_Payload_Preview_Complete (Batch);
+      Device.Uploaded_Image_Encoded_Preview_Length :=
+        VS.Last_Image_Encoded_Preview_Length (Batch);
+      Device.Uploaded_Image_Decoded_Preview_Length :=
+        VS.Last_Image_Decoded_Preview_Length (Batch);
+      Device.Uploaded_Image_Decoded_Preview_Bytes := (others => 0);
+      for I in 1 .. RM.Max_Image_Decoded_Preview_Length loop
+         Device.Uploaded_Image_Decoded_Preview_Bytes (I) :=
+           VS.Last_Image_Decoded_Preview_Byte (Batch, I);
+      end loop;
+      Device.Uploaded_Image_Preview_Decode_Complete :=
+        VS.Last_Image_Preview_Decode_Complete (Batch);
+      Device.Uploaded_Image_Decode_Status :=
+        VS.Last_Image_Decode_Status (Batch);
+      Device.Uploaded_Image_Placeholder := VS.Last_Image_Placeholder (Batch);
+      Device.Uploaded_Image_Texture_Downgraded :=
+        VS.Last_Image_Texture_Downgraded (Batch);
+      Device.Uploaded_Image_Texture_Source :=
+        VS.Last_Image_Texture_Source (Batch);
       Device.Uploaded_Text_Run_Count := VS.Text_Run_Count (Batch);
       Device.Uploaded_Shaped_Glyph_Count := VS.Shaped_Glyph_Count (Batch);
       Status := Ok;
@@ -3134,6 +4402,35 @@ package body Terminal.App.Vulkan_Device is
          Vertex_Buffer_Created => Device.Vertex_Buffer /= System.Null_Address,
          Vertex_Buffer_Bytes => Device.Vertex_Buffer_Bytes,
          Uploaded_Vertex_Count => Device.Uploaded_Vertex_Count,
+         Uploaded_Image_Command_Count => Device.Uploaded_Image_Command_Count,
+         Uploaded_Image_Vertex_Count => Device.Uploaded_Image_Vertex_Count,
+         Uploaded_Image_Texture_Vertex_Count =>
+           Device.Uploaded_Image_Texture_Vertex_Count,
+         Uploaded_Image_Protocol => Device.Uploaded_Image_Protocol,
+         Uploaded_Image_Width => Device.Uploaded_Image_Width,
+         Uploaded_Image_Height => Device.Uploaded_Image_Height,
+         Uploaded_Image_Raw_Format => Device.Uploaded_Image_Raw_Format,
+         Uploaded_Image_Pixel_Width => Device.Uploaded_Image_Pixel_Width,
+         Uploaded_Image_Pixel_Height => Device.Uploaded_Image_Pixel_Height,
+         Uploaded_Image_Payload_Length =>
+           Device.Uploaded_Image_Payload_Length,
+         Uploaded_Image_Texture_Staging_Bytes =>
+           Device.Uploaded_Image_Texture_Staging_Bytes,
+         Uploaded_Image_Payload_Preview_Complete =>
+           Device.Uploaded_Image_Payload_Preview_Complete,
+         Uploaded_Image_Encoded_Preview_Length =>
+           Device.Uploaded_Image_Encoded_Preview_Length,
+         Uploaded_Image_Decoded_Preview_Length =>
+           Device.Uploaded_Image_Decoded_Preview_Length,
+         Uploaded_Image_Decoded_Preview_Bytes =>
+           Device.Uploaded_Image_Decoded_Preview_Bytes,
+         Uploaded_Image_Preview_Decode_Complete =>
+           Device.Uploaded_Image_Preview_Decode_Complete,
+         Uploaded_Image_Decode_Status => Device.Uploaded_Image_Decode_Status,
+         Uploaded_Image_Placeholder => Device.Uploaded_Image_Placeholder,
+         Uploaded_Image_Texture_Downgraded =>
+           Device.Uploaded_Image_Texture_Downgraded,
+         Uploaded_Image_Texture_Source => Device.Uploaded_Image_Texture_Source,
          Uploaded_Text_Run_Count => Device.Uploaded_Text_Run_Count,
          Uploaded_Shaped_Glyph_Count => Device.Uploaded_Shaped_Glyph_Count,
          Rendered_Frame_Count => Device.Rendered_Frame_Count,
@@ -3142,6 +4439,10 @@ package body Terminal.App.Vulkan_Device is
          Atlas_Image_Created => Device.Atlas_Image /= System.Null_Address,
          Atlas_View_Created => Device.Atlas_View /= System.Null_Address,
          Atlas_Sampler_Created => Device.Atlas_Sampler /= System.Null_Address,
+         Image_Texture_Descriptor_Capacity =>
+           Device.Image_Texture_Descriptor_Capacity,
+         Image_Texture_Descriptor_Bound_Count =>
+           Device.Image_Texture_Descriptor_Bound_Count,
          Atlas_Width => Device.Atlas_Width,
          Atlas_Height => Device.Atlas_Height,
          Atlas_Bytes => Device.Atlas_Bytes,
@@ -3150,4 +4451,129 @@ package body Terminal.App.Vulkan_Device is
          Swapchain_Height   => Device.Swapchain_Height,
          Last_Status        => Device.Last_Status);
    end Diagnostics;
+
+   function Image_Status_Label
+     (Diagnostics : Device_Diagnostic_Snapshot) return String
+   is
+      function Protocol_Name return String is
+      begin
+         case Diagnostics.Uploaded_Image_Protocol is
+            when RM.Image_Sixel =>
+               return "sixel";
+            when RM.Image_Kitty =>
+               return "kitty";
+            when RM.Image_ITerm2 =>
+               return "iTerm2";
+         end case;
+      end Protocol_Name;
+
+   begin
+      if Diagnostics.Uploaded_Image_Command_Count = 0 then
+         return "";
+      end if;
+
+      return
+        "uploaded image " & Protocol_Name
+        & " size=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Width)
+        & "x" & Trimmed_Natural (Diagnostics.Uploaded_Image_Height)
+        & (if Diagnostics.Uploaded_Image_Pixel_Width > 0
+           and then Diagnostics.Uploaded_Image_Pixel_Height > 0
+           then
+             " pixels=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Pixel_Width)
+             & "x" & Trimmed_Natural (Diagnostics.Uploaded_Image_Pixel_Height)
+             & " format=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Raw_Format)
+           else "")
+        & " vertices=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Vertex_Count)
+        & " payload=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Payload_Length)
+        & RM.Image_Payload_Status_Suffix
+            (Diagnostics.Uploaded_Image_Payload_Preview_Complete)
+        & " preview="
+        & Trimmed_Natural (Diagnostics.Uploaded_Image_Decoded_Preview_Length)
+        & "/"
+        & Trimmed_Natural (Diagnostics.Uploaded_Image_Encoded_Preview_Length)
+        & Terminal.Common.Status.Preview_Bytes_Label
+            (Diagnostics.Uploaded_Image_Decoded_Preview_Bytes,
+             Diagnostics.Uploaded_Image_Decoded_Preview_Length)
+        & " texture="
+        & VS.Texture_Source_Label (Diagnostics.Uploaded_Image_Texture_Source)
+        & (if Diagnostics.Uploaded_Image_Placeholder
+           then " placeholder"
+           else " textured")
+        & (if Diagnostics.Uploaded_Image_Texture_Downgraded
+           then " downgraded"
+           else "")
+        & (if Diagnostics.Uploaded_Image_Preview_Decode_Complete
+           then " decoded"
+           else " partial")
+        & RM.Image_Decode_Status_Suffix
+            (Diagnostics.Uploaded_Image_Decode_Status);
+   end Image_Status_Label;
+
+   function Image_Texture_Status_Label
+     (Diagnostics : Device_Diagnostic_Snapshot) return String
+   is
+   begin
+      if Diagnostics.Uploaded_Image_Command_Count = 0 then
+         return "";
+      elsif Diagnostics.Uploaded_Image_Texture_Downgraded then
+         return
+           "device image texture downgraded; texture="
+           & VS.Texture_Source_Label (Diagnostics.Uploaded_Image_Texture_Source)
+           & " vertices="
+           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count);
+      elsif Diagnostics.Uploaded_Image_Texture_Source = VS.Texture_Image
+        and then not Diagnostics.Uploaded_Image_Placeholder
+      then
+         return
+           "device image texture ready; vertices="
+           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count);
+      else
+         return
+           "device image texture unavailable; texture="
+           & VS.Texture_Source_Label (Diagnostics.Uploaded_Image_Texture_Source)
+           & " vertices="
+           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count);
+      end if;
+   end Image_Texture_Status_Label;
+
+   function Image_Texture_Resource_Status_Label
+     (Diagnostics : Device_Diagnostic_Snapshot) return String
+   is
+   begin
+      if Diagnostics.Uploaded_Image_Command_Count = 0 then
+         return "";
+      elsif Diagnostics.Uploaded_Image_Texture_Source /= VS.Texture_Image then
+         return
+           "device image texture resources inactive; texture="
+           & VS.Texture_Source_Label (Diagnostics.Uploaded_Image_Texture_Source)
+           & " descriptors="
+           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Bound_Count)
+           & "/"
+           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Capacity);
+      elsif Diagnostics.Uploaded_Image_Texture_Vertex_Count = 0 then
+         return
+           "device image texture resources unavailable; vertices=0"
+           & " descriptors="
+           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Bound_Count)
+           & "/"
+           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Capacity);
+      elsif Diagnostics.Image_Texture_Descriptor_Bound_Count >= 2 then
+         return
+           "device image texture resources ready; vertices="
+           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count)
+           & " descriptors="
+           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Bound_Count)
+           & "/"
+           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Capacity);
+      else
+         return
+           "device image texture resources pending; descriptor=atlas-only"
+           & " vertices="
+           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count)
+           & " descriptors="
+           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Bound_Count)
+           & "/"
+           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Capacity);
+      end if;
+   end Image_Texture_Resource_Status_Label;
 end Terminal.App.Vulkan_Device;

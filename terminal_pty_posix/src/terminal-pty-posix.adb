@@ -97,6 +97,40 @@ package body Terminal.PTY.POSIX is
       return errno_location.all;
    end Last_Errno;
 
+   function Capabilities return Backend_Capabilities is
+   begin
+      return
+        (POSIX_PTY        => True,
+         Windows_ConPTY   => False,
+         Resize           => True,
+         Terminal_Env     => True,
+         Nonblocking_Read => True);
+   end Capabilities;
+
+   function Backend_Status_Label
+     (Capabilities : Backend_Capabilities) return String is
+   begin
+      if Capabilities.POSIX_PTY
+        and then Capabilities.Resize
+        and then Capabilities.Terminal_Env
+        and then Capabilities.Nonblocking_Read
+      then
+         return "POSIX PTY backend with resize, env, and nonblocking read";
+      else
+         return "reduced POSIX PTY backend";
+      end if;
+   end Backend_Status_Label;
+
+   function ConPTY_Status_Label
+     (Capabilities : Backend_Capabilities) return String is
+   begin
+      if Capabilities.Windows_ConPTY then
+         return "Windows ConPTY supported";
+      else
+         return "Windows ConPTY unsupported by POSIX PTY backend";
+      end if;
+   end ConPTY_Status_Label;
+
    function Decode_Exit_State (Status : int) return Exit_State is
       Low_7_Bits : constant int := Status mod 128;
    begin
@@ -205,9 +239,11 @@ package body Terminal.PTY.POSIX is
             Slave : int;
             Shell : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Shell_Path);
             Term_Name : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String ("TERM");
-            Term_Value : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String ("xterm-256color");
+            Term_Value : Interfaces.C.Strings.chars_ptr :=
+              Interfaces.C.Strings.New_String (Terminal.PTY.POSIX.Term_Name);
             Color_Name : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String ("COLORTERM");
-            Color_Value : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String ("truecolor");
+            Color_Value : Interfaces.C.Strings.chars_ptr :=
+              Interfaces.C.Strings.New_String (Terminal.PTY.POSIX.Color_Term);
             Args : aliased Argv_Array :=
               (1 => Shell,
                2 => Interfaces.C.Strings.Null_Ptr);

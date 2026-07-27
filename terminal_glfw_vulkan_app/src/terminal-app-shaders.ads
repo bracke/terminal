@@ -3,6 +3,7 @@ with System;
 
 package Terminal.App.Shaders is
    Max_Shader_Words : constant := 16_384;
+   Max_Status_Label_Length : constant := 96;
 
    type Load_Status is
      (Ok,
@@ -28,6 +29,7 @@ package Terminal.App.Shaders is
    function Word_Count (Code : Shader_Code) return Natural;
    function Byte_Size (Code : Shader_Code) return Natural;
    function Address (Code : Shader_Code) return System.Address;
+   function Status_Label (Status : Load_Status) return String;
 
 private
    type Shader_Code is limited record

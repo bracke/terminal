@@ -1,15 +1,30 @@
 with GLFW_Vulkan.Input;
 with Terminal.Core;
 with Terminal.App.Queues;
+with Terminal.App.Splits;
+with Terminal.App.Tabs;
 
 package Terminal.App.Input_Map is
+   Max_Input_Status_Label_Length : constant := 96;
+   Max_Mouse_Status_Label_Length : constant := 96;
+
    function Is_Paste_Shortcut
      (Event : GLFW_Vulkan.Input.Key_Event) return Boolean;
 
    function Is_Copy_Shortcut
      (Event : GLFW_Vulkan.Input.Key_Event) return Boolean;
 
+   function Tab_Command
+     (Event : GLFW_Vulkan.Input.Key_Event) return Terminal.App.Tabs.Tab_Command;
+
+   function Split_Command
+     (Event : GLFW_Vulkan.Input.Key_Event)
+      return Terminal.App.Splits.Split_Command;
+
    function Is_Primary_Paste_Button
+     (Event : GLFW_Vulkan.Input.Mouse_Button_Event) return Boolean;
+
+   function Local_Mouse_Selection_Override
      (Event : GLFW_Vulkan.Input.Mouse_Button_Event) return Boolean;
 
    function Suppressed_Character
@@ -30,8 +45,25 @@ package Terminal.App.Input_Map is
       Modes : Terminal.Core.Mode_Snapshot;
       Chunk : out Terminal.App.Queues.Byte_Chunk);
 
+   function Paste_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String;
+
+   function Focus_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String;
+
+   function Keyboard_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String;
+
+   function Key_Mode_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String;
+
+   function Input_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String;
+
    function Mouse_Reporting_Enabled
      (Modes : Terminal.Core.Mode_Snapshot) return Boolean;
+   function Mouse_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String;
 
    procedure Encode_Mouse_Button
      (Event : GLFW_Vulkan.Input.Mouse_Button_Event;

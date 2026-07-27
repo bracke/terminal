@@ -73,6 +73,30 @@ package body Terminal.App.Text_Shaper is
    function Backend_Available return Boolean is
      (Default_Face_Loaded and then HB.Is_Loaded (Default_Face));
 
+   function Backend_Status_Label (Status : Backend_Status) return String is
+   begin
+      case Status is
+         when Backend_Ok =>
+            return "Shaping backend ready";
+         when Backend_Unavailable =>
+            return "Shaping backend unavailable";
+         when Backend_Load_Failed =>
+            return "Shaping backend load failed";
+      end case;
+   end Backend_Status_Label;
+
+   function Shape_Status_Label (Status : Shape_Status) return String is
+   begin
+      case Status is
+         when RM.Shape_Ok =>
+            return "Text shaping complete";
+         when RM.Needs_Shaping_Backend =>
+            return "Text shaping backend needed";
+         when RM.Invalid_Run =>
+            return "Text shaping skipped; invalid run";
+      end case;
+   end Shape_Status_Label;
+
    procedure Ensure_Default_Backend is
       Status : Backend_Status;
    begin

@@ -8,6 +8,8 @@ procedure Selection_Smoke is
    use AUnit.Assertions;
    use Terminal.Common.Bytes;
    use type Terminal.Common.Code_Point;
+   use type Terminal.App.Selection.Cell_Position;
+   use type Terminal.App.Selection.Selection_Mode;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
 
@@ -33,6 +35,18 @@ procedure Selection_Smoke is
       return Result;
    end To_String;
 begin
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+   begin
+      Assert
+        (Terminal.App.Selection.Status_Label (Sel) = "No local selection",
+         "empty selection status label");
+      Assert
+        (Terminal.App.Selection.Status_Label (Sel)'Length <=
+         Terminal.App.Selection.Max_Status_Label_Length,
+         "selection status label should be bounded");
+   end;
+
    declare
       Pos : constant Terminal.App.Selection.Cell_Position :=
         Terminal.App.Selection.Cell_From_Pixels
@@ -62,13 +76,37 @@ begin
    begin
       Terminal.App.Selection.Begin_Selection
         (Sel, (Row => 1, Col => 2));
+      Assert
+        (Terminal.App.Selection.Status_Label (Sel) =
+         "Linear selection active",
+         "active linear selection status label");
       Terminal.App.Selection.Finish_Selection
         (Sel, (Row => 2, Col => 2));
+      Assert
+        (Terminal.App.Selection.Status_Label (Sel) =
+         "Linear selection ready",
+         "finished linear selection status label");
 
       Assert
         (Terminal.App.Selection.Selected_Text (S, Sel) =
          "b" & ASCII.LF & "cd",
          "selection should copy visible text across rows");
+      declare
+         Info : constant Terminal.App.Selection.Selection_Snapshot :=
+           Terminal.App.Selection.Snapshot (Sel);
+      begin
+         Assert (not Info.Active, "selection snapshot inactive after finish");
+         Assert (Info.Has_Range, "selection snapshot has range");
+         Assert
+           (Info.Mode = Terminal.App.Selection.Linear,
+            "selection snapshot linear mode");
+         Assert
+           (Info.Anchor = (Row => 1, Col => 2),
+            "selection snapshot linear anchor");
+         Assert
+           (Info.Focus = (Row => 2, Col => 2),
+            "selection snapshot linear focus");
+      end;
 
       Assert
         (not Terminal.Core.Cell_At (S, 1, 2).Style.Inverse,
@@ -116,6 +154,78 @@ begin
       Assert
         (Terminal.App.Selection.Selected_Text (S, Sel) = "d",
          "extend without prior range should start selection");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 3, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "rectangular selection initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        ("abcdef" & ASCII.CR & ASCII.LF
+         & "ghijkl" & ASCII.CR & ASCII.LF
+         & "mnopqr"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "rectangular selection feed failed");
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Begin_Rectangular_Selection
+        (Sel, (Row => 1, Col => 2));
+      Assert
+        (Terminal.App.Selection.Status_Label (Sel) =
+         "Rectangular selection active",
+         "rectangular selection status label");
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 3, Col => 4));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         "bcd" & ASCII.LF & "hij" & ASCII.LF & "nop",
+         "rectangular selection should copy selected columns on each row");
+      declare
+         Info : constant Terminal.App.Selection.Selection_Snapshot :=
+           Terminal.App.Selection.Snapshot (Sel);
+      begin
+         Assert
+           (Info.Mode = Terminal.App.Selection.Rectangular,
+            "selection snapshot rectangular mode");
+         Assert
+           (Info.Anchor = (Row => 1, Col => 2),
+            "selection snapshot rectangular anchor");
+         Assert
+           (Info.Focus = (Row => 3, Col => 4),
+            "selection snapshot rectangular focus");
+      end;
+
+      Terminal.App.Selection.Apply_To_Snapshot (S, Sel);
+      Assert
+        (not Terminal.Core.Cell_At (S, 1, 1).Style.Inverse,
+         "rectangular selection should not highlight before first column");
+      Assert
+        (Terminal.Core.Cell_At (S, 2, 3).Style.Inverse,
+         "rectangular selection should highlight inside rectangle");
+      Assert
+        (not Terminal.Core.Cell_At (S, 3, 5).Style.Inverse,
+         "rectangular selection should not highlight after last column");
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Begin_Rectangular_Selection
+        (Sel, (Row => 3, Col => 4));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 2));
+
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+         "bcd" & ASCII.LF & "hij" & ASCII.LF & "nop",
+         "rectangular selection should normalize reverse drag bounds");
       Terminal.Core.Release (S);
    end;
 

@@ -155,6 +155,124 @@ package body Terminal.App.Hyperlinks is
       end if;
    end Open_Command;
 
+   function Link_Label (Link : Terminal.Core.Hyperlink) return String is
+      URI_Text : constant String :=
+        (if Link.URI_Length = 0 then "" else Link.URI (1 .. Link.URI_Length));
+      Last : Natural := 0;
+      Result : String (1 .. Max_Link_Label_Length);
+   begin
+      if not Link.Active
+        or else Link.URI_Length = 0
+        or else not Supported_URI (URI_Text)
+      then
+         return "";
+      end if;
+
+      for Ch of URI_Text loop
+         exit when Last = Result'Last;
+         Last := Last + 1;
+         Result (Last) := Ch;
+      end loop;
+
+      return Result (1 .. Last);
+   end Link_Label;
+
+   function Status_Label (Link : Terminal.Core.Hyperlink) return String is
+      URI_Text : constant String :=
+        (if Link.URI_Length = 0 then "" else Link.URI (1 .. Link.URI_Length));
+      Prefix : constant String :=
+        (if Link.Active
+           and then Link.URI_Length > 0
+           and then Supported_URI (URI_Text)
+         then "Open "
+         else "Unsupported link ");
+      Last : Natural := 0;
+      Result : String (1 .. Max_Status_Label_Length);
+
+      procedure Append (Ch : Character) is
+      begin
+         if Last < Result'Last then
+            Last := Last + 1;
+            Result (Last) := Ch;
+         end if;
+      end Append;
+
+      procedure Append_String (Text : String) is
+      begin
+         for Ch of Text loop
+            Append (Ch);
+         end loop;
+      end Append_String;
+   begin
+      if not Link.Active or else Link.URI_Length = 0 then
+         return "";
+      end if;
+
+      Append_String (Prefix);
+      for Ch of URI_Text loop
+         exit when Last = Result'Last;
+         if Is_URI_Graphic (Ch) then
+            Append (Ch);
+         else
+            Append ('?');
+         end if;
+      end loop;
+
+      return Result (1 .. Last);
+   end Status_Label;
+
+   function Activation_Status_Label (Status : Activation_Status) return String is
+   begin
+      case Status is
+         when Ok =>
+            return "Link opened";
+         when No_Link =>
+            return "No link under pointer";
+         when Unsupported_URI =>
+            return "Unsupported link target";
+         when Command_Too_Long =>
+            return "Link command too long";
+         when Launch_Failed =>
+            return "Link launcher failed";
+      end case;
+   end Activation_Status_Label;
+
+   function Hover_Title
+     (Base_Title : String;
+      Link       : Terminal.Core.Hyperlink) return String
+   is
+      Label : constant String := Link_Label (Link);
+      Prefix : constant String :=
+        (if Base_Title'Length = 0 then "Ada Terminal" else Base_Title);
+      Separator : constant String := " - ";
+      Last : Natural := 0;
+      Result : String (1 .. Max_Hover_Title_Length);
+
+      procedure Append (Ch : Character) is
+      begin
+         if Last < Result'Last then
+            Last := Last + 1;
+            Result (Last) := Ch;
+         end if;
+      end Append;
+
+      procedure Append_String (Text : String) is
+      begin
+         for Ch of Text loop
+            Append (Ch);
+         end loop;
+      end Append_String;
+   begin
+      if Label = "" then
+         return Prefix;
+      end if;
+
+      Append_String (Prefix);
+      Append_String (Separator);
+      Append_String (Label);
+      return Result (1 .. Last);
+   end Hover_Title;
+
    procedure Activate
      (Link   : Terminal.Core.Hyperlink;
       Status : out Activation_Status)

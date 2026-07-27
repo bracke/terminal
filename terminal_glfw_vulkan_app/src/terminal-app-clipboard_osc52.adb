@@ -8,6 +8,30 @@ package body Terminal.App.Clipboard_OSC52 is
    Alphabet : constant String :=
      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
+   function Capability
+     (Target : Terminal.Core.Clipboard_Target) return Target_Capability
+   is
+   begin
+      if Target = Terminal.Core.Clipboard_Clipboard then
+         return (Native_Backing => True, App_Local_Backing => False);
+      else
+         return (Native_Backing => False, App_Local_Backing => True);
+      end if;
+   end Capability;
+
+   function Status_Label
+     (Target : Terminal.Core.Clipboard_Target) return String is
+   begin
+      case Target is
+         when Terminal.Core.Clipboard_Clipboard =>
+            return "Clipboard target uses native clipboard";
+         when Terminal.Core.Clipboard_Primary =>
+            return "Primary target uses app-local selection";
+         when Terminal.Core.Clipboard_Selection =>
+            return "Selection target uses app-local selection";
+      end case;
+   end Status_Label;
+
    procedure Append
      (Chunk : in out Terminal.App.Queues.Byte_Chunk;
       Ch    : Character)

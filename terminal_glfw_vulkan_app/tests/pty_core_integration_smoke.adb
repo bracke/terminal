@@ -113,6 +113,30 @@ procedure PTY_Core_Integration_Smoke is
       end loop;
    end Drain_For_Marker;
 begin
+   Assert
+     (Terminal.App.PTY_Write.Status_Label (Terminal.App.PTY_Write.Ok) =
+      "PTY write complete",
+      "ok write status label");
+   Assert
+     (Terminal.App.PTY_Write.Status_Label
+        (Terminal.App.PTY_Write.Incomplete) =
+      "PTY write incomplete; retry pending",
+      "incomplete write status label");
+   Assert
+     (Terminal.App.PTY_Write.Status_Label (Terminal.App.PTY_Write.Failed) =
+      "PTY write failed",
+      "failed write status label");
+   Assert
+     (Terminal.App.PTY_Write.Status_Label
+        (Terminal.App.PTY_Write.Session_Closed) =
+      "PTY write skipped; session closed",
+      "closed write status label");
+   Assert
+     (Terminal.App.PTY_Write.Status_Label
+        (Terminal.App.PTY_Write.Incomplete)'Length <=
+      Terminal.App.PTY_Write.Max_Status_Label_Length,
+      "write status label should be bounded");
+
    Terminal.Core.Initialize (T, Rows, Cols, 100, Init_Status);
    Assert (Init_Status = Terminal.Core.Ok, "core initialize failed");
 

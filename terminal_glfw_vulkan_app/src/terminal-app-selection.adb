@@ -51,9 +51,22 @@ package body Terminal.App.Selection is
    begin
       Selection.Active := True;
       Selection.Has_Range := True;
+      Selection.Mode := Linear;
       Selection.Anchor := Position;
       Selection.Focus := Position;
    end Begin_Selection;
+
+   procedure Begin_Rectangular_Selection
+     (Selection : in out Selection_State;
+      Position  : Cell_Position)
+   is
+   begin
+      Selection.Active := True;
+      Selection.Has_Range := True;
+      Selection.Mode := Rectangular;
+      Selection.Anchor := Position;
+      Selection.Focus := Position;
+   end Begin_Rectangular_Selection;
 
    procedure Update_Selection
      (Selection : in out Selection_State;
@@ -74,6 +87,7 @@ package body Terminal.App.Selection is
          Begin_Selection (Selection, Position);
       else
          Selection.Active := True;
+         Selection.Mode := Linear;
          Selection.Focus := Position;
       end if;
    end Extend_Selection;
@@ -204,6 +218,7 @@ package body Terminal.App.Selection is
 
       Selection.Active := False;
       Selection.Has_Range := True;
+      Selection.Mode := Linear;
       Selection.Anchor := (Row => Row, Col => First);
       Selection.Focus := (Row => Row, Col => Last);
    end Select_Word;
@@ -226,6 +241,7 @@ package body Terminal.App.Selection is
       Row := Clamp_Pos (Position.Row, Positive (Snapshot.Rows));
       Selection.Active := False;
       Selection.Has_Range := True;
+      Selection.Mode := Linear;
       Selection.Anchor := (Row => Row, Col => 1);
       Selection.Focus := (Row => Row, Col => Positive (Snapshot.Cols));
    end Select_Line;
@@ -245,6 +261,7 @@ package body Terminal.App.Selection is
    begin
       Selection.Active := False;
       Selection.Has_Range := False;
+      Selection.Mode := Linear;
       Selection.Anchor := (Row => 1, Col => 1);
       Selection.Focus := (Row => 1, Col => 1);
    end Clear;
@@ -254,6 +271,26 @@ package body Terminal.App.Selection is
 
    function Has_Selection (Selection : Selection_State) return Boolean is
      (Selection.Has_Range);
+
+   function Snapshot (Selection : Selection_State) return Selection_Snapshot is
+     ((Active    => Selection.Active,
+       Has_Range => Selection.Has_Range,
+       Mode      => Selection.Mode,
+       Anchor    => Selection.Anchor,
+       Focus     => Selection.Focus));
+
+   function Status_Label (Selection : Selection_State) return String is
+   begin
+      if not Selection.Has_Range then
+         return "No local selection";
+      elsif Selection.Mode = Rectangular then
+         return "Rectangular selection active";
+      elsif Selection.Active then
+         return "Linear selection active";
+      else
+         return "Linear selection ready";
+      end if;
+   end Status_Label;
 
    function Before_Or_Equal (Left, Right : Cell_Position) return Boolean is
      (Left.Row < Right.Row
@@ -274,6 +311,20 @@ package body Terminal.App.Selection is
       end if;
    end Bounds;
 
+   procedure Rectangular_Bounds
+     (Selection : Selection_State;
+      Start_Pos : out Cell_Position;
+      End_Pos   : out Cell_Position)
+   is
+   begin
+      Start_Pos :=
+        (Row => Positive'Min (Selection.Anchor.Row, Selection.Focus.Row),
+         Col => Positive'Min (Selection.Anchor.Col, Selection.Focus.Col));
+      End_Pos :=
+        (Row => Positive'Max (Selection.Anchor.Row, Selection.Focus.Row),
+         Col => Positive'Max (Selection.Anchor.Col, Selection.Focus.Col));
+   end Rectangular_Bounds;
+
    function Contains
      (Selection : Selection_State;
       Row       : Positive;
@@ -285,6 +336,14 @@ package body Terminal.App.Selection is
    begin
       if not Selection.Has_Range then
          return False;
+      end if;
+
+      if Selection.Mode = Rectangular then
+         Rectangular_Bounds (Selection, Start_Pos, End_Pos);
+         return Row >= Start_Pos.Row
+           and then Row <= End_Pos.Row
+           and then Col >= Start_Pos.Col
+           and then Col <= End_Pos.Col;
       end if;
 
       Bounds (Selection, Start_Pos, End_Pos);
@@ -414,7 +473,11 @@ package body Terminal.App.Selection is
          return "";
       end if;
 
-      Bounds (Selection, Start_Pos, End_Pos);
+      if Selection.Mode = Rectangular then
+         Rectangular_Bounds (Selection, Start_Pos, End_Pos);
+      else
+         Bounds (Selection, Start_Pos, End_Pos);
+      end if;
       Start_Pos.Row := Clamp_Pos (Start_Pos.Row, Positive (Snapshot.Rows));
       Start_Pos.Col := Clamp_Pos (Start_Pos.Col, Positive (Snapshot.Cols));
       End_Pos.Row := Clamp_Pos (End_Pos.Row, Positive (Snapshot.Rows));
@@ -427,9 +490,12 @@ package body Terminal.App.Selection is
          for Row in Start_Pos.Row .. End_Pos.Row loop
             declare
                First_Col : constant Positive :=
-                 (if Row = Start_Pos.Row then Start_Pos.Col else 1);
+                 (if Selection.Mode = Rectangular or else Row = Start_Pos.Row
+                  then Start_Pos.Col
+                  else 1);
                Last_Col  : constant Positive :=
-                 (if Row = End_Pos.Row then End_Pos.Col
+                 (if Selection.Mode = Rectangular or else Row = End_Pos.Row
+                  then End_Pos.Col
                   else Positive (Snapshot.Cols));
                Row_Last  : Natural := 0;
             begin

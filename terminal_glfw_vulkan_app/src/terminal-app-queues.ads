@@ -5,9 +5,16 @@ package Terminal.App.Queues is
    Max_Chunk_Length : constant := 4096;
    Max_Chunks       : constant := 64;
    Max_Input_Events : constant := 256;
+   Max_Status_Label_Length : constant := 96;
 
    subtype Chunk_Index is Positive range 1 .. Max_Chunk_Length;
    subtype Queue_Index is Positive range 1 .. Max_Chunks;
+
+   function Queue_Status_Label
+     (Name      : String;
+      Length    : Natural;
+      Capacity  : Positive;
+      Overflows : Natural) return String;
 
    type Byte_Chunk is record
       Length : Natural range 0 .. Max_Chunk_Length := 0;

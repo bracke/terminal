@@ -1,4 +1,8 @@
 with System;
+with Ada.Characters.Handling;
+
+with Terminal.Common.Bytes;
+with Terminal.Common.Status;
 
 package body Terminal.App.Vulkan_Presenter is
    use type System.Address;
@@ -6,10 +10,41 @@ package body Terminal.App.Vulkan_Presenter is
    package VC renames Terminal.App.Vulkan_Context;
    package VD renames Terminal.App.Vulkan_Device;
    package VS renames Terminal.App.Vulkan_Submit;
+   package RM renames Terminal.App.Render_Model;
 
    use type VS.Vertex_Array_Access;
+   use type VS.Texture_Source;
    use type VD.Create_Status;
    use type VD.Render_Status;
+
+   function Trimmed_Natural (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Trimmed_Natural;
+
+   function Humanize (Text : String) return String is
+      Result : String (1 .. Text'Length);
+      At_Word_Start : Boolean := True;
+   begin
+      for I in Text'Range loop
+         declare
+            Ch : constant Character := Text (I);
+            Out_Index : constant Positive := I - Text'First + 1;
+         begin
+            if Ch = '_' then
+               Result (Out_Index) := ' ';
+               At_Word_Start := True;
+            elsif At_Word_Start then
+               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
+               At_Word_Start := False;
+            else
+               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
+            end if;
+         end;
+      end loop;
+      return Result;
+   end Humanize;
 
    function To_Present_Status
      (Status : VD.Render_Status)
@@ -41,6 +76,18 @@ package body Terminal.App.Vulkan_Presenter is
       end case;
    end To_Present_Status;
 
+   function Status_Label (Status : Present_Status) return String is
+      Image : constant String := Present_Status'Image (Status);
+      Text  : constant String := Humanize (Image);
+      Label : constant String := "Present: " & Text;
+   begin
+      if Label'Length > Max_Status_Label_Length then
+         return Label (1 .. Max_Status_Label_Length);
+      else
+         return Label;
+      end if;
+   end Status_Label;
+
    function Has_Surface (Context : VC.Context) return Boolean is
      (VC.Surface (Context) /= System.Null_Address);
 
@@ -71,6 +118,25 @@ package body Terminal.App.Vulkan_Presenter is
       P.Rejected_Frames := P.Rejected_Frames + 1;
       P.Last_Status := Status;
       P.Last_Vertex_Count := 0;
+      P.Last_Image_Command_Count := 0;
+      P.Last_Image_Vertex_Count := 0;
+      P.Last_Image_Texture_Vertex_Count := 0;
+      P.Last_Image_Protocol := RM.Image_Sixel;
+      P.Last_Image_Width := 0;
+      P.Last_Image_Height := 0;
+      P.Last_Image_Raw_Format := 0;
+      P.Last_Image_Pixel_Width := 0;
+      P.Last_Image_Pixel_Height := 0;
+      P.Last_Image_Payload_Length := 0;
+      P.Last_Image_Payload_Preview_Complete := False;
+      P.Last_Image_Encoded_Preview_Length := 0;
+      P.Last_Image_Decoded_Preview_Length := 0;
+      P.Last_Image_Decoded_Preview_Bytes := (others => 0);
+      P.Last_Image_Preview_Decode_Complete := False;
+      P.Last_Image_Decode_Status := RM.Image_Decode_Not_Attempted;
+      P.Last_Image_Placeholder := False;
+      P.Last_Image_Texture_Downgraded := False;
+      P.Last_Image_Texture_Source := VS.Texture_None;
       P.Last_Text_Run_Count := 0;
       P.Last_Shaped_Glyph_Count := 0;
       P.Last_Frame_Width := 0;
@@ -93,6 +159,25 @@ package body Terminal.App.Vulkan_Presenter is
       P.Rejected_Frames := 0;
       P.Last_Status := Not_Initialized;
       P.Last_Vertex_Count := 0;
+      P.Last_Image_Command_Count := 0;
+      P.Last_Image_Vertex_Count := 0;
+      P.Last_Image_Texture_Vertex_Count := 0;
+      P.Last_Image_Protocol := RM.Image_Sixel;
+      P.Last_Image_Width := 0;
+      P.Last_Image_Height := 0;
+      P.Last_Image_Raw_Format := 0;
+      P.Last_Image_Pixel_Width := 0;
+      P.Last_Image_Pixel_Height := 0;
+      P.Last_Image_Payload_Length := 0;
+      P.Last_Image_Payload_Preview_Complete := False;
+      P.Last_Image_Encoded_Preview_Length := 0;
+      P.Last_Image_Decoded_Preview_Length := 0;
+      P.Last_Image_Decoded_Preview_Bytes := (others => 0);
+      P.Last_Image_Preview_Decode_Complete := False;
+      P.Last_Image_Decode_Status := RM.Image_Decode_Not_Attempted;
+      P.Last_Image_Placeholder := False;
+      P.Last_Image_Texture_Downgraded := False;
+      P.Last_Image_Texture_Source := VS.Texture_None;
       P.Last_Text_Run_Count := 0;
       P.Last_Shaped_Glyph_Count := 0;
       P.Last_Frame_Width := 0;
@@ -324,6 +409,35 @@ package body Terminal.App.Vulkan_Presenter is
 
       P.Accepted_Frames := P.Accepted_Frames + 1;
       P.Last_Vertex_Count := VS.Vertex_Count (Batch);
+      P.Last_Image_Command_Count := VS.Image_Command_Count (Batch);
+      P.Last_Image_Vertex_Count := VS.Image_Vertex_Count (Batch);
+      P.Last_Image_Texture_Vertex_Count :=
+        VS.Image_Texture_Vertex_Count (Batch);
+      P.Last_Image_Protocol := VS.Last_Image_Protocol (Batch);
+      P.Last_Image_Width := VS.Last_Image_Width (Batch);
+      P.Last_Image_Height := VS.Last_Image_Height (Batch);
+      P.Last_Image_Raw_Format := VS.Last_Image_Raw_Format (Batch);
+      P.Last_Image_Pixel_Width := VS.Last_Image_Pixel_Width (Batch);
+      P.Last_Image_Pixel_Height := VS.Last_Image_Pixel_Height (Batch);
+      P.Last_Image_Payload_Length := VS.Last_Image_Payload_Length (Batch);
+      P.Last_Image_Payload_Preview_Complete :=
+        VS.Last_Image_Payload_Preview_Complete (Batch);
+      P.Last_Image_Encoded_Preview_Length :=
+        VS.Last_Image_Encoded_Preview_Length (Batch);
+      P.Last_Image_Decoded_Preview_Length :=
+        VS.Last_Image_Decoded_Preview_Length (Batch);
+      P.Last_Image_Decoded_Preview_Bytes := (others => 0);
+      for I in 1 .. RM.Max_Image_Decoded_Preview_Length loop
+         P.Last_Image_Decoded_Preview_Bytes (I) :=
+           VS.Last_Image_Decoded_Preview_Byte (Batch, I);
+      end loop;
+      P.Last_Image_Preview_Decode_Complete :=
+        VS.Last_Image_Preview_Decode_Complete (Batch);
+      P.Last_Image_Decode_Status := VS.Last_Image_Decode_Status (Batch);
+      P.Last_Image_Placeholder := VS.Last_Image_Placeholder (Batch);
+      P.Last_Image_Texture_Downgraded :=
+        VS.Last_Image_Texture_Downgraded (Batch);
+      P.Last_Image_Texture_Source := VS.Last_Image_Texture_Source (Batch);
       P.Last_Text_Run_Count := VS.Text_Run_Count (Batch);
       P.Last_Shaped_Glyph_Count := VS.Shaped_Glyph_Count (Batch);
       P.Last_Frame_Width := VS.Width (Batch);
@@ -353,6 +467,31 @@ package body Terminal.App.Vulkan_Presenter is
          Rejected_Frames   => P.Rejected_Frames,
          Last_Status       => P.Last_Status,
          Last_Vertex_Count => P.Last_Vertex_Count,
+         Last_Image_Command_Count => P.Last_Image_Command_Count,
+         Last_Image_Vertex_Count => P.Last_Image_Vertex_Count,
+         Last_Image_Texture_Vertex_Count =>
+           P.Last_Image_Texture_Vertex_Count,
+         Last_Image_Protocol => P.Last_Image_Protocol,
+         Last_Image_Width => P.Last_Image_Width,
+         Last_Image_Height => P.Last_Image_Height,
+         Last_Image_Raw_Format => P.Last_Image_Raw_Format,
+         Last_Image_Pixel_Width => P.Last_Image_Pixel_Width,
+         Last_Image_Pixel_Height => P.Last_Image_Pixel_Height,
+         Last_Image_Payload_Length => P.Last_Image_Payload_Length,
+         Last_Image_Payload_Preview_Complete =>
+           P.Last_Image_Payload_Preview_Complete,
+         Last_Image_Encoded_Preview_Length =>
+           P.Last_Image_Encoded_Preview_Length,
+         Last_Image_Decoded_Preview_Length =>
+           P.Last_Image_Decoded_Preview_Length,
+         Last_Image_Decoded_Preview_Bytes =>
+           P.Last_Image_Decoded_Preview_Bytes,
+         Last_Image_Preview_Decode_Complete =>
+           P.Last_Image_Preview_Decode_Complete,
+         Last_Image_Decode_Status => P.Last_Image_Decode_Status,
+         Last_Image_Placeholder => P.Last_Image_Placeholder,
+         Last_Image_Texture_Downgraded => P.Last_Image_Texture_Downgraded,
+         Last_Image_Texture_Source => P.Last_Image_Texture_Source,
          Last_Text_Run_Count => P.Last_Text_Run_Count,
          Last_Shaped_Glyph_Count => P.Last_Shaped_Glyph_Count,
          Last_Frame_Width  => P.Last_Frame_Width,
@@ -362,4 +501,95 @@ package body Terminal.App.Vulkan_Presenter is
          Device            => VD.Diagnostics (P.Device),
          Logical_Device    => VD.Diagnostics (P.Logical_Device));
    end Diagnostics;
+
+   function Image_Status_Label
+     (Diagnostics : Diagnostic_Snapshot) return String
+   is
+      function Protocol_Name return String is
+      begin
+         case Diagnostics.Last_Image_Protocol is
+            when RM.Image_Sixel =>
+               return "sixel";
+            when RM.Image_Kitty =>
+               return "kitty";
+            when RM.Image_ITerm2 =>
+               return "iTerm2";
+         end case;
+      end Protocol_Name;
+
+   begin
+      if Diagnostics.Last_Image_Command_Count = 0 then
+         return "";
+      end if;
+
+      return
+        "presented image " & Protocol_Name
+        & " size=" & Trimmed_Natural (Diagnostics.Last_Image_Width)
+        & "x" & Trimmed_Natural (Diagnostics.Last_Image_Height)
+        & (if Diagnostics.Last_Image_Pixel_Width > 0
+           and then Diagnostics.Last_Image_Pixel_Height > 0
+           then
+             " pixels=" & Trimmed_Natural (Diagnostics.Last_Image_Pixel_Width)
+             & "x" & Trimmed_Natural (Diagnostics.Last_Image_Pixel_Height)
+             & " format=" & Trimmed_Natural (Diagnostics.Last_Image_Raw_Format)
+           else "")
+        & " vertices=" & Trimmed_Natural (Diagnostics.Last_Image_Vertex_Count)
+        & " payload=" & Trimmed_Natural (Diagnostics.Last_Image_Payload_Length)
+        & RM.Image_Payload_Status_Suffix
+            (Diagnostics.Last_Image_Payload_Preview_Complete)
+        & " preview="
+        & Trimmed_Natural (Diagnostics.Last_Image_Decoded_Preview_Length)
+        & "/"
+        & Trimmed_Natural (Diagnostics.Last_Image_Encoded_Preview_Length)
+        & Terminal.Common.Status.Preview_Bytes_Label
+            (Diagnostics.Last_Image_Decoded_Preview_Bytes,
+             Diagnostics.Last_Image_Decoded_Preview_Length)
+        & " texture="
+        & VS.Texture_Source_Label (Diagnostics.Last_Image_Texture_Source)
+        & (if Diagnostics.Last_Image_Placeholder
+           then " placeholder"
+           else " textured")
+        & (if Diagnostics.Last_Image_Texture_Downgraded
+           then " downgraded"
+           else "")
+        & (if Diagnostics.Last_Image_Preview_Decode_Complete
+           then " decoded"
+           else " partial")
+        & RM.Image_Decode_Status_Suffix
+            (Diagnostics.Last_Image_Decode_Status);
+   end Image_Status_Label;
+
+   function Image_Texture_Status_Label
+     (Diagnostics : Diagnostic_Snapshot) return String
+   is
+   begin
+      if Diagnostics.Last_Image_Command_Count = 0 then
+         return "";
+      elsif Diagnostics.Last_Image_Texture_Downgraded then
+         return
+           "presenter image texture downgraded; texture="
+           & VS.Texture_Source_Label (Diagnostics.Last_Image_Texture_Source)
+           & " vertices="
+           & Trimmed_Natural (Diagnostics.Last_Image_Texture_Vertex_Count);
+      elsif Diagnostics.Last_Image_Texture_Source = VS.Texture_Image
+        and then not Diagnostics.Last_Image_Placeholder
+      then
+         return
+           "presenter image texture ready; vertices="
+           & Trimmed_Natural (Diagnostics.Last_Image_Texture_Vertex_Count);
+      else
+         return
+           "presenter image texture unavailable; texture="
+           & VS.Texture_Source_Label (Diagnostics.Last_Image_Texture_Source)
+           & " vertices="
+           & Trimmed_Natural (Diagnostics.Last_Image_Texture_Vertex_Count);
+      end if;
+   end Image_Texture_Status_Label;
+
+   function Image_Texture_Resource_Status_Label
+     (Diagnostics : Diagnostic_Snapshot) return String
+   is
+   begin
+      return VD.Image_Texture_Resource_Status_Label (Diagnostics.Logical_Device);
+   end Image_Texture_Resource_Status_Label;
 end Terminal.App.Vulkan_Presenter;

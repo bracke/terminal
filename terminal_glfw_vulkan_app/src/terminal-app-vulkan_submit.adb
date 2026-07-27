@@ -1,12 +1,71 @@
+with Ada.Characters.Handling;
 with Ada.Unchecked_Deallocation;
+
+with Terminal.Common.Bytes;
+with Terminal.Common.Status;
 
 package body Terminal.App.Vulkan_Submit is
    package RM renames Terminal.App.Render_Model;
 
    use type RM.Glyph_Array_Access;
+   use type RM.Image_Array_Access;
+   use type RM.Image_Decode_Status;
+   use type RM.Image_Decoded_Source_Kind;
+   use type RM.Image_Protocol;
    use type RM.Rectangle_Array_Access;
    use type RM.Text_Run_Array_Access;
    use type Vertex_Array_Access;
+
+   function Trimmed_Natural (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Trimmed_Natural;
+
+   function Humanize (Text : String) return String is
+      Result : String (1 .. Text'Length);
+      At_Word_Start : Boolean := True;
+   begin
+      for I in Text'Range loop
+         declare
+            Ch : constant Character := Text (I);
+            Out_Index : constant Positive := I - Text'First + 1;
+         begin
+            if Ch = '_' then
+               Result (Out_Index) := ' ';
+               At_Word_Start := True;
+            elsif At_Word_Start then
+               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
+               At_Word_Start := False;
+            else
+               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
+            end if;
+         end;
+      end loop;
+      return Result;
+   end Humanize;
+
+   function Status_Label (Status : Build_Status) return String is
+      Label : constant String := "Submit build: " & Humanize (Build_Status'Image (Status));
+   begin
+      if Label'Length > Max_Status_Label_Length then
+         return Label (1 .. Max_Status_Label_Length);
+      else
+         return Label;
+      end if;
+   end Status_Label;
+
+   function Texture_Source_Label (Source : Texture_Source) return String is
+   begin
+      case Source is
+         when Texture_None =>
+            return "none";
+         when Texture_Text_Atlas =>
+            return "text-atlas";
+         when Texture_Image =>
+            return "image";
+      end case;
+   end Texture_Source_Label;
 
    procedure Free_Vertices is new Ada.Unchecked_Deallocation
      (Vertex_Array, Vertex_Array_Access);
@@ -97,6 +156,28 @@ package body Terminal.App.Vulkan_Submit is
       Batch.Count := 0;
       Batch.Rectangle_Vertex_Total := 0;
       Batch.Glyph_Vertex_Total := 0;
+      Batch.Image_Vertex_Total := 0;
+      Batch.Image_Texture_Vertex_Total := 0;
+      Batch.Image_Command_Total := 0;
+      Batch.Last_Image_Protocol := RM.Image_Sixel;
+      Batch.Last_Image_Width := 0;
+      Batch.Last_Image_Height := 0;
+      Batch.Last_Image_Raw_Format := 0;
+      Batch.Last_Image_Pixel_Width := 0;
+      Batch.Last_Image_Pixel_Height := 0;
+      Batch.Last_Image_Payload_Length := 0;
+      Batch.Last_Image_Payload_Preview_Complete := False;
+      Batch.Last_Image_Encoded_Preview_Length := 0;
+      Batch.Last_Image_Decoded_Preview_Length := 0;
+      Batch.Last_Image_Decoded_Source := RM.Image_Decoded_Source_None;
+      Batch.Last_Image_Row_Source := (others => <>);
+      Batch.Last_Image_Decoded_Row_Stride_Bytes := 0;
+      Batch.Last_Image_Decoded_Preview_Bytes := (others => 0);
+      Batch.Last_Image_Preview_Decode_Complete := False;
+      Batch.Last_Image_Decode_Status := RM.Image_Decode_Not_Attempted;
+      Batch.Last_Image_Placeholder := False;
+      Batch.Last_Image_Texture_Downgraded := False;
+      Batch.Last_Image_Texture_Source := Texture_None;
       Batch.Text_Run_Total := 0;
       Batch.Shaped_Glyph_Total := 0;
       Batch.Frame_Width := 0;
@@ -127,13 +208,15 @@ package body Terminal.App.Vulkan_Submit is
         or else Frame.Height = 0
         or else (Frame.Rectangle_Count > 0 and then Frame.Rectangles = null)
         or else (Frame.Glyph_Count > 0 and then Frame.Glyphs = null)
+        or else (Frame.Image_Count > 0 and then Frame.Images = null)
         or else (Frame.Text_Run_Count > 0 and then Frame.Text_Runs = null)
       then
          Status := Invalid_Frame;
          return;
       end if;
 
-      Max_Vertices := (Frame.Rectangle_Count + Frame.Glyph_Count) * 6;
+      Max_Vertices :=
+        (Frame.Rectangle_Count + Frame.Glyph_Count + Frame.Image_Count) * 6;
       if Max_Vertices = 0 then
          Batch.Frame_Width := Frame.Width;
          Batch.Frame_Height := Frame.Height;
@@ -200,6 +283,96 @@ package body Terminal.App.Vulkan_Submit is
          end;
       end loop;
 
+      for I in 1 .. Frame.Image_Count loop
+         declare
+            Image : constant RM.Image_Command := Frame.Images (I);
+            Before : constant Natural := Batch.Count;
+            Bytes_Per_Pixel : constant Natural :=
+              (if Image.Raw_Format = 24 then 3
+               elsif Image.Raw_Format = 32 then 4
+               else 0);
+            Row_Bytes : constant Natural := Image.Pixel_Width * Bytes_Per_Pixel;
+            Row_Stride_Bytes : constant Natural :=
+              (if Image.Decoded_Row_Stride_Bytes > 0
+               then Image.Decoded_Row_Stride_Bytes
+               else Row_Bytes);
+            Required_Decoded_Bytes : constant Natural :=
+              RM.Image_Decoded_Source_Bytes (Image);
+            Texture_Eligible : constant Boolean :=
+              not Image.Placeholder
+              and then
+                (Image.Protocol = RM.Image_Kitty
+                 or else Image.Protocol = RM.Image_Sixel
+                 or else Image.Protocol = RM.Image_ITerm2)
+              and then Image.Pixel_Width > 0
+              and then Image.Pixel_Height > 0
+              and then Bytes_Per_Pixel > 0
+              and then Image.Payload_Preview_Complete
+              and then Image.Preview_Decode_Complete
+              and then Image.Decode_Status = RM.Image_Decode_Ok
+              and then Row_Stride_Bytes >= Row_Bytes
+              and then Required_Decoded_Bytes > 0
+              and then RM.Image_Decoded_Source_Available (Image);
+            Source : constant Texture_Source :=
+              (if Texture_Eligible then Texture_Image else Texture_None);
+         begin
+            Batch.Image_Command_Total := Batch.Image_Command_Total + 1;
+            Batch.Last_Image_Protocol := Image.Protocol;
+            Batch.Last_Image_Width := Natural (Image.Width);
+            Batch.Last_Image_Height := Natural (Image.Height);
+            Batch.Last_Image_Raw_Format := Image.Raw_Format;
+            Batch.Last_Image_Pixel_Width := Image.Pixel_Width;
+            Batch.Last_Image_Pixel_Height := Image.Pixel_Height;
+            Batch.Last_Image_Payload_Length := Image.Payload_Length;
+            Batch.Last_Image_Payload_Preview_Complete :=
+              Image.Payload_Preview_Complete;
+            Batch.Last_Image_Encoded_Preview_Length :=
+              Image.Encoded_Preview_Length;
+            Batch.Last_Image_Decoded_Preview_Length :=
+              Image.Decoded_Preview_Length;
+            Batch.Last_Image_Decoded_Source :=
+              (if Texture_Eligible
+               then Image.Decoded_Source
+               else RM.Image_Decoded_Source_None);
+            Batch.Last_Image_Row_Source :=
+              (if Texture_Eligible
+               then Image
+               else RM.Image_Command'(others => <>));
+            Batch.Last_Image_Decoded_Row_Stride_Bytes :=
+              (if Texture_Eligible then Row_Stride_Bytes else 0);
+            Batch.Last_Image_Decoded_Preview_Bytes :=
+              Image.Decoded_Preview_Bytes;
+            Batch.Last_Image_Preview_Decode_Complete :=
+              Image.Preview_Decode_Complete;
+            Batch.Last_Image_Decode_Status := Image.Decode_Status;
+            Batch.Last_Image_Placeholder := not Texture_Eligible;
+            Batch.Last_Image_Texture_Downgraded :=
+              not Image.Placeholder and then not Texture_Eligible;
+            Batch.Last_Image_Texture_Source := Source;
+            Append_Quad
+              (Batch,
+               Frame.Width,
+               Frame.Height,
+               Image.X,
+               Image.Y,
+               Image.Width,
+               Image.Height,
+               0.0,
+               0.0,
+               1.0,
+               1.0,
+               Image.Tint,
+               Source = Texture_Image,
+               Source);
+            Batch.Image_Vertex_Total :=
+              Batch.Image_Vertex_Total + (Batch.Count - Before);
+            if Batch.Last_Image_Texture_Source = Texture_Image then
+               Batch.Image_Texture_Vertex_Total :=
+                 Batch.Image_Texture_Vertex_Total + (Batch.Count - Before);
+            end if;
+         end;
+      end loop;
+
       for I in 1 .. Frame.Glyph_Count loop
          declare
             Glyph : constant RM.Glyph_Command := Frame.Glyphs (I);
@@ -245,6 +418,209 @@ package body Terminal.App.Vulkan_Submit is
 
    function Glyph_Vertex_Count (Batch : Submission_Batch) return Natural is
      (Batch.Glyph_Vertex_Total);
+
+   function Image_Vertex_Count (Batch : Submission_Batch) return Natural is
+     (Batch.Image_Vertex_Total);
+
+   function Image_Texture_Vertex_Count
+     (Batch : Submission_Batch) return Natural is
+     (Batch.Image_Texture_Vertex_Total);
+
+   function Image_Command_Count (Batch : Submission_Batch) return Natural is
+     (Batch.Image_Command_Total);
+
+   function Last_Image_Protocol
+     (Batch : Submission_Batch) return RM.Image_Protocol is
+     (Batch.Last_Image_Protocol);
+
+   function Last_Image_Width (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Width);
+
+   function Last_Image_Height (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Height);
+
+   function Last_Image_Raw_Format (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Raw_Format);
+
+   function Last_Image_Pixel_Width (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Pixel_Width);
+
+   function Last_Image_Pixel_Height (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Pixel_Height);
+
+   function Last_Image_Payload_Length (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Payload_Length);
+
+   function Last_Image_Payload_Preview_Complete
+     (Batch : Submission_Batch) return Boolean is
+     (Batch.Last_Image_Payload_Preview_Complete);
+
+   function Last_Image_Encoded_Preview_Length
+     (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Encoded_Preview_Length);
+
+   function Last_Image_Decoded_Preview_Length
+     (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Decoded_Preview_Length);
+
+   function Last_Image_Decoded_Preview_Byte
+     (Batch : Submission_Batch;
+      Index : Positive) return Terminal.Common.Bytes.Byte
+   is
+   begin
+      if Index > RM.Max_Image_Decoded_Preview_Length then
+         return 0;
+      else
+         return Batch.Last_Image_Decoded_Preview_Bytes (Index);
+      end if;
+   end Last_Image_Decoded_Preview_Byte;
+
+   function Last_Image_Decoded_Data_Byte
+     (Batch : Submission_Batch;
+      Index : Positive) return Terminal.Common.Bytes.Byte
+   is
+      Source_Bytes : constant Natural := Last_Image_Decoded_Source_Bytes (Batch);
+      Row_Stride : constant Natural := Batch.Last_Image_Decoded_Row_Stride_Bytes;
+      Zero_Based : constant Natural := Index - 1;
+   begin
+      if Source_Bytes = 0
+        or else Row_Stride = 0
+        or else Index > Source_Bytes
+      then
+         return 0;
+      end if;
+
+      return Last_Image_Decoded_Row_Byte
+        (Batch,
+         Zero_Based / Row_Stride,
+         Zero_Based mod Row_Stride);
+   end Last_Image_Decoded_Data_Byte;
+
+   function Last_Image_Decoded_Source
+     (Batch : Submission_Batch) return RM.Image_Decoded_Source_Kind is
+     (Batch.Last_Image_Decoded_Source);
+
+   function Last_Image_Source_Command
+     (Batch : Submission_Batch) return RM.Image_Command is
+     (Batch.Last_Image_Row_Source);
+
+   function Last_Image_Decoded_Source_Bytes
+     (Batch : Submission_Batch) return Natural
+   is
+     (RM.Image_Decoded_Source_Bytes (Batch.Last_Image_Row_Source));
+
+   function Last_Image_Decoded_Source_Available
+     (Batch : Submission_Batch) return Boolean
+   is
+     (Batch.Last_Image_Texture_Source = Texture_Image
+      and then RM.Image_Decoded_Source_Available (Batch.Last_Image_Row_Source));
+
+   function Last_Image_Decoded_Row_Byte
+     (Batch       : Submission_Batch;
+      Row         : Natural;
+      Byte_Offset : Natural) return Terminal.Common.Bytes.Byte
+   is
+   begin
+      return RM.Image_Decoded_Row_Byte
+        (Batch.Last_Image_Row_Source, Row, Byte_Offset);
+   end Last_Image_Decoded_Row_Byte;
+
+   function Last_Image_Decoded_Row_Stride_Bytes
+     (Batch : Submission_Batch) return Natural is
+     (Batch.Last_Image_Decoded_Row_Stride_Bytes);
+
+   function Last_Image_Preview_Decode_Complete
+     (Batch : Submission_Batch) return Boolean is
+     (Batch.Last_Image_Preview_Decode_Complete);
+
+   function Last_Image_Decode_Status
+     (Batch : Submission_Batch)
+      return RM.Image_Decode_Status is
+     (Batch.Last_Image_Decode_Status);
+
+   function Last_Image_Placeholder (Batch : Submission_Batch) return Boolean is
+     (Batch.Last_Image_Placeholder);
+
+   function Last_Image_Texture_Downgraded
+     (Batch : Submission_Batch) return Boolean is
+     (Batch.Last_Image_Texture_Downgraded);
+
+   function Last_Image_Texture_Source
+     (Batch : Submission_Batch) return Texture_Source is
+     (Batch.Last_Image_Texture_Source);
+
+   function Image_Status_Label (Batch : Submission_Batch) return String
+   is
+      function Protocol_Name return String is
+      begin
+         case Batch.Last_Image_Protocol is
+            when RM.Image_Sixel =>
+               return "sixel";
+            when RM.Image_Kitty =>
+               return "kitty";
+            when RM.Image_ITerm2 =>
+               return "iTerm2";
+         end case;
+      end Protocol_Name;
+   begin
+      if Batch.Image_Command_Total = 0 then
+         return "";
+      end if;
+
+      return
+        "submit image " & Protocol_Name
+        & " size=" & Trimmed_Natural (Batch.Last_Image_Width)
+        & "x" & Trimmed_Natural (Batch.Last_Image_Height)
+        & (if Batch.Last_Image_Pixel_Width > 0
+           and then Batch.Last_Image_Pixel_Height > 0
+           then
+             " pixels=" & Trimmed_Natural (Batch.Last_Image_Pixel_Width)
+             & "x" & Trimmed_Natural (Batch.Last_Image_Pixel_Height)
+             & " format=" & Trimmed_Natural (Batch.Last_Image_Raw_Format)
+           else "")
+        & " payload=" & Trimmed_Natural (Batch.Last_Image_Payload_Length)
+        & RM.Image_Payload_Status_Suffix
+            (Batch.Last_Image_Payload_Preview_Complete)
+        & " preview="
+        & Trimmed_Natural (Batch.Last_Image_Decoded_Preview_Length)
+        & "/"
+        & Trimmed_Natural (Batch.Last_Image_Encoded_Preview_Length)
+        & Terminal.Common.Status.Preview_Bytes_Label
+            (Batch.Last_Image_Decoded_Preview_Bytes,
+             Batch.Last_Image_Decoded_Preview_Length)
+        & " texture=" & Texture_Source_Label (Batch.Last_Image_Texture_Source)
+        & (if Batch.Last_Image_Placeholder then " placeholder" else " textured")
+        & (if Batch.Last_Image_Texture_Downgraded then " downgraded" else "")
+        & (if Batch.Last_Image_Preview_Decode_Complete
+           then " decoded"
+           else " partial")
+        & RM.Image_Decode_Status_Suffix (Batch.Last_Image_Decode_Status);
+   end Image_Status_Label;
+
+   function Image_Texture_Status_Label
+     (Batch : Submission_Batch) return String
+   is
+   begin
+      if Batch.Image_Command_Total = 0 then
+         return "";
+      elsif Batch.Last_Image_Texture_Downgraded then
+         return
+           "submit image texture downgraded; texture="
+           & Texture_Source_Label (Batch.Last_Image_Texture_Source)
+           & " vertices=" & Trimmed_Natural (Batch.Image_Texture_Vertex_Total);
+      elsif Batch.Last_Image_Texture_Source = Texture_Image
+        and then not Batch.Last_Image_Placeholder
+      then
+         return
+           "submit image texture ready; vertices="
+           & Trimmed_Natural (Batch.Image_Texture_Vertex_Total);
+      else
+         return
+           "submit image texture unavailable; texture="
+           & Texture_Source_Label (Batch.Last_Image_Texture_Source)
+           & " vertices=" & Trimmed_Natural (Batch.Image_Texture_Vertex_Total);
+      end if;
+   end Image_Texture_Status_Label;
 
    function Text_Runs
      (Batch : Submission_Batch)

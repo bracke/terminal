@@ -230,6 +230,24 @@ package body Terminal.App.Fonts is
          return "";
    end Safe_Environment_Value;
 
+   function Natural_Image (Value : Natural) return String is
+      Image : constant String := Natural'Image (Value);
+   begin
+      return Image (Image'First + 1 .. Image'Last);
+   end Natural_Image;
+
+   function Bounded (Text : String) return String is
+      Result : String (1 .. Max_Status_Label_Length);
+      Last   : Natural := 0;
+   begin
+      for Ch of Text loop
+         exit when Last = Result'Last;
+         Last := Last + 1;
+         Result (Last) := Ch;
+      end loop;
+      return Result (1 .. Last);
+   end Bounded;
+
    function To_Lower (Text : String) return String is
       Result : String (Text'Range);
    begin
@@ -315,6 +333,34 @@ package body Terminal.App.Fonts is
       end if;
       return Path.Text (1 .. Path.Length);
    end To_String;
+
+   function Status_Label
+     (Default_Path   : String;
+      Fallback_Count : Natural) return String
+   is
+   begin
+      if Default_Path = "" then
+         return Bounded
+           ("Fonts unavailable; fallbacks=" & Natural_Image (Fallback_Count));
+      else
+         declare
+            Primary : constant String := Ada.Directories.Simple_Name (Default_Path);
+         begin
+            return Bounded
+              ("Fonts ready; fallbacks="
+               & Natural_Image (Fallback_Count)
+               & "; primary="
+               & Primary);
+         end;
+      end if;
+   exception
+      when others =>
+         return Bounded
+           ("Fonts ready; fallbacks="
+            & Natural_Image (Fallback_Count)
+            & "; primary="
+            & Default_Path);
+   end Status_Label;
 
    function Default_Font_Path return String is
       Override_Path : constant String := Safe_Environment_Value ("TERMINAL_FONT_PATH");

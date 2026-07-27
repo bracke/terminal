@@ -2,10 +2,14 @@ with Ada.Unchecked_Deallocation;
 with System;
 
 with Terminal.Common;
+with Terminal.Common.Bytes;
+with Terminal.Common.Status;
 with Terminal.App.Fonts;
+with Terminal.App.Graphics;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Render_Model;
 with Terminal.App.Text_Shaper;
+with Terminal.App.Theme;
 with Terminal.App.Vulkan_Submit;
 
 package body Terminal.App.Renderer is
@@ -17,9 +21,12 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Color_Kind;
    use type Terminal.Core.Cursor_Shape;
    use type Terminal.Core.Dirty_Row_Array_Access;
+   use type Terminal.Core.Ignored_Graphics_Protocol;
    use type Terminal.Core.Style;
    use type Terminal.Common.Code_Point;
    use type RM.Glyph_Array_Access;
+   use type RM.Image_Array_Access;
+   use type RM.Image_Data_Access;
    use type RM.Rectangle_Array_Access;
    use type RM.Text_Run_Array_Access;
    use type RM.Text_Run_Direction;
@@ -32,35 +39,28 @@ package body Terminal.App.Renderer is
    Atlas_Width  : constant Positive := 1024;
    Atlas_Height : constant Positive := 1024;
 
+   function Trimmed_Natural (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Trimmed_Natural;
+
    procedure Free_Rectangles is new Ada.Unchecked_Deallocation
      (RM.Rectangle_Array, RM.Rectangle_Array_Access);
    procedure Free_Glyphs is new Ada.Unchecked_Deallocation
      (RM.Glyph_Array, RM.Glyph_Array_Access);
+   procedure Free_Images is new Ada.Unchecked_Deallocation
+     (RM.Image_Array, RM.Image_Array_Access);
    procedure Free_Text_Runs is new Ada.Unchecked_Deallocation
      (RM.Text_Run_Array, RM.Text_Run_Array_Access);
-
-   Palette : constant array (Natural range 0 .. 15) of RM.Pixel_Color :=
-     [0  => (0.05, 0.05, 0.06, 1.0),
-      1  => (0.80, 0.18, 0.18, 1.0),
-      2  => (0.22, 0.68, 0.30, 1.0),
-      3  => (0.78, 0.62, 0.22, 1.0),
-      4  => (0.25, 0.45, 0.86, 1.0),
-      5  => (0.70, 0.36, 0.80, 1.0),
-      6  => (0.22, 0.67, 0.72, 1.0),
-      7  => (0.78, 0.80, 0.82, 1.0),
-      8  => (0.36, 0.38, 0.40, 1.0),
-      9  => (1.00, 0.36, 0.32, 1.0),
-      10 => (0.45, 0.88, 0.45, 1.0),
-      11 => (0.95, 0.78, 0.30, 1.0),
-      12 => (0.45, 0.62, 1.00, 1.0),
-      13 => (0.88, 0.50, 1.00, 1.0),
-      14 => (0.38, 0.88, 0.92, 1.0),
-      15 => (0.95, 0.95, 0.95, 1.0)];
-
-   Default_FG : constant RM.Pixel_Color := (0.86, 0.88, 0.88, 1.0);
-   Default_BG : constant RM.Pixel_Color := (0.03, 0.035, 0.04, 1.0);
-   Cursor_BG  : constant RM.Pixel_Color := (0.86, 0.88, 0.88, 1.0);
-   Cursor_FG  : constant RM.Pixel_Color := (0.03, 0.035, 0.04, 1.0);
+   procedure Free_Image_Data is new Ada.Unchecked_Deallocation
+     (Terminal.Common.Bytes.Byte_Array, RM.Image_Data_Access);
+   procedure Free_String is new Ada.Unchecked_Deallocation
+     (String, String_Access);
+   procedure Free_Kitty_Chunk_Segment is new Ada.Unchecked_Deallocation
+     (Kitty_Chunk_Segment, Kitty_Chunk_Segment_Access);
+   procedure Free_Image_Object is new Ada.Unchecked_Deallocation
+     (Image_Object, Image_Object_Access);
 
    function Ceiling_Positive (Value : Float) return Positive is
       Result : Positive := 1;
@@ -111,10 +111,13 @@ package body Terminal.App.Renderer is
       end if;
    end XTerm_Cube_Component;
 
-   function XTerm_Indexed_Color (Index : Natural) return RM.Pixel_Color is
+   function XTerm_Indexed_Color
+     (R     : Renderer;
+      Index : Natural) return RM.Pixel_Color
+   is
    begin
-      if Index <= Palette'Last then
-         return Palette (Index);
+      if Index <= R.Color_Theme.Palette'Last then
+         return R.Color_Theme.Palette (Index);
       elsif Index <= 231 then
          declare
             Offset : constant Natural := Index - 16;
@@ -135,7 +138,8 @@ package body Terminal.App.Renderer is
    end XTerm_Indexed_Color;
 
    function Resolve_Color
-     (Color      : Terminal.Core.Color;
+     (R          : Renderer;
+      Color      : Terminal.Core.Color;
       Default    : RM.Pixel_Color)
       return RM.Pixel_Color
    is
@@ -144,7 +148,7 @@ package body Terminal.App.Renderer is
          when Terminal.Core.Default =>
             return Default;
          when Terminal.Core.Indexed =>
-            return XTerm_Indexed_Color (Color.Index);
+            return XTerm_Indexed_Color (R, Color.Index);
          when Terminal.Core.RGB =>
             return
               (R => Float (Color.R) / 255.0,
@@ -164,7 +168,10 @@ package body Terminal.App.Renderer is
          A => Color.A);
    end Dim_Color;
 
-   function Foreground (Cell : Terminal.Core.Cell) return RM.Pixel_Color is
+   function Foreground
+     (R    : Renderer;
+      Cell : Terminal.Core.Cell) return RM.Pixel_Color
+   is
       Color : RM.Pixel_Color;
    begin
       if (not Cell.Style.Inverse)
@@ -172,11 +179,11 @@ package body Terminal.App.Renderer is
         and then Cell.Style.Foreground.Kind = Terminal.Core.Indexed
         and then Cell.Style.Foreground.Index <= 7
       then
-         Color := XTerm_Indexed_Color (Cell.Style.Foreground.Index + 8);
+         Color := XTerm_Indexed_Color (R, Cell.Style.Foreground.Index + 8);
       elsif Cell.Style.Inverse then
-         Color := Resolve_Color (Cell.Style.Background, Default_BG);
+         Color := Resolve_Color (R, Cell.Style.Background, R.Color_Theme.Default_BG);
       else
-         Color := Resolve_Color (Cell.Style.Foreground, Default_FG);
+         Color := Resolve_Color (R, Cell.Style.Foreground, R.Color_Theme.Default_FG);
       end if;
 
       if Cell.Style.Faint then
@@ -186,22 +193,26 @@ package body Terminal.App.Renderer is
       end if;
    end Foreground;
 
-   function Background (Cell : Terminal.Core.Cell) return RM.Pixel_Color is
+   function Background
+     (R    : Renderer;
+      Cell : Terminal.Core.Cell) return RM.Pixel_Color
+   is
    begin
       if Cell.Style.Inverse then
-         return Resolve_Color (Cell.Style.Foreground, Default_FG);
+         return Resolve_Color (R, Cell.Style.Foreground, R.Color_Theme.Default_FG);
       else
-         return Resolve_Color (Cell.Style.Background, Default_BG);
+         return Resolve_Color (R, Cell.Style.Background, R.Color_Theme.Default_BG);
       end if;
    end Background;
 
    function Underline_Color
-     (Cell       : Terminal.Core.Cell;
+     (R          : Renderer;
+      Cell       : Terminal.Core.Cell;
       Foreground : RM.Pixel_Color)
       return RM.Pixel_Color
    is
    begin
-      return Resolve_Color (Cell.Style.Underline_Color, Foreground);
+      return Resolve_Color (R, Cell.Style.Underline_Color, Foreground);
    end Underline_Color;
 
    function Is_Cursor_Cell
@@ -275,16 +286,40 @@ package body Terminal.App.Renderer is
          Free_Glyphs (R.Glyphs);
          R.Glyphs := null;
       end if;
+      if R.Images /= null then
+         for I in 1 .. R.Image_Count loop
+            if R.Images (I).Decoded_Bytes /= null
+              and then R.Images (I).Decoded_Bytes_Owned
+            then
+               Free_Image_Data (R.Images (I).Decoded_Bytes);
+            end if;
+            R.Images (I).Decoded_Bytes := null;
+            R.Images (I).Decoded_Bytes_Owned := False;
+            if R.Images (I).Encoded_Source_Bytes /= null
+              and then R.Images (I).Encoded_Source_Bytes_Owned
+            then
+               Free_Image_Data (R.Images (I).Encoded_Source_Bytes);
+            end if;
+            R.Images (I).Encoded_Source_Bytes := null;
+            R.Images (I).Encoded_Source_Bytes_Owned := False;
+            R.Images (I).Encoded_Source_Length := 0;
+         end loop;
+         Free_Images (R.Images);
+         R.Images := null;
+      end if;
       if R.Text_Runs /= null then
          Free_Text_Runs (R.Text_Runs);
          R.Text_Runs := null;
       end if;
       R.Rectangle_Count := 0;
       R.Glyph_Count := 0;
+      R.Image_Count := 0;
       R.Text_Run_Count := 0;
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
       R.Text_Fallback_Run_Count := 0;
+      R.Color_Emoji_Fallback_Count := 0;
+      R.Paragraph_Bidi_Fallback_Count := 0;
       R.Vertex_Count := 0;
       R.Last_Cell_Count := 0;
       R.Last_Dirty_Rows := 0;
@@ -292,6 +327,330 @@ package body Terminal.App.Renderer is
       R.Last_Frame_Height := 0;
       VS.Release (R.Batch);
    end Release_Frame;
+
+   procedure Clear_Kitty_Chunks (R : in out Renderer) is
+      Current : Kitty_Chunk_Segment_Access := R.Kitty_Chunk_Head;
+      Next    : Kitty_Chunk_Segment_Access;
+   begin
+      while Current /= null loop
+         Next := Current.Next;
+         if Current.Text /= null then
+            Free_String (Current.Text);
+            Current.Text := null;
+         end if;
+         Free_Kitty_Chunk_Segment (Current);
+         Current := Next;
+      end loop;
+      R.Kitty_Chunk_Head := null;
+      R.Kitty_Chunk_Tail := null;
+      R.Kitty_Chunk_Length := 0;
+   end Clear_Kitty_Chunks;
+
+   procedure Clear_Image_Object (Object : in out Image_Object) is
+   begin
+      if Object.Bytes /= null then
+         Free_Image_Data (Object.Bytes);
+         Object.Bytes := null;
+      end if;
+      Object :=
+        (ID             => 0,
+         Protocol       => RM.Image_Kitty,
+         Raw_Format     => 0,
+         Pixel_Width    => 0,
+         Pixel_Height   => 0,
+         Decoded_Length => 0,
+         Decoded_Row_Stride_Bytes => 0,
+         Bytes          => null,
+         Next           => null);
+   end Clear_Image_Object;
+
+   function Find_Image_Object
+     (R  : Renderer;
+      ID : Natural) return Image_Object_Access
+   is
+      Current : Image_Object_Access := R.Image_Objects;
+   begin
+      if ID = 0 then
+         return null;
+      end if;
+
+      while Current /= null loop
+         if Current.ID = ID then
+            return Current;
+         end if;
+         Current := Current.Next;
+      end loop;
+      return null;
+   end Find_Image_Object;
+
+   procedure Release_Image_Objects (R : in out Renderer) is
+      Current : Image_Object_Access := R.Image_Objects;
+      Next    : Image_Object_Access;
+   begin
+      while Current /= null loop
+         Next := Current.Next;
+         Clear_Image_Object (Current.all);
+         Free_Image_Object (Current);
+         Current := Next;
+      end loop;
+      R.Image_Objects := null;
+   end Release_Image_Objects;
+
+   procedure Delete_Image_Object
+     (R  : in out Renderer;
+      ID : Natural)
+   is
+      Previous : Image_Object_Access := null;
+      Current  : Image_Object_Access := R.Image_Objects;
+   begin
+      if ID = 0 then
+         return;
+      end if;
+
+      while Current /= null loop
+         if Current.ID = ID then
+            declare
+               Next : constant Image_Object_Access := Current.Next;
+            begin
+               if Previous = null then
+                  R.Image_Objects := Next;
+               else
+                  Previous.Next := Next;
+               end if;
+               Clear_Image_Object (Current.all);
+               Free_Image_Object (Current);
+            end;
+            return;
+         end if;
+
+         Previous := Current;
+         Current := Current.Next;
+      end loop;
+   end Delete_Image_Object;
+
+   procedure Take_Image_Object
+     (R              : in out Renderer;
+      ID             : Natural;
+      Protocol       : RM.Image_Protocol;
+      Raw_Format     : Natural;
+      Pixel_Width    : Natural;
+      Pixel_Height   : Natural;
+      Decoded_Length : Natural;
+      Decoded_Row_Stride_Bytes : Natural;
+      Bytes          : in out RM.Image_Data_Access;
+      Stored_Bytes   : out RM.Image_Data_Access)
+   is
+      Object : Image_Object_Access := Find_Image_Object (R, ID);
+   begin
+      Stored_Bytes := null;
+      if ID = 0
+        or else Bytes = null
+        or else Decoded_Length = 0
+        or else Raw_Format = 0
+        or else Pixel_Width = 0
+        or else Pixel_Height = 0
+      then
+         return;
+      end if;
+
+      if Object = null then
+         Object := new Image_Object;
+         Object.Next := R.Image_Objects;
+         R.Image_Objects := Object;
+      end if;
+
+      declare
+         Next : constant Image_Object_Access := Object.Next;
+      begin
+         Clear_Image_Object (Object.all);
+         Object.all :=
+           (ID             => ID,
+            Protocol       => Protocol,
+            Raw_Format     => Raw_Format,
+            Pixel_Width    => Pixel_Width,
+            Pixel_Height   => Pixel_Height,
+            Decoded_Length => Decoded_Length,
+            Decoded_Row_Stride_Bytes => Decoded_Row_Stride_Bytes,
+            Bytes          => Bytes,
+            Next           => Next);
+         Stored_Bytes := Bytes;
+         Bytes := null;
+      end;
+   exception
+      when Storage_Error =>
+         Stored_Bytes := null;
+   end Take_Image_Object;
+
+   function Image_Buffer_Extent
+     (Raw_Format     : Natural;
+      Pixel_Width    : Natural;
+      Pixel_Height   : Natural;
+      Row_Stride     : Natural) return Natural
+   is
+      Bytes_Per_Pixel : constant Natural :=
+        (if Raw_Format = 24 then 3
+         elsif Raw_Format = 32 then 4
+         else 0);
+      Row_Bytes : Natural := 0;
+      Extent : Natural := 0;
+   begin
+      if Bytes_Per_Pixel = 0
+        or else Pixel_Width = 0
+        or else Pixel_Height = 0
+        or else Pixel_Width > Natural'Last / Bytes_Per_Pixel
+      then
+         return 0;
+      end if;
+
+      Row_Bytes := Pixel_Width * Bytes_Per_Pixel;
+      if Row_Stride < Row_Bytes
+        or else Row_Stride = 0
+        or else
+          (Pixel_Height > 1
+           and then Row_Stride >
+             (Natural'Last - Row_Bytes) / (Pixel_Height - 1))
+      then
+         return 0;
+      end if;
+
+      Extent :=
+        (if Pixel_Height = 1
+         then Row_Bytes
+         else (Pixel_Height - 1) * Row_Stride + Row_Bytes);
+      if Extent > RM.Max_Image_Decoded_Data_Length then
+         return 0;
+      end if;
+
+      return Extent;
+   end Image_Buffer_Extent;
+
+   function Image_Buffer_Ready
+     (Data        : Terminal.App.Graphics.Graphics_Data_Preview;
+      Image_Bytes : RM.Image_Data_Access) return Boolean
+   is
+      Required : constant Natural :=
+        Image_Buffer_Extent
+          (Data.Raw_Format,
+           Data.Pixel_Width,
+           Data.Pixel_Height,
+           Data.Decoded_Row_Stride_Bytes);
+   begin
+      return Data.Decode_Complete
+        and then Image_Bytes /= null
+        and then Data.Raw_Format /= 0
+        and then Data.Pixel_Width > 0
+        and then Data.Pixel_Height > 0
+        and then Data.Decoded_Row_Stride_Bytes > 0
+        and then Required > 0
+        and then Image_Bytes'Length >= Required
+        and then Data.Decoded_Length = Required;
+   end Image_Buffer_Ready;
+
+   procedure Copy_Image_Preview
+     (Source         : RM.Image_Data_Access;
+      Decoded_Length : Natural;
+      Preview_Length : out Natural;
+      Preview_Bytes  : out Terminal.Common.Bytes.Byte_Array)
+   is
+   begin
+      Preview_Length :=
+        Natural'Min (Decoded_Length, RM.Max_Image_Decoded_Preview_Length);
+      Preview_Bytes := (others => 0);
+      if Source = null then
+         return;
+      end if;
+
+      for I in 1 .. Preview_Length loop
+         exit when I > Source'Last;
+         Preview_Bytes (I) := Source (I);
+      end loop;
+   end Copy_Image_Preview;
+
+   function Copy_Text_Bytes (Text : String) return RM.Image_Data_Access is
+      Result : RM.Image_Data_Access;
+   begin
+      if Text'Length = 0 then
+         return null;
+      end if;
+
+      Result := new Terminal.Common.Bytes.Byte_Array (1 .. Text'Length);
+      for I in Text'Range loop
+         Result (I - Text'First + 1) :=
+           Terminal.Common.Bytes.Byte (Character'Pos (Text (I)));
+      end loop;
+      return Result;
+   exception
+      when Storage_Error =>
+         return null;
+   end Copy_Text_Bytes;
+
+   procedure Capture_Image_Preview_Row
+     (Preview_Length : in out Natural;
+      Preview_Bytes  : in out Terminal.Common.Bytes.Byte_Array;
+      Row_Y          : Natural;
+      Row            : Terminal.Common.Bytes.Byte_Array;
+      Continue       : in out Boolean)
+   is
+      pragma Unreferenced (Row_Y);
+   begin
+      for I in Row'Range loop
+         exit when Preview_Length >= Preview_Bytes'Length;
+         Preview_Length := Preview_Length + 1;
+         Preview_Bytes (Preview_Length) := Row (I);
+      end loop;
+      Continue := True;
+   end Capture_Image_Preview_Row;
+
+   procedure Capture_Image_Row
+     (Data              : Terminal.App.Graphics.Graphics_Data_Preview;
+      Image_Bytes       : in out RM.Image_Data_Access;
+      Image_Bytes_Owned : in out Boolean;
+      Row_Y             : Natural;
+      Row               : Terminal.Common.Bytes.Byte_Array;
+      Continue          : in out Boolean)
+   is
+      Required : constant Natural :=
+        Image_Buffer_Extent
+          (Data.Raw_Format,
+           Data.Pixel_Width,
+           Data.Pixel_Height,
+           Data.Decoded_Row_Stride_Bytes);
+      Offset : Natural := 0;
+   begin
+      if Required = 0
+        or else Row'Length /= Data.Decoded_Row_Stride_Bytes
+        or else Row_Y >= Data.Pixel_Height
+        or else Row_Y >
+          (Natural'Last - 1) / Data.Decoded_Row_Stride_Bytes
+      then
+         Continue := False;
+         return;
+      end if;
+
+      Offset := Row_Y * Data.Decoded_Row_Stride_Bytes + 1;
+      if Offset > Required
+        or else Row'Length > Required - Offset + 1
+      then
+         Continue := False;
+         return;
+      end if;
+
+      if Image_Bytes = null then
+         Image_Bytes := new Terminal.Common.Bytes.Byte_Array (1 .. Required);
+         Image_Bytes.all := (others => 0);
+         Image_Bytes_Owned := True;
+      elsif Image_Bytes'Length < Required then
+         Continue := False;
+         return;
+      end if;
+
+      for I in Row'Range loop
+         Image_Bytes (Offset + I - Row'First) := Row (I);
+      end loop;
+   exception
+      when Storage_Error =>
+         Continue := False;
+   end Capture_Image_Row;
 
    procedure Add_Rectangle
      (R      : in out Renderer;
@@ -310,6 +669,1518 @@ package body Terminal.App.Renderer is
       R.Rectangles (R.Rectangle_Count) :=
         (X => X, Y => Y, Width => Width, Height => Height, Color => Color);
    end Add_Rectangle;
+
+   function Graphics_Protocol
+     (Protocol : Terminal.Core.Ignored_Graphics_Protocol)
+      return RM.Image_Protocol
+   is
+   begin
+      case Protocol is
+         when Terminal.Core.Sixel_Graphics =>
+            return RM.Image_Sixel;
+         when Terminal.Core.Kitty_Graphics =>
+            return RM.Image_Kitty;
+         when Terminal.Core.ITerm2_Graphics =>
+            return RM.Image_ITerm2;
+         when Terminal.Core.No_Graphics =>
+            return RM.Image_Sixel;
+      end case;
+   end Graphics_Protocol;
+
+   function Graphics_Tint
+     (Protocol : Terminal.Core.Ignored_Graphics_Protocol) return RM.Pixel_Color
+   is
+   begin
+      case Protocol is
+         when Terminal.Core.Sixel_Graphics =>
+            return (R => 0.10, G => 0.55, B => 0.90, A => 1.0);
+         when Terminal.Core.Kitty_Graphics =>
+            return (R => 0.30, G => 0.75, B => 0.30, A => 1.0);
+         when Terminal.Core.ITerm2_Graphics =>
+            return (R => 0.85, G => 0.35, B => 0.70, A => 1.0);
+         when Terminal.Core.No_Graphics =>
+            return (R => 0.50, G => 0.50, B => 0.50, A => 1.0);
+      end case;
+   end Graphics_Tint;
+
+   procedure Add_Image
+     (R      : in out Renderer;
+      Event  : Terminal.Core.Graphics_Event)
+   is
+      function Event_Text
+        (Item : Terminal.Core.Graphics_Event) return String is
+      begin
+         if Item.Preview_Length = 0 then
+            return "";
+         end if;
+         return Item.Preview (1 .. Item.Preview_Length);
+      end Event_Text;
+
+      function Kitty_Data_Start (Text : String) return Natural is
+      begin
+         for I in Text'Range loop
+            if Text (I) = ';' then
+               return (if I < Text'Last then I + 1 else 0);
+            end if;
+         end loop;
+         return 0;
+      end Kitty_Data_Start;
+
+      procedure Clear_Kitty_Chunk is
+      begin
+         Clear_Kitty_Chunks (R);
+      end Clear_Kitty_Chunk;
+
+      procedure Append_Kitty_Text (Text : String) is
+         Segment : Kitty_Chunk_Segment_Access;
+      begin
+         if Text'Length = 0 then
+            return;
+         end if;
+
+         Segment := new Kitty_Chunk_Segment'
+           (Text => new String'(Text),
+            Next => null);
+         if R.Kitty_Chunk_Tail = null then
+            R.Kitty_Chunk_Head := Segment;
+         else
+            R.Kitty_Chunk_Tail.Next := Segment;
+         end if;
+         R.Kitty_Chunk_Tail := Segment;
+         R.Kitty_Chunk_Length := R.Kitty_Chunk_Length + Text'Length;
+      exception
+         when Storage_Error =>
+            Clear_Kitty_Chunk;
+      end Append_Kitty_Text;
+
+      procedure Store_Kitty_Chunk (Text : String) is
+      begin
+         Clear_Kitty_Chunk;
+         Append_Kitty_Text (Text);
+      end Store_Kitty_Chunk;
+
+      procedure Append_Kitty_Chunk (Chunk : String) is
+         From : constant Natural := Kitty_Data_Start (Chunk);
+      begin
+         if From = 0 then
+            return;
+         end if;
+         Append_Kitty_Text (Chunk (From .. Chunk'Last));
+      end Append_Kitty_Chunk;
+
+      function Flatten_Kitty_Chunk return String_Access is
+         Result  : String_Access;
+         Current : Kitty_Chunk_Segment_Access := R.Kitty_Chunk_Head;
+         Offset  : Natural := 0;
+      begin
+         if R.Kitty_Chunk_Length = 0 then
+            return null;
+         end if;
+
+         Result := new String (1 .. R.Kitty_Chunk_Length);
+         while Current /= null loop
+            if Current.Text /= null then
+               Result
+                 (Offset + 1 .. Offset + Current.Text'Length) :=
+                   Current.Text.all;
+               Offset := Offset + Current.Text'Length;
+            end if;
+            Current := Current.Next;
+         end loop;
+         return Result;
+      exception
+         when Storage_Error =>
+            return null;
+      end Flatten_Kitty_Chunk;
+
+      function Emit_Raw_Kitty_Chunked
+        (Item : Terminal.Core.Graphics_Event) return Boolean
+      is
+         First : constant Kitty_Chunk_Segment_Access := R.Kitty_Chunk_Head;
+      begin
+         if First = null or else First.Text = null then
+            return False;
+         end if;
+
+         declare
+            First_Text : String renames First.Text.all;
+            Header : constant Terminal.App.Graphics.Graphics_Header :=
+              Terminal.App.Graphics.Header_Text
+                (Terminal.Core.Kitty_Graphics, First_Text);
+            Raw_Format : constant Natural := Header.Raw_Format;
+            Bytes_Per_Pixel : constant Natural :=
+              (if Raw_Format = 24 then 3
+               elsif Raw_Format = 32 then 4
+               else 0);
+            Row_Stride : constant Natural :=
+              (if Bytes_Per_Pixel > 0
+                 and then Header.Pixel_Width <= Natural'Last / Bytes_Per_Pixel
+               then Header.Pixel_Width * Bytes_Per_Pixel
+               else 0);
+            Expected_Length : constant Natural :=
+              Image_Buffer_Extent
+                (Raw_Format,
+                 Header.Pixel_Width,
+                 Header.Pixel_Height,
+                 Row_Stride);
+            First_Data : constant Natural := Kitty_Data_Start (First_Text);
+            X : constant Float :=
+              Float (Content_Margin + (Item.Col - 1) * R.CW);
+            Y : constant Float :=
+              Float (Content_Margin + (Item.Row - 1) * R.CH);
+            Segment_Count : Natural := 0;
+            Data : Terminal.App.Graphics.Graphics_Data_Preview;
+            Image_Bytes : RM.Image_Data_Access := null;
+            Image_Bytes_Owned : Boolean := False;
+            Encoded_Source : RM.Image_Data_Access := null;
+            Encoded_Source_Owned : Boolean := False;
+            Borrowed_From_Object : Boolean := False;
+            Row_Copy_Failed : Boolean := False;
+            Preview_Length : Natural := 0;
+            Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+              (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
+
+            function Chunk_Text (Index : Positive) return String is
+               Current : Kitty_Chunk_Segment_Access := R.Kitty_Chunk_Head;
+               Current_Index : Positive := 1;
+            begin
+               while Current /= null loop
+                  if Current.Text /= null then
+                     if Current_Index = Index then
+                        if Index = 1 then
+                           return Current.Text (First_Data .. Current.Text'Last);
+                        else
+                           return Current.Text.all;
+                        end if;
+                     end if;
+                     Current_Index := Current_Index + 1;
+                  end if;
+                  Current := Current.Next;
+               end loop;
+               return "";
+            end Chunk_Text;
+
+            procedure Capture_Raw_Row
+              (Row_Y : Natural;
+               Row : Terminal.Common.Bytes.Byte_Array;
+               Continue : in out Boolean)
+            is
+            begin
+               if Header.Kitty_ID > 0 then
+                  Capture_Image_Row
+                    (Data,
+                     Image_Bytes,
+                     Image_Bytes_Owned,
+                     Row_Y,
+                     Row,
+                     Continue);
+               else
+                  Capture_Image_Preview_Row
+                    (Preview_Length, Preview_Bytes, Row_Y, Row, Continue);
+               end if;
+               if not Continue then
+                  Row_Copy_Failed := True;
+               end if;
+            end Capture_Raw_Row;
+
+            function Copy_Chunk_Source return RM.Image_Data_Access is
+               Result : RM.Image_Data_Access;
+               Offset : Natural := 0;
+            begin
+               if Data.Encoded_Length = 0 then
+                  return null;
+               end if;
+
+               Result :=
+                 new Terminal.Common.Bytes.Byte_Array (1 .. Data.Encoded_Length);
+               for Index in 1 .. Segment_Count loop
+                  declare
+                     Text : constant String := Chunk_Text (Index);
+                  begin
+                     for I in Text'Range loop
+                        if Offset < Result'Length then
+                           Offset := Offset + 1;
+                           Result (Offset) :=
+                             Terminal.Common.Bytes.Byte
+                               (Character'Pos (Text (I)));
+                        end if;
+                     end loop;
+                  end;
+               end loop;
+               return Result;
+            exception
+               when Storage_Error =>
+                  return null;
+            end Copy_Chunk_Source;
+
+            procedure Release_Local is
+            begin
+               Terminal.App.Graphics.Release (Data);
+               if Image_Bytes /= null and then Image_Bytes_Owned then
+                  Free_Image_Data (Image_Bytes);
+               end if;
+               if Encoded_Source /= null and then Encoded_Source_Owned then
+                  Free_Image_Data (Encoded_Source);
+               end if;
+               Image_Bytes := null;
+               Image_Bytes_Owned := False;
+               Encoded_Source := null;
+               Encoded_Source_Owned := False;
+            end Release_Local;
+         begin
+            if not Header.Recognized
+              or else not Header.Has_Data
+              or else Bytes_Per_Pixel = 0
+              or else Header.Pixel_Width = 0
+              or else Header.Pixel_Height = 0
+              or else Expected_Length = 0
+              or else Expected_Length > RM.Max_Image_Decoded_Data_Length
+              or else First_Data = 0
+              or else R.Image_Count >= R.Images'Length
+            then
+               return False;
+            end if;
+
+            declare
+               Current : Kitty_Chunk_Segment_Access := R.Kitty_Chunk_Head;
+            begin
+               while Current /= null loop
+                  if Current.Text /= null then
+                     Segment_Count := Segment_Count + 1;
+                  end if;
+                  Current := Current.Next;
+               end loop;
+            end;
+
+            Terminal.App.Graphics.Decode_Base64_Raw_Chunk_Rows
+              (Segment_Count,
+               Chunk_Text'Access,
+               Raw_Format,
+               Header.Pixel_Width,
+               Header.Pixel_Height,
+               Capture_Raw_Row'Access,
+               Data);
+
+            if Row_Copy_Failed
+              or else Data.Decoded_Length /= Expected_Length
+              or else (Header.Kitty_ID > 0
+                       and then not Image_Buffer_Ready (Data, Image_Bytes))
+            then
+               Release_Local;
+               return False;
+            end if;
+
+            if Header.Kitty_ID > 0 then
+               declare
+                  Stored_Bytes : RM.Image_Data_Access;
+               begin
+                  Take_Image_Object
+                    (R              => R,
+                     ID             => Header.Kitty_ID,
+                     Protocol       => RM.Image_Kitty,
+                     Raw_Format     => Raw_Format,
+                     Pixel_Width    => Header.Pixel_Width,
+                     Pixel_Height   => Header.Pixel_Height,
+                     Decoded_Length => Data.Decoded_Length,
+                     Decoded_Row_Stride_Bytes =>
+                       Data.Decoded_Row_Stride_Bytes,
+                     Bytes          => Image_Bytes,
+                     Stored_Bytes   => Stored_Bytes);
+                  if Stored_Bytes /= null then
+                     Image_Bytes := Stored_Bytes;
+                     Image_Bytes_Owned := False;
+                     Borrowed_From_Object := True;
+                  end if;
+               end;
+            end if;
+
+            if Header.Kitty_ID = 0 then
+               Encoded_Source := Copy_Chunk_Source;
+               Encoded_Source_Owned := Encoded_Source /= null;
+               if Encoded_Source = null then
+                  Release_Local;
+                  return False;
+               end if;
+            end if;
+
+            declare
+               Source_Kind : constant RM.Image_Decoded_Source_Kind :=
+                 (if Header.Kitty_ID = 0
+                  then RM.Image_Decoded_Source_Raw_Base64
+                  else RM.Image_Decoded_Source_Buffer);
+            begin
+               if Header.Kitty_ID > 0 then
+                  Copy_Image_Preview
+                    (Image_Bytes,
+                     Data.Decoded_Length,
+                     Preview_Length,
+                     Preview_Bytes);
+               end if;
+               R.Image_Count := R.Image_Count + 1;
+               R.Images (R.Image_Count) :=
+                 (X              => X,
+                  Y              => Y,
+                  Width          =>
+                    Float (R.CW * Header.Placeholder_Cols),
+                  Height         =>
+                    Float (R.CH * Header.Placeholder_Rows),
+                  Protocol       => RM.Image_Kitty,
+                  Placeholder    => False,
+                  Raw_Format     => Raw_Format,
+                  Pixel_Width    => Header.Pixel_Width,
+                  Pixel_Height   => Header.Pixel_Height,
+                  Payload_Length => R.Kitty_Chunk_Length,
+                  Staging_Byte_Length => 0,
+                  Payload_Preview_Complete => True,
+                  Encoded_Preview_Length => Data.Encoded_Length,
+                  Decoded_Byte_Length => Data.Decoded_Length,
+                  Decoded_Row_Stride_Bytes =>
+                    Data.Decoded_Row_Stride_Bytes,
+                  Decoded_Source => Source_Kind,
+                  Decoded_Bytes => Image_Bytes,
+                  Decoded_Bytes_Owned =>
+                    Image_Bytes /= null and then not Borrowed_From_Object,
+                  Encoded_Source_Bytes => Encoded_Source,
+                  Encoded_Source_Bytes_Owned => Encoded_Source_Owned,
+                  Encoded_Source_Length => Data.Encoded_Length,
+                  Decoded_Preview_Length => Preview_Length,
+                  Decoded_Preview_Bytes => Preview_Bytes,
+                  Preview_Decode_Complete => True,
+                  Decode_Status =>
+                    Terminal.App.Graphics.Image_Decode_Status
+                      (Data.Decode_Status),
+                  Tint           => Graphics_Tint (Terminal.Core.Kitty_Graphics));
+            end;
+            Encoded_Source_Owned := False;
+            return True;
+         exception
+            when Storage_Error =>
+               Release_Local;
+               return False;
+         end;
+      end Emit_Raw_Kitty_Chunked;
+
+      function Emit_Raw_Kitty
+        (Item       : Terminal.Core.Graphics_Event;
+         Header     : Terminal.App.Graphics.Graphics_Header;
+         Image_Text : String) return Boolean
+      is
+            Raw_Format : constant Natural := Header.Raw_Format;
+            Bytes_Per_Pixel : constant Natural :=
+              (if Raw_Format = 24 then 3
+               elsif Raw_Format = 32 then 4
+               else 0);
+            Row_Stride : constant Natural :=
+              (if Bytes_Per_Pixel > 0
+                 and then Header.Pixel_Width <= Natural'Last / Bytes_Per_Pixel
+               then Header.Pixel_Width * Bytes_Per_Pixel
+               else 0);
+            Expected_Length : constant Natural :=
+              Image_Buffer_Extent
+                (Raw_Format,
+                 Header.Pixel_Width,
+                 Header.Pixel_Height,
+                 Row_Stride);
+         First_Data : constant Natural := Kitty_Data_Start (Image_Text);
+         X : constant Float :=
+           Float (Content_Margin + (Item.Col - 1) * R.CW);
+         Y : constant Float :=
+           Float (Content_Margin + (Item.Row - 1) * R.CH);
+         Encoded_Length : Natural := 0;
+         Data : Terminal.App.Graphics.Graphics_Data_Preview;
+         Image_Bytes : RM.Image_Data_Access := null;
+         Image_Bytes_Owned : Boolean := False;
+         Encoded_Source : RM.Image_Data_Access := null;
+         Encoded_Source_Owned : Boolean := False;
+         Borrowed_From_Object : Boolean := False;
+         Row_Copy_Failed : Boolean := False;
+         Preview_Length : Natural := 0;
+         Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+           (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
+
+         procedure Capture_Raw_Row
+           (Row_Y : Natural;
+            Row : Terminal.Common.Bytes.Byte_Array;
+            Continue : in out Boolean)
+         is
+         begin
+            if Header.Kitty_ID > 0 then
+               Capture_Image_Row
+                 (Data,
+                  Image_Bytes,
+                  Image_Bytes_Owned,
+                  Row_Y,
+                  Row,
+                  Continue);
+            else
+               Capture_Image_Preview_Row
+                 (Preview_Length, Preview_Bytes, Row_Y, Row, Continue);
+            end if;
+            if not Continue then
+               Row_Copy_Failed := True;
+            end if;
+         end Capture_Raw_Row;
+
+         procedure Release_Local is
+         begin
+            Terminal.App.Graphics.Release (Data);
+            if Image_Bytes /= null and then Image_Bytes_Owned then
+               Free_Image_Data (Image_Bytes);
+            end if;
+            if Encoded_Source /= null and then Encoded_Source_Owned then
+               Free_Image_Data (Encoded_Source);
+            end if;
+            Image_Bytes := null;
+            Image_Bytes_Owned := False;
+            Encoded_Source := null;
+            Encoded_Source_Owned := False;
+         end Release_Local;
+      begin
+         if not Header.Recognized
+           or else not Header.Has_Data
+           or else Bytes_Per_Pixel = 0
+           or else Header.Pixel_Width = 0
+           or else Header.Pixel_Height = 0
+           or else Expected_Length = 0
+           or else Expected_Length > RM.Max_Image_Decoded_Data_Length
+           or else First_Data = 0
+           or else R.Image_Count >= R.Images'Length
+           or else Item.Payload_Length = 0
+           or else Image_Text'Length /= Item.Payload_Length
+         then
+            return False;
+         end if;
+
+         Encoded_Length := Image_Text'Last - First_Data + 1;
+         Terminal.App.Graphics.Decode_Base64_Raw_Rows
+           (Image_Text (First_Data .. Image_Text'Last),
+            Raw_Format,
+            Header.Pixel_Width,
+            Header.Pixel_Height,
+            Capture_Raw_Row'Access,
+            Data);
+
+         if Row_Copy_Failed
+           or else Data.Decoded_Length /= Expected_Length
+           or else (Header.Kitty_ID > 0
+                    and then not Image_Buffer_Ready (Data, Image_Bytes))
+         then
+            Release_Local;
+            return False;
+         end if;
+
+         if Header.Kitty_ID > 0 then
+            declare
+               Stored_Bytes : RM.Image_Data_Access;
+            begin
+               Take_Image_Object
+                 (R              => R,
+                  ID             => Header.Kitty_ID,
+                  Protocol       => RM.Image_Kitty,
+                  Raw_Format     => Raw_Format,
+                  Pixel_Width    => Header.Pixel_Width,
+                  Pixel_Height   => Header.Pixel_Height,
+                  Decoded_Length => Data.Decoded_Length,
+                  Decoded_Row_Stride_Bytes =>
+                    Data.Decoded_Row_Stride_Bytes,
+                  Bytes          => Image_Bytes,
+                  Stored_Bytes   => Stored_Bytes);
+               if Stored_Bytes /= null then
+                  Image_Bytes := Stored_Bytes;
+                  Image_Bytes_Owned := False;
+                  Borrowed_From_Object := True;
+               end if;
+            end;
+         end if;
+
+         if Header.Kitty_ID = 0 then
+            Encoded_Source :=
+              Copy_Text_Bytes (Image_Text (First_Data .. Image_Text'Last));
+            Encoded_Source_Owned := Encoded_Source /= null;
+            if Encoded_Source = null then
+               Release_Local;
+               return False;
+            end if;
+         end if;
+
+         declare
+            Source_Kind : constant RM.Image_Decoded_Source_Kind :=
+              (if Header.Kitty_ID = 0
+               then RM.Image_Decoded_Source_Raw_Base64
+               else RM.Image_Decoded_Source_Buffer);
+         begin
+            if Header.Kitty_ID > 0 then
+               Copy_Image_Preview
+                 (Image_Bytes, Data.Decoded_Length, Preview_Length, Preview_Bytes);
+            end if;
+
+            R.Image_Count := R.Image_Count + 1;
+            R.Images (R.Image_Count) :=
+              (X              => X,
+               Y              => Y,
+               Width          =>
+                 Float (R.CW * Header.Placeholder_Cols),
+               Height         =>
+                 Float (R.CH * Header.Placeholder_Rows),
+               Protocol       => RM.Image_Kitty,
+               Placeholder    => False,
+               Raw_Format     => Raw_Format,
+               Pixel_Width    => Header.Pixel_Width,
+               Pixel_Height   => Header.Pixel_Height,
+               Payload_Length => Item.Payload_Length,
+               Staging_Byte_Length => 0,
+               Payload_Preview_Complete => True,
+               Encoded_Preview_Length => Encoded_Length,
+               Decoded_Byte_Length => Data.Decoded_Length,
+               Decoded_Row_Stride_Bytes =>
+                 Data.Decoded_Row_Stride_Bytes,
+               Decoded_Source => Source_Kind,
+               Decoded_Bytes => Image_Bytes,
+               Decoded_Bytes_Owned =>
+                 Image_Bytes /= null and then not Borrowed_From_Object,
+               Encoded_Source_Bytes => Encoded_Source,
+               Encoded_Source_Bytes_Owned => Encoded_Source_Owned,
+               Encoded_Source_Length => Encoded_Length,
+               Decoded_Preview_Length => Preview_Length,
+               Decoded_Preview_Bytes => Preview_Bytes,
+               Preview_Decode_Complete => True,
+               Decode_Status =>
+                 Terminal.App.Graphics.Image_Decode_Status
+                   (Data.Decode_Status),
+               Tint           => Graphics_Tint (Terminal.Core.Kitty_Graphics));
+         end;
+         Encoded_Source_Owned := False;
+         return True;
+      exception
+         when Storage_Error =>
+            Release_Local;
+            return False;
+      end Emit_Raw_Kitty;
+
+      function Emit_PNG_Kitty_Chunked
+        (Item : Terminal.Core.Graphics_Event) return Boolean
+      is
+         First : constant Kitty_Chunk_Segment_Access := R.Kitty_Chunk_Head;
+      begin
+         if First = null or else First.Text = null then
+            return False;
+         end if;
+
+         declare
+            First_Text : String renames First.Text.all;
+            Header : constant Terminal.App.Graphics.Graphics_Header :=
+              Terminal.App.Graphics.Header_Text
+                (Terminal.Core.Kitty_Graphics, First_Text);
+            First_Data : constant Natural := Kitty_Data_Start (First_Text);
+            X : constant Float :=
+              Float (Content_Margin + (Item.Col - 1) * R.CW);
+            Y : constant Float :=
+              Float (Content_Margin + (Item.Row - 1) * R.CH);
+            Segment_Count : Natural := 0;
+            Encoded_Length : Natural := 0;
+            PNG_Length : Natural := 0;
+            Data : Terminal.App.Graphics.Graphics_Data_Preview :=
+              (Header_Recognized => Header.Recognized,
+               Has_Data          => Header.Has_Data,
+               Raw_Format        => 0,
+               Pixel_Width       => 0,
+               Pixel_Height      => 0,
+               others            => <>);
+            Image_Bytes : RM.Image_Data_Access := null;
+            Image_Bytes_Owned : Boolean := False;
+            Encoded_Source : RM.Image_Data_Access := null;
+            Encoded_Source_Owned : Boolean := False;
+            Borrowed_From_Object : Boolean := False;
+            Row_Copy_Failed : Boolean := False;
+            Preview_Length : Natural := 0;
+            Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+              (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
+
+            function Chunk_Text (Index : Positive) return String is
+               Current : Kitty_Chunk_Segment_Access := R.Kitty_Chunk_Head;
+               Current_Index : Positive := 1;
+            begin
+               while Current /= null loop
+                  if Current.Text /= null then
+                     if Current_Index = Index then
+                        if Index = 1 then
+                           return Current.Text (First_Data .. Current.Text'Last);
+                        else
+                           return Current.Text.all;
+                        end if;
+                     end if;
+                     Current_Index := Current_Index + 1;
+                  end if;
+                  Current := Current.Next;
+               end loop;
+               return "";
+            end Chunk_Text;
+
+            procedure Release_Local is
+            begin
+               if Image_Bytes /= null and then Image_Bytes_Owned then
+                  Free_Image_Data (Image_Bytes);
+                  Image_Bytes := null;
+                  Image_Bytes_Owned := False;
+               end if;
+               if Encoded_Source /= null and then Encoded_Source_Owned then
+                  Free_Image_Data (Encoded_Source);
+                  Encoded_Source := null;
+                  Encoded_Source_Owned := False;
+               end if;
+               Terminal.App.Graphics.Release (Data);
+            end Release_Local;
+
+            function Copy_Chunk_Source return RM.Image_Data_Access is
+               Result : RM.Image_Data_Access;
+               Offset : Natural := 0;
+            begin
+               if Encoded_Length = 0 then
+                  return null;
+               end if;
+
+               Result :=
+                 new Terminal.Common.Bytes.Byte_Array (1 .. Encoded_Length);
+               for Index in 1 .. Segment_Count loop
+                  declare
+                     Text : constant String := Chunk_Text (Index);
+                  begin
+                     for I in Text'Range loop
+                        if Offset < Result'Length then
+                           Offset := Offset + 1;
+                           Result (Offset) :=
+                             Terminal.Common.Bytes.Byte
+                               (Character'Pos (Text (I)));
+                        end if;
+                     end loop;
+                  end;
+               end loop;
+               return Result;
+            exception
+               when Storage_Error =>
+                  return null;
+            end Copy_Chunk_Source;
+
+            procedure Capture_PNG_Row
+              (Row_Y : Natural;
+               Row   : Terminal.Common.Bytes.Byte_Array;
+               Continue : in out Boolean)
+            is
+            begin
+               if Header.Kitty_ID > 0 then
+                  Capture_Image_Row
+                    (Data,
+                     Image_Bytes,
+                     Image_Bytes_Owned,
+                     Row_Y,
+                     Row,
+                     Continue);
+               else
+                  Capture_Image_Preview_Row
+                    (Preview_Length, Preview_Bytes, Row_Y, Row, Continue);
+               end if;
+               if not Continue then
+                  Row_Copy_Failed := True;
+               end if;
+            end Capture_PNG_Row;
+         begin
+            if not Header.Recognized
+              or else not Header.Has_Data
+              or else Header.Kitty_Format /= 100
+              or else First_Data = 0
+              or else R.Image_Count >= R.Images'Length
+            then
+               return False;
+            end if;
+
+            declare
+               Current : Kitty_Chunk_Segment_Access := R.Kitty_Chunk_Head;
+            begin
+               while Current /= null loop
+                  if Current.Text /= null then
+                     Segment_Count := Segment_Count + 1;
+                     Encoded_Length := Encoded_Length + Current.Text'Length;
+                  end if;
+                  Current := Current.Next;
+               end loop;
+            end;
+
+            if Segment_Count = 0 or else Encoded_Length = 0 then
+               return False;
+            end if;
+
+            Terminal.App.Graphics.Decode_Base64_PNG_Chunk_Rows
+              (Segment_Count,
+               Chunk_Text'Access,
+               Encoded_Length,
+               PNG_Length,
+               Capture_PNG_Row'Access,
+               Data);
+
+            if Row_Copy_Failed
+              or else not Data.Decode_Complete
+              or else Data.Decoded_Length = 0
+              or else Data.Decoded_Row_Stride_Bytes = 0
+              or else
+                (Header.Kitty_ID > 0
+                 and then not Image_Buffer_Ready (Data, Image_Bytes))
+            then
+               Release_Local;
+               return False;
+            end if;
+
+            if Header.Kitty_ID > 0 then
+               declare
+                  Stored_Bytes : RM.Image_Data_Access;
+               begin
+                  Take_Image_Object
+                    (R              => R,
+                     ID             => Header.Kitty_ID,
+                     Protocol       => RM.Image_Kitty,
+                     Raw_Format     => Data.Raw_Format,
+                     Pixel_Width    => Data.Pixel_Width,
+                     Pixel_Height   => Data.Pixel_Height,
+                     Decoded_Length => Data.Decoded_Length,
+                     Decoded_Row_Stride_Bytes =>
+                       Data.Decoded_Row_Stride_Bytes,
+                     Bytes          => Image_Bytes,
+                     Stored_Bytes   => Stored_Bytes);
+                  if Stored_Bytes /= null then
+                     Image_Bytes := Stored_Bytes;
+                     Image_Bytes_Owned := False;
+                     Borrowed_From_Object := True;
+                  end if;
+               end;
+            end if;
+
+            if Header.Kitty_ID = 0 then
+               Encoded_Source := Copy_Chunk_Source;
+               Encoded_Source_Owned := Encoded_Source /= null;
+               if Encoded_Source = null then
+                  Release_Local;
+                  return False;
+               end if;
+            end if;
+
+            declare
+               Source_Kind : constant RM.Image_Decoded_Source_Kind :=
+                 (if Header.Kitty_ID = 0
+                  then RM.Image_Decoded_Source_PNG_Base64
+                  else RM.Image_Decoded_Source_Buffer);
+            begin
+               if Header.Kitty_ID > 0 then
+                  Copy_Image_Preview
+                    (Image_Bytes,
+                     Data.Decoded_Length,
+                     Preview_Length,
+                     Preview_Bytes);
+               end if;
+
+               R.Image_Count := R.Image_Count + 1;
+               R.Images (R.Image_Count) :=
+                 (X              => X,
+                  Y              => Y,
+                  Width          =>
+                    Float (R.CW * Header.Placeholder_Cols),
+                  Height         =>
+                    Float (R.CH * Header.Placeholder_Rows),
+                  Protocol       => RM.Image_Kitty,
+                  Placeholder    => False,
+                  Raw_Format     => Data.Raw_Format,
+                  Pixel_Width    => Data.Pixel_Width,
+                  Pixel_Height   => Data.Pixel_Height,
+                  Payload_Length => R.Kitty_Chunk_Length,
+                  Staging_Byte_Length => PNG_Length,
+                  Payload_Preview_Complete => True,
+                  Encoded_Preview_Length => Encoded_Length,
+                  Decoded_Byte_Length => Data.Decoded_Length,
+                  Decoded_Row_Stride_Bytes =>
+                    Data.Decoded_Row_Stride_Bytes,
+                  Decoded_Source => Source_Kind,
+                  Decoded_Bytes => Image_Bytes,
+                  Decoded_Bytes_Owned =>
+                    Image_Bytes /= null and then not Borrowed_From_Object,
+                  Encoded_Source_Bytes => Encoded_Source,
+                  Encoded_Source_Bytes_Owned => Encoded_Source_Owned,
+                  Encoded_Source_Length => Encoded_Length,
+                  Decoded_Preview_Length => Preview_Length,
+                  Decoded_Preview_Bytes => Preview_Bytes,
+                  Preview_Decode_Complete => True,
+                  Decode_Status => RM.Image_Decode_Ok,
+                  Tint           => Graphics_Tint (Terminal.Core.Kitty_Graphics));
+            end;
+            Encoded_Source_Owned := False;
+
+            Terminal.App.Graphics.Release (Data);
+            return True;
+         exception
+            when Storage_Error =>
+               Release_Local;
+               return False;
+         end;
+      end Emit_PNG_Kitty_Chunked;
+
+      function Emit_Image_Object
+        (Item   : Terminal.Core.Graphics_Event;
+         Header : Terminal.App.Graphics.Graphics_Header) return Boolean
+      is
+         Object : constant Image_Object_Access :=
+           Find_Image_Object (R, Header.Kitty_ID);
+         X : constant Float :=
+           Float (Content_Margin + (Item.Col - 1) * R.CW);
+         Y : constant Float :=
+           Float (Content_Margin + (Item.Row - 1) * R.CH);
+         Preview_Length : Natural := 0;
+         Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+           (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
+      begin
+         if Object = null
+           or else R.Image_Count >= R.Images'Length
+         then
+            return False;
+         end if;
+
+         Copy_Image_Preview
+           (Object.Bytes, Object.Decoded_Length, Preview_Length, Preview_Bytes);
+
+         R.Image_Count := R.Image_Count + 1;
+         R.Images (R.Image_Count) :=
+           (X              => X,
+            Y              => Y,
+            Width          =>
+              Float (R.CW * Header.Placeholder_Cols),
+            Height         =>
+              Float (R.CH * Header.Placeholder_Rows),
+            Protocol       => Object.Protocol,
+            Placeholder    => False,
+            Raw_Format     => Object.Raw_Format,
+            Pixel_Width    => Object.Pixel_Width,
+            Pixel_Height   => Object.Pixel_Height,
+            Payload_Length => Item.Payload_Length,
+            Staging_Byte_Length => 0,
+            Payload_Preview_Complete => True,
+            Encoded_Preview_Length => 0,
+            Decoded_Byte_Length => Object.Decoded_Length,
+            Decoded_Row_Stride_Bytes => Object.Decoded_Row_Stride_Bytes,
+            Decoded_Source => RM.Image_Decoded_Source_Buffer,
+            Decoded_Bytes => Object.Bytes,
+            Decoded_Bytes_Owned => False,
+            Encoded_Source_Bytes => null,
+            Encoded_Source_Bytes_Owned => False,
+            Encoded_Source_Length => 0,
+            Decoded_Preview_Length => Preview_Length,
+            Decoded_Preview_Bytes => Preview_Bytes,
+            Preview_Decode_Complete => True,
+            Decode_Status => RM.Image_Decode_Ok,
+            Tint           => Graphics_Tint (Item.Protocol));
+
+         return True;
+      end Emit_Image_Object;
+
+      function Emit_PNG_Rows
+        (Item       : Terminal.Core.Graphics_Event;
+         Header     : Terminal.App.Graphics.Graphics_Header;
+         Image_Text : String) return Boolean
+      is
+         From : Natural := 0;
+         X : constant Float :=
+           Float (Content_Margin + (Item.Col - 1) * R.CW);
+         Y : constant Float :=
+           Float (Content_Margin + (Item.Row - 1) * R.CH);
+         Encoded_Length : Natural := 0;
+         PNG_Length : Natural := 0;
+         Data : Terminal.App.Graphics.Graphics_Data_Preview :=
+           (Header_Recognized => Header.Recognized,
+            Has_Data          => Header.Has_Data,
+            Raw_Format        => 0,
+            Pixel_Width       => 0,
+            Pixel_Height      => 0,
+            others            => <>);
+         Image_Bytes : RM.Image_Data_Access := null;
+         Image_Bytes_Owned : Boolean := False;
+         Encoded_Source : RM.Image_Data_Access := null;
+         Encoded_Source_Owned : Boolean := False;
+         Borrowed_From_Object : Boolean := False;
+         Row_Copy_Failed : Boolean := False;
+         Preview_Length : Natural := 0;
+         Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+           (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
+
+         function PNG_Text (Index : Positive) return String is
+         begin
+            if Index = 1 and then From /= 0 then
+               return Image_Text (From .. Image_Text'Last);
+            else
+               return "";
+            end if;
+         end PNG_Text;
+
+         procedure Release_Local is
+         begin
+            if Image_Bytes /= null and then Image_Bytes_Owned then
+               Free_Image_Data (Image_Bytes);
+               Image_Bytes := null;
+               Image_Bytes_Owned := False;
+            end if;
+            if Encoded_Source /= null and then Encoded_Source_Owned then
+               Free_Image_Data (Encoded_Source);
+               Encoded_Source := null;
+               Encoded_Source_Owned := False;
+            end if;
+            Terminal.App.Graphics.Release (Data);
+         end Release_Local;
+
+         procedure Capture_PNG_Row
+           (Row_Y : Natural;
+            Row   : Terminal.Common.Bytes.Byte_Array;
+            Continue : in out Boolean)
+         is
+         begin
+            if Item.Protocol = Terminal.Core.Kitty_Graphics
+              and then Header.Kitty_ID > 0
+            then
+               Capture_Image_Row
+                 (Data,
+                  Image_Bytes,
+                  Image_Bytes_Owned,
+                  Row_Y,
+                  Row,
+                  Continue);
+            else
+               Capture_Image_Preview_Row
+                 (Preview_Length, Preview_Bytes, Row_Y, Row, Continue);
+            end if;
+            if not Continue then
+               Row_Copy_Failed := True;
+            end if;
+         end Capture_PNG_Row;
+      begin
+         if not Header.Recognized
+           or else not Header.Has_Data
+           or else R.Image_Count >= R.Images'Length
+           or else Item.Payload_Length = 0
+           or else Image_Text'Length /= Item.Payload_Length
+         then
+            return False;
+         elsif Item.Protocol = Terminal.Core.Kitty_Graphics then
+            if Header.Kitty_Format /= 100 then
+               return False;
+            end if;
+            From := Kitty_Data_Start (Image_Text);
+         elsif Item.Protocol = Terminal.Core.ITerm2_Graphics then
+            for I in Image_Text'Range loop
+               if Image_Text (I) = ':' then
+                  From := (if I < Image_Text'Last then I + 1 else 0);
+                  exit;
+               end if;
+            end loop;
+         else
+            return False;
+         end if;
+
+         if From = 0 then
+            return False;
+         end if;
+
+         Encoded_Length := Image_Text'Last - From + 1;
+         if Encoded_Length = 0 then
+            return False;
+         end if;
+
+         Terminal.App.Graphics.Decode_Base64_PNG_Chunk_Rows
+           (1,
+            PNG_Text'Access,
+            Encoded_Length,
+            PNG_Length,
+            Capture_PNG_Row'Access,
+            Data);
+
+         if Row_Copy_Failed
+           or else not Data.Decode_Complete
+           or else Data.Decoded_Length = 0
+           or else Data.Decoded_Row_Stride_Bytes = 0
+           or else
+             (Item.Protocol = Terminal.Core.Kitty_Graphics
+              and then Header.Kitty_ID > 0
+              and then not Image_Buffer_Ready (Data, Image_Bytes))
+         then
+            Release_Local;
+            return False;
+         end if;
+
+         if Item.Protocol = Terminal.Core.Kitty_Graphics
+           and then Header.Kitty_ID > 0
+         then
+            declare
+               Stored_Bytes : RM.Image_Data_Access;
+            begin
+               Take_Image_Object
+                 (R              => R,
+                  ID             => Header.Kitty_ID,
+                  Protocol       => RM.Image_Kitty,
+                  Raw_Format     => Data.Raw_Format,
+                  Pixel_Width    => Data.Pixel_Width,
+                  Pixel_Height   => Data.Pixel_Height,
+                  Decoded_Length => Data.Decoded_Length,
+                  Decoded_Row_Stride_Bytes => Data.Decoded_Row_Stride_Bytes,
+                  Bytes          => Image_Bytes,
+                  Stored_Bytes   => Stored_Bytes);
+               if Stored_Bytes /= null then
+                  Image_Bytes := Stored_Bytes;
+                  Image_Bytes_Owned := False;
+                  Borrowed_From_Object := True;
+               end if;
+            end;
+         end if;
+
+         if Item.Protocol /= Terminal.Core.Kitty_Graphics
+           or else Header.Kitty_ID = 0
+         then
+            Encoded_Source := Copy_Text_Bytes (Image_Text (From .. Image_Text'Last));
+            Encoded_Source_Owned := Encoded_Source /= null;
+            if Encoded_Source = null then
+               Release_Local;
+               return False;
+            end if;
+         end if;
+
+         declare
+            Source_Kind : constant RM.Image_Decoded_Source_Kind :=
+              (if Item.Protocol = Terminal.Core.Kitty_Graphics
+                 and then Header.Kitty_ID > 0
+               then RM.Image_Decoded_Source_Buffer
+               else RM.Image_Decoded_Source_PNG_Base64);
+         begin
+            if Item.Protocol = Terminal.Core.Kitty_Graphics
+              and then Header.Kitty_ID > 0
+            then
+               Copy_Image_Preview
+                 (Image_Bytes, Data.Decoded_Length, Preview_Length, Preview_Bytes);
+            end if;
+
+            R.Image_Count := R.Image_Count + 1;
+            R.Images (R.Image_Count) :=
+              (X              => X,
+               Y              => Y,
+               Width          =>
+                 Float (R.CW * Header.Placeholder_Cols),
+               Height         =>
+                 Float (R.CH * Header.Placeholder_Rows),
+               Protocol       => Graphics_Protocol (Item.Protocol),
+               Placeholder    => False,
+               Raw_Format     => Data.Raw_Format,
+               Pixel_Width    => Data.Pixel_Width,
+               Pixel_Height   => Data.Pixel_Height,
+               Payload_Length => Item.Payload_Length,
+               Staging_Byte_Length => PNG_Length,
+               Payload_Preview_Complete => True,
+               Encoded_Preview_Length => Encoded_Length,
+               Decoded_Byte_Length => Data.Decoded_Length,
+               Decoded_Row_Stride_Bytes => Data.Decoded_Row_Stride_Bytes,
+               Decoded_Source => Source_Kind,
+               Decoded_Bytes => Image_Bytes,
+               Decoded_Bytes_Owned =>
+                 Image_Bytes /= null and then not Borrowed_From_Object,
+               Encoded_Source_Bytes => Encoded_Source,
+               Encoded_Source_Bytes_Owned => Encoded_Source_Owned,
+               Encoded_Source_Length => Encoded_Length,
+               Decoded_Preview_Length => Preview_Length,
+               Decoded_Preview_Bytes => Preview_Bytes,
+               Preview_Decode_Complete => True,
+               Decode_Status => RM.Image_Decode_Ok,
+               Tint           => Graphics_Tint (Item.Protocol));
+         end;
+         Encoded_Source_Owned := False;
+
+         Terminal.App.Graphics.Release (Data);
+         return True;
+      exception
+         when Storage_Error =>
+            Release_Local;
+            return False;
+      end Emit_PNG_Rows;
+
+      function Emit_Sixel_Rows
+        (Item       : Terminal.Core.Graphics_Event;
+         Header     : Terminal.App.Graphics.Graphics_Header;
+         Image_Text : String) return Boolean
+      is
+         X : constant Float :=
+           Float (Content_Margin + (Item.Col - 1) * R.CW);
+         Y : constant Float :=
+           Float (Content_Margin + (Item.Row - 1) * R.CH);
+         Data : Terminal.App.Graphics.Graphics_Data_Preview :=
+           (Header_Recognized => Header.Recognized,
+            Has_Data          => Header.Has_Data,
+            Raw_Format        => Header.Raw_Format,
+            Pixel_Width       => Header.Pixel_Width,
+            Pixel_Height      => Header.Pixel_Height,
+            others            => <>);
+         Image_Bytes : RM.Image_Data_Access := null;
+         Image_Bytes_Owned : Boolean := False;
+         Encoded_Source : RM.Image_Data_Access := null;
+         Encoded_Source_Owned : Boolean := False;
+         Row_Copy_Failed : Boolean := False;
+         Preview_Length : Natural := 0;
+         Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+           (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
+
+         function Sixel_Encoded_Length return Natural is
+         begin
+            for I in Image_Text'Range loop
+               if Image_Text (I) = 'q' then
+                  return (if I < Image_Text'Last then Image_Text'Last - I else 0);
+               end if;
+            end loop;
+            return Image_Text'Length;
+         end Sixel_Encoded_Length;
+
+         procedure Release_Local is
+         begin
+            if Image_Bytes /= null and then Image_Bytes_Owned then
+               Free_Image_Data (Image_Bytes);
+               Image_Bytes := null;
+               Image_Bytes_Owned := False;
+            end if;
+            if Encoded_Source /= null and then Encoded_Source_Owned then
+               Free_Image_Data (Encoded_Source);
+               Encoded_Source := null;
+               Encoded_Source_Owned := False;
+            end if;
+            Terminal.App.Graphics.Release (Data);
+         end Release_Local;
+
+         procedure Capture_Sixel_Row
+           (Row_Y : Natural;
+            Row   : Terminal.Common.Bytes.Byte_Array;
+            Continue : in out Boolean)
+         is
+         begin
+            Capture_Image_Preview_Row
+              (Preview_Length, Preview_Bytes, Row_Y, Row, Continue);
+            if not Continue then
+               Row_Copy_Failed := True;
+            end if;
+         end Capture_Sixel_Row;
+      begin
+         if not Header.Recognized
+           or else not Header.Has_Data
+           or else Header.Raw_Format /= 32
+           or else Header.Pixel_Width = 0
+           or else Header.Pixel_Height = 0
+           or else R.Image_Count >= R.Images'Length
+           or else Item.Payload_Length = 0
+           or else Image_Text'Length /= Item.Payload_Length
+         then
+            return False;
+         end if;
+
+         Terminal.App.Graphics.Decode_Sixel_Rows
+           (Image_Text, Capture_Sixel_Row'Access, Data);
+         if Row_Copy_Failed
+           or else not Data.Decode_Complete
+           or else Data.Decoded_Length = 0
+           or else Data.Decoded_Row_Stride_Bytes = 0
+         then
+            Release_Local;
+            return False;
+         end if;
+
+         Encoded_Source := Copy_Text_Bytes (Image_Text);
+         Encoded_Source_Owned := Encoded_Source /= null;
+         if Encoded_Source = null then
+            Release_Local;
+            return False;
+         end if;
+
+         declare
+         begin
+            R.Image_Count := R.Image_Count + 1;
+            R.Images (R.Image_Count) :=
+              (X              => X,
+               Y              => Y,
+               Width          =>
+                 Float (R.CW * Header.Placeholder_Cols),
+               Height         =>
+                 Float (R.CH * Header.Placeholder_Rows),
+               Protocol       => RM.Image_Sixel,
+               Placeholder    => False,
+               Raw_Format     => Data.Raw_Format,
+               Pixel_Width    => Data.Pixel_Width,
+               Pixel_Height   => Data.Pixel_Height,
+               Payload_Length => Item.Payload_Length,
+               Staging_Byte_Length => 0,
+               Payload_Preview_Complete => True,
+               Encoded_Preview_Length => Sixel_Encoded_Length,
+               Decoded_Byte_Length => Data.Decoded_Length,
+               Decoded_Row_Stride_Bytes => Data.Decoded_Row_Stride_Bytes,
+               Decoded_Source => RM.Image_Decoded_Source_Sixel_Text,
+               Decoded_Bytes => Image_Bytes,
+               Decoded_Bytes_Owned => False,
+               Encoded_Source_Bytes => Encoded_Source,
+               Encoded_Source_Bytes_Owned => Encoded_Source_Owned,
+               Encoded_Source_Length => Image_Text'Length,
+               Decoded_Preview_Length => Preview_Length,
+               Decoded_Preview_Bytes => Preview_Bytes,
+               Preview_Decode_Complete => True,
+               Decode_Status => RM.Image_Decode_Ok,
+               Tint           => Graphics_Tint (Terminal.Core.Sixel_Graphics));
+         end;
+         Encoded_Source_Owned := False;
+
+         Terminal.App.Graphics.Release (Data);
+         return True;
+      exception
+         when Storage_Error =>
+            Release_Local;
+            return False;
+      end Emit_Sixel_Rows;
+
+      procedure Emit_Image
+        (Item       : Terminal.Core.Graphics_Event;
+         Image_Text : String)
+      is
+         X : constant Float :=
+           Float (Content_Margin + (Item.Col - 1) * R.CW);
+         Y : constant Float :=
+           Float (Content_Margin + (Item.Row - 1) * R.CH);
+         Data : Terminal.App.Graphics.Graphics_Data_Preview :=
+           Terminal.App.Graphics.Data_Preview_Text (Item.Protocol, Image_Text);
+         Header : constant Terminal.App.Graphics.Graphics_Header :=
+           Terminal.App.Graphics.Header_Text (Item.Protocol, Image_Text);
+         Raw_Format : constant Natural :=
+           (if Data.Raw_Format > 0 then Data.Raw_Format else Header.Raw_Format);
+         Pixel_Width : constant Natural :=
+           (if Data.Pixel_Width > 0 then Data.Pixel_Width else Header.Pixel_Width);
+         Pixel_Height : constant Natural :=
+           (if Data.Pixel_Height > 0 then Data.Pixel_Height else Header.Pixel_Height);
+         Payload_Complete : constant Boolean :=
+           Item.Payload_Length > 0
+           and then Image_Text'Length = Item.Payload_Length;
+         Bytes_Per_Pixel : constant Natural :=
+           (if Raw_Format = 24 then 3
+            elsif Raw_Format = 32 then 4
+            else 0);
+         Row_Stride_Bytes : constant Natural :=
+           (if Data.Decoded_Row_Stride_Bytes > 0
+            then Data.Decoded_Row_Stride_Bytes
+            elsif Bytes_Per_Pixel > 0
+              and then Pixel_Width <= Natural'Last / Bytes_Per_Pixel
+            then Pixel_Width * Bytes_Per_Pixel
+            else 0);
+         Expected_Decoded_Length : constant Natural :=
+           Image_Buffer_Extent
+             (Raw_Format, Pixel_Width, Pixel_Height, Row_Stride_Bytes);
+         Raw_Texture_Ready : constant Boolean :=
+           (Item.Protocol = Terminal.Core.Kitty_Graphics
+            or else Item.Protocol = Terminal.Core.Sixel_Graphics
+            or else Item.Protocol = Terminal.Core.ITerm2_Graphics)
+           and then Pixel_Width > 0
+           and then Pixel_Height > 0
+           and then Bytes_Per_Pixel > 0
+           and then Payload_Complete
+           and then Data.Decode_Complete
+           and then Expected_Decoded_Length > 0
+           and then Data.Decoded_Length = Expected_Decoded_Length;
+         Preview_Length : Natural := 0;
+         Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+           (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
+         Image_Bytes : RM.Image_Data_Access := null;
+         Image_Bytes_Owned : Boolean := False;
+         Borrowed_From_Object : Boolean := False;
+      begin
+         if not Item.Pending
+           or else Item.Protocol = Terminal.Core.No_Graphics
+           or else R.Images = null
+           or else R.Image_Count >= R.Images'Length
+         then
+            Terminal.App.Graphics.Release (Data);
+            return;
+         end if;
+
+         Copy_Image_Preview
+           (Data.Bytes, Data.Decoded_Length, Preview_Length, Preview_Bytes);
+
+         if Data.Decoded_Length > 0
+           and then Data.Decode_Complete
+           and then Data.Bytes /= null
+         then
+            Image_Bytes := Data.Bytes;
+            Data.Bytes := null;
+         end if;
+
+         if Item.Protocol = Terminal.Core.Kitty_Graphics
+           and then Header.Kitty_ID > 0
+           and then Raw_Texture_Ready
+           and then Image_Bytes /= null
+         then
+            declare
+               Stored_Bytes : RM.Image_Data_Access;
+            begin
+               Take_Image_Object
+                 (R              => R,
+                  ID             => Header.Kitty_ID,
+                  Protocol       => Graphics_Protocol (Item.Protocol),
+                  Raw_Format     => Raw_Format,
+                  Pixel_Width    => Pixel_Width,
+                  Pixel_Height   => Pixel_Height,
+                  Decoded_Length => Data.Decoded_Length,
+                  Decoded_Row_Stride_Bytes => Row_Stride_Bytes,
+                  Bytes          => Image_Bytes,
+                  Stored_Bytes   => Stored_Bytes);
+               if Stored_Bytes /= null then
+                  Image_Bytes := Stored_Bytes;
+                  Borrowed_From_Object := True;
+               end if;
+            end;
+         end if;
+         Image_Bytes_Owned := Image_Bytes /= null
+           and then not Borrowed_From_Object;
+
+         R.Image_Count := R.Image_Count + 1;
+         R.Images (R.Image_Count) :=
+           (X              => X,
+            Y              => Y,
+            Width          =>
+              Float (R.CW * Header.Placeholder_Cols),
+            Height         =>
+              Float (R.CH * Header.Placeholder_Rows),
+            Protocol       => Graphics_Protocol (Item.Protocol),
+            Placeholder    => not Raw_Texture_Ready,
+            Raw_Format     => Raw_Format,
+            Pixel_Width    => Pixel_Width,
+            Pixel_Height   => Pixel_Height,
+            Payload_Length => Item.Payload_Length,
+            Staging_Byte_Length => 0,
+            Payload_Preview_Complete => Payload_Complete,
+            Encoded_Preview_Length => Data.Encoded_Length,
+            Decoded_Byte_Length => Data.Decoded_Length,
+            Decoded_Row_Stride_Bytes => Row_Stride_Bytes,
+            Decoded_Source =>
+              (if Raw_Texture_Ready
+               then RM.Image_Decoded_Source_Buffer
+               else RM.Image_Decoded_Source_None),
+            Decoded_Bytes => Image_Bytes,
+            Decoded_Bytes_Owned => Image_Bytes_Owned,
+            Encoded_Source_Bytes => null,
+            Encoded_Source_Bytes_Owned => False,
+            Encoded_Source_Length => 0,
+            Decoded_Preview_Length => Preview_Length,
+            Decoded_Preview_Bytes => Preview_Bytes,
+            Preview_Decode_Complete => Data.Decode_Complete,
+            Decode_Status =>
+              Terminal.App.Graphics.Image_Decode_Status (Data.Decode_Status),
+            Tint           => Graphics_Tint (Item.Protocol));
+         Terminal.App.Graphics.Release (Data);
+      end Emit_Image;
+
+      Text : constant String := Event_Text (Event);
+      Header : constant Terminal.App.Graphics.Graphics_Header :=
+        Terminal.App.Graphics.Header (Event);
+   begin
+      if not Event.Pending
+        or else Event.Protocol = Terminal.Core.No_Graphics
+        or else R.Images = null
+        or else R.Image_Count >= R.Images'Length
+      then
+         return;
+      end if;
+
+      if Event.Protocol = Terminal.Core.Kitty_Graphics
+        and then Header.Recognized
+        and then Header.Kitty_Action = 'd'
+        and then not Header.Has_Data
+      then
+         if Header.Kitty_ID > 0 then
+            Delete_Image_Object (R, Header.Kitty_ID);
+         else
+            Release_Image_Objects (R);
+         end if;
+         return;
+      end if;
+
+      if Event.Protocol = Terminal.Core.Kitty_Graphics
+        and then Header.Recognized
+        and then Header.Kitty_ID > 0
+        and then not Header.Has_Data
+      then
+         if Emit_Image_Object (Event, Header) then
+            return;
+         end if;
+      end if;
+
+      if Event.Protocol = Terminal.Core.Kitty_Graphics
+        and then Header.Recognized
+        and then Header.Has_Data
+      then
+         if Header.Kitty_More then
+            if R.Kitty_Chunk_Head /= null then
+               Append_Kitty_Chunk (Text);
+            else
+               Store_Kitty_Chunk (Text);
+            end if;
+            return;
+         elsif R.Kitty_Chunk_Head /= null then
+            Append_Kitty_Chunk (Text);
+            if R.Kitty_Chunk_Head /= null then
+               declare
+                  Chunked : Terminal.Core.Graphics_Event := Event;
+                  Flattened : String_Access := null;
+               begin
+                  Chunked.Payload_Length := R.Kitty_Chunk_Length;
+                  if Emit_Raw_Kitty_Chunked (Chunked) then
+                     null;
+                  elsif Emit_PNG_Kitty_Chunked (Chunked) then
+                     null;
+                  else
+                     Flattened := Flatten_Kitty_Chunk;
+                  end if;
+                  if Flattened /= null then
+                     Chunked.Payload_Length := R.Kitty_Chunk_Length;
+                     Emit_Image (Chunked, Flattened.all);
+                     Free_String (Flattened);
+                  end if;
+               end;
+               Clear_Kitty_Chunk;
+               return;
+            end if;
+            return;
+         end if;
+      elsif R.Kitty_Chunk_Head /= null then
+         Clear_Kitty_Chunk;
+      end if;
+
+      if Header.Recognized
+        and then Header.Has_Data
+        and then Event.Protocol = Terminal.Core.Kitty_Graphics
+        and then (Header.Kitty_Format = 24 or else Header.Kitty_Format = 32)
+        and then Emit_Raw_Kitty (Event, Header, Text)
+      then
+         return;
+      end if;
+
+      if Header.Recognized
+        and then Header.Has_Data
+        and then
+          (Event.Protocol = Terminal.Core.ITerm2_Graphics
+           or else
+             (Event.Protocol = Terminal.Core.Kitty_Graphics
+              and then Header.Kitty_Format = 100))
+        and then Emit_PNG_Rows (Event, Header, Text)
+      then
+         return;
+      end if;
+
+      if Header.Recognized
+        and then Header.Has_Data
+        and then Event.Protocol = Terminal.Core.Sixel_Graphics
+        and then Emit_Sixel_Rows (Event, Header, Text)
+      then
+         return;
+      end if;
+
+      Emit_Image (Event, Text);
+   end Add_Image;
 
    procedure Add_Underline
      (R      : in out Renderer;
@@ -464,6 +2335,9 @@ package body Terminal.App.Renderer is
       if Shape_Status = RM.Needs_Shaping_Backend then
          R.Shaping_Fallback_Count := R.Shaping_Fallback_Count + 1;
       end if;
+      if R.Text_Runs (R.Text_Run_Count).Script = RM.Script_Emoji then
+         R.Color_Emoji_Fallback_Count := R.Color_Emoji_Fallback_Count + 1;
+      end if;
    end Add_Text_Run;
 
    function Cell_Direction
@@ -475,7 +2349,9 @@ package body Terminal.App.Renderer is
          Cell_Width         => Float (Cell_Column_Span (Cell)),
          Cell_Height        => 1.0,
          Cell_Span          => Cell_Column_Span (Cell),
-         Color              => Default_FG,
+         Color              =>
+           Terminal.App.Theme.Built_In
+             (Terminal.App.Theme.Default_Dark).Default_FG,
          Bold               => Cell.Style.Bold,
          Italic             => Cell.Style.Italic,
          Codepoints         => (1 => Natural (Cell.Text.Code_Point), others => 0),
@@ -500,7 +2376,9 @@ package body Terminal.App.Renderer is
          Cell_Width         => Float (Cell_Column_Span (Cell)),
          Cell_Height        => 1.0,
          Cell_Span          => Cell_Column_Span (Cell),
-         Color              => Default_FG,
+         Color              =>
+           Terminal.App.Theme.Built_In
+             (Terminal.App.Theme.Default_Dark).Default_FG,
          Bold               => Cell.Style.Bold,
          Italic             => Cell.Style.Italic,
          Codepoints         => (1 => Natural (Cell.Text.Code_Point), others => 0),
@@ -576,6 +2454,8 @@ package body Terminal.App.Renderer is
       for Row in 1 .. Snapshot.Rows loop
          declare
             Col : Positive := 1;
+            Row_Has_LTR : Boolean := False;
+            Row_Has_RTL : Boolean := False;
          begin
             while Col <= Snapshot.Cols loop
                declare
@@ -615,8 +2495,19 @@ package body Terminal.App.Renderer is
                         Height    => Float (R.CH),
                         Color     =>
                           (if Is_Block_Cursor (Snapshot, Row, First)
-                           then Cursor_FG
-                           else Foreground (Cell)));
+                           then R.Color_Theme.Cursor_FG
+                           else Foreground (R, Cell)));
+
+                     if R.Text_Run_Count > 0 then
+                        case R.Text_Runs (R.Text_Run_Count).Direction is
+                           when RM.Direction_Left_To_Right =>
+                              Row_Has_LTR := True;
+                           when RM.Direction_Right_To_Left =>
+                              Row_Has_RTL := True;
+                           when RM.Direction_Neutral =>
+                              null;
+                        end case;
+                     end if;
 
                      if Last + Cell_Column_Span (Cell) > Snapshot.Cols then
                         exit;
@@ -630,6 +2521,11 @@ package body Terminal.App.Renderer is
                   end if;
                end;
             end loop;
+
+            if Row_Has_LTR and then Row_Has_RTL then
+               R.Paragraph_Bidi_Fallback_Count :=
+                 R.Paragraph_Bidi_Fallback_Count + 1;
+            end if;
          end;
       end loop;
    end Build_Text_Runs;
@@ -647,6 +2543,9 @@ package body Terminal.App.Renderer is
       R.Glyph_Count := 0;
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
+      R.Text_Fallback_Run_Count := 0;
+      R.Color_Emoji_Fallback_Count := 0;
+      R.Paragraph_Bidi_Fallback_Count := 0;
       R.Missing_Glyph_Count := 0;
       R.Rectangle_Count := 0;
       R.Vertex_Count := 0;
@@ -997,6 +2896,8 @@ package body Terminal.App.Renderer is
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
       R.Text_Fallback_Run_Count := 0;
+      R.Color_Emoji_Fallback_Count := 0;
+      R.Paragraph_Bidi_Fallback_Count := 0;
 
       Cell_Count := Snapshot.Rows * Snapshot.Cols;
       Rect_Max := Cell_Count * 4 + 2;
@@ -1009,6 +2910,7 @@ package body Terminal.App.Renderer is
                   (Terminal.Core.Max_Cluster_Attachments + 1,
                    RM.Max_Shaped_Glyphs_Per_Run)
               * 2);
+         R.Images := new RM.Image_Array (1 .. 1);
          R.Text_Runs := new RM.Text_Run_Array (1 .. Cell_Count);
       exception
          when Storage_Error =>
@@ -1036,7 +2938,7 @@ package body Terminal.App.Renderer is
          Y      => 0.0,
          Width  => Float (R.Last_Frame_Width),
          Height => Float (R.Last_Frame_Height),
-         Color  => Default_BG);
+         Color  => R.Color_Theme.Default_BG);
 
       Build_Text_Runs (R, Snapshot);
 
@@ -1055,8 +2957,10 @@ package body Terminal.App.Renderer is
                Block_Cursor : constant Boolean :=
                  Is_Block_Cursor (Snapshot, Row, Col);
                FG : constant RM.Pixel_Color :=
-                 (if Block_Cursor then Cursor_FG else Foreground (Cell));
-               BG : constant RM.Pixel_Color := Background (Cell);
+                 (if Block_Cursor
+                  then R.Color_Theme.Cursor_FG
+                  else Foreground (R, Cell));
+               BG : constant RM.Pixel_Color := Background (R, Cell);
             begin
                if Cell.Kind /= Terminal.Core.Wide_Continuation then
                   Add_Rectangle
@@ -1075,7 +2979,7 @@ package body Terminal.App.Renderer is
                               Y      => Cursor_Block_Y (R, Y),
                               Width  => Float (Cell_W),
                               Height => Float (Cursor_Block_Height (R)),
-                              Color  => Cursor_BG);
+                              Color  => R.Color_Theme.Cursor_BG);
                         when Terminal.Core.Cursor_Underline =>
                            Add_Rectangle
                              (R,
@@ -1084,7 +2988,7 @@ package body Terminal.App.Renderer is
                                 Y + Float (R.CH - Cursor_Underline_Height (R)),
                               Width  => Float (Cell_W),
                               Height => Float (Cursor_Underline_Height (R)),
-                              Color  => Cursor_BG);
+                              Color  => R.Color_Theme.Cursor_BG);
                         when Terminal.Core.Cursor_Bar =>
                            Add_Rectangle
                              (R,
@@ -1092,7 +2996,7 @@ package body Terminal.App.Renderer is
                               Y      => Cursor_Block_Y (R, Y),
                               Width  => Float (Cursor_Bar_Width (R)),
                               Height => Float (Cursor_Block_Height (R)),
-                              Color  => Cursor_BG);
+                              Color  => R.Color_Theme.Cursor_BG);
                      end case;
                   end if;
                end if;
@@ -1169,7 +3073,7 @@ package body Terminal.App.Renderer is
                         X,
                         Y,
                         Float (Cell_W),
-                        Underline_Color (Cell, FG));
+                        Underline_Color (R, Cell, FG));
                   end if;
 
                   if Cell.Style.Strikethrough then
@@ -1185,6 +3089,8 @@ package body Terminal.App.Renderer is
             end;
          end loop;
       end loop;
+
+      Add_Image (R, Snapshot.Graphics);
 
       R.Atlas_Dirty := Textrender.Atlas_Dirty (R.Text);
       if R.Atlas_Dirty then
@@ -1214,6 +3120,13 @@ package body Terminal.App.Renderer is
       R.Target_Frame_Height := Height;
    end Set_Framebuffer_Size;
 
+   procedure Set_Theme
+     (R : in out Renderer;
+      T : Terminal.App.Theme.Theme) is
+   begin
+      R.Color_Theme := T;
+   end Set_Theme;
+
    procedure Set_Hovered_Link
      (R    : in out Renderer;
       Link : Terminal.Core.Hyperlink) is
@@ -1224,15 +3137,20 @@ package body Terminal.App.Renderer is
    procedure Finalize (R : in out Renderer) is
    begin
       Release_Frame (R);
+      Clear_Kitty_Chunks (R);
+      Release_Image_Objects (R);
       Textrender.Reset (R.Text);
       R.Initialized := False;
       R.Has_Context := False;
       R.Text_Loaded := False;
       R.Glyph_Count := 0;
+      R.Image_Count := 0;
       R.Text_Run_Count := 0;
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
       R.Text_Fallback_Run_Count := 0;
+      R.Color_Emoji_Fallback_Count := 0;
+      R.Paragraph_Bidi_Fallback_Count := 0;
       R.Vertex_Count := 0;
       R.Missing_Glyph_Count := 0;
       R.Target_Frame_Width := 0;
@@ -1266,6 +3184,7 @@ package body Terminal.App.Renderer is
    end Cell_Height;
 
    function Diagnostics (R : Renderer) return Renderer_Diagnostics is
+      Has_Image : constant Boolean := R.Images /= null and then R.Image_Count > 0;
    begin
       return
         (Initialized          => R.Initialized,
@@ -1274,15 +3193,126 @@ package body Terminal.App.Renderer is
          Last_Dirty_Rows      => R.Last_Dirty_Rows,
          Last_Rectangle_Count => R.Rectangle_Count,
          Last_Glyph_Count     => R.Glyph_Count,
+         Last_Image_Count     => R.Image_Count,
+         Last_Image_Protocol  =>
+           (if Has_Image then R.Images (R.Image_Count).Protocol
+            else Terminal.App.Render_Model.Image_Sixel),
+         Last_Image_Width =>
+           (if Has_Image then Natural (R.Images (R.Image_Count).Width) else 0),
+         Last_Image_Height =>
+           (if Has_Image then Natural (R.Images (R.Image_Count).Height) else 0),
+         Last_Image_Raw_Format =>
+           (if Has_Image then R.Images (R.Image_Count).Raw_Format else 0),
+         Last_Image_Pixel_Width =>
+           (if Has_Image then R.Images (R.Image_Count).Pixel_Width else 0),
+         Last_Image_Pixel_Height =>
+           (if Has_Image then R.Images (R.Image_Count).Pixel_Height else 0),
+         Last_Image_Payload_Length =>
+           (if Has_Image then R.Images (R.Image_Count).Payload_Length else 0),
+         Last_Image_Staging_Byte_Length =>
+           (if Has_Image then R.Images (R.Image_Count).Staging_Byte_Length
+            else 0),
+         Last_Image_Payload_Preview_Complete =>
+           Has_Image
+           and then R.Images (R.Image_Count).Payload_Preview_Complete,
+         Last_Image_Encoded_Preview_Length =>
+           (if Has_Image then R.Images (R.Image_Count).Encoded_Preview_Length
+            else 0),
+         Last_Image_Decoded_Preview_Length =>
+           (if Has_Image then R.Images (R.Image_Count).Decoded_Preview_Length
+            else 0),
+         Last_Image_Decoded_Preview_Bytes =>
+           (if Has_Image then R.Images (R.Image_Count).Decoded_Preview_Bytes
+            else (others => 0)),
+         Last_Image_Preview_Decode_Complete =>
+           Has_Image and then R.Images (R.Image_Count).Preview_Decode_Complete,
+         Last_Image_Decode_Status =>
+           (if Has_Image then R.Images (R.Image_Count).Decode_Status
+            else RM.Image_Decode_Not_Attempted),
+         Last_Image_Placeholder =>
+           Has_Image and then R.Images (R.Image_Count).Placeholder,
          Last_Text_Run_Count  => R.Text_Run_Count,
          Last_Shaped_Glyph_Count => R.Shaped_Glyph_Count,
          Last_Shaping_Fallback_Count => R.Shaping_Fallback_Count,
          Last_Text_Fallback_Run_Count => R.Text_Fallback_Run_Count,
+         Last_Color_Emoji_Fallback_Count => R.Color_Emoji_Fallback_Count,
+         Last_Paragraph_Bidi_Fallback_Count =>
+           R.Paragraph_Bidi_Fallback_Count,
          Last_Vertex_Count    => R.Vertex_Count,
          Missing_Glyph_Count  => R.Missing_Glyph_Count,
          Atlas_Dirty          => R.Atlas_Dirty,
          Last_Render_Status   => R.Last_Render_Status);
    end Diagnostics;
+
+   function Color_Emoji_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String is
+   begin
+      if Diagnostics.Last_Color_Emoji_Fallback_Count = 0 then
+         return "";
+      else
+         return "Color emoji rendered with monochrome fallback";
+      end if;
+   end Color_Emoji_Status_Label;
+
+   function Paragraph_Bidi_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String is
+   begin
+      if Diagnostics.Last_Paragraph_Bidi_Fallback_Count = 0 then
+         return "";
+      else
+         return "Paragraph BiDi reordering not applied";
+      end if;
+   end Paragraph_Bidi_Status_Label;
+
+   function Image_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String
+   is
+      function Protocol_Name return String is
+      begin
+         case Diagnostics.Last_Image_Protocol is
+            when Terminal.App.Render_Model.Image_Sixel =>
+               return "sixel";
+            when Terminal.App.Render_Model.Image_Kitty =>
+               return "kitty";
+            when Terminal.App.Render_Model.Image_ITerm2 =>
+               return "iTerm2";
+         end case;
+      end Protocol_Name;
+   begin
+      if Diagnostics.Last_Image_Count = 0 then
+         return "";
+      end if;
+
+      return
+        "image " & Protocol_Name
+        & " size=" & Trimmed_Natural (Diagnostics.Last_Image_Width)
+        & "x" & Trimmed_Natural (Diagnostics.Last_Image_Height)
+        & (if Diagnostics.Last_Image_Pixel_Width > 0
+           and then Diagnostics.Last_Image_Pixel_Height > 0
+           then
+             " pixels=" & Trimmed_Natural (Diagnostics.Last_Image_Pixel_Width)
+             & "x" & Trimmed_Natural (Diagnostics.Last_Image_Pixel_Height)
+             & " format=" & Trimmed_Natural (Diagnostics.Last_Image_Raw_Format)
+           else "")
+        & " payload=" & Trimmed_Natural (Diagnostics.Last_Image_Payload_Length)
+        & RM.Image_Payload_Status_Suffix
+            (Diagnostics.Last_Image_Payload_Preview_Complete)
+        & " preview="
+        & Trimmed_Natural (Diagnostics.Last_Image_Decoded_Preview_Length)
+        & "/"
+        & Trimmed_Natural (Diagnostics.Last_Image_Encoded_Preview_Length)
+        & Terminal.Common.Status.Preview_Bytes_Label
+            (Diagnostics.Last_Image_Decoded_Preview_Bytes,
+             Diagnostics.Last_Image_Decoded_Preview_Length)
+        & (if Diagnostics.Last_Image_Placeholder
+           then " placeholder"
+           else " textured")
+        & (if Diagnostics.Last_Image_Preview_Decode_Complete
+           then " decoded"
+           else " partial")
+        & RM.Image_Decode_Status_Suffix
+            (Diagnostics.Last_Image_Decode_Status);
+   end Image_Status_Label;
 
    function Last_Frame (R : Renderer) return RM.Frame_Commands is
       Pixels : constant access constant Textrender.Alpha_Buffer :=
@@ -1301,6 +3331,8 @@ package body Terminal.App.Renderer is
          Rectangle_Count => R.Rectangle_Count,
          Glyphs          => R.Glyphs,
          Glyph_Count     => R.Glyph_Count,
+         Images          => R.Images,
+         Image_Count     => R.Image_Count,
          Text_Runs       => R.Text_Runs,
          Text_Run_Count  => R.Text_Run_Count,
          Atlas_Width     => Width,

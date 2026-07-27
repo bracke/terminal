@@ -161,4 +161,94 @@ begin
         (not Terminal.App.Hyperlinks.Same_Link (Left, Right),
          "different link id should not match");
    end;
+
+   declare
+      Link : Terminal.Core.Hyperlink :=
+        (Active     => True,
+         URI_Length => 20,
+         URI        => (1 .. Terminal.Core.Max_Hyperlink_URI_Length => ' '),
+         ID_Length  => 0,
+         ID         => (1 .. Terminal.Core.Max_Hyperlink_ID_Length => ' '));
+      Unsupported : Terminal.Core.Hyperlink := Link;
+   begin
+      Link.URI (1 .. Link.URI_Length) := "https://example.test";
+      Assert
+        (Terminal.App.Hyperlinks.Link_Label (Link) =
+         "https://example.test",
+         "link label should expose supported URI");
+      Assert
+        (Terminal.App.Hyperlinks.Status_Label (Link) =
+         "Open https://example.test",
+         "status label should describe openable URI");
+      Assert
+        (Terminal.App.Hyperlinks.Hover_Title ("Ada Terminal", Link)
+         = "Ada Terminal - https://example.test",
+         "hover title should expose supported URI");
+
+      Unsupported.URI_Length := 13;
+      Unsupported.URI (1 .. Unsupported.URI_Length) := "file:///tmp/x";
+      Assert
+        (Terminal.App.Hyperlinks.Link_Label (Unsupported) = "",
+         "link label should ignore unsupported URI");
+      Assert
+        (Terminal.App.Hyperlinks.Status_Label (Unsupported) =
+         "Unsupported link file:///tmp/x",
+         "status label should expose unsupported URI safely");
+      Assert
+        (Terminal.App.Hyperlinks.Hover_Title ("Ada Terminal", Unsupported)
+         = "Ada Terminal",
+         "hover title should ignore unsupported URI");
+      Assert
+        (Terminal.App.Hyperlinks.Hover_Title ("", Link)
+         = "Ada Terminal - https://example.test",
+         "empty base title should use app name");
+      Assert
+        (Terminal.App.Hyperlinks.Activation_Status_Label
+           (Terminal.App.Hyperlinks.Ok) = "Link opened",
+         "activation ok label");
+      Assert
+        (Terminal.App.Hyperlinks.Activation_Status_Label
+           (Terminal.App.Hyperlinks.No_Link) = "No link under pointer",
+         "activation no link label");
+      Assert
+        (Terminal.App.Hyperlinks.Activation_Status_Label
+           (Terminal.App.Hyperlinks.Unsupported_URI) =
+         "Unsupported link target",
+         "activation unsupported URI label");
+      Assert
+        (Terminal.App.Hyperlinks.Activation_Status_Label
+           (Terminal.App.Hyperlinks.Command_Too_Long) =
+         "Link command too long",
+         "activation command too long label");
+      Assert
+        (Terminal.App.Hyperlinks.Activation_Status_Label
+           (Terminal.App.Hyperlinks.Launch_Failed) =
+         "Link launcher failed",
+         "activation launch failed label");
+      Assert
+        (Terminal.App.Hyperlinks.Activation_Status_Label
+           (Terminal.App.Hyperlinks.Launch_Failed)'Length <=
+         Terminal.App.Hyperlinks.Max_Status_Label_Length,
+         "activation status label should be bounded");
+   end;
+
+   declare
+      Long_Link : Terminal.Core.Hyperlink :=
+        (Active     => True,
+         URI_Length => Terminal.Core.Max_Hyperlink_URI_Length,
+         URI        => (others => 'a'),
+         ID_Length  => 0,
+         ID         => (1 .. Terminal.Core.Max_Hyperlink_ID_Length => ' '));
+      Label : String
+        (1 .. Terminal.App.Hyperlinks.Max_Link_Label_Length);
+   begin
+      Long_Link.URI (1 .. 8) := "https://";
+      Label := Terminal.App.Hyperlinks.Link_Label (Long_Link);
+      Assert
+        (Label'Length = Terminal.App.Hyperlinks.Max_Link_Label_Length,
+         "link label should be bounded");
+      Assert
+        (Label (1 .. 8) = "https://",
+         "bounded link label should preserve URI prefix");
+   end;
 end Hyperlink_Smoke;

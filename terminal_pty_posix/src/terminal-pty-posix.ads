@@ -1,7 +1,26 @@
 with Terminal.Common.Bytes;
 
 package Terminal.PTY.POSIX is
+   Max_Status_Label_Length : constant := 96;
+
    type Session is limited private;
+
+   Term_Name : constant String := "xterm-256color";
+   Color_Term : constant String := "truecolor";
+
+   type Backend_Capabilities is record
+      POSIX_PTY        : Boolean := True;
+      Windows_ConPTY   : Boolean := False;
+      Resize           : Boolean := True;
+      Terminal_Env     : Boolean := True;
+      Nonblocking_Read : Boolean := True;
+   end record;
+
+   function Capabilities return Backend_Capabilities;
+   function Backend_Status_Label
+     (Capabilities : Backend_Capabilities) return String;
+   function ConPTY_Status_Label
+     (Capabilities : Backend_Capabilities) return String;
 
    type Spawn_Status is
      (Ok,

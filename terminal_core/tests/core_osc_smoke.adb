@@ -9,6 +9,7 @@ procedure Core_OSC_Smoke is
    use type Terminal.Core.Clipboard_Operation;
    use type Terminal.Core.Clipboard_Target;
    use type Terminal.Core.Feed_Status;
+   use type Terminal.Core.Ignored_Graphics_Protocol;
    use type Terminal.Core.Initialize_Status;
 
    function To_Bytes (S : String) return Byte_Array is
@@ -438,6 +439,95 @@ begin
       Assert
         (Terminal.Core.Cell_At (S, 1, 4).Text.Code_Point = 16#64#,
          "C1 APC payload leaked or trailing text missing");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "graphics protocol initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "Pqabcdef" & ASCII.ESC & "\x"
+         & ASCII.ESC & "_Gf=100,a=T;AAAA" & ASCII.ESC & "\y"
+         & ASCII.ESC & "]1337;File=name=a;inline=1:AAAA" & ASCII.BEL
+         & "z"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "graphics protocol feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "sixel payload leaked or trailing text missing");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Text.Code_Point = 16#79#,
+         "kitty payload leaked or trailing text missing");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 3).Text.Code_Point = 16#7A#,
+         "iTerm2 image payload leaked or trailing text missing");
+      Assert
+        (D.Graphics_Protocol_Ignored = 3,
+         "graphics protocols should be explicitly diagnosed");
+      Assert (D.Sixel_Ignored = 1, "sixel ignored count");
+      Assert (D.Kitty_Graphics_Ignored = 1, "kitty graphics ignored count");
+      Assert (D.ITerm2_Image_Ignored = 1, "iTerm2 image ignored count");
+      Assert
+        (D.Last_Graphics_Protocol = Terminal.Core.ITerm2_Graphics,
+         "last ignored graphics protocol");
+      Assert
+        (D.Last_Graphics_Payload_Length = 25,
+         "last ignored graphics payload length");
+      Assert (S.Graphics.Pending, "graphics event should be exposed");
+      Assert
+        (S.Graphics.Protocol = Terminal.Core.ITerm2_Graphics,
+         "graphics event protocol");
+      Assert
+        (S.Graphics.Row = 1 and then S.Graphics.Col = 3,
+         "graphics event position should use protocol cursor cell");
+      Assert
+        (S.Graphics.Payload_Length = 25,
+         "graphics event payload length");
+      Assert
+        (S.Graphics.Preview_Length = 25,
+         "graphics event preview length");
+      Assert
+        (S.Graphics.Preview (1 .. S.Graphics.Preview_Length) =
+         "File=name=a;inline=1:AAAA",
+         "graphics event preview");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "tmux passthrough initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "Ptmux;"
+         & ASCII.ESC & ASCII.ESC & "]0;wrapped"
+         & ASCII.ESC & ASCII.ESC & "\"
+         & ASCII.ESC & "\x"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "tmux title passthrough feed failed");
+
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Title : constant Terminal.Core.Title_Text := Terminal.Core.Title (T);
+      D : constant Terminal.Core.Diagnostic_Snapshot :=
+        Terminal.Core.Diagnostics (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "tmux passthrough trailing text missing");
+      Assert (Title.Length = 7, "tmux passthrough title length");
+      Assert
+        (Title.Text (1 .. Title.Length) = "wrapped",
+         "tmux passthrough title text");
+      Assert
+        (D.Multiplexer_Passthrough = 1,
+         "tmux passthrough diagnostic count");
       Terminal.Core.Release (S);
    end;
 

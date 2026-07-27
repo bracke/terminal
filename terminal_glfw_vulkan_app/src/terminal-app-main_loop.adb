@@ -7,8 +7,11 @@ with GLFW_Vulkan.Input;
 with GLFW_Vulkan.Windows;
 with Terminal.Core;
 with Terminal.App.Clipboard_OSC52;
+with Terminal.App.Config;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Diagnostics;
+with Terminal.App.Fonts;
+with Terminal.App.Graphics;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Input_Map;
 with Terminal.App.PTY_Reader;
@@ -19,7 +22,10 @@ with Terminal.App.Render_Policy;
 with Terminal.App.Resize;
 with Terminal.App.Scrollback_View;
 with Terminal.App.Selection;
+with Terminal.App.Splits;
+with Terminal.App.Tabs;
 with Terminal.App.Text_Blink;
+with Terminal.App.Theme;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
 with Terminal.PTY.POSIX;
@@ -39,6 +45,8 @@ package body Terminal.App.Main_Loop is
    use type Terminal.PTY.POSIX.Spawn_Status;
    use type Terminal.PTY.POSIX.Resize_Status;
    use type Terminal.App.PTY_Write.Write_All_Status;
+   use type Terminal.App.Splits.Split_Command;
+   use type Terminal.App.Tabs.Tab_Command;
    use type Terminal.Core.Clipboard_Operation;
    use type Terminal.Core.Clipboard_Target;
    use type GLFW_Vulkan.Input.Key;
@@ -151,41 +159,47 @@ package body Terminal.App.Main_Loop is
       end if;
    end On_Focus;
 
-   function Same_Title
-     (Left  : Terminal.Core.Title_Text;
-      Right : Terminal.Core.Title_Text) return Boolean
-   is
+   function Title_String (Title : Terminal.Core.Title_Text) return String is
    begin
-      if Left.Length /= Right.Length then
-         return False;
+      if Title.Length = 0 then
+         return "Ada Terminal";
+      else
+         return Title.Text (1 .. Title.Length);
       end if;
-
-      for I in 1 .. Left.Length loop
-         if Left.Text (I) /= Right.Text (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Title;
+   end Title_String;
 
    procedure Apply_Title
      (W          : GLFW_Vulkan.Windows.Window;
       New_Title  : Terminal.Core.Title_Text;
-      Last_Title : in out Terminal.Core.Title_Text)
+      Hover_Link : Terminal.Core.Hyperlink;
+      Has_Link_Activation : Boolean;
+      Link_Activation :
+        Terminal.App.Hyperlinks.Activation_Status;
+      Tabs       : in out Terminal.App.Tabs.Tab_State;
+      Splits     : Terminal.App.Splits.Split_State)
    is
+      Status : Terminal.App.Tabs.Tab_Status;
+      Base_Title : constant String :=
+        Title_String (New_Title)
+        & Terminal.App.Tabs.Title_Suffix (Tabs)
+        & Terminal.App.Splits.Title_Suffix (Splits);
+      Status_Title : constant String :=
+        (if Has_Link_Activation
+         then Base_Title
+           & " - "
+           & Terminal.App.Hyperlinks.Activation_Status_Label
+               (Link_Activation)
+         else Base_Title);
    begin
-      if Same_Title (New_Title, Last_Title) then
-         return;
-      end if;
-
-      if New_Title.Length = 0 then
-         GLFW_Vulkan.Windows.Set_Title (W, "");
-      else
-         GLFW_Vulkan.Windows.Set_Title
-           (W, New_Title.Text (1 .. New_Title.Length));
-      end if;
-      Last_Title := New_Title;
+      Terminal.App.Tabs.Set_Label
+        (Tabs,
+         Terminal.App.Tabs.Active (Tabs),
+         Title_String (New_Title),
+         Status);
+      GLFW_Vulkan.Windows.Set_Title
+        (W,
+         Terminal.App.Hyperlinks.Hover_Title
+           (Status_Title, Hover_Link));
    end Apply_Title;
 
    procedure Apply_Clipboard_Request
@@ -193,7 +207,9 @@ package body Terminal.App.Main_Loop is
       S : in out Terminal.PTY.POSIX.Session;
       Store : in out Terminal.App.Clipboard_OSC52.Target_Store;
       T : in out Terminal.Core.Terminal;
-      Ok : out Boolean)
+      Ok : out Boolean;
+      Last_Write_Status : in out Terminal.App.PTY_Write.Write_All_Status;
+      Last_Clipboard_Target : in out Terminal.Core.Clipboard_Target)
    is
       Request : constant Terminal.Core.Clipboard_Request :=
         Terminal.Core.Clipboard (T);
@@ -202,6 +218,7 @@ package body Terminal.App.Main_Loop is
    begin
       Ok := True;
       if Request.Pending then
+         Last_Clipboard_Target := Request.Target;
          if Request.Operation = Terminal.Core.Clipboard_Query then
             Terminal.App.Clipboard_OSC52.Build_Query_Response
               (Request.Target,
@@ -210,6 +227,7 @@ package body Terminal.App.Main_Loop is
                 else Terminal.App.Clipboard_OSC52.Text (Store, Request.Target)),
                Chunk);
             Terminal.App.PTY_Write.Write_All (S, Chunk, Write_Stat);
+            Last_Write_Status := Write_Stat;
             Ok := Write_Stat = Terminal.App.PTY_Write.Ok;
          else
             if Request.Target = Terminal.Core.Clipboard_Clipboard then
@@ -273,7 +291,6 @@ package body Terminal.App.Main_Loop is
       end if;
    end Supported_Link;
 
-   Scroll_Lines_Per_Wheel : constant Positive := 3;
    Double_Click_Interval : constant Duration := 0.5;
 
    procedure Run is
@@ -293,18 +310,24 @@ package body Terminal.App.Main_Loop is
       Presenter : Terminal.App.Vulkan_Presenter.Presenter;
       Presenter_Status : Terminal.App.Vulkan_Presenter.Init_Status;
       Renderer_Status : Terminal.App.Renderer.Init_Status;
+      App_Config : Terminal.App.Config.Config;
       FB_Width  : Natural := 0;
       FB_Height : Natural := 0;
-      Initial_Rows : Positive := 24;
-      Initial_Cols : Positive := 80;
-      Last_Rows : Positive := 24;
-      Last_Cols : Positive := 80;
+      Initial_Rows : Positive := Terminal.App.Config.Default_Startup_Rows;
+      Initial_Cols : Positive := Terminal.App.Config.Default_Startup_Cols;
+      Last_Rows : Positive := Terminal.App.Config.Default_Startup_Rows;
+      Last_Cols : Positive := Terminal.App.Config.Default_Startup_Cols;
       Need_Redraw : Boolean := True;
       Scroll_Offset : Natural := 0;
-      Last_Title : Terminal.Core.Title_Text;
       Clipboard_Targets : Terminal.App.Clipboard_OSC52.Target_Store;
       Selection : Terminal.App.Selection.Selection_State;
+      Splits : Terminal.App.Splits.Split_State;
+      Tabs : Terminal.App.Tabs.Tab_State;
       Hovered_Link : Terminal.Core.Hyperlink;
+      Has_Link_Activation : Boolean := False;
+      Link_Activation :
+        Terminal.App.Hyperlinks.Activation_Status :=
+          Terminal.App.Hyperlinks.No_Link;
       Mouse_Button_Down : Boolean := False;
       Mouse_Button_Code_Value : Natural := 0;
       Mouse_Modifiers : GLFW_Vulkan.Input.Modifier_Set;
@@ -313,6 +336,23 @@ package body Terminal.App.Main_Loop is
       Blink_Origin : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
       Last_Blink_Tick : Natural := 0;
       Blinking_Text_Active : Boolean := False;
+      Last_Feed_Status : Terminal.Core.Feed_Status := Terminal.Core.Ok;
+      Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
+        Terminal.App.PTY_Write.Ok;
+      Last_Clipboard_Target : Terminal.Core.Clipboard_Target :=
+        Terminal.Core.Clipboard_Clipboard;
+      Runtime_Font_Status : constant String :=
+        Terminal.App.Fonts.Status_Label
+          (Terminal.App.Fonts.Default_Font_Path,
+           Terminal.App.Fonts.Fallback_Font_Paths'Length);
+      PTY_Capabilities : constant Terminal.PTY.POSIX.Backend_Capabilities :=
+        Terminal.PTY.POSIX.Capabilities;
+      Runtime_PTY_Backend_Status : constant String :=
+        Terminal.PTY.POSIX.Backend_Status_Label (PTY_Capabilities);
+      Runtime_ConPTY_Status : constant String :=
+        Terminal.PTY.POSIX.ConPTY_Status_Label (PTY_Capabilities);
+      Runtime_Multiplexer_Status : constant String :=
+        Terminal.App.Multiplexer_Status_Label (Terminal.App.Profile);
       Last_Click_Time : Ada.Real_Time.Time := Blink_Origin;
       Last_Click_Pos  : Terminal.App.Selection.Cell_Position;
       Have_Last_Click : Boolean := False;
@@ -356,7 +396,15 @@ package body Terminal.App.Main_Loop is
          return;
       end if;
 
-      GLFW_Vulkan.Windows.Create (Ctx, W, 960, 600, "Ada Terminal", Window_Status);
+      Terminal.App.Config.Load (App_Config);
+
+      GLFW_Vulkan.Windows.Create
+        (Ctx,
+         W,
+         App_Config.Window_Width,
+         App_Config.Window_Height,
+         "Ada Terminal",
+         Window_Status);
       if Window_Status /= GLFW_Vulkan.Windows.Ok then
          Terminal.App.Diagnostics.Log_Startup_Failure
            ("window", GLFW_Vulkan.Windows.Create_Status'Image (Window_Status));
@@ -403,6 +451,8 @@ package body Terminal.App.Main_Loop is
          GLFW_Vulkan.Finalize (Ctx);
          return;
       end if;
+      Terminal.App.Renderer.Set_Theme
+        (R, Terminal.App.Config.Active_Theme (App_Config));
 
       Terminal.App.Resize.Startup_Cells
         (Pixel_Width  => FB_Width,
@@ -410,15 +460,22 @@ package body Terminal.App.Main_Loop is
          Cell_Width   => Terminal.App.Renderer.Cell_Width (R),
          Cell_Height  => Terminal.App.Renderer.Cell_Height (R),
          Margin       => Terminal.App.Renderer.Content_Margin,
+         Default_Rows => App_Config.Startup_Rows,
+         Default_Cols => App_Config.Startup_Cols,
          Rows         => Initial_Rows,
          Cols         => Initial_Cols);
       Last_Rows := Initial_Rows;
       Last_Cols := Initial_Cols;
-      Terminal.Core.Initialize (T, Initial_Rows, Initial_Cols, 10_000, Core_Status);
+      Terminal.Core.Initialize
+        (T,
+         Initial_Rows,
+         Initial_Cols,
+         App_Config.Scrollback_Limit,
+         Core_Status);
       if Core_Status /= Terminal.Core.Ok then
          Terminal.App.Diagnostics.Log_Startup_Failure
            ("terminal-core",
-            Terminal.Core.Initialize_Status'Image (Core_Status));
+            Terminal.Core.Initialize_Status_Label (Core_Status));
          Terminal.App.Renderer.Finalize (R);
          Terminal.App.Vulkan_Presenter.Finalize (Presenter);
          Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
@@ -449,6 +506,8 @@ package body Terminal.App.Main_Loop is
       end if;
 
       Input_Queue := In_Q'Unchecked_Access;
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Splits.Initialize (Splits);
       GLFW_Vulkan.Input.Set_Key_Callback (W, On_Key'Access);
       GLFW_Vulkan.Input.Set_Character_Callback (W, On_Character'Access);
       GLFW_Vulkan.Input.Set_Mouse_Button_Callback (W, On_Mouse_Button'Access);
@@ -495,18 +554,32 @@ package body Terminal.App.Main_Loop is
                   exit when not Has_Chunk;
                   if Chunk.Length > 0 then
                      Terminal.Core.Feed (T, Chunk.Data (1 .. Chunk.Length), Feed);
+                     Last_Feed_Status := Feed;
                      Scroll_Offset :=
                        Terminal.App.Scrollback_View.Clamp_Offset
                          (T, Scroll_Offset);
                      Dirty := True;
                   end if;
                end loop;
-               Apply_Title (W, Terminal.Core.Title (T), Last_Title);
+               Apply_Title
+                 (W,
+                  Terminal.Core.Title (T),
+                  Hovered_Link,
+                  Has_Link_Activation,
+                  Link_Activation,
+                  Tabs,
+                  Splits);
                declare
                   Clipboard_Ok : Boolean;
                begin
                   Apply_Clipboard_Request
-                    (W, S, Clipboard_Targets, T, Clipboard_Ok);
+                    (W,
+                     S,
+                     Clipboard_Targets,
+                     T,
+                     Clipboard_Ok,
+                     Last_Write_Status,
+                     Last_Clipboard_Target);
                   if not Clipboard_Ok then
                      GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                   end if;
@@ -517,6 +590,7 @@ package body Terminal.App.Main_Loop is
                   Terminal.Core.Read_Response (T, Chunk.Data, Chunk.Length);
                   if Chunk.Length > 0 then
                      Terminal.App.PTY_Write.Write_All (S, Chunk, Write_Stat);
+                     Last_Write_Status := Write_Stat;
                      if Write_Stat /= Terminal.App.PTY_Write.Ok then
                         GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                         exit;
@@ -532,8 +606,25 @@ package body Terminal.App.Main_Loop is
                         declare
                            Modes : constant Terminal.Core.Mode_Snapshot :=
                              Terminal.Core.Modes (T);
+                           Tab_Command : constant Terminal.App.Tabs.Tab_Command :=
+                             Terminal.App.Input_Map.Tab_Command (Event.Key_Event);
+                           Tab_Status : Terminal.App.Tabs.Tab_Status;
+                           Split_Command : constant
+                             Terminal.App.Splits.Split_Command :=
+                               Terminal.App.Input_Map.Split_Command
+                                 (Event.Key_Event);
+                           Split_Status : Terminal.App.Splits.Split_Status;
                         begin
-                        if Is_Scrollback_Key (Event.Key_Event) then
+                        if Tab_Command /= Terminal.App.Tabs.No_Command then
+                           Terminal.App.Tabs.Apply (Tabs, Tab_Command, Tab_Status);
+                           Chunk := (others => <>);
+                        elsif Split_Command /=
+                          Terminal.App.Splits.No_Command
+                        then
+                           Terminal.App.Splits.Apply
+                             (Splits, Split_Command, Split_Status);
+                           Chunk := (others => <>);
+                        elsif Is_Scrollback_Key (Event.Key_Event) then
                            if Terminal.App.Selection.Has_Selection (Selection) then
                               Terminal.App.Selection.Clear (Selection);
                            end if;
@@ -633,6 +724,10 @@ package body Terminal.App.Main_Loop is
                         begin
                            if Terminal.App.Input_Map.Mouse_Reporting_Enabled
                              (Modes)
+                             and then not
+                               Terminal.App.Input_Map
+                                 .Local_Mouse_Selection_Override
+                                   (Event.Button_Event)
                            then
                               if Terminal.App.Selection.Has_Selection
                                  (Selection)
@@ -685,8 +780,25 @@ package body Terminal.App.Main_Loop is
                                     begin
                                        Terminal.App.Hyperlinks.Activate
                                          (Link, Link_Status);
+                                       Has_Link_Activation := True;
+                                       Link_Activation := Link_Status;
                                        Terminal.Core.Release (Link_Snap);
+                                       Apply_Title
+                                         (W,
+                                          Terminal.Core.Title (T),
+                                          Hovered_Link,
+                                          Has_Link_Activation,
+                                          Link_Activation,
+                                          Tabs,
+                                          Splits);
                                     end;
+                                 elsif Event.Button_Event.Modifiers.Alt then
+                                    Terminal.App.Selection
+                                      .Begin_Rectangular_Selection
+                                        (Selection, Pos);
+                                    Dirty := True;
+                                    Need_Redraw := True;
+                                    Local_Redraw := True;
                                  else
                                     declare
                                        Now : constant Ada.Real_Time.Time :=
@@ -782,7 +894,13 @@ package body Terminal.App.Main_Loop is
                            Modes : constant Terminal.Core.Mode_Snapshot :=
                              Terminal.Core.Modes (T);
                         begin
-                           if Terminal.App.Input_Map.Mouse_Reporting_Enabled
+                           if Terminal.App.Selection.Is_Active (Selection) then
+                              Terminal.App.Selection.Update_Selection
+                                (Selection, Pos);
+                              Dirty := True;
+                              Need_Redraw := True;
+                              Local_Redraw := True;
+                           elsif Terminal.App.Input_Map.Mouse_Reporting_Enabled
                              (Modes)
                            then
                               Terminal.App.Input_Map.Encode_Mouse_Motion
@@ -794,12 +912,6 @@ package body Terminal.App.Main_Loop is
                                  Mouse_Button_Code_Value,
                                  Mouse_Modifiers,
                                  Chunk);
-                           elsif Terminal.App.Selection.Is_Active (Selection) then
-                              Terminal.App.Selection.Update_Selection
-                                (Selection, Pos);
-                              Dirty := True;
-                              Need_Redraw := True;
-                              Local_Redraw := True;
                            else
                               declare
                                  Hover_Snap : Terminal.Core.Render_Snapshot :=
@@ -849,14 +961,17 @@ package body Terminal.App.Main_Loop is
                            elsif Event.Scroll_Event.Y_Offset > 0.0 then
                               Scroll_Offset :=
                                 Terminal.App.Scrollback_View.Clamp_Offset
-                                  (T, Scroll_Offset + Scroll_Lines_Per_Wheel);
+                                  (T,
+                                   Scroll_Offset
+                                     + App_Config.Wheel_Scroll_Lines);
                               Dirty := True;
                               Need_Redraw := True;
                               Local_Redraw := True;
                            elsif Event.Scroll_Event.Y_Offset < 0.0 then
-                              if Scroll_Offset > Scroll_Lines_Per_Wheel then
+                              if Scroll_Offset > App_Config.Wheel_Scroll_Lines then
                                  Scroll_Offset :=
-                                   Scroll_Offset - Scroll_Lines_Per_Wheel;
+                                   Scroll_Offset
+                                     - App_Config.Wheel_Scroll_Lines;
                               else
                                  Scroll_Offset := 0;
                               end if;
@@ -877,6 +992,7 @@ package body Terminal.App.Main_Loop is
 
                   if Chunk.Length > 0 then
                      Terminal.App.PTY_Write.Write_All (S, Chunk, Write_Stat);
+                     Last_Write_Status := Write_Stat;
                      if Write_Stat /= Terminal.App.PTY_Write.Ok then
                         GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                      end if;
@@ -927,6 +1043,15 @@ package body Terminal.App.Main_Loop is
                   end;
                end if;
 
+               declare
+                  Render_Policy_Status : constant String :=
+                    Terminal.App.Render_Policy.Status_Label
+                      (Modes                => Terminal.Core.Modes (T),
+                       Scrollback_Offset    => Scroll_Offset,
+                       Selection_Active     =>
+                         Terminal.App.Selection.Has_Selection (Selection),
+                       Local_Redraw_Request => Local_Redraw);
+               begin
                if Dirty
                  and then Terminal.App.Render_Policy.Should_Defer_Render
                    (Modes                => Terminal.Core.Modes (T),
@@ -1014,9 +1139,89 @@ package body Terminal.App.Main_Loop is
                         end if;
                      end if;
                      declare
+                        Grid_Status : constant String :=
+                          Terminal.App.Resize.Grid_Status_Label
+                            (FB_Width,
+                             FB_Height,
+                             Terminal.App.Renderer.Cell_Width (R),
+                             Terminal.App.Renderer.Cell_Height (R),
+                             Terminal.App.Renderer.Content_Margin);
+                        Scrollback_Status : constant String :=
+                          Terminal.App.Scrollback_View.Status_Label
+                            (T, Scroll_Offset);
+                        Selection_Status : constant String :=
+                          Terminal.App.Selection.Status_Label (Selection);
+                        Link_Status : constant String :=
+                          Terminal.App.Hyperlinks.Status_Label (Hovered_Link);
+                        Link_Activation_Status : constant String :=
+                          Terminal.App.Hyperlinks.Activation_Status_Label
+                            (if Has_Link_Activation
+                             then Link_Activation
+                             else Terminal.App.Hyperlinks.No_Link);
+                        Clipboard_Status : constant String :=
+                          Terminal.App.Clipboard_OSC52.Status_Label
+                            (Last_Clipboard_Target);
+                        Tab_Status : constant String :=
+                          Terminal.App.Tabs.Status_Label (Tabs);
+                        Split_Status : constant String :=
+                          Terminal.App.Splits.Status_Label (Splits);
+                        Config_Status : constant String :=
+                          Terminal.App.Config.Status_Label (App_Config);
+                        Profile_Status : constant String :=
+                          Terminal.App.Profile_Status_Label
+                            (Terminal.App.Profile);
+                        Input_Status : constant String :=
+                          Terminal.App.Input_Map.Input_Status_Label
+                            (Terminal.Core.Modes (T));
+                        Mouse_Status : constant String :=
+                          Terminal.App.Input_Map.Mouse_Status_Label
+                            (Terminal.Core.Modes (T));
+                        Cursor_Status : constant String :=
+                          Terminal.App.Cursor_Blink.Status_Label
+                            (Snap.Cursor, Current_Blink_Tick);
+                        Text_Blink_Status : constant String :=
+                          Terminal.App.Text_Blink.Status_Label
+                            (Snap, Current_Blink_Tick);
+                        Theme_Status : constant String :=
+                          Terminal.App.Theme.Status_Label
+                            (App_Config.Color_Theme);
+                        Graphics_Header_Status : constant String :=
+                          Terminal.App.Graphics.Header_Status_Label
+                            (Snap.Graphics);
+                        Graphics_Data_Status : constant String :=
+                          Terminal.App.Graphics.Data_Status_Label
+                            (Snap.Graphics);
                         Diag : constant Terminal.App.Diagnostics.Snapshot :=
                           Terminal.App.Diagnostics.Collect
-                            (T, PTY_Q, In_Q, R, Presenter);
+                            (T,
+                             PTY_Q,
+                             In_Q,
+                             R,
+                             Presenter,
+                             Last_Feed_Status,
+                             Last_Write_Status,
+                             Grid_Status,
+                             Render_Policy_Status,
+                             Scrollback_Status,
+                             Selection_Status,
+                             Link_Status,
+                             Link_Activation_Status,
+                             Clipboard_Status,
+                             Tab_Status,
+                             Split_Status,
+                             Config_Status,
+                             Profile_Status,
+                             Input_Status,
+                             Mouse_Status,
+                             Cursor_Status,
+                             Text_Blink_Status,
+                             Theme_Status,
+                             Runtime_Font_Status,
+                             Runtime_PTY_Backend_Status,
+                             Runtime_ConPTY_Status,
+                             Runtime_Multiplexer_Status,
+                             Graphics_Header_Status,
+                             Graphics_Data_Status);
                      begin
                         Terminal.App.Diagnostics.Log_If_Changed (Diag);
                      end;
@@ -1036,6 +1241,7 @@ package body Terminal.App.Main_Loop is
                      end if;
                   end;
                end if;
+               end;
             end;
          end loop;
 

@@ -5,8 +5,18 @@ package Terminal.App.Clipboard_OSC52 is
    Max_Query_Response_Frame_Bytes : constant := 9;
    Max_Query_Text_Bytes : constant :=
      ((Terminal.App.Queues.Max_Chunk_Length - Max_Query_Response_Frame_Bytes) / 4) * 3;
+   Max_Status_Label_Length : constant := 64;
 
    type Target_Store is private;
+   type Target_Capability is record
+      Native_Backing    : Boolean := False;
+      App_Local_Backing : Boolean := False;
+   end record;
+
+   function Capability
+     (Target : Terminal.Core.Clipboard_Target) return Target_Capability;
+   function Status_Label
+     (Target : Terminal.Core.Clipboard_Target) return String;
 
    procedure Store
      (State  : in out Target_Store;

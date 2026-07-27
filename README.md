@@ -61,6 +61,7 @@ cd terminal_pty_posix
 alr update
 alr exec -- gprbuild -P tests/pty_tests.gpr
 tests/bin/pty_status_smoke
+tests/bin/pty_env_smoke
 tests/bin/pty_resize_smoke
 tests/bin/pty_close_smoke
 ```
@@ -70,16 +71,30 @@ App smoke tests:
 ```sh
 cd terminal_glfw_vulkan_app
 alr exec -- gprbuild -P tests/app_tests.gpr
+tests/bin/app_profile_smoke
 tests/bin/vulkan_submit_smoke
 tests/bin/vulkan_presenter_smoke
 tests/bin/vulkan_device_smoke
 tests/bin/gui_present_smoke
 tests/bin/shader_loader_smoke
+tests/bin/font_discovery_smoke
+tests/bin/text_shaper_smoke
+tests/bin/renderer_metrics_smoke
 tests/bin/pty_core_integration_smoke
 tests/bin/pty_m1_commands_smoke
+tests/bin/pty_program_progression_smoke
 tests/bin/input_map_smoke
 tests/bin/selection_smoke
+tests/bin/hyperlink_smoke
+tests/bin/clipboard_osc52_smoke
 tests/bin/scrollback_view_smoke
+tests/bin/render_policy_smoke
+tests/bin/theme_config_smoke
+tests/bin/graphics_capabilities_smoke
+tests/bin/tabs_smoke
+tests/bin/splits_smoke
+tests/bin/cursor_blink_smoke
+tests/bin/text_blink_smoke
 tests/bin/queue_smoke
 tests/bin/resize_smoke
 ```

@@ -1,4 +1,5 @@
 with System;
+with Terminal.Common.Bytes;
 
 --  Renderer-neutral terminal draw commands.
 --
@@ -33,6 +34,74 @@ package Terminal.App.Render_Model is
       Color     : Pixel_Color;
       Codepoint : Natural := 0;
    end record;
+
+   type Image_Protocol is
+     (Image_Sixel,
+      Image_Kitty,
+      Image_ITerm2);
+
+   type Image_Decode_Status is
+     (Image_Decode_Not_Attempted,
+      Image_Decode_Ok,
+      Image_Decode_Invalid_Byte,
+      Image_Decode_Trailing_Data,
+      Image_Decode_Preview_Truncated,
+      Image_Decode_Unsupported_Format);
+
+   function Image_Decode_Status_Suffix
+     (Status : Image_Decode_Status) return String;
+   function Image_Payload_Status_Suffix
+     (Preview_Complete : Boolean) return String;
+
+   Max_Image_Encoded_Data_Length : constant := 2 * 1024 * 1024;
+   Max_Image_Decoded_Data_Length : constant := 1024 * 1024;
+   Max_Image_Decoded_Preview_Length : constant := 4096;
+   type Image_Data_Access is access all Terminal.Common.Bytes.Byte_Array;
+   type Image_Decoded_Source_Kind is
+     (Image_Decoded_Source_None,
+      Image_Decoded_Source_Buffer,
+      Image_Decoded_Source_Raw_Base64,
+      Image_Decoded_Source_PNG_Base64,
+      Image_Decoded_Source_Sixel_Text);
+
+   type Image_Command is record
+      X              : Float := 0.0;
+      Y              : Float := 0.0;
+      Width          : Float := 0.0;
+      Height         : Float := 0.0;
+      Protocol       : Image_Protocol := Image_Sixel;
+      Placeholder    : Boolean := True;
+      Raw_Format     : Natural := 0;
+      Pixel_Width    : Natural := 0;
+      Pixel_Height   : Natural := 0;
+      Payload_Length : Natural := 0;
+      Staging_Byte_Length : Natural := 0;
+      Payload_Preview_Complete : Boolean := False;
+      Encoded_Preview_Length : Natural := 0;
+      Decoded_Byte_Length : Natural := 0;
+      Decoded_Row_Stride_Bytes : Natural := 0;
+      Decoded_Source : Image_Decoded_Source_Kind := Image_Decoded_Source_None;
+      Decoded_Bytes : Image_Data_Access := null;
+      Decoded_Bytes_Owned : Boolean := False;
+      Encoded_Source_Bytes : Image_Data_Access := null;
+      Encoded_Source_Bytes_Owned : Boolean := False;
+      Encoded_Source_Length : Natural := 0;
+      Decoded_Preview_Length : Natural := 0;
+      Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+        (1 .. Max_Image_Decoded_Preview_Length) := (others => 0);
+      Preview_Decode_Complete : Boolean := False;
+      Decode_Status : Image_Decode_Status := Image_Decode_Not_Attempted;
+      Tint           : Pixel_Color;
+   end record;
+
+   function Image_Decoded_Source_Bytes
+     (Image : Image_Command) return Natural;
+   function Image_Decoded_Source_Available
+     (Image : Image_Command) return Boolean;
+   function Image_Decoded_Row_Byte
+     (Image       : Image_Command;
+      Row         : Natural;
+      Byte_Offset : Natural) return Terminal.Common.Bytes.Byte;
 
    Max_Text_Run_Codepoints : constant := 9;
    Max_Shaped_Glyphs_Per_Run : constant := 16;
@@ -234,9 +303,11 @@ package Terminal.App.Render_Model is
 
    type Rectangle_Array is array (Positive range <>) of Rectangle_Command;
    type Glyph_Array is array (Positive range <>) of Glyph_Command;
+   type Image_Array is array (Positive range <>) of Image_Command;
    type Text_Run_Array is array (Positive range <>) of Text_Run_Command;
    type Rectangle_Array_Access is access all Rectangle_Array;
    type Glyph_Array_Access is access all Glyph_Array;
+   type Image_Array_Access is access all Image_Array;
    type Text_Run_Array_Access is access all Text_Run_Array;
 
    type Frame_Commands is record
@@ -246,6 +317,8 @@ package Terminal.App.Render_Model is
       Rectangle_Count : Natural := 0;
       Glyphs          : Glyph_Array_Access := null;
       Glyph_Count     : Natural := 0;
+      Images          : Image_Array_Access := null;
+      Image_Count     : Natural := 0;
       Text_Runs       : Text_Run_Array_Access := null;
       Text_Run_Count  : Natural := 0;
       Atlas_Width     : Natural := 0;

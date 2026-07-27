@@ -282,6 +282,33 @@ procedure Text_Shaper_Smoke is
       Assert (Text.Script = Script, Label & " script");
    end Assert_Bidi_Script;
 begin
+   Assert
+     (TS.Backend_Status_Label (TS.Backend_Ok) = "Shaping backend ready",
+      "backend ok status label");
+   Assert
+     (TS.Backend_Status_Label (TS.Backend_Unavailable) =
+      "Shaping backend unavailable",
+      "backend unavailable status label");
+   Assert
+     (TS.Backend_Status_Label (TS.Backend_Load_Failed) =
+      "Shaping backend load failed",
+      "backend load failed status label");
+   Assert
+     (TS.Shape_Status_Label (RM.Shape_Ok) = "Text shaping complete",
+      "shape ok status label");
+   Assert
+     (TS.Shape_Status_Label (RM.Needs_Shaping_Backend) =
+      "Text shaping backend needed",
+      "shape backend-needed status label");
+   Assert
+     (TS.Shape_Status_Label (RM.Invalid_Run) =
+      "Text shaping skipped; invalid run",
+      "invalid run status label");
+   Assert
+     (TS.Shape_Status_Label (RM.Invalid_Run)'Length <=
+      TS.Max_Status_Label_Length,
+      "shape status label should be bounded");
+
    TS.Configure_Font
      (Path       => Terminal.App.Fonts.Default_Font_Path,
       Pixel_Size => 16,
@@ -289,10 +316,16 @@ begin
    Assert
      (Backend = TS.Backend_Ok and then TS.Backend_Available,
       "HarfBuzz shaping backend should load the default font");
+   Assert
+     (TS.Backend_Status_Label (Backend)'Length <= TS.Max_Status_Label_Length,
+      "backend status label should be bounded");
 
    Assert (TS.Classify (Simple) = RM.Simple_Glyph, "simple glyph class");
    TS.Prepare (Simple, Status);
    Assert (Status = RM.Shape_Ok, "simple glyph status");
+   Assert
+     (TS.Shape_Status_Label (Status) = "Text shaping complete",
+      "prepared shape status label");
    Assert (Simple.Run_Kind = RM.Simple_Glyph, "simple glyph stored class");
    Assert (Simple.Shape_Status = RM.Shape_Ok, "simple glyph stored status");
    Assert

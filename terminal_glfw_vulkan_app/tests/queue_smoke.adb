@@ -75,13 +75,31 @@ procedure Queue_Smoke is
    Empty_Event : Q.Input_Event;
    Available : Boolean;
 begin
+   Assert
+     (Q.Queue_Status_Label ("pty", PTY.Length, Q.Max_Chunks, PTY.Overflow_Count) =
+      "pty queue 0/64",
+      "empty pty queue status label");
+   Assert
+     (Q.Queue_Status_Label
+        ("pty", PTY.Length, Q.Max_Chunks, PTY.Overflow_Count)'Length <=
+      Q.Max_Status_Label_Length,
+      "pty queue status label should be bounded");
+
    for I in 1 .. Q.Max_Chunks loop
       Push_PTY_Byte (Byte (I));
    end loop;
    Assert (PTY.Length = Q.Max_Chunks, "pty queue full length");
+   Assert
+     (Q.Queue_Status_Label ("pty", PTY.Length, Q.Max_Chunks, PTY.Overflow_Count) =
+      "pty queue 64/64",
+      "full pty queue status label");
    Push_PTY_Byte (16#FF#);
    Assert (PTY.Overflow_Count = 1, "pty overflow count");
    Assert (PTY.Length = Q.Max_Chunks, "pty drop-newest length");
+   Assert
+     (Q.Queue_Status_Label ("pty", PTY.Length, Q.Max_Chunks, PTY.Overflow_Count) =
+      "pty queue 64/64; overflows=1",
+      "overflow pty queue status label");
 
    Assert_PTY_Byte (1, "pty first");
    Assert_PTY_Byte (2, "pty second");
@@ -128,9 +146,24 @@ begin
       Push_Input_Byte (Byte (I mod 256));
    end loop;
    Assert (Input.Length = Q.Max_Input_Events, "input queue full length");
+   Assert
+     (Q.Queue_Status_Label
+        ("input", Input.Length, Q.Max_Input_Events, Input.Overflow_Count) =
+      "input queue 256/256",
+      "full input queue status label");
    Push_Input_Byte (16#EE#);
    Assert (Input.Overflow_Count = 1, "input overflow count");
    Assert (Input.Length = Q.Max_Input_Events, "input drop-newest length");
+   Assert
+     (Q.Queue_Status_Label
+        ("input", Input.Length, Q.Max_Input_Events, Input.Overflow_Count) =
+      "input queue 256/256; overflows=1",
+      "overflow input queue status label");
+   Assert
+     (Q.Queue_Status_Label
+        ("input", Input.Length, Q.Max_Input_Events, Input.Overflow_Count)'Length <=
+      Q.Max_Status_Label_Length,
+      "input queue status label should be bounded");
 
    Assert_Input_Byte (1, "input first");
    Assert_Input_Byte (2, "input second");

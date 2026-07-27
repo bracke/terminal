@@ -3,6 +3,8 @@ with System;
 with Vk;
 
 package Terminal.App.Vulkan_Context is
+   Max_Status_Label_Length : constant := 96;
+
    type Context is limited private;
 
    type Init_Status is
@@ -21,6 +23,7 @@ package Terminal.App.Vulkan_Context is
    function Is_Initialized (Ctx : Context) return Boolean;
    function Instance (Ctx : Context) return Vk.Instance_T;
    function Surface (Ctx : Context) return Vk.Surface_KHR_T;
+   function Status_Label (Status : Init_Status) return String;
 
 private
    type Context is limited record

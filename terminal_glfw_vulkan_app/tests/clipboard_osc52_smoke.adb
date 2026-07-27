@@ -27,6 +27,51 @@ procedure Clipboard_OSC52_Smoke is
      Terminal.App.Clipboard_OSC52.Max_Query_Response_Frame_Bytes +
        4 * ((Terminal.App.Clipboard_OSC52.Max_Query_Text_Bytes + 2) / 3);
 begin
+   declare
+      Clipboard_Cap : constant Terminal.App.Clipboard_OSC52.Target_Capability :=
+        Terminal.App.Clipboard_OSC52.Capability
+          (Terminal.Core.Clipboard_Clipboard);
+      Primary_Cap : constant Terminal.App.Clipboard_OSC52.Target_Capability :=
+        Terminal.App.Clipboard_OSC52.Capability
+          (Terminal.Core.Clipboard_Primary);
+      Selection_Cap : constant Terminal.App.Clipboard_OSC52.Target_Capability :=
+        Terminal.App.Clipboard_OSC52.Capability
+          (Terminal.Core.Clipboard_Selection);
+   begin
+      Assert
+        (Clipboard_Cap.Native_Backing
+         and then not Clipboard_Cap.App_Local_Backing,
+         "clipboard target should use native GLFW clipboard backing");
+      Assert
+        (not Primary_Cap.Native_Backing
+         and then Primary_Cap.App_Local_Backing,
+         "primary target should be app-local without a native backend");
+      Assert
+        (not Selection_Cap.Native_Backing
+         and then Selection_Cap.App_Local_Backing,
+         "selection target should be app-local without a native backend");
+      Assert
+        (Terminal.App.Clipboard_OSC52.Status_Label
+           (Terminal.Core.Clipboard_Clipboard) =
+         "Clipboard target uses native clipboard",
+         "clipboard status label");
+      Assert
+        (Terminal.App.Clipboard_OSC52.Status_Label
+           (Terminal.Core.Clipboard_Primary) =
+         "Primary target uses app-local selection",
+         "primary status label");
+      Assert
+        (Terminal.App.Clipboard_OSC52.Status_Label
+           (Terminal.Core.Clipboard_Selection) =
+         "Selection target uses app-local selection",
+         "selection status label");
+      Assert
+        (Terminal.App.Clipboard_OSC52.Status_Label
+           (Terminal.Core.Clipboard_Selection)'Length <=
+         Terminal.App.Clipboard_OSC52.Max_Status_Label_Length,
+         "clipboard status labels should be bounded");
+   end;
+
    Terminal.App.Clipboard_OSC52.Build_Query_Response ("hello", Chunk);
    Assert
      (Text_Of (Chunk) = Character'Val (16#1B#) & "]52;c;aGVsbG8=" &

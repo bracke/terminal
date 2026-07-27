@@ -18,6 +18,21 @@ procedure Core_Smoke is
 begin
    Terminal.Core.Initialize (T, 3, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "initialize failed");
+   Assert
+     (Terminal.Core.Initialize_Status_Label (Init) = "Initialize: Ok",
+      "initialize status label");
+   Assert
+     (Terminal.Core.Initialize_Status_Label (Terminal.Core.Invalid_Size) =
+      "Initialize: Invalid Size",
+      "invalid-size status label");
+   Assert
+     (Terminal.Core.Feed_Status_Label (Terminal.Core.Parser_Overflow) =
+      "Feed: Parser Overflow",
+      "parser-overflow status label");
+   Assert
+     (Terminal.Core.Diagnostics_Status_Label (Terminal.Core.Diagnostics (T)) =
+      "Diagnostics: clean",
+      "clean diagnostics label");
 
    Terminal.Core.Feed
      (T,
@@ -31,6 +46,9 @@ begin
        8 => Byte (Character'Pos ('f'))),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "feed failed");
+   Assert
+     (Terminal.Core.Feed_Status_Label (Feed_Status) = "Feed: Ok",
+      "feed status label");
 
    declare
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
@@ -137,6 +155,10 @@ begin
       Assert
         (Terminal.Core.Diagnostics (T).Ignored_Escape = Before + 1,
          "invalid DECALN selector should be diagnosed");
+      Assert
+        (Terminal.Core.Diagnostics_Status_Label (Terminal.Core.Diagnostics (T)) =
+         "Diagnostics: issues=1 utf8=0 esc=1 parse=0 queue=0 unsup=0 gfx=0 mux=0",
+         "invalid DECALN diagnostics label");
    end;
 
    declare

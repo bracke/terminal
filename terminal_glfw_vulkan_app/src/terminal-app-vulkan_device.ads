@@ -1,6 +1,8 @@
+with System;
+with Terminal.Common.Bytes;
+with Terminal.App.Render_Model;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Submit;
-with System;
 with Vk;
 
 package Terminal.App.Vulkan_Device is
@@ -11,6 +13,7 @@ package Terminal.App.Vulkan_Device is
    Max_Present_Modes     : constant := 16;
    Max_Swapchain_Images   : constant := 8;
    Max_Upload_Vertices    : constant := 1_048_576;
+   Max_Status_Label_Length : constant := 96;
 
    type Selection is private;
    type Logical_Device is limited private;
@@ -96,6 +99,33 @@ package Terminal.App.Vulkan_Device is
       Vertex_Buffer_Created : Boolean := False;
       Vertex_Buffer_Bytes : Natural := 0;
       Uploaded_Vertex_Count : Natural := 0;
+      Uploaded_Image_Command_Count : Natural := 0;
+      Uploaded_Image_Vertex_Count : Natural := 0;
+      Uploaded_Image_Texture_Vertex_Count : Natural := 0;
+      Uploaded_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
+        Terminal.App.Render_Model.Image_Sixel;
+      Uploaded_Image_Width : Natural := 0;
+      Uploaded_Image_Height : Natural := 0;
+      Uploaded_Image_Raw_Format : Natural := 0;
+      Uploaded_Image_Pixel_Width : Natural := 0;
+      Uploaded_Image_Pixel_Height : Natural := 0;
+      Uploaded_Image_Payload_Length : Natural := 0;
+      Uploaded_Image_Texture_Staging_Bytes : Natural := 0;
+      Uploaded_Image_Payload_Preview_Complete : Boolean := False;
+      Uploaded_Image_Encoded_Preview_Length : Natural := 0;
+      Uploaded_Image_Decoded_Preview_Length : Natural := 0;
+      Uploaded_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+        (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
+          (others => 0);
+      Uploaded_Image_Preview_Decode_Complete : Boolean := False;
+      Uploaded_Image_Decode_Status :
+        Terminal.App.Render_Model.Image_Decode_Status :=
+          Terminal.App.Render_Model.Image_Decode_Not_Attempted;
+      Uploaded_Image_Placeholder : Boolean := False;
+      Uploaded_Image_Texture_Downgraded : Boolean := False;
+      Uploaded_Image_Texture_Source :
+        Terminal.App.Vulkan_Submit.Texture_Source :=
+          Terminal.App.Vulkan_Submit.Texture_None;
       Uploaded_Text_Run_Count : Natural := 0;
       Uploaded_Shaped_Glyph_Count : Natural := 0;
       Rendered_Frame_Count : Natural := 0;
@@ -104,6 +134,8 @@ package Terminal.App.Vulkan_Device is
       Atlas_Image_Created : Boolean := False;
       Atlas_View_Created : Boolean := False;
       Atlas_Sampler_Created : Boolean := False;
+      Image_Texture_Descriptor_Capacity : Natural := 0;
+      Image_Texture_Descriptor_Bound_Count : Natural := 0;
       Atlas_Width : Natural := 0;
       Atlas_Height : Natural := 0;
       Atlas_Bytes : Natural := 0;
@@ -163,6 +195,16 @@ package Terminal.App.Vulkan_Device is
    function Queue_Family_Index (Device : Logical_Device) return Natural;
    function Diagnostics (Device : Logical_Device) return Device_Diagnostic_Snapshot;
 
+   function Select_Status_Label (Status : Select_Status) return String;
+   function Create_Status_Label (Status : Create_Status) return String;
+   function Render_Status_Label (Status : Render_Status) return String;
+   function Image_Status_Label
+     (Diagnostics : Device_Diagnostic_Snapshot) return String;
+   function Image_Texture_Status_Label
+     (Diagnostics : Device_Diagnostic_Snapshot) return String;
+   function Image_Texture_Resource_Status_Label
+     (Diagnostics : Device_Diagnostic_Snapshot) return String;
+
 private
    subtype Swapchain_Image_Range is Positive range 1 .. Max_Swapchain_Images;
    type Swapchain_Image_Array is array (Swapchain_Image_Range) of Vk.Image_T;
@@ -210,6 +252,14 @@ private
       Atlas_Memory       : Vk.Device_Memory_T := System.Null_Address;
       Atlas_View         : Vk.Image_View_T := System.Null_Address;
       Atlas_Sampler      : Vk.Sampler_T := System.Null_Address;
+      Image_Texture_Image : Vk.Image_T := System.Null_Address;
+      Image_Texture_Memory : Vk.Device_Memory_T := System.Null_Address;
+      Image_Texture_View : Vk.Image_View_T := System.Null_Address;
+      Image_Texture_Width : Natural := 0;
+      Image_Texture_Height : Natural := 0;
+      Image_Texture_Bytes : Natural := 0;
+      Image_Texture_Descriptor_Capacity : Natural := 0;
+      Image_Texture_Descriptor_Bound_Count : Natural := 0;
       Swapchain_Images   : Swapchain_Image_Array := (others => System.Null_Address);
       Swapchain_Views    : Swapchain_Image_View_Array :=
         (others => System.Null_Address);
@@ -226,6 +276,33 @@ private
       Sync_Frame_Count   : Natural := 0;
       Vertex_Buffer_Bytes : Natural := 0;
       Uploaded_Vertex_Count : Natural := 0;
+      Uploaded_Image_Command_Count : Natural := 0;
+      Uploaded_Image_Vertex_Count : Natural := 0;
+      Uploaded_Image_Texture_Vertex_Count : Natural := 0;
+      Uploaded_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
+        Terminal.App.Render_Model.Image_Sixel;
+      Uploaded_Image_Width : Natural := 0;
+      Uploaded_Image_Height : Natural := 0;
+      Uploaded_Image_Raw_Format : Natural := 0;
+      Uploaded_Image_Pixel_Width : Natural := 0;
+      Uploaded_Image_Pixel_Height : Natural := 0;
+      Uploaded_Image_Payload_Length : Natural := 0;
+      Uploaded_Image_Texture_Staging_Bytes : Natural := 0;
+      Uploaded_Image_Payload_Preview_Complete : Boolean := False;
+      Uploaded_Image_Encoded_Preview_Length : Natural := 0;
+      Uploaded_Image_Decoded_Preview_Length : Natural := 0;
+      Uploaded_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+        (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
+          (others => 0);
+      Uploaded_Image_Preview_Decode_Complete : Boolean := False;
+      Uploaded_Image_Decode_Status :
+        Terminal.App.Render_Model.Image_Decode_Status :=
+          Terminal.App.Render_Model.Image_Decode_Not_Attempted;
+      Uploaded_Image_Placeholder : Boolean := False;
+      Uploaded_Image_Texture_Downgraded : Boolean := False;
+      Uploaded_Image_Texture_Source :
+        Terminal.App.Vulkan_Submit.Texture_Source :=
+          Terminal.App.Vulkan_Submit.Texture_None;
       Uploaded_Text_Run_Count : Natural := 0;
       Uploaded_Shaped_Glyph_Count : Natural := 0;
       Rendered_Frame_Count : Natural := 0;

@@ -18,6 +18,98 @@ package body Terminal.Core is
    function Active_Cells (T : Terminal) return Cell_Array_Access is
      (if T.Active = Primary then T.Primary_Cells else T.Alt_Cells);
 
+   function Bounded_Status_Label (Label : String) return String is
+   begin
+      if Label'Length <= Max_Status_Label_Length then
+         return Label;
+      end if;
+
+      return Label (Label'First .. Label'First + Max_Status_Label_Length - 4)
+        & "...";
+   end Bounded_Status_Label;
+
+   function Natural_Image (Value : Natural) return String is
+      Image : constant String := Natural'Image (Value);
+   begin
+      if Image (Image'First) = ' ' then
+         return Image (Image'First + 1 .. Image'Last);
+      end if;
+
+      return Image;
+   end Natural_Image;
+
+   type Graphics_Protocol is
+     (Graphics_Sixel,
+      Graphics_Kitty,
+      Graphics_ITerm2);
+
+   procedure Note_Graphics_Protocol
+     (T        : in out Terminal;
+      Protocol : Graphics_Protocol;
+      Payload_Length : Natural;
+      Preview        : String := "")
+   is
+      Preview_Length : constant Graphics_Preview_Length_Range :=
+        Graphics_Preview_Length_Range'Min
+          (Preview'Length, Max_Graphics_Preview_Length);
+   begin
+      T.Diag.Graphics_Protocol_Ignored :=
+        T.Diag.Graphics_Protocol_Ignored + 1;
+      T.Diag.Last_Graphics_Payload_Length := Payload_Length;
+      T.Last_Graphics.Pending := True;
+      T.Last_Graphics.Row := T.Cursor_Row;
+      T.Last_Graphics.Col := T.Cursor_Col;
+      T.Last_Graphics.Payload_Length := Payload_Length;
+      T.Last_Graphics.Preview_Length := Preview_Length;
+      T.Last_Graphics.Preview := (others => ASCII.NUL);
+      for I in 1 .. Preview_Length loop
+         T.Last_Graphics.Preview (I) := Preview (Preview'First + I - 1);
+      end loop;
+
+      case Protocol is
+         when Graphics_Sixel =>
+            T.Diag.Sixel_Ignored := T.Diag.Sixel_Ignored + 1;
+            T.Diag.Last_Graphics_Protocol := Sixel_Graphics;
+            T.Last_Graphics.Protocol := Sixel_Graphics;
+         when Graphics_Kitty =>
+            T.Diag.Kitty_Graphics_Ignored :=
+              T.Diag.Kitty_Graphics_Ignored + 1;
+            T.Diag.Last_Graphics_Protocol := Kitty_Graphics;
+            T.Last_Graphics.Protocol := Kitty_Graphics;
+         when Graphics_ITerm2 =>
+            T.Diag.ITerm2_Image_Ignored :=
+              T.Diag.ITerm2_Image_Ignored + 1;
+            T.Diag.Last_Graphics_Protocol := ITerm2_Graphics;
+            T.Last_Graphics.Protocol := ITerm2_Graphics;
+      end case;
+   end Note_Graphics_Protocol;
+
+   function OSC_Slice
+     (T     : Terminal;
+      First : Positive;
+      Last  : Natural) return String
+   is
+      Result : String (1 .. Last - First + 1);
+   begin
+      for I in Result'Range loop
+         Result (I) := T.OSC_Data (First + I - 1);
+      end loop;
+      return Result;
+   end OSC_Slice;
+
+   function Ignored_String_Slice
+     (T     : Terminal;
+      First : Positive;
+      Last  : Natural) return String
+   is
+      Result : String (1 .. Last - First + 1);
+   begin
+      for I in Result'Range loop
+         Result (I) := T.Ignored_String_Data (First + I - 1);
+      end loop;
+      return Result;
+   end Ignored_String_Slice;
+
    procedure Scroll_Down_Region
      (T      : in out Terminal;
       Top    : Positive;
@@ -269,6 +361,7 @@ package body Terminal.Core is
       T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
       T.Ignored_String_Is_DCS := False;
+      T.Ignored_String_Is_APC := False;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
@@ -371,7 +464,7 @@ package body Terminal.Core is
       T.Saved_G2_Charset := ASCII_Charset;
       T.Saved_G3_Charset := ASCII_Charset;
       T.Saved_Active_Charset := G0;
-      T.Diag := (others => 0);
+      T.Diag := (others => <>);
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
@@ -393,6 +486,7 @@ package body Terminal.Core is
       T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
       T.Ignored_String_Is_DCS := False;
+      T.Ignored_String_Is_APC := False;
       T.UTF8_Need := 0;
       T.UTF8_Seen := 0;
       T.UTF8_Accum := 0;
@@ -429,6 +523,22 @@ package body Terminal.Core is
       Command : Natural := 0;
       Payload_First : Natural := 0;
       Title_Length : Natural;
+
+      function Payload_Starts_With (Text : String) return Boolean is
+      begin
+         if Payload_First = 0
+           or else T.OSC_Count - Payload_First + 1 < Text'Length
+         then
+            return False;
+         end if;
+
+         for I in Text'Range loop
+            if T.OSC_Data (Payload_First + I - Text'First) /= Text (I) then
+               return False;
+            end if;
+         end loop;
+         return True;
+      end Payload_Starts_With;
 
       function Base64_Value (Ch : Standard.Character) return Integer is
       begin
@@ -707,6 +817,12 @@ package body Terminal.Core is
          Decode_OSC8 (Payload_First, T.OSC_Count);
       elsif Command = 52 then
          Decode_OSC52 (Payload_First, T.OSC_Count);
+      elsif Command = 1337 and then Payload_Starts_With ("File=") then
+         Note_Graphics_Protocol
+           (T,
+            Graphics_ITerm2,
+            T.OSC_Count - Payload_First + 1,
+            OSC_Slice (T, Payload_First, T.OSC_Count));
       end if;
 
       T.State := Ground;
@@ -730,12 +846,14 @@ package body Terminal.Core is
 
    procedure Start_Ignored_String
      (T      : in out Terminal;
-      Is_DCS : Boolean)
+      Is_DCS : Boolean;
+      Is_APC : Boolean := False)
    is
    begin
       T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
       T.Ignored_String_Is_DCS := Is_DCS;
+      T.Ignored_String_Is_APC := Is_APC;
       T.State := Ignored_String;
    end Start_Ignored_String;
 
@@ -1615,6 +1733,56 @@ package body Terminal.Core is
    end Append_SGR_Status;
 
    procedure Finish_Ignored_String (T : in out Terminal) is
+      function Finish_Tmux_Passthrough return Boolean is
+         Prefix : constant String := "tmux;";
+         Decoded : Core_Byte_Array (1 .. Max_OSC_Payload_Length);
+         Decoded_Count : Natural := 0;
+         I : Natural;
+         Status : Feed_Status;
+      begin
+         if not T.Ignored_String_Is_DCS
+           or else T.Ignored_String_Count <= Prefix'Length
+         then
+            return False;
+         end if;
+
+         for J in Prefix'Range loop
+            if T.Ignored_String_Data (J) /= Prefix (J) then
+               return False;
+            end if;
+         end loop;
+
+         I := Prefix'Length + 1;
+         while I <= T.Ignored_String_Count loop
+            if T.Ignored_String_Data (I) = ASCII.ESC
+              and then I < T.Ignored_String_Count
+              and then T.Ignored_String_Data (I + 1) = ASCII.ESC
+            then
+               Decoded_Count := Decoded_Count + 1;
+               Decoded (Decoded_Count) := 16#1B#;
+               I := I + 2;
+            else
+               Decoded_Count := Decoded_Count + 1;
+               Decoded (Decoded_Count) :=
+                 Common.Bytes.Byte
+                   (Standard.Character'Pos (T.Ignored_String_Data (I)));
+               I := I + 1;
+            end if;
+         end loop;
+
+         T.Ignored_String_Is_DCS := False;
+         T.Ignored_String_Is_APC := False;
+         T.State := Ground;
+         T.Diag.Multiplexer_Passthrough :=
+           T.Diag.Multiplexer_Passthrough + 1;
+
+         if Decoded_Count > 0 then
+            Feed (T, Decoded (1 .. Decoded_Count), Status);
+         end if;
+
+         return True;
+      end Finish_Tmux_Passthrough;
+
       function Cursor_Style_Param return Natural is
       begin
          case T.Current_Cursor_Shape is
@@ -1626,8 +1794,50 @@ package body Terminal.Core is
                return (if T.Current_Cursor_Blinking then 5 else 6);
          end case;
       end Cursor_Style_Param;
+
+      function Is_Sixel_DCS return Boolean is
+         I : Natural := 1;
+      begin
+         if not T.Ignored_String_Is_DCS or else T.Ignored_String_Count = 0 then
+            return False;
+         end if;
+
+         while I <= T.Ignored_String_Count loop
+            case T.Ignored_String_Data (I) is
+               when '0' .. '9' | ';' | '?' =>
+                  I := I + 1;
+               when 'q' =>
+                  return True;
+               when others =>
+                  return False;
+            end case;
+         end loop;
+
+         return False;
+      end Is_Sixel_DCS;
+
+      function Is_Kitty_Graphics_APC return Boolean is
+      begin
+         return T.Ignored_String_Is_APC
+           and then T.Ignored_String_Count >= 1
+           and then T.Ignored_String_Data (1) = 'G';
+      end Is_Kitty_Graphics_APC;
    begin
-      if T.Ignored_String_Is_DCS
+      if Finish_Tmux_Passthrough then
+         return;
+      elsif Is_Sixel_DCS then
+         Note_Graphics_Protocol
+           (T,
+            Graphics_Sixel,
+            T.Ignored_String_Count,
+            Ignored_String_Slice (T, 1, T.Ignored_String_Count));
+      elsif Is_Kitty_Graphics_APC then
+         Note_Graphics_Protocol
+           (T,
+            Graphics_Kitty,
+            T.Ignored_String_Count,
+            Ignored_String_Slice (T, 1, T.Ignored_String_Count));
+      elsif T.Ignored_String_Is_DCS
         and then T.Ignored_String_Count >= 2
         and then T.Ignored_String_Data (1) = '$'
         and then T.Ignored_String_Data (2) = 'q'
@@ -1671,6 +1881,7 @@ package body Terminal.Core is
       end if;
 
       T.Ignored_String_Is_DCS := False;
+      T.Ignored_String_Is_APC := False;
       T.State := Ground;
    end Finish_Ignored_String;
 
@@ -2815,8 +3026,11 @@ package body Terminal.Core is
                T.State := Single_Shift;
             when 16#90# =>
                Start_Ignored_String (T, Is_DCS => True);
-            when 16#98# | 16#9E# | 16#9F# =>
+            when 16#98# | 16#9E# =>
                Start_Ignored_String (T, Is_DCS => False);
+            when 16#9F# =>
+               Start_Ignored_String
+                 (T, Is_DCS => False, Is_APC => True);
             when 16#9B# =>
                Clear_CSI (T);
                T.State := CSI;
@@ -2909,6 +3123,7 @@ package body Terminal.Core is
               or else T.State = Ignored_String_Overflow_Escape
             then
                T.Ignored_String_Is_DCS := False;
+               T.Ignored_String_Is_APC := False;
                T.State := Ground;
                goto Continue;
             elsif not In_String_Control (T.State) then
@@ -2935,7 +3150,7 @@ package body Terminal.Core is
                goto Continue;
             elsif Natural (B) = 16#9F# then
                Recover_Incomplete_UTF8 (T);
-               Start_Ignored_String (T, Is_DCS => False);
+               Start_Ignored_String (T, Is_DCS => False, Is_APC => True);
                goto Continue;
             elsif Natural (B) = 16#84# then
                Recover_Incomplete_UTF8 (T);
@@ -3005,6 +3220,7 @@ package body Terminal.Core is
                goto Continue;
             elsif T.State = Ignored_String_Overflow and then Natural (B) = 7 then
                T.Ignored_String_Is_DCS := False;
+               T.Ignored_String_Is_APC := False;
                T.State := Ground;
                goto Continue;
             elsif (Natural (B) = 16#18# or else Natural (B) = 16#1A#)
@@ -3072,8 +3288,11 @@ package body Terminal.Core is
                      Start_Ignored_String (T, Is_DCS => True);
                   when 'X' =>
                      Start_Ignored_String (T, Is_DCS => False);
-                  when '^' | '_' =>
+                  when '^' =>
                      Start_Ignored_String (T, Is_DCS => False);
+                  when '_' =>
+                     Start_Ignored_String
+                       (T, Is_DCS => False, Is_APC => True);
                   when '(' =>
                      T.Charset_Target := G0;
                      T.State := Charset;
@@ -3182,6 +3401,7 @@ package body Terminal.Core is
             when Ignored_String_Overflow_Escape =>
                if Ch = '\' then
                   T.Ignored_String_Is_DCS := False;
+                  T.Ignored_String_Is_APC := False;
                   T.State := Ground;
                else
                   T.State := Ignored_String_Overflow;
@@ -3351,6 +3571,7 @@ package body Terminal.Core is
          Visible => T.Current_Modes.Cursor_Visible,
          Shape   => T.Current_Cursor_Shape,
          Blinking => T.Current_Cursor_Blinking);
+      S.Graphics := T.Last_Graphics;
       return S;
    end Snapshot;
 
@@ -3398,6 +3619,62 @@ package body Terminal.Core is
    begin
       return T.Diag;
    end Diagnostics;
+
+   function Initialize_Status_Label (Status : Initialize_Status) return String is
+   begin
+      case Status is
+         when Ok =>
+            return "Initialize: Ok";
+         when Invalid_Size =>
+            return "Initialize: Invalid Size";
+         when Invalid_Scrollback_Limit =>
+            return "Initialize: Invalid Scrollback Limit";
+         when Allocation_Failed =>
+            return "Initialize: Allocation Failed";
+      end case;
+   end Initialize_Status_Label;
+
+   function Feed_Status_Label (Status : Feed_Status) return String is
+   begin
+      case Status is
+         when Ok =>
+            return "Feed: Ok";
+         when Parser_Recovered =>
+            return "Feed: Parser Recovered";
+         when Parser_Overflow =>
+            return "Feed: Parser Overflow";
+         when Invalid_State =>
+            return "Feed: Invalid State";
+      end case;
+   end Feed_Status_Label;
+
+   function Diagnostics_Status_Label
+     (Diagnostics : Diagnostic_Snapshot) return String
+   is
+      Total : constant Natural :=
+        Diagnostics.Malformed_UTF8
+        + Diagnostics.Ignored_Escape
+        + Diagnostics.Parser_Overflow
+        + Diagnostics.Queue_Overflow
+        + Diagnostics.Unsupported_Sequence
+        + Diagnostics.Text_Cluster_Overflow
+        + Diagnostics.Graphics_Protocol_Ignored
+        + Diagnostics.Multiplexer_Passthrough;
+   begin
+      if Total = 0 then
+         return "Diagnostics: clean";
+      end if;
+
+      return Bounded_Status_Label
+        ("Diagnostics: issues=" & Natural_Image (Total)
+         & " utf8=" & Natural_Image (Diagnostics.Malformed_UTF8)
+         & " esc=" & Natural_Image (Diagnostics.Ignored_Escape)
+         & " parse=" & Natural_Image (Diagnostics.Parser_Overflow)
+         & " queue=" & Natural_Image (Diagnostics.Queue_Overflow)
+         & " unsup=" & Natural_Image (Diagnostics.Unsupported_Sequence)
+         & " gfx=" & Natural_Image (Diagnostics.Graphics_Protocol_Ignored)
+         & " mux=" & Natural_Image (Diagnostics.Multiplexer_Passthrough));
+   end Diagnostics_Status_Label;
 
    function Title (T : Terminal) return Title_Text is
    begin

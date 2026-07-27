@@ -1,6 +1,20 @@
 package body Terminal.App.PTY_Write is
    use type Terminal.PTY.POSIX.Write_Status;
 
+   function Status_Label (Status : Write_All_Status) return String is
+   begin
+      case Status is
+         when Ok =>
+            return "PTY write complete";
+         when Incomplete =>
+            return "PTY write incomplete; retry pending";
+         when Failed =>
+            return "PTY write failed";
+         when Session_Closed =>
+            return "PTY write skipped; session closed";
+      end case;
+   end Status_Label;
+
    procedure Write_All
      (S      : in out Terminal.PTY.POSIX.Session;
       Chunk  : Terminal.App.Queues.Byte_Chunk;

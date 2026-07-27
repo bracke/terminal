@@ -1,12 +1,23 @@
 with Terminal.Core;
 
 package Terminal.App.Selection is
+   Max_Status_Label_Length : constant := 64;
+
    type Cell_Position is record
       Row : Positive := 1;
       Col : Positive := 1;
    end record;
 
    type Selection_State is limited private;
+   type Selection_Mode is (Linear, Rectangular);
+
+   type Selection_Snapshot is record
+      Active    : Boolean := False;
+      Has_Range : Boolean := False;
+      Mode      : Selection_Mode := Linear;
+      Anchor    : Cell_Position;
+      Focus     : Cell_Position;
+   end record;
 
    function Cell_From_Pixels
      (X           : Float;
@@ -18,6 +29,10 @@ package Terminal.App.Selection is
       Cols        : Positive) return Cell_Position;
 
    procedure Begin_Selection
+     (Selection : in out Selection_State;
+      Position  : Cell_Position);
+
+   procedure Begin_Rectangular_Selection
      (Selection : in out Selection_State;
       Position  : Cell_Position);
 
@@ -47,6 +62,8 @@ package Terminal.App.Selection is
 
    function Is_Active (Selection : Selection_State) return Boolean;
    function Has_Selection (Selection : Selection_State) return Boolean;
+   function Snapshot (Selection : Selection_State) return Selection_Snapshot;
+   function Status_Label (Selection : Selection_State) return String;
 
    function Selected_Text
      (Snapshot  : Terminal.Core.Render_Snapshot;
@@ -60,6 +77,7 @@ private
    type Selection_State is limited record
       Active       : Boolean := False;
       Has_Range    : Boolean := False;
+      Mode         : Selection_Mode := Linear;
       Anchor       : Cell_Position;
       Focus        : Cell_Position;
    end record;

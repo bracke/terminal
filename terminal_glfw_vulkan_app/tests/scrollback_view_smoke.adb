@@ -46,6 +46,20 @@ begin
    Assert
      (Terminal.App.Scrollback_View.Clamp_Offset (T, 99) = 3,
       "scrollback offset should clamp to retained history");
+   Assert
+     (Terminal.App.Scrollback_View.Status_Label (T, 0) = "Scrollback live",
+      "live scrollback status label");
+   Assert
+     (Terminal.App.Scrollback_View.Status_Label (T, 1) = "Scrollback 1/3",
+      "offset scrollback status label");
+   Assert
+     (Terminal.App.Scrollback_View.Status_Label (T, 99) =
+      "Scrollback 3/3 (clamped)",
+      "clamped scrollback status label");
+   Assert
+     (Terminal.App.Scrollback_View.Status_Label (T, 99)'Length <=
+      Terminal.App.Scrollback_View.Max_Status_Label_Length,
+      "scrollback status label should be bounded");
 
    declare
       S : Terminal.Core.Render_Snapshot :=

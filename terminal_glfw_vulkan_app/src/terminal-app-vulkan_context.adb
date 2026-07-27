@@ -1,3 +1,4 @@
+with Ada.Characters.Handling;
 with Interfaces.C.Strings;
 with Interfaces.C;
 with GLFW_Vulkan.Surfaces;
@@ -9,6 +10,40 @@ package body Terminal.App.Vulkan_Context is
    use type Vk.Result_T;
    use type Vk.Instance_T;
    use type Vk.Surface_KHR_T;
+
+   function Humanize (Text : String) return String is
+      Result : String (1 .. Text'Length);
+      At_Word_Start : Boolean := True;
+   begin
+      for I in Text'Range loop
+         declare
+            Ch : constant Character := Text (I);
+            Out_Index : constant Positive := I - Text'First + 1;
+         begin
+            if Ch = '_' then
+               Result (Out_Index) := ' ';
+               At_Word_Start := True;
+            elsif At_Word_Start then
+               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
+               At_Word_Start := False;
+            else
+               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
+            end if;
+         end;
+      end loop;
+      return Result;
+   end Humanize;
+
+   function Status_Label (Status : Init_Status) return String is
+      Label : constant String :=
+        "Vulkan context: " & Humanize (Init_Status'Image (Status));
+   begin
+      if Label'Length > Max_Status_Label_Length then
+         return Label (1 .. Max_Status_Label_Length);
+      else
+         return Label;
+      end if;
+   end Status_Label;
 
    type Chars_Ptr_Array is
      array (Positive range <>) of Interfaces.C.Strings.chars_ptr

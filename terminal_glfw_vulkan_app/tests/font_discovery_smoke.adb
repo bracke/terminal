@@ -125,10 +125,26 @@ procedure Font_Discovery_Smoke is
       end if;
    end Assert_Contains_If_Installed;
 begin
+   Assert
+     (Fonts.Status_Label ("/tmp/MainFont.ttf", 3) =
+      "Fonts ready; fallbacks=3; primary=MainFont.ttf",
+      "font status label should include primary basename");
+   Assert
+     (Fonts.Status_Label ("", 0) = "Fonts unavailable; fallbacks=0",
+      "missing font status label");
+   Assert
+     (Fonts.Status_Label ("/tmp/MainFont.ttf", 3)'Length <=
+      Fonts.Max_Status_Label_Length,
+      "font status label should be bounded");
+
    Assert (Default_Path /= "", "default font path should resolve");
    Assert
      (Fallbacks'Length <= Fonts.Max_Fallback_Fonts,
       "fallback list should fit configured bound");
+   Assert
+     (Fonts.Status_Label (Default_Path, Fallbacks'Length)'Length <=
+      Fonts.Max_Status_Label_Length,
+      "discovered font status label should be bounded");
 
    for I in Fallbacks'Range loop
       declare

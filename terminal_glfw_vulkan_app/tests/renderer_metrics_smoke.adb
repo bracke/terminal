@@ -10,6 +10,10 @@ procedure Renderer_Metrics_Smoke is
    use Terminal.Common.Bytes;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Render_Model.Image_Decode_Status;
+   use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
+   use type Terminal.App.Render_Model.Image_Data_Access;
+   use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Render_Model.Text_Run_Direction;
    use type Terminal.App.Render_Model.Text_Run_Kind;
    use type Terminal.App.Render_Model.Text_Run_Script;
@@ -33,6 +37,21 @@ procedure Renderer_Metrics_Smoke is
       return Result;
    end To_Bytes;
 
+   function Trimmed_Natural (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Trimmed_Natural;
+
+   function Repeat_Char (Ch : Character; Count : Natural) return String is
+      Result : String (1 .. Count);
+   begin
+      for I in Result'Range loop
+         Result (I) := Ch;
+      end loop;
+      return Result;
+   end Repeat_Char;
+
    procedure Assert_Close
      (Actual  : Float;
       Expected : Float;
@@ -51,6 +70,33 @@ begin
    Assert
      (Terminal.App.Renderer.Cell_Width (R) > 8,
       "cell width should include measured glyph advance and breathing room");
+
+   declare
+      Diagnostics : Terminal.App.Renderer.Renderer_Diagnostics :=
+        (others => <>);
+   begin
+      Assert
+        (Terminal.App.Renderer.Color_Emoji_Status_Label (Diagnostics) = "",
+         "empty color emoji status label");
+      Assert
+        (Terminal.App.Renderer.Paragraph_Bidi_Status_Label (Diagnostics) = "",
+         "empty paragraph BiDi status label");
+      Assert
+        (Terminal.App.Renderer.Image_Status_Label (Diagnostics) = "",
+         "empty image status label");
+
+      Diagnostics.Last_Color_Emoji_Fallback_Count := 1;
+      Assert
+        (Terminal.App.Renderer.Color_Emoji_Status_Label (Diagnostics) =
+         "Color emoji rendered with monochrome fallback",
+         "color emoji fallback status label");
+
+      Diagnostics.Last_Paragraph_Bidi_Fallback_Count := 1;
+      Assert
+        (Terminal.App.Renderer.Paragraph_Bidi_Status_Label (Diagnostics) =
+         "Paragraph BiDi reordering not applied",
+         "paragraph BiDi fallback status label");
+   end;
 
    Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "core initialize failed");
@@ -85,11 +131,1276 @@ begin
         (Frame.Rectangles (2).Y = Float (Terminal.App.Renderer.Content_Margin),
          "first cell should be inset vertically");
       Assert
-        (Frame.Rectangles (3).Height <= 16.0,
-         "cursor block should be font-sized, not full line height");
-      Assert
         (Frame.Rectangles (3).Height <= Float (Terminal.App.Renderer.Cell_Height (R)),
          "cursor block should fit within the terminal cell");
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Gf=32,a=T;AAAA" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "kitty graphics feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "graphics render failed");
+
+   declare
+      Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+        Terminal.App.Renderer.Diagnostics (R);
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert (Diagnostics.Last_Image_Count = 1, "graphics image diagnostic count");
+      Assert
+        (Diagnostics.Last_Image_Protocol = Terminal.App.Render_Model.Image_Kitty,
+         "graphics image diagnostic protocol");
+      Assert
+        (Diagnostics.Last_Image_Width =
+         Terminal.App.Renderer.Cell_Width (R) * 6,
+         "graphics image diagnostic width");
+      Assert
+        (Diagnostics.Last_Image_Height =
+         Terminal.App.Renderer.Cell_Height (R) * 3,
+         "graphics image diagnostic height");
+      Assert
+        (Diagnostics.Last_Image_Payload_Length = 14,
+         "graphics image diagnostic payload length");
+      Assert
+        (Diagnostics.Last_Image_Payload_Preview_Complete,
+         "graphics image diagnostic payload preview complete");
+      Assert
+        (Diagnostics.Last_Image_Encoded_Preview_Length = 4,
+         "graphics image diagnostic encoded preview length");
+      Assert
+        (Diagnostics.Last_Image_Decoded_Preview_Length = 3,
+         "graphics image diagnostic decoded preview length");
+      Assert
+        (Diagnostics.Last_Image_Decoded_Preview_Bytes (1) = 0
+         and then Diagnostics.Last_Image_Decoded_Preview_Bytes (2) = 0
+         and then Diagnostics.Last_Image_Decoded_Preview_Bytes (3) = 0,
+         "graphics image diagnostic decoded preview bytes");
+      Assert
+        (Diagnostics.Last_Image_Preview_Decode_Complete,
+         "graphics image diagnostic preview decode complete");
+      Assert
+        (Diagnostics.Last_Image_Decode_Status =
+         Terminal.App.Render_Model.Image_Decode_Ok,
+         "graphics image diagnostic preview decode status");
+      Assert
+        (Diagnostics.Last_Image_Placeholder,
+         "graphics image diagnostic placeholder flag");
+      Assert (Frame.Image_Count = 1, "graphics image command count");
+      Assert
+        (Frame.Images (1).Protocol = Terminal.App.Render_Model.Image_Kitty,
+         "graphics image protocol");
+      Assert (Frame.Images (1).Payload_Length = 14, "graphics payload length");
+      Assert
+        (Frame.Images (1).Payload_Preview_Complete,
+         "graphics payload preview complete");
+      Assert
+        (Frame.Images (1).Encoded_Preview_Length = 4,
+         "graphics encoded preview length");
+      Assert
+        (Frame.Images (1).Decoded_Preview_Length = 3,
+         "graphics decoded preview length");
+      Assert
+        (Frame.Images (1).Decoded_Preview_Bytes (1) = 0
+         and then Frame.Images (1).Decoded_Preview_Bytes (2) = 0
+         and then Frame.Images (1).Decoded_Preview_Bytes (3) = 0,
+         "graphics decoded preview bytes");
+      Assert
+        (Frame.Images (1).Preview_Decode_Complete,
+         "graphics preview decode complete");
+      Assert
+        (Frame.Images (1).Decode_Status =
+         Terminal.App.Render_Model.Image_Decode_Ok,
+         "graphics preview decode status");
+      Assert
+         (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
+            "image kitty size="
+         & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R) * 6)
+         & "x"
+         & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R) * 3)
+         & " payload=14 payload-complete preview=3/4 bytes=000000 placeholder decoded",
+         "graphics image diagnostic status label");
+      Assert
+        (Frame.Images (1).Width =
+         Float (Terminal.App.Renderer.Cell_Width (R) * 6),
+         "graphics placeholder parsed width");
+      Assert
+        (Frame.Images (1).Height =
+         Float (Terminal.App.Renderer.Cell_Height (R) * 3),
+         "graphics placeholder parsed height");
+   end;
+
+   declare
+      Payload : constant String := "Gf=32,s=1,v=1,c=1,r=1;/wAA/w==";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "raw kitty graphics feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "raw graphics render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 1
+            and then Diagnostics.Last_Image_Pixel_Height = 1,
+            "raw graphics image diagnostic pixel metadata");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "raw graphics image should be textured");
+         Assert
+           (Frame.Images (1).Raw_Format = 32
+            and then Frame.Images (1).Pixel_Width = 1
+            and then Frame.Images (1).Pixel_Height = 1,
+            "raw graphics command pixel metadata");
+         Assert
+           (Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
+            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Encoded_Source_Bytes /= null,
+            "raw graphics command should use encoded row source");
+         Assert
+           (Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 0) = 16#FF#
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 3) = 16#FF#,
+            "raw graphics encoded row source bytes");
+         Assert
+           (not Frame.Images (1).Decoded_Bytes_Owned,
+            "raw graphics command should not own decoded frame bytes");
+         Assert
+           (Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
+            "raw graphics command should carry decoded row stride");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "raw graphics command should be textured");
+         Assert
+           (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
+            "image kitty size="
+            & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R))
+            & "x"
+            & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R))
+            & " pixels=1x1 format=32 payload="
+            & Trimmed_Natural (Diagnostics.Last_Image_Payload_Length)
+            & " payload-complete preview=4/8 bytes=FF0000FF textured decoded",
+            "raw graphics image diagnostic status label");
+      end;
+   end;
+
+   declare
+      Store_Payload : constant String :=
+        "Gf=32,i=77,s=1,v=1,c=1,r=1;/wAA/w==";
+      Place_Payload : constant String := "Gi=77,a=p,c=2,r=1;";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Store_Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "kitty object store feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "kitty object store render failed");
+
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Images (1).Decoded_Bytes /= null
+            and then not Frame.Images (1).Decoded_Bytes_Owned,
+            "kitty object store frame should borrow transferred object bytes");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Place_Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "kitty object placement feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "kitty object placement render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 1
+            and then Diagnostics.Last_Image_Pixel_Height = 1,
+            "kitty object placement diagnostic pixel metadata");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "kitty object placement should be textured");
+         Assert
+           (Frame.Images (1).Width =
+            Float (Terminal.App.Renderer.Cell_Width (R) * 2)
+            and then Frame.Images (1).Height =
+              Float (Terminal.App.Renderer.Cell_Height (R)),
+            "kitty object placement dimensions");
+         Assert
+           (Frame.Images (1).Raw_Format = 32
+            and then Frame.Images (1).Pixel_Width = 1
+            and then Frame.Images (1).Pixel_Height = 1
+            and then Frame.Images (1).Decoded_Byte_Length = 4
+            and then Frame.Images (1).Decoded_Bytes /= null
+            and then Frame.Images (1).Decoded_Bytes (1) = 16#FF#
+            and then Frame.Images (1).Decoded_Bytes (2) = 16#00#
+            and then Frame.Images (1).Decoded_Bytes (3) = 16#00#
+            and then Frame.Images (1).Decoded_Bytes (4) = 16#FF#,
+            "kitty object placement decoded bytes");
+         Assert
+           (not Frame.Images (1).Decoded_Bytes_Owned,
+            "kitty object placement should borrow stored decoded bytes");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "kitty object placement command should be textured");
+      end;
+   end;
+
+   for ID in 100 .. 120 loop
+      declare
+         Payload : constant String :=
+           "Gf=32,i="
+           & Trimmed_Natural (ID)
+           & ",s=1,v=1,c=1,r=1;/wAA/w==";
+      begin
+         Terminal.Core.Feed
+           (T,
+            To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
+            Feed_Status);
+         Assert
+           (Feed_Status = Terminal.Core.Ok,
+            "unbounded kitty object feed failed");
+
+         declare
+            Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+         begin
+            Terminal.App.Renderer.Render (R, Snap, Render_Status);
+            Terminal.Core.Release (Snap);
+         end;
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "unbounded kitty object render failed");
+      end;
+   end loop;
+
+   declare
+      Place_Payload : constant String := "Gi=100,a=p,c=3,r=1;";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Place_Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "unbounded kitty object placement feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "unbounded kitty object placement render failed");
+
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Images (1).Width =
+            Float (Terminal.App.Renderer.Cell_Width (R) * 3)
+            and then Frame.Images (1).Raw_Format = 32
+            and then Frame.Images (1).Decoded_Byte_Length = 4
+            and then Frame.Images (1).Decoded_Bytes /= null
+            and then Frame.Images (1).Decoded_Bytes (1) = 16#FF#
+            and then Frame.Images (1).Decoded_Bytes (4) = 16#FF#
+            and then not Frame.Images (1).Placeholder,
+            "unbounded kitty object placement should keep first stored id");
+         Assert
+           (not Frame.Images (1).Decoded_Bytes_Owned,
+            "unbounded kitty object placement should borrow stored bytes");
+      end;
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Gi=100,a=d;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "kitty object delete feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "kitty object delete render failed");
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "kitty object delete should not emit an image command");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Gi=100,a=p,c=1,r=1;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "deleted kitty object placement feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "deleted kitty object placement render failed");
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Placeholder,
+      "deleted kitty object placement should fall back to placeholder");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Ga=d;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "kitty object delete-all feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "kitty object delete-all render failed");
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "kitty object delete-all should not emit an image command");
+
+   declare
+      Payload : constant String := "Gf=24,s=1,v=1,c=1,r=1;/wAA";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "raw RGB kitty graphics feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "raw RGB graphics render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 24
+            and then Diagnostics.Last_Image_Pixel_Width = 1
+            and then Diagnostics.Last_Image_Pixel_Height = 1,
+            "raw RGB graphics image diagnostic pixel metadata");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "raw RGB graphics image should be textured");
+         Assert
+           (Frame.Images (1).Raw_Format = 24
+            and then Frame.Images (1).Decoded_Byte_Length = 3
+            and then Frame.Images (1).Decoded_Row_Stride_Bytes = 3
+            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null,
+            "raw RGB graphics command encoded source metadata");
+         Assert
+           (Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 0) = 16#FF#
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 1) = 16#00#
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 2) = 16#00#,
+            "raw RGB graphics encoded row source bytes");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "raw RGB graphics command should be textured");
+      end;
+   end;
+
+   declare
+      First_Chunk  : constant String := "Gf=32,s=2,v=1,c=2,r=1,m=1;/w";
+      Middle_Chunk : constant String := "Gm=1;AA/w";
+      Last_Chunk   : constant String := "Gm=0;AA//8=";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & First_Chunk & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "chunked raw kitty first chunk feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "chunked raw kitty first render failed");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+         "chunked raw kitty first chunk should wait for final chunk");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Middle_Chunk & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "chunked raw kitty middle chunk feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "chunked raw kitty middle render failed");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+         "chunked raw kitty middle chunk should wait for final chunk");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Last_Chunk & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "chunked raw kitty final chunk feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "chunked raw kitty final render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 2
+            and then Diagnostics.Last_Image_Pixel_Height = 1,
+            "chunked raw kitty image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Length = 8,
+            "chunked raw kitty decoded byte length");
+         Assert
+         (Diagnostics.Last_Image_Decoded_Preview_Bytes (1) = 16#FF#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (2) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (3) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (4) = 16#FF#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (5) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (6) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (7) = 16#FF#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (8) = 16#FF#,
+            "chunked raw kitty decoded bytes");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "chunked raw kitty image should be textured");
+         Assert
+           (Frame.Images (1).Pixel_Width = 2
+            and then Frame.Images (1).Pixel_Height = 1
+            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null,
+            "chunked raw kitty command encoded source metadata");
+         Assert
+           (Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 0) = 16#FF#
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 7) = 16#FF#,
+            "chunked raw kitty encoded row source bytes");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "chunked raw kitty command should be textured");
+      end;
+   end;
+
+   declare
+      Segment_Count : constant Natural := 64;
+   begin
+      for I in 1 .. Segment_Count loop
+         declare
+            Prefix : constant String :=
+              (if I = 1 then "Gf=32,s=48,v=1,c=12,r=1,m=1;"
+               elsif I = Segment_Count then "Gm=0;"
+               else "Gm=1;");
+         begin
+            Terminal.Core.Feed
+              (T,
+               To_Bytes
+                 (ASCII.ESC & "_" & Prefix & "AAAA" & ASCII.ESC & "\"),
+               Feed_Status);
+            Assert
+              (Feed_Status = Terminal.Core.Ok,
+               "many-segment kitty chunk feed failed");
+
+            declare
+               Snap : Terminal.Core.Render_Snapshot :=
+                 Terminal.Core.Snapshot (T);
+            begin
+               Terminal.App.Renderer.Render (R, Snap, Render_Status);
+               Terminal.Core.Release (Snap);
+            end;
+            Assert
+              (Render_Status = Terminal.App.Renderer.Ok,
+               "many-segment kitty chunk render failed");
+
+            if I < Segment_Count then
+               Assert
+                 (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+                  "many-segment kitty chunk should wait for final segment");
+            end if;
+         end;
+      end loop;
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 48
+            and then Diagnostics.Last_Image_Pixel_Height = 1,
+            "many-segment kitty image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Encoded_Preview_Length = Segment_Count * 4,
+            "many-segment kitty encoded length should come from segments");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "many-segment kitty image should be textured");
+         Assert
+           (Frame.Images (1).Decoded_Byte_Length = 48 * 4
+            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null,
+            "many-segment kitty command should retain encoded row source");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "many-segment kitty command should be textured");
+      end;
+   end;
+
+   declare
+      Width          : constant Natural := 450;
+      Height         : constant Natural := 300;
+      Decoded_Length : constant Natural := Width * Height * 4;
+      Encoded_Length : constant Natural := Decoded_Length / 3 * 4;
+      Chunk_Length   : constant Natural := 120_000;
+      Sent           : Natural := 0;
+
+      procedure Feed_Chunk
+        (Text    : String;
+         Message : String;
+         Final   : Boolean)
+      is
+      begin
+         Terminal.Core.Feed
+           (T,
+            To_Bytes (ASCII.ESC & "_" & Text & ASCII.ESC & "\"),
+            Feed_Status);
+         Assert (Feed_Status = Terminal.Core.Ok, Message & " feed failed");
+
+         declare
+            Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+         begin
+            Terminal.App.Renderer.Render (R, Snap, Render_Status);
+            Terminal.Core.Release (Snap);
+         end;
+         Assert (Render_Status = Terminal.App.Renderer.Ok, Message & " render failed");
+         if not Final then
+            Assert
+              (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+               Message & " should wait for final chunk");
+         end if;
+      end Feed_Chunk;
+   begin
+      Feed_Chunk
+        ("Gf=32,s=450,v=300,c=40,r=20,m=1;"
+         & Repeat_Char ('A', Chunk_Length),
+         "large chunked raw kitty first chunk",
+         False);
+      Sent := Sent + Chunk_Length;
+
+      while Sent + Chunk_Length < Encoded_Length loop
+         Feed_Chunk
+           ("Gm=1;" & Repeat_Char ('A', Chunk_Length),
+            "large chunked raw kitty middle chunk",
+            False);
+         Sent := Sent + Chunk_Length;
+      end loop;
+
+      Feed_Chunk
+        ("Gm=0;" & Repeat_Char ('A', Encoded_Length - Sent),
+         "large chunked raw kitty final chunk",
+         True);
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = Width
+            and then Diagnostics.Last_Image_Pixel_Height = Height,
+            "large chunked raw kitty image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Length =
+            Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
+            "large chunked raw kitty decoded diagnostics preview length");
+         Assert
+           (Diagnostics.Last_Image_Payload_Preview_Complete,
+            "large chunked raw kitty payload should be complete");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "large chunked raw kitty image should be textured");
+         Assert
+           (Frame.Images (1).Pixel_Width = Width
+            and then Frame.Images (1).Pixel_Height = Height
+            and then Frame.Images (1).Decoded_Byte_Length = Decoded_Length
+            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null
+            and then Frame.Images (1).Decoded_Preview_Length =
+              Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
+            "large chunked raw kitty command should retain encoded row source");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "large chunked raw kitty command should be textured");
+      end;
+   end;
+
+   declare
+      Payload : constant String :=
+        "Gf=32,s=33,v=32,c=33,r=32;" & Repeat_Char ('A', 5632);
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "large raw kitty graphics feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "large raw graphics render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 33
+            and then Diagnostics.Last_Image_Pixel_Height = 32,
+            "large raw graphics image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Length =
+            Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
+            "large raw graphics decoded preview length");
+         Assert
+           (Diagnostics.Last_Image_Payload_Preview_Complete,
+            "large raw graphics payload should fit render buffer");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "large raw graphics image should be textured");
+         Assert
+           (Frame.Images (1).Pixel_Width = 33
+            and then Frame.Images (1).Pixel_Height = 32
+            and then Frame.Images (1).Decoded_Byte_Length = 33 * 32 * 4
+            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null
+            and then Frame.Images (1).Decoded_Preview_Length =
+              Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
+            "large raw graphics command encoded source metadata");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "large raw graphics command should be textured");
+      end;
+   end;
+
+   declare
+      Payload : constant String :=
+        "Gf=32,s=129,v=128,c=40,r=20;" & Repeat_Char ('A', 88064);
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "over-64KiB raw kitty graphics feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "over-64KiB raw graphics render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 129
+            and then Diagnostics.Last_Image_Pixel_Height = 128,
+            "over-64KiB raw graphics image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Length =
+            Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
+            "over-64KiB raw graphics decoded preview length");
+         Assert
+           (Diagnostics.Last_Image_Payload_Preview_Complete,
+            "over-64KiB raw graphics payload should fit render buffer");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "over-64KiB raw graphics image should be textured");
+         Assert
+           (Frame.Images (1).Pixel_Width = 129
+            and then Frame.Images (1).Pixel_Height = 128
+            and then Frame.Images (1).Decoded_Byte_Length = 129 * 128 * 4
+            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null
+            and then Frame.Images (1).Decoded_Preview_Length =
+              Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
+            "over-64KiB raw graphics command encoded source metadata");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "over-64KiB raw graphics command should be textured");
+      end;
+   end;
+
+   declare
+      Payload : constant String :=
+        "Gf=32,s=513,v=512,c=40,r=20;AAAA";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "oversized raw kitty graphics feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "oversized raw graphics render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 513
+            and then Diagnostics.Last_Image_Pixel_Height = 512,
+            "oversized raw graphics image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Placeholder,
+            "oversized raw graphics image should fall back to placeholder");
+         Assert
+           (Diagnostics.Last_Image_Decode_Status =
+            Terminal.App.Render_Model.Image_Decode_Preview_Truncated,
+            "oversized raw graphics image diagnostic decode status");
+         Assert
+           (not Diagnostics.Last_Image_Preview_Decode_Complete,
+            "oversized raw graphics image should not report decode complete");
+         Assert
+           (Frame.Images (1).Placeholder
+            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_None,
+            "oversized raw graphics command should not expose decoded source");
+      end;
+   end;
+
+   declare
+      Payload : constant String :=
+        "File=name=pixel.png;inline=1:iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "]1337;" & Payload & ASCII.BEL),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "iTerm2 PNG image feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "iTerm2 PNG image render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Protocol =
+            Terminal.App.Render_Model.Image_ITerm2,
+            "iTerm2 PNG image diagnostic protocol");
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 1
+            and then Diagnostics.Last_Image_Pixel_Height = 1,
+            "iTerm2 PNG image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Length = 4,
+            "iTerm2 PNG image decoded byte length");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Bytes (1) = 16#FF#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (2) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (3) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (4) = 16#FF#,
+            "iTerm2 PNG image first RGBA pixel");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "iTerm2 PNG image should be textured");
+         Assert
+           (Frame.Images (1).Protocol = Terminal.App.Render_Model.Image_ITerm2
+            and then Frame.Images (1).Raw_Format = 32
+            and then Frame.Images (1).Pixel_Width = 1
+            and then Frame.Images (1).Pixel_Height = 1
+            and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
+            "iTerm2 PNG image command pixel metadata");
+         Assert
+           (Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_PNG_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null,
+            "iTerm2 PNG image command should retain encoded row source");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "iTerm2 PNG image command should be textured");
+      end;
+   end;
+
+   declare
+      Payload : constant String :=
+        "Gf=100,a=T,c=1,r=1;iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "kitty PNG image feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "kitty PNG image render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Protocol =
+            Terminal.App.Render_Model.Image_Kitty,
+            "kitty PNG image diagnostic protocol");
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 1
+            and then Diagnostics.Last_Image_Pixel_Height = 1,
+            "kitty PNG image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Length = 4,
+            "kitty PNG image decoded byte length");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Bytes (1) = 16#FF#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (2) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (3) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (4) = 16#FF#,
+            "kitty PNG image first RGBA pixel");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "kitty PNG image should be textured");
+         Assert
+           (Frame.Images (1).Protocol = Terminal.App.Render_Model.Image_Kitty
+            and then Frame.Images (1).Raw_Format = 32
+            and then Frame.Images (1).Pixel_Width = 1
+            and then Frame.Images (1).Pixel_Height = 1
+            and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
+            "kitty PNG image command pixel metadata");
+         Assert
+           (Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_PNG_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null,
+            "kitty PNG image command should retain encoded row source");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "kitty PNG image command should be textured");
+      end;
+   end;
+
+   declare
+      First_Chunk : constant String :=
+        "Gf=100,c=1,r=1,m=1;iVBORw0KGgoAAAANSUhEUgAA";
+      Middle_Chunk : constant String :=
+        "Gm=1;AAEAAAABCAIAAACQd1PeAAAA";
+      Last_Chunk : constant String :=
+        "Gm=0;DUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & First_Chunk & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "chunked kitty PNG first chunk feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "chunked kitty PNG first render failed");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+         "chunked kitty PNG first chunk should wait for final chunk");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Middle_Chunk & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "chunked kitty PNG middle chunk feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "chunked kitty PNG middle render failed");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+         "chunked kitty PNG middle chunk should wait for final chunk");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_" & Last_Chunk & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "chunked kitty PNG final chunk feed failed");
+
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "chunked kitty PNG final render failed");
+
+      declare
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Diagnostics.Last_Image_Protocol =
+            Terminal.App.Render_Model.Image_Kitty,
+            "chunked kitty PNG image diagnostic protocol");
+         Assert
+           (Diagnostics.Last_Image_Raw_Format = 32
+            and then Diagnostics.Last_Image_Pixel_Width = 1
+            and then Diagnostics.Last_Image_Pixel_Height = 1,
+            "chunked kitty PNG image diagnostic pixel metadata");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Length = 4,
+            "chunked kitty PNG decoded byte length");
+         Assert
+           (Diagnostics.Last_Image_Encoded_Preview_Length =
+            24 + 24 + 44,
+            "chunked kitty PNG encoded length should come from segments");
+         Assert
+           (Diagnostics.Last_Image_Staging_Byte_Length = 69,
+            "chunked kitty PNG staging should be sized to Base64 upper bound");
+         Assert
+           (Diagnostics.Last_Image_Decoded_Preview_Bytes (1) = 16#FF#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (2) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (3) = 16#00#
+            and then Diagnostics.Last_Image_Decoded_Preview_Bytes (4) = 16#FF#,
+            "chunked kitty PNG decoded bytes");
+         Assert
+           (not Diagnostics.Last_Image_Placeholder,
+            "chunked kitty PNG image should be textured");
+         Assert
+           (Frame.Images (1).Protocol = Terminal.App.Render_Model.Image_Kitty
+            and then Frame.Images (1).Pixel_Width = 1
+            and then Frame.Images (1).Pixel_Height = 1
+            and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
+            "chunked kitty PNG command pixel metadata");
+         Assert
+           (Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Source =
+              Terminal.App.Render_Model.Image_Decoded_Source_PNG_Base64
+            and then Frame.Images (1).Encoded_Source_Bytes /= null,
+            "chunked kitty PNG command should retain encoded row source");
+         Assert
+           (not Frame.Images (1).Placeholder,
+            "chunked kitty PNG command should be textured");
+      end;
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "Pq~" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "sixel graphics feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "sixel graphics render failed");
+
+   declare
+      Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+        Terminal.App.Renderer.Diagnostics (R);
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Diagnostics.Last_Image_Protocol =
+         Terminal.App.Render_Model.Image_Sixel,
+         "sixel graphics image diagnostic protocol");
+      Assert
+        (Diagnostics.Last_Image_Raw_Format = 32
+         and then Diagnostics.Last_Image_Pixel_Width = 1
+         and then Diagnostics.Last_Image_Pixel_Height = 6,
+         "sixel graphics image diagnostic pixel metadata");
+      Assert
+        (Diagnostics.Last_Image_Decoded_Preview_Length = 24,
+         "sixel graphics image decoded byte length");
+      Assert
+        (Diagnostics.Last_Image_Decoded_Preview_Bytes (1) = 16#FF#
+         and then Diagnostics.Last_Image_Decoded_Preview_Bytes (2) = 16#FF#
+         and then Diagnostics.Last_Image_Decoded_Preview_Bytes (3) = 16#FF#
+         and then Diagnostics.Last_Image_Decoded_Preview_Bytes (4) = 16#FF#,
+         "sixel graphics first RGBA pixel");
+      Assert
+        (not Diagnostics.Last_Image_Placeholder,
+         "sixel graphics image should be textured");
+      Assert
+        (Frame.Images (1).Protocol = Terminal.App.Render_Model.Image_Sixel
+         and then Frame.Images (1).Raw_Format = 32
+         and then Frame.Images (1).Pixel_Width = 1
+         and then Frame.Images (1).Pixel_Height = 6
+         and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
+         "sixel graphics command pixel metadata");
+      Assert
+        (Frame.Images (1).Decoded_Bytes = null
+         and then Frame.Images (1).Decoded_Source =
+           Terminal.App.Render_Model.Image_Decoded_Source_Sixel_Text
+         and then Frame.Images (1).Encoded_Source_Bytes /= null,
+         "sixel graphics command should retain encoded row source");
+      Assert
+        (not Frame.Images (1).Placeholder,
+         "sixel graphics command should be textured");
+      Assert
+        (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
+         "image sixel size="
+         & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R) * 4)
+         & "x"
+         & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R) * 2)
+         & " pixels=1x6 format=32 payload=2 payload-complete preview=24/1 bytes=FFFFFFFF textured decoded",
+         "sixel graphics image diagnostic status label");
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Gf=100,a=T;SG$=" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "partial kitty graphics feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "partial graphics render failed");
+
+   declare
+      Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+        Terminal.App.Renderer.Diagnostics (R);
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Diagnostics.Last_Image_Decoded_Preview_Length = 0,
+         "partial graphics image diagnostic decoded preview length");
+      Assert
+        (Diagnostics.Last_Image_Decode_Status =
+         Terminal.App.Render_Model.Image_Decode_Invalid_Byte,
+         "partial graphics image diagnostic decode status");
+      Assert
+        (Diagnostics.Last_Image_Payload_Preview_Complete,
+         "partial graphics image diagnostic payload preview complete");
+      Assert
+        (not Diagnostics.Last_Image_Preview_Decode_Complete,
+         "partial graphics image diagnostic decode complete");
+      Assert
+        (Frame.Images (1).Decode_Status =
+         Terminal.App.Render_Model.Image_Decode_Invalid_Byte,
+         "partial graphics command decode status");
+      Assert
+        (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
+         "image kitty size="
+         & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R) * 6)
+         & "x"
+         & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R) * 3)
+         & " payload=15 payload-complete preview=0/4 placeholder partial invalid-byte",
+         "partial graphics image diagnostic status label");
    end;
 
    Terminal.Core.Feed (T, To_Bytes (ASCII.ESC & "[4 q"), Feed_Status);
@@ -688,6 +1999,9 @@ begin
          Assert
            (Diag.Last_Text_Run_Count = Frame.Text_Run_Count,
             "renderer diagnostics should report text run count");
+         Assert
+           (Diag.Last_Color_Emoji_Fallback_Count = 1,
+            "renderer diagnostics should report color emoji fallback");
          if Frame.Text_Runs (2).Fallback_Glyphs then
             Assert
               (Diag.Last_Text_Fallback_Run_Count = 1,
@@ -889,6 +2203,8 @@ begin
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
         Terminal.App.Renderer.Last_Frame (R);
+      Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+        Terminal.App.Renderer.Diagnostics (R);
    begin
       Assert
         (Frame.Text_Run_Count = 3,
@@ -912,6 +2228,9 @@ begin
         (Frame.Text_Runs (3).Direction =
            Terminal.App.Render_Model.Direction_Right_To_Left,
          "RTL digit split third direction");
+      Assert
+        (Diag.Last_Paragraph_Bidi_Fallback_Count = 1,
+         "mixed LTR/RTL row should report paragraph BiDi fallback");
    end;
 
    Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);

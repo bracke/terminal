@@ -1,6 +1,8 @@
 with Terminal.App.Render_Model;
 
 package Terminal.App.Text_Shaper is
+   Max_Status_Label_Length : constant := 64;
+
    subtype Run_Kind is Terminal.App.Render_Model.Text_Run_Kind;
    subtype Shape_Status is Terminal.App.Render_Model.Text_Run_Shape_Status;
 
@@ -20,6 +22,9 @@ package Terminal.App.Text_Shaper is
       Status      : out Backend_Status);
 
    function Backend_Available return Boolean;
+
+   function Backend_Status_Label (Status : Backend_Status) return String;
+   function Shape_Status_Label (Status : Shape_Status) return String;
 
    function Classify
      (Run : Terminal.App.Render_Model.Text_Run_Command) return Run_Kind;

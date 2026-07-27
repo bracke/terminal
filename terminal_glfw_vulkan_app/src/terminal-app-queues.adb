@@ -1,6 +1,44 @@
 with GLFW_Vulkan.Input;
 
 package body Terminal.App.Queues is
+   function Natural_Image (Value : Natural) return String is
+      Image : constant String := Natural'Image (Value);
+   begin
+      return Image (Image'First + 1 .. Image'Last);
+   end Natural_Image;
+
+   function Queue_Status_Label
+     (Name      : String;
+      Length    : Natural;
+      Capacity  : Positive;
+      Overflows : Natural) return String
+   is
+      Occupancy : constant String :=
+        Natural_Image (Length) & "/" & Natural_Image (Capacity);
+      Overflow_Image : constant String := Natural_Image (Overflows);
+      Result : String (1 .. Max_Status_Label_Length);
+      Last   : Natural := 0;
+
+      procedure Append (Text : String) is
+      begin
+         for Ch of Text loop
+            exit when Last = Result'Last;
+            Last := Last + 1;
+            Result (Last) := Ch;
+         end loop;
+      end Append;
+   begin
+      Append (Name);
+      Append (" queue ");
+      Append (Occupancy);
+      if Overflows /= 0 then
+         Append ("; overflows=");
+         Append (Overflow_Image);
+      end if;
+
+      return Result (1 .. Last);
+   end Queue_Status_Label;
+
    function Next_Chunk (I : Queue_Index) return Queue_Index is
      (if I = Queue_Index'Last then Queue_Index'First else I + 1);
 

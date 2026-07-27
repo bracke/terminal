@@ -121,6 +121,27 @@ package Terminal.Core is
       Linefeed_New_Line  : Boolean := False;
    end record;
 
+   type Ignored_Graphics_Protocol is
+     (No_Graphics,
+      Sixel_Graphics,
+      Kitty_Graphics,
+      ITerm2_Graphics);
+
+   Max_Graphics_Preview_Length : constant := 128 * 1024;
+   subtype Graphics_Preview_Length_Range is
+     Natural range 0 .. Max_Graphics_Preview_Length;
+
+   type Graphics_Event is record
+      Pending        : Boolean := False;
+      Protocol       : Ignored_Graphics_Protocol := No_Graphics;
+      Row            : Positive := 1;
+      Col            : Positive := 1;
+      Payload_Length : Natural := 0;
+      Preview_Length : Graphics_Preview_Length_Range := 0;
+      Preview        : String (1 .. Max_Graphics_Preview_Length) :=
+        (others => ASCII.NUL);
+   end record;
+
    type Diagnostic_Snapshot is record
       Malformed_UTF8       : Natural := 0;
       Ignored_Escape       : Natural := 0;
@@ -128,7 +149,16 @@ package Terminal.Core is
       Queue_Overflow       : Natural := 0;
       Unsupported_Sequence : Natural := 0;
       Text_Cluster_Overflow : Natural := 0;
+      Graphics_Protocol_Ignored : Natural := 0;
+      Sixel_Ignored : Natural := 0;
+      Kitty_Graphics_Ignored : Natural := 0;
+      ITerm2_Image_Ignored : Natural := 0;
+      Multiplexer_Passthrough : Natural := 0;
+      Last_Graphics_Protocol  : Ignored_Graphics_Protocol := No_Graphics;
+      Last_Graphics_Payload_Length : Natural := 0;
    end record;
+
+   Max_Status_Label_Length : constant := 96;
 
    Max_Title_Length : constant := 256;
    subtype Title_Length_Range is Natural range 0 .. Max_Title_Length;
@@ -170,6 +200,7 @@ package Terminal.Core is
       Cells  : Cell_Array_Access := null;
       Dirty  : Dirty_Row_Array_Access := null;
       Cursor : Cursor_State;
+      Graphics : Graphics_Event;
    end record;
 
    type Terminal is limited private;
@@ -206,6 +237,10 @@ package Terminal.Core is
    procedure Release (S : in out Render_Snapshot);
    function Modes (T : Terminal) return Mode_Snapshot;
    function Diagnostics (T : Terminal) return Diagnostic_Snapshot;
+   function Initialize_Status_Label (Status : Initialize_Status) return String;
+   function Feed_Status_Label (Status : Feed_Status) return String;
+   function Diagnostics_Status_Label
+     (Diagnostics : Diagnostic_Snapshot) return String;
    function Title (T : Terminal) return Title_Text;
    function Clipboard (T : Terminal) return Clipboard_Request;
    procedure Clear_Clipboard (T : in out Terminal);
@@ -264,7 +299,7 @@ private
    subtype Response_Index is Positive range 1 .. Max_Response_Length;
    type Response_Buffer is
      array (Response_Index) of Common.Bytes.Byte;
-   Max_OSC_Payload_Length : constant := 4096;
+   Max_OSC_Payload_Length : constant := 128 * 1024;
    subtype OSC_Index is Positive range 1 .. Max_OSC_Payload_Length;
    type OSC_Buffer is array (OSC_Index) of Standard.Character;
 
@@ -311,6 +346,7 @@ private
       Charset_Target : Charset_Slot := G0;
       Single_Shift_Charset : Charset_Slot := G2;
       Diag          : Diagnostic_Snapshot;
+      Last_Graphics : Graphics_Event;
       Last_Printable : Common.Code_Point := 0;
       Has_Last_Printable : Boolean := False;
       Window_Title  : Title_Text;
@@ -334,6 +370,7 @@ private
       Ignored_String_Data : OSC_Buffer := (others => ASCII.NUL);
       Ignored_String_Count : Natural := 0;
       Ignored_String_Is_DCS : Boolean := False;
+      Ignored_String_Is_APC : Boolean := False;
 
       UTF8_Need     : Natural := 0;
       UTF8_Seen     : Natural := 0;

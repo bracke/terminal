@@ -381,6 +381,66 @@ package body Terminal.App.Input_Map is
               and then not Event.Modifiers.Super));
    end Is_Copy_Shortcut;
 
+   function Tab_Command
+     (Event : GLFW_Vulkan.Input.Key_Event) return Terminal.App.Tabs.Tab_Command
+   is
+   begin
+      if Event.Action = Release or else not Event.Modifiers.Control then
+         return Terminal.App.Tabs.No_Command;
+      elsif Event.Modifiers.Shift
+        and then not Event.Modifiers.Alt
+        and then not Event.Modifiers.Super
+        and then Event.Key = T
+      then
+         return Terminal.App.Tabs.New_Tab;
+      elsif Event.Modifiers.Shift
+        and then not Event.Modifiers.Alt
+        and then not Event.Modifiers.Super
+        and then Event.Key = W
+      then
+         return Terminal.App.Tabs.Close_Tab;
+      elsif not Event.Modifiers.Shift
+        and then not Event.Modifiers.Alt
+        and then not Event.Modifiers.Super
+        and then Event.Key = Page_Down
+      then
+         return Terminal.App.Tabs.Next_Tab;
+      elsif not Event.Modifiers.Shift
+        and then not Event.Modifiers.Alt
+        and then not Event.Modifiers.Super
+        and then Event.Key = Page_Up
+      then
+         return Terminal.App.Tabs.Previous_Tab;
+      else
+         return Terminal.App.Tabs.No_Command;
+      end if;
+   end Tab_Command;
+
+   function Split_Command
+     (Event : GLFW_Vulkan.Input.Key_Event)
+      return Terminal.App.Splits.Split_Command
+   is
+   begin
+      if Event.Action = Release
+        or else not Event.Modifiers.Control
+        or else not Event.Modifiers.Shift
+        or else Event.Modifiers.Alt
+        or else Event.Modifiers.Super
+      then
+         return Terminal.App.Splits.No_Command;
+      elsif Event.Key = H then
+         return Terminal.App.Splits.Split_Horizontal;
+      elsif Event.Key = V then
+         return Terminal.App.Splits.Split_Vertical;
+      elsif Event.Key = X then
+         return Terminal.App.Splits.Close_Pane;
+      elsif Event.Key = L then
+         return Terminal.App.Splits.Next_Pane;
+      else
+         return Terminal.App.Splits.No_Command;
+      end if;
+   end Split_Command;
+
    function Is_Primary_Paste_Button
      (Event : GLFW_Vulkan.Input.Mouse_Button_Event) return Boolean is
    begin
@@ -391,6 +451,15 @@ package body Terminal.App.Input_Map is
         and then not Event.Modifiers.Alt
         and then not Event.Modifiers.Super;
    end Is_Primary_Paste_Button;
+
+   function Local_Mouse_Selection_Override
+     (Event : GLFW_Vulkan.Input.Mouse_Button_Event) return Boolean is
+   begin
+      return Event.Button = Left
+        and then Event.Modifiers.Shift
+        and then not Event.Modifiers.Control
+        and then not Event.Modifiers.Super;
+   end Local_Mouse_Selection_Override;
 
    function Suppressed_Character
      (Event : GLFW_Vulkan.Input.Key_Event;
@@ -562,6 +631,92 @@ package body Terminal.App.Input_Map is
       end if;
    end Encode_Paste_Text;
 
+   function Paste_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String is
+   begin
+      if Modes.Bracketed_Paste then
+         return "Bracketed paste active";
+      else
+         return "Plain paste active";
+      end if;
+   end Paste_Status_Label;
+
+   function Focus_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String is
+   begin
+      if Modes.Focus_Reporting then
+         return "Focus reporting active";
+      else
+         return "Focus reporting inactive";
+      end if;
+   end Focus_Status_Label;
+
+   function Keyboard_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String is
+   begin
+      if Modes.Keyboard_Locked then
+         return "Keyboard input locked";
+      else
+         return "Keyboard input active";
+      end if;
+   end Keyboard_Status_Label;
+
+   function Key_Mode_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String
+   is
+      Result : String (1 .. Max_Input_Status_Label_Length);
+      Last   : Natural := 0;
+
+      procedure Append (Text : String) is
+      begin
+         for Ch of Text loop
+            exit when Last = Result'Last;
+            Last := Last + 1;
+            Result (Last) := Ch;
+         end loop;
+      end Append;
+   begin
+      Append ("Keys: ");
+      Append
+        (if Modes.Application_Cursor
+         then "app cursor"
+         else "normal cursor");
+      Append (", ");
+      Append
+        (if Modes.Application_Keypad
+         then "app keypad"
+         else "numeric keypad");
+      Append (", ");
+      Append
+        (if Modes.Backarrow_Key_Backspace
+         then "Backspace=BS"
+         else "Backspace=DEL");
+      Append (", ");
+      Append
+        (if Modes.Linefeed_New_Line
+         then "LF sends CRLF"
+         else "LF sends LF");
+
+      return Result (1 .. Last);
+   end Key_Mode_Status_Label;
+
+   function Input_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String is
+      Keyboard : constant String :=
+        (if Modes.Keyboard_Locked then "keyboard locked" else "keyboard active");
+      Paste : constant String :=
+        (if Modes.Bracketed_Paste then "bracketed paste" else "plain paste");
+      Focus : constant String :=
+        (if Modes.Focus_Reporting then "focus reporting" else "focus local");
+      Mouse : constant String :=
+        (if Mouse_Reporting_Enabled (Modes)
+         then "mouse reporting"
+         else "local mouse");
+   begin
+      return
+        "Input: " & Keyboard & ", " & Paste & ", " & Focus & ", " & Mouse;
+   end Input_Status_Label;
+
    function Mouse_Reporting_Enabled
      (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
    begin
@@ -569,6 +724,16 @@ package body Terminal.App.Input_Map is
         or else Modes.Mouse_Drag
         or else Modes.Mouse_Any_Event;
    end Mouse_Reporting_Enabled;
+
+   function Mouse_Status_Label
+     (Modes : Terminal.Core.Mode_Snapshot) return String is
+   begin
+      if Mouse_Reporting_Enabled (Modes) then
+         return "Mouse reporting active; Shift+Left keeps local selection";
+      else
+         return "Local selection active; wheel scrolls scrollback";
+      end if;
+   end Mouse_Status_Label;
 
    procedure Encode_Mouse_Button
      (Event : GLFW_Vulkan.Input.Mouse_Button_Event;
@@ -631,11 +796,19 @@ package body Terminal.App.Input_Map is
       Code : Natural;
    begin
       Chunk := (others => <>);
-      if not Mouse_Reporting_Enabled (Modes) or else Event.Y_Offset = 0.0 then
+      if not Mouse_Reporting_Enabled (Modes)
+        or else (Event.X_Offset = 0.0 and then Event.Y_Offset = 0.0)
+      then
          return;
       end if;
 
-      Code := (if Event.Y_Offset > 0.0 then 64 else 65);
+      if Event.X_Offset > 0.0 then
+         Code := 66;
+      elsif Event.X_Offset < 0.0 then
+         Code := 67;
+      else
+         Code := (if Event.Y_Offset > 0.0 then 64 else 65);
+      end if;
       Append_Mouse (Chunk, Modes, Code, Row, Col, False);
    end Encode_Mouse_Wheel;
 
