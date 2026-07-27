@@ -47,6 +47,8 @@ jobs:
           # builds GLFW from source); xvfb gives the render smokes a display.
           sudo apt-get install -y --no-install-recommends \
             libvulkan-dev \
+            libharfbuzz-dev \
+            libglfw3-dev \
             mesa-vulkan-drivers \
             xvfb \
             fonts-dejavu-core \
@@ -104,7 +106,7 @@ jobs:
           brew update
           # MoltenVK provides the Vulkan loader/ICD on macOS; glfw is linked by
           # the glfw_vulkan crate.
-          brew install vulkan-headers vulkan-loader molten-vk glfw
+          brew install vulkan-headers vulkan-loader molten-vk glfw harfbuzz
           echo "LIBRARY_PATH=$(brew --prefix)/lib" >> "$GITHUB_ENV"
       - name: Generate zlib/cryptolib configs
         shell: bash
@@ -158,7 +160,7 @@ jobs:
           pacman-key() { /c/msys64/usr/bin/pacman-key "$@"; }
           pacman-key --init || true
           pacman-key --populate msys2 || true
-          packages="mingw-w64-x86_64-vulkan-loader mingw-w64-x86_64-glfw"
+          packages="mingw-w64-x86_64-vulkan-loader mingw-w64-x86_64-glfw mingw-w64-x86_64-harfbuzz"
           sync() { pacman -Sy --noconfirm --needed --disable-download-timeout "$@" $packages; }
           synced=""
           for attempt in 1 2 3; do
