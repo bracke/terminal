@@ -55,6 +55,12 @@ jobs:
             libxrandr-dev \
             libxinerama-dev \
             libxi-dev
+      - name: Generate zlib/cryptolib configs
+        shell: bash
+        # terminal_glfw_vulkan_app.gpr adds ../../zlib/config and ../../cryptolib/config
+        # to its Source_Dirs. Those config/ dirs are Alire-generated and gitignored, so a
+        # fresh checkout lacks them; building zlib (which path-deps cryptolib) writes both.
+        run: ( cd zlib && alr --non-interactive build )
       - name: Build terminal
         working-directory: terminal
         run: alr --non-interactive build
@@ -100,6 +106,12 @@ jobs:
           # the glfw_vulkan crate.
           brew install vulkan-headers vulkan-loader molten-vk glfw
           echo "LIBRARY_PATH=$(brew --prefix)/lib" >> "$GITHUB_ENV"
+      - name: Generate zlib/cryptolib configs
+        shell: bash
+        # terminal_glfw_vulkan_app.gpr adds ../../zlib/config and ../../cryptolib/config
+        # to its Source_Dirs. Those config/ dirs are Alire-generated and gitignored, so a
+        # fresh checkout lacks them; building zlib (which path-deps cryptolib) writes both.
+        run: ( cd zlib && alr --non-interactive build )
       - name: Build terminal
         working-directory: terminal
         run: alr --non-interactive build
@@ -165,6 +177,12 @@ jobs:
           echo "CPATH=C:/msys64/mingw64/include" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=C:/msys64/mingw64/lib" >> "$GITHUB_ENV"
           echo "C:\msys64\mingw64\bin" >> "$GITHUB_PATH"
+      - name: Generate zlib/cryptolib configs
+        shell: bash
+        # terminal_glfw_vulkan_app.gpr adds ../../zlib/config and ../../cryptolib/config
+        # to its Source_Dirs. Those config/ dirs are Alire-generated and gitignored, so a
+        # fresh checkout lacks them; building zlib (which path-deps cryptolib) writes both.
+        run: ( cd zlib && alr --non-interactive build )
       - name: Build terminal
         working-directory: terminal
         run: alr --non-interactive build
