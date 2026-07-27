@@ -532,32 +532,15 @@ package body Terminal.App.Main_Loop is
                Local_Redraw : Boolean := False;
                Current_Blink_Tick : Natural := Last_Blink_Tick;
             begin
-               --  Sleep instead of spinning at ~60 fps. Present is already
-               --  skipped for unchanged frames, so nothing drives compositor
-               --  wakeups and this timeout alone set the idle rate. Wake at the
-               --  next blink edge while the cursor blinks, promptly while a redraw
-               --  is pending, otherwise sleep a second -- input and PTY output
-               --  (via Post_Empty_Event) still wake the loop immediately.
-               declare
-                  Elapsed : constant Duration :=
-                    Ada.Real_Time.To_Duration
-                      (Ada.Real_Time.Clock - Blink_Origin);
-                  Wait_Seconds : Duration;
-               begin
-                  if Need_Redraw then
-                     Wait_Seconds := 0.008;
-                  elsif Terminal.Core.Modes (T).Cursor_Blinking
-                    or else Blinking_Text_Active
-                  then
-                     Wait_Seconds :=
-                       Terminal.App.Cursor_Blink.Blink_Period
-                         * (Terminal.App.Cursor_Blink.Tick (Elapsed) + 1)
-                       - Elapsed;
-                  else
-                     Wait_Seconds := 1.0;
-                  end if;
-                  GLFW_Vulkan.Events.Wait_Timeout (Wait_Seconds);
-               end;
+               --  Wait a frame's worth instead of spinning at ~60 fps. Present is
+               --  already skipped for unchanged frames, so this timeout alone sets
+               --  the idle rate and a short fixed wait keeps it cheap. Do not sleep
+               --  longer when idle: once we stop presenting, nothing drives
+               --  compositor wakeups, so a long block genuinely delays input. A
+               --  frame's wait still catches each cursor/text blink edge within a
+               --  frame (checked just below; present-skip drops the between frames),
+               --  and input and PTY output (via Post_Empty_Event) wake it at once.
+               GLFW_Vulkan.Events.Wait_Timeout (0.016);
 
                Current_Blink_Tick :=
                  Terminal.App.Cursor_Blink.Tick
