@@ -1,0 +1,153 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# terminal is a GLFW/Vulkan terminal emulator. Its only external dependency is
+# textrender (the terminal_common/core/pty_posix/glfw_vulkan crates are nested in
+# this repo; aunit and df_vulkan come from the Alire community index). Each nested
+# crate's smoke suite is a gpr that "with"s aunit and is built from that crate's
+# directory via `alr exec -- gprbuild` (per README).
+#
+# Windows has no PTY backend yet (terminal_pty_posix is POSIX-only), so its job is
+# allowed to fail: it tracks the gap and will go green on its own once a ConPTY
+# backend lands.
+
+jobs:
+  linux:
+    name: Linux build + tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out terminal
+        uses: actions/checkout@v4
+        with: { path: terminal }
+      - name: Check out textrender sibling
+        uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      - name: Set up Alire
+        uses: alire-project/setup-alire@v5
+        with:
+          toolchain: gnat_native=15.2.1 gprbuild
+      - name: Install system libraries (Linux)
+        run: |
+          sudo apt-get update
+          # Vulkan loader + Mesa lavapipe (software ICD) for the headless GPU
+          # smokes; the X11 -dev libraries are GLFW's build inputs (glfw_vulkan
+          # builds GLFW from source); xvfb gives the render smokes a display.
+          sudo apt-get install -y --no-install-recommends \
+            libvulkan-dev \
+            mesa-vulkan-drivers \
+            xvfb \
+            fonts-dejavu-core \
+            libxcursor-dev \
+            libxxf86vm-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev
+      - name: Build terminal
+        working-directory: terminal
+        run: alr --non-interactive build
+      - name: Core smoke suite
+        working-directory: terminal/terminal_core
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P tests/core_tests.gpr
+          for t in tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
+      - name: PTY smoke suite
+        working-directory: terminal/terminal_pty_posix
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P tests/pty_tests.gpr
+          for t in tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
+      - name: App smoke suite (software Vulkan under Xvfb)
+        working-directory: terminal/terminal_glfw_vulkan_app
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P tests/app_tests.gpr
+          xvfb-run -a bash -c 'for t in tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done'
+
+  macos:
+    name: macOS build + tests
+    # macos-latest is arm64; gnat_native=15.2.1 ships no aarch64-darwin binary.
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: terminal }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      - name: Set up Alire
+        uses: alire-project/setup-alire@v5
+        with:
+          toolchain: gnat_native=15.2.1 gprbuild
+      - name: Install system libraries (macOS)
+        run: |
+          brew update
+          # MoltenVK provides the Vulkan loader/ICD on macOS; glfw is linked by
+          # the glfw_vulkan crate.
+          brew install vulkan-headers vulkan-loader molten-vk glfw
+          echo "LIBRARY_PATH=$(brew --prefix)/lib" >> "$GITHUB_ENV"
+      - name: Build terminal
+        working-directory: terminal
+        run: alr --non-interactive build
+      - name: Build the smoke suites (link check)
+        working-directory: terminal
+        run: |
+          ( cd terminal_core && alr --non-interactive exec -- gprbuild -p -P tests/core_tests.gpr )
+          ( cd terminal_pty_posix && alr --non-interactive exec -- gprbuild -p -P tests/pty_tests.gpr )
+          ( cd terminal_glfw_vulkan_app && alr --non-interactive exec -- gprbuild -p -P tests/app_tests.gpr )
+      - name: Run the headless-safe smokes (core + PTY)
+        working-directory: terminal
+        # The Vulkan render smokes need a GPU the runner lacks; core (pure terminal
+        # logic) and PTY (POSIX, works on Darwin) run headless.
+        run: |
+          for t in terminal_core/tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
+          for t in terminal_pty_posix/tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
+
+  windows:
+    name: Windows build (unsupported, tracking)
+    runs-on: windows-latest
+    # terminal_pty_posix is POSIX-only; there is no Windows PTY backend yet, so the
+    # build is expected to fail here. Keep the job visible (it will go green once a
+    # ConPTY backend exists) without redding the workflow.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: terminal }
+      - uses: actions/checkout@v4
+        with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      - name: Set up Alire
+        uses: alire-project/setup-alire@v5
+        with:
+          toolchain: gnat_native=15.2.1 gprbuild
+      - name: Install system libraries (Windows)
+        shell: bash
+        run: |
+          # Alire's gnat_native is mingw-w64, so its linker needs mingw import
+          # libraries. Take vulkan-loader and glfw from the runner's MSYS2.
+          pacman() { /c/msys64/usr/bin/pacman "$@"; }
+          pacman-key() { /c/msys64/usr/bin/pacman-key "$@"; }
+          pacman-key --init || true
+          pacman-key --populate msys2 || true
+          packages="mingw-w64-x86_64-vulkan-loader mingw-w64-x86_64-glfw"
+          sync() { pacman -Sy --noconfirm --needed --disable-download-timeout "$@" $packages; }
+          synced=""
+          for attempt in 1 2 3; do
+            if sync; then synced=yes; break; fi
+            echo "::warning::pacman sync attempt ${attempt} failed"; sleep 15
+          done
+          if [ -z "$synced" ]; then
+            sed 's/^SigLevel.*/SigLevel = Never/' /c/msys64/etc/pacman.conf \
+              > /c/msys64/tmp/pacman-nosig.conf
+            for attempt in 1 2 3; do
+              if sync --config C:/msys64/tmp/pacman-nosig.conf; then synced=yes; break; fi
+              echo "::warning::unsigned pacman sync attempt ${attempt} failed"; sleep 15
+            done
+          fi
+          [ -n "$synced" ] || { echo "::error::could not install the MSYS2 packages"; exit 1; }
+          echo "CPATH=C:/msys64/mingw64/include" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=C:/msys64/mingw64/lib" >> "$GITHUB_ENV"
+          echo "C:\msys64\mingw64\bin" >> "$GITHUB_PATH"
+      - name: Build terminal
+        working-directory: terminal
+        run: alr --non-interactive build
