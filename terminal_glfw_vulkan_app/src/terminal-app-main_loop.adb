@@ -55,6 +55,11 @@ package body Terminal.App.Main_Loop is
 
    Input_Queue : access Terminal.App.Queues.Input_Event_Queue := null;
 
+   --  Time of the last accepted left press, for bounce rejection: a failing mouse
+   --  switch (or an un-debounced compositor) can emit a spurious second press
+   --  microseconds after the real one, double-firing selection/paste.
+   Last_Left_Press_Time : Ada.Real_Time.Time := Ada.Real_Time.Clock;
+
    procedure On_Key (Event : GLFW_Vulkan.Input.Key_Event) is
    begin
       if Input_Queue /= null then
@@ -91,6 +96,22 @@ package body Terminal.App.Main_Loop is
 
    procedure On_Mouse_Button (Event : GLFW_Vulkan.Input.Mouse_Button_Event) is
    begin
+      if Event.Action = GLFW_Vulkan.Input.Press
+        and then Event.Button = GLFW_Vulkan.Input.Left
+      then
+         declare
+            Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+         begin
+            --  Drop a left press that follows the previous accepted one too
+            --  closely to be a real click -- a switch bounce that would otherwise
+            --  double-fire selection or paste.
+            if Ada.Real_Time.To_Duration (Now - Last_Left_Press_Time) < 0.040 then
+               return;
+            end if;
+            Last_Left_Press_Time := Now;
+         end;
+      end if;
+
       if Input_Queue /= null then
          Input_Queue.Push
            ((Kind            => Terminal.App.Queues.Mouse_Button,
