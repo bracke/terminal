@@ -26,6 +26,15 @@ jobs:
       - name: Check out textrender sibling
         uses: actions/checkout@v7
         with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      # terminal_glfw_vulkan_app.gpr pulls zlib and cryptolib sources directly by
+      # relative path (../../zlib/src, ../../cryptolib/src), not through Alire, so
+      # they must sit beside the repo as siblings too.
+      - name: Check out zlib sibling
+        uses: actions/checkout@v7
+        with: { repository: "${{ github.repository_owner }}/zlib", path: zlib }
+      - name: Check out cryptolib sibling
+        uses: actions/checkout@v7
+        with: { repository: "${{ github.repository_owner }}/cryptolib", path: cryptolib }
       - name: Set up Alire
         uses: alire-project/setup-alire@v6
         with:
@@ -76,6 +85,10 @@ jobs:
         with: { path: terminal }
       - uses: actions/checkout@v7
         with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      - uses: actions/checkout@v7
+        with: { repository: "${{ github.repository_owner }}/zlib", path: zlib }
+      - uses: actions/checkout@v7
+        with: { repository: "${{ github.repository_owner }}/cryptolib", path: cryptolib }
       - name: Set up Alire
         uses: alire-project/setup-alire@v6
         with:
@@ -116,6 +129,10 @@ jobs:
         with: { path: terminal }
       - uses: actions/checkout@v7
         with: { repository: "${{ github.repository_owner }}/textrender", path: textrender }
+      - uses: actions/checkout@v7
+        with: { repository: "${{ github.repository_owner }}/zlib", path: zlib }
+      - uses: actions/checkout@v7
+        with: { repository: "${{ github.repository_owner }}/cryptolib", path: cryptolib }
       - name: Set up Alire
         uses: alire-project/setup-alire@v6
         with:
