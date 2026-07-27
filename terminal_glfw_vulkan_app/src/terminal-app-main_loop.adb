@@ -532,7 +532,32 @@ package body Terminal.App.Main_Loop is
                Local_Redraw : Boolean := False;
                Current_Blink_Tick : Natural := Last_Blink_Tick;
             begin
-               GLFW_Vulkan.Events.Wait_Timeout (0.016);
+               --  Sleep instead of spinning at ~60 fps. Present is already
+               --  skipped for unchanged frames, so nothing drives compositor
+               --  wakeups and this timeout alone set the idle rate. Wake at the
+               --  next blink edge while the cursor blinks, promptly while a redraw
+               --  is pending, otherwise sleep a second -- input and PTY output
+               --  (via Post_Empty_Event) still wake the loop immediately.
+               declare
+                  Elapsed : constant Duration :=
+                    Ada.Real_Time.To_Duration
+                      (Ada.Real_Time.Clock - Blink_Origin);
+                  Wait_Seconds : Duration;
+               begin
+                  if Need_Redraw then
+                     Wait_Seconds := 0.008;
+                  elsif Terminal.Core.Modes (T).Cursor_Blinking
+                    or else Blinking_Text_Active
+                  then
+                     Wait_Seconds :=
+                       Terminal.App.Cursor_Blink.Blink_Period
+                         * (Terminal.App.Cursor_Blink.Tick (Elapsed) + 1)
+                       - Elapsed;
+                  else
+                     Wait_Seconds := 1.0;
+                  end if;
+                  GLFW_Vulkan.Events.Wait_Timeout (Wait_Seconds);
+               end;
 
                Current_Blink_Tick :=
                  Terminal.App.Cursor_Blink.Tick

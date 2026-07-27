@@ -1,5 +1,7 @@
 with Terminal.Common.Bytes;
 
+with GLFW_Vulkan.Events;
+
 package body Terminal.App.PTY_Reader is
    task body Reader is
       Chunk  : Terminal.App.Queues.Byte_Chunk;
@@ -23,6 +25,9 @@ package body Terminal.App.PTY_Reader is
             when Terminal.PTY.POSIX.Ok =>
                Chunk.Length := Last;
                Queue.Push (Chunk);
+               --  Wake the main loop from its idle sleep so freshly read output
+               --  is fed and drawn without waiting out the event timeout.
+               GLFW_Vulkan.Events.Post_Empty_Event;
             when Terminal.PTY.POSIX.End_Of_File | Terminal.PTY.POSIX.Session_Closed =>
                exit;
             when others =>
