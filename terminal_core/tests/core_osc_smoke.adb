@@ -1,6 +1,7 @@
 with AUnit.Assertions;
 with Terminal.Common.Bytes;
 with Terminal.Core;
+with Terminal.Core.Parser;
 
 procedure Core_OSC_Smoke is
    use AUnit.Assertions;
@@ -21,16 +22,21 @@ procedure Core_OSC_Smoke is
       return Result;
    end To_Bytes;
 
+   --  A DCS whose payload exceeds the parser's escape buffer, so Feed must
+   --  report Parser_Overflow. Sized off the actual limit (not a literal) so it
+   --  keeps overflowing if Max_Escape_Length changes -- as it did when the OSC
+   --  and escape buffers grew from 4 KiB to 128 KiB.
    function DCS_Overflow_Fixture return Byte_Array is
-      Result : Byte_Array (1 .. 4_101);
+      Payload_Length : constant Natural := Terminal.Core.Parser.Max_Escape_Length + 5;
+      Result         : Byte_Array (1 .. Payload_Length + 4);
    begin
       Result (1) := 16#1B#;
       Result (2) := Byte (Character'Pos ('P'));
-      for I in 3 .. 4_099 loop
-         Result (I) := Byte (Character'Pos ('a'));
+      for I in 1 .. Payload_Length loop
+         Result (I + 2) := Byte (Character'Pos ('a'));
       end loop;
-      Result (4_100) := 16#1B#;
-      Result (4_101) := Byte (Character'Pos ('\'));
+      Result (Result'Last - 1) := 16#1B#;
+      Result (Result'Last)     := Byte (Character'Pos ('\'));
       return Result;
    end DCS_Overflow_Fixture;
 
