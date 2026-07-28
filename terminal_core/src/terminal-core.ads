@@ -313,6 +313,11 @@ private
       Window_Pixel_Height : Natural := 0;
       Scrollback_Limit : Natural := 10_000;
       Scrollback_Rows  : Natural := 0;
+      --  Physical index (0-based) of the oldest scrollback row, so the store is
+      --  a ring buffer: appending when full advances this head instead of
+      --  memmoving every row down. Stays 0 until the buffer first fills, so the
+      --  not-full layout is unchanged.
+      Scrollback_Head  : Natural := 0;
 
       Primary_Cells : Cell_Array_Access := null;
       Alt_Cells     : Cell_Array_Access := null;

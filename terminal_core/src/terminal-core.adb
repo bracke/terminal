@@ -867,12 +867,15 @@ package body Terminal.Core is
       or else State = Ignored_String_Overflow
       or else State = Ignored_String_Overflow_Escape);
 
+   --  Ring buffer: logical Row 1 is the oldest, living physically at
+   --  Scrollback_Head, wrapping modulo the limit. Every reader and writer goes
+   --  through here, so head-awareness is confined to this one expression.
    function Scrollback_Index
      (T   : Terminal;
       Row : Positive;
       Col : Positive) return Positive
    is
-     ((Row - 1) * T.Cols + Col);
+     (((T.Scrollback_Head + Row - 1) mod T.Scrollback_Limit) * T.Cols + Col);
 
    procedure Append_Scrollback_Row
      (T      : in out Terminal;
@@ -888,12 +891,11 @@ package body Terminal.Core is
       end if;
 
       if T.Scrollback_Rows = T.Scrollback_Limit then
-         for R in 1 .. T.Scrollback_Limit - 1 loop
-            for C in 1 .. T.Cols loop
-               T.Scrollback (Scrollback_Index (T, R, C)) :=
-                 T.Scrollback (Scrollback_Index (T, R + 1, C));
-            end loop;
-         end loop;
+         --  Full: drop the oldest row by advancing the head one slot. The new
+         --  row is then written into the vacated slot as the newest logical row
+         --  (Scrollback_Index (T, Scrollback_Rows, ..) resolves there), so no row
+         --  is memmoved -- append is O(Cols) instead of O(Limit x Cols).
+         T.Scrollback_Head := (T.Scrollback_Head + 1) mod T.Scrollback_Limit;
       else
          T.Scrollback_Rows := T.Scrollback_Rows + 1;
       end if;
