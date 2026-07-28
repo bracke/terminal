@@ -2394,57 +2394,63 @@ package body Terminal.App.Renderer is
       return Terminal.App.Text_Shaper.Script_Of (Run);
    end Cell_Script;
 
-   function Can_Coalesce_Range
-     (Snapshot : Terminal.Core.Render_Snapshot;
-      Row      : Positive;
-      First    : Positive;
-      Last     : Positive) return Boolean
+   --  Whether the single cell at (Row, Col) may extend a text run whose first
+   --  cell is Base and whose accumulated Direction/Script are carried in-out.
+   --  This is Can_Coalesce_Range's per-cell body applied incrementally: the
+   --  builder seeds Direction/Script from the run's first cell and calls this
+   --  once per candidate cell, making run coalescing O(Cols) instead of the old
+   --  O(Cols^2) of re-scanning First..Last on every extension. Direction/Script
+   --  are committed only when the cell joins, so a rejected cell leaves them
+   --  untouched -- the sequence of accepts yields exactly the same runs as the
+   --  whole-range rescan did.
+   function Cell_Joins_Run
+     (Snapshot  : Terminal.Core.Render_Snapshot;
+      Row       : Positive;
+      Col       : Positive;
+      Base      : Terminal.Core.Cell;
+      Direction : in out RM.Text_Run_Direction;
+      Script    : in out RM.Text_Run_Script) return Boolean
    is
-      Base : constant Terminal.Core.Cell :=
-        Terminal.Core.Cell_At (Snapshot, Row, First);
-      Effective_Direction : RM.Text_Run_Direction := RM.Direction_Neutral;
-      Effective_Script    : RM.Text_Run_Script := RM.Script_Common;
+      Cell     : constant Terminal.Core.Cell :=
+        Terminal.Core.Cell_At (Snapshot, Row, Col);
+      Cell_Dir : RM.Text_Run_Direction;
+      Cell_Scr : RM.Text_Run_Script;
+      New_Dir  : RM.Text_Run_Direction := Direction;
+      New_Scr  : RM.Text_Run_Script := Script;
    begin
-      for Col in First .. Last loop
-         declare
-            Cell : constant Terminal.Core.Cell :=
-              Terminal.Core.Cell_At (Snapshot, Row, Col);
-            Direction : RM.Text_Run_Direction;
-            Script    : RM.Text_Run_Script;
-         begin
-            if not Is_Drawable (Cell)
-              or else Cell.Style.Conceal
-              or else Cell.Kind = Terminal.Core.Wide_Continuation
-              or else Cell.Text.Width /= Terminal.Core.Width_One
-              or else Cell.Text.Attachment_Count /= 0
-              or else Cell.Style /= Base.Style
-              or else Is_Block_Cursor (Snapshot, Row, Col)
-            then
-               return False;
-            end if;
+      if not Is_Drawable (Cell)
+        or else Cell.Style.Conceal
+        or else Cell.Kind = Terminal.Core.Wide_Continuation
+        or else Cell.Text.Width /= Terminal.Core.Width_One
+        or else Cell.Text.Attachment_Count /= 0
+        or else Cell.Style /= Base.Style
+        or else Is_Block_Cursor (Snapshot, Row, Col)
+      then
+         return False;
+      end if;
 
-            Direction := Cell_Direction (Cell);
-            if Direction /= RM.Direction_Neutral then
-               if Effective_Direction = RM.Direction_Neutral then
-                  Effective_Direction := Direction;
-               elsif Effective_Direction /= Direction then
-                  return False;
-               end if;
-            end if;
+      Cell_Dir := Cell_Direction (Cell);
+      if Cell_Dir /= RM.Direction_Neutral then
+         if New_Dir = RM.Direction_Neutral then
+            New_Dir := Cell_Dir;
+         elsif New_Dir /= Cell_Dir then
+            return False;
+         end if;
+      end if;
 
-            Script := Cell_Script (Cell);
-            if Script /= RM.Script_Common then
-               if Effective_Script = RM.Script_Common then
-                  Effective_Script := Script;
-               elsif Effective_Script /= Script then
-                  return False;
-               end if;
-            end if;
-         end;
-      end loop;
+      Cell_Scr := Cell_Script (Cell);
+      if Cell_Scr /= RM.Script_Common then
+         if New_Scr = RM.Script_Common then
+            New_Scr := Cell_Scr;
+         elsif New_Scr /= Cell_Scr then
+            return False;
+         end if;
+      end if;
 
+      Direction := New_Dir;
+      Script    := New_Scr;
       return True;
-   end Can_Coalesce_Range;
+   end Cell_Joins_Run;
 
    procedure Build_Text_Runs
      (R        : in out Renderer;
@@ -2472,13 +2478,22 @@ package body Terminal.App.Renderer is
                        and then Cell.Text.Attachment_Count = 0
                        and then not Is_Block_Cursor (Snapshot, Row, Col)
                      then
-                        while Last < Snapshot.Cols
-                          and then Last - First + 1 < RM.Max_Text_Run_Codepoints
-                          and then Can_Coalesce_Range
-                            (Snapshot, Row, First, Positive (Last + 1))
-                        loop
-                           Last := Last + 1;
-                        end loop;
+                        declare
+                           Run_Direction : RM.Text_Run_Direction :=
+                             Cell_Direction (Cell);
+                           Run_Script    : RM.Text_Run_Script :=
+                             Cell_Script (Cell);
+                        begin
+                           while Last < Snapshot.Cols
+                             and then Last - First + 1
+                                      < RM.Max_Text_Run_Codepoints
+                             and then Cell_Joins_Run
+                               (Snapshot, Row, Positive (Last + 1),
+                                Cell, Run_Direction, Run_Script)
+                           loop
+                              Last := Last + 1;
+                           end loop;
+                        end;
                      end if;
 
                      Add_Text_Run
