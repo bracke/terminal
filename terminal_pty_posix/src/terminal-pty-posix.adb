@@ -18,19 +18,10 @@ package body Terminal.PTY.POSIX is
    STDERR_FD : constant int := 2;
    SIGHUP    : constant int := 1;
    WNOHANG   : constant int := 1;
-   TIOCSWINSZ : constant unsigned_long := 16#5414#;
-   TIOCSCTTY  : constant unsigned_long := 16#540E#;
    EINTR     : constant int := 4;
    EAGAIN    : constant int := 11;
    X_OK      : constant int := 1;
 
-   type winsize is record
-      ws_row    : unsigned_short;
-      ws_col    : unsigned_short;
-      ws_xpixel : unsigned_short;
-      ws_ypixel : unsigned_short;
-   end record
-     with Convention => C;
 
    function posix_openpt (Flags : int) return int
      with Import, Convention => C, External_Name => "posix_openpt";
@@ -60,8 +51,13 @@ package body Terminal.PTY.POSIX is
      with Import, Convention => C, External_Name => "read";
    function c_write (FD : int; Buf : System.Address; Count : size_t) return ssize_t
      with Import, Convention => C, External_Name => "write";
-   function ioctl (FD : int; Req : unsigned_long; Arg : System.Address) return int
-     with Import, Convention => C, External_Name => "ioctl";
+   function C_Set_Winsize
+     (FD : int; Rows : unsigned_short; Cols : unsigned_short) return int
+     with Import, Convention => C,
+          External_Name => "terminal_pty_posix_set_winsize";
+   function C_Set_Controlling_Tty (FD : int) return int
+     with Import, Convention => C,
+          External_Name => "terminal_pty_posix_set_controlling_tty";
    function waitpid (PID : int; Status : System.Address; Options : int) return int
      with Import, Convention => C, External_Name => "waitpid";
    function kill (PID : int; Sig : int) return int
@@ -166,13 +162,8 @@ package body Terminal.PTY.POSIX is
    end Shell_Path;
 
    procedure Set_Size (FD : int; Rows : Positive; Cols : Positive; OK : out Boolean) is
-      W : aliased winsize :=
-        (ws_row    => unsigned_short (Rows),
-         ws_col    => unsigned_short (Cols),
-         ws_xpixel => 0,
-         ws_ypixel => 0);
    begin
-      OK := ioctl (FD, TIOCSWINSZ, W'Address) = 0;
+      OK := C_Set_Winsize (FD, unsigned_short (Rows), unsigned_short (Cols)) = 0;
    end Set_Size;
 
    procedure Set_Nonblocking (FD : int) is
@@ -257,7 +248,7 @@ package body Terminal.PTY.POSIX is
             if Slave < 0 then
                c_exit (127);
             end if;
-            Ignored := ioctl (Slave, TIOCSCTTY, System.Null_Address);
+            Ignored := C_Set_Controlling_Tty (Slave);
             Set_Size (Slave, Rows, Cols, Size_OK);
             Ignored := dup2 (Slave, STDIN_FD);
             Ignored := dup2 (Slave, STDOUT_FD);
