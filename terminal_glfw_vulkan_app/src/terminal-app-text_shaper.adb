@@ -1,3 +1,7 @@
+with Ada.Containers.Indefinite_Hashed_Maps;
+with Ada.Strings.Hash;
+with Ada.Strings.Unbounded;
+
 with Terminal.App.Fonts;
 with Terminal.App.HarfBuzz;
 
@@ -18,6 +22,56 @@ package body Terminal.App.Text_Shaper is
    Fallback_Faces       : Fallback_Face_Array;
    Fallback_Face_Count  : Natural := 0;
 
+   --  Shaping dominates the per-frame render cost, and the whole visible screen
+   --  is reshaped every frame even when nothing changed (a cursor blink alone
+   --  redraws it). Shaping is a pure function of a run's codepoints -- Direction,
+   --  Script and Run_Kind are all derived from them -- and of the loaded faces,
+   --  so memoise the fields Prepare produces, keyed on the codepoints (plus Bold
+   --  and Italic, conservatively). The cache is dropped whenever the face set
+   --  changes (Configure_Font / Add_Fallback_Font), the only thing that can alter
+   --  a run's shaping.
+   type Shape_Cache_Entry is record
+      Run_Kind           : RM.Text_Run_Kind;
+      Shape_Status       : RM.Text_Run_Shape_Status;
+      Direction          : RM.Text_Run_Direction;
+      Script             : RM.Text_Run_Script;
+      Shaped_Glyphs      : RM.Shaped_Glyph_Array;
+      Shaped_Glyph_Count : RM.Shaped_Glyph_Total;
+      Fallback_Glyphs    : Boolean;
+   end record;
+
+   package Shape_Cache_Maps is new Ada.Containers.Indefinite_Hashed_Maps
+     (Key_Type        => String,
+      Element_Type    => Shape_Cache_Entry,
+      Hash            => Ada.Strings.Hash,
+      Equivalent_Keys => "=");
+
+   Shape_Cache             : Shape_Cache_Maps.Map;
+   Max_Shape_Cache_Entries : constant := 8192;
+
+   procedure Clear_Shape_Cache is
+   begin
+      Shape_Cache.Clear;
+   end Clear_Shape_Cache;
+
+   function Shape_Cache_Key (Run : RM.Text_Run_Command) return String is
+      use Ada.Strings.Unbounded;
+      Result : Unbounded_String;
+   begin
+      Append (Result, (if Run.Bold then 'B' else 'b'));
+      Append (Result, (if Run.Italic then 'I' else 'i'));
+      for I in 1 .. Run.Codepoint_Count loop
+         declare
+            CP : constant Natural := Run.Codepoints (I);
+         begin
+            Append (Result, Character'Val (CP mod 256));
+            Append (Result, Character'Val ((CP / 256) mod 256));
+            Append (Result, Character'Val ((CP / 65536) mod 256));
+         end;
+      end loop;
+      return To_String (Result);
+   end Shape_Cache_Key;
+
    procedure Configure_Font
      (Path        : String;
       Pixel_Size  : Positive;
@@ -32,6 +86,7 @@ package body Terminal.App.Text_Shaper is
          HB.Reset (Fallback_Faces (I));
       end loop;
       Fallback_Face_Count := 0;
+      Clear_Shape_Cache;
 
       case Load_Result is
          when HB.Loaded =>
@@ -62,6 +117,9 @@ package body Terminal.App.Text_Shaper is
       case Load_Result is
          when HB.Loaded =>
             Fallback_Face_Count := Slot;
+            --  A new fallback face can change how previously-unshaped runs shape,
+            --  so the memoised results are no longer valid.
+            Clear_Shape_Cache;
             Status := Backend_Ok;
          when HB.Invalid_Path =>
             Status := Backend_Unavailable;
@@ -932,9 +990,28 @@ package body Terminal.App.Text_Shaper is
      (Run    : in out RM.Text_Run_Command;
       Status : out Shape_Status)
    is
-      Kind : constant Run_Kind := Classify (Run);
+      Key       : constant String := Shape_Cache_Key (Run);
+      Cached    : constant Shape_Cache_Maps.Cursor := Shape_Cache.Find (Key);
+      Kind      : Run_Kind;
       HB_Status : HB.Shape_Status;
    begin
+      if Shape_Cache_Maps.Has_Element (Cached) then
+         declare
+            E : constant Shape_Cache_Entry := Shape_Cache_Maps.Element (Cached);
+         begin
+            Run.Run_Kind           := E.Run_Kind;
+            Run.Shape_Status       := E.Shape_Status;
+            Run.Direction          := E.Direction;
+            Run.Script             := E.Script;
+            Run.Shaped_Glyphs      := E.Shaped_Glyphs;
+            Run.Shaped_Glyph_Count := E.Shaped_Glyph_Count;
+            Run.Fallback_Glyphs    := E.Fallback_Glyphs;
+            Status                 := E.Shape_Status;
+            return;
+         end;
+      end if;
+
+      Kind := Classify (Run);
       Run.Run_Kind := Kind;
       Run.Direction := Direction_Of (Run);
       Run.Script := Script_Of (Run);
@@ -971,5 +1048,21 @@ package body Terminal.App.Text_Shaper is
             Status := RM.Shape_Ok;
          end if;
       end if;
+
+      --  Memoise the result so the same run (the norm on a screen redrawn every
+      --  frame) is not reshaped again. Bounded: once full the cache is dropped
+      --  wholesale rather than grown without limit.
+      if Natural (Shape_Cache.Length) >= Max_Shape_Cache_Entries then
+         Shape_Cache.Clear;
+      end if;
+      Shape_Cache.Insert
+        (Key,
+         (Run_Kind           => Run.Run_Kind,
+          Shape_Status       => Run.Shape_Status,
+          Direction          => Run.Direction,
+          Script             => Run.Script,
+          Shaped_Glyphs      => Run.Shaped_Glyphs,
+          Shaped_Glyph_Count => Run.Shaped_Glyph_Count,
+          Fallback_Glyphs    => Run.Fallback_Glyphs));
    end Prepare;
 end Terminal.App.Text_Shaper;
