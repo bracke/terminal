@@ -4,7 +4,10 @@ with "../terminal_pty_posix/terminal_pty_posix.gpr";
 with "../glfw_vulkan/glfw_vulkan.gpr";
 with "../../textrender/textrender.gpr";
 with "df_vulkan";
-with "config/terminal_glfw_vulkan_app_config.gpr";
+--  cryptolib's generated config carries Alire_Host_OS; use it directly (its own
+--  gpr is not withable here, and terminal_glfw_vulkan_app's config is not
+--  generated during the top-level build -- only when this crate is built alone).
+with "../../cryptolib/config/cryptolib_config.gpr";
 
 project Terminal_GLFW_Vulkan_App is
    --  cryptolib keeps its OS_Random backend in src-<os> (getrandom on Linux,
@@ -17,7 +20,7 @@ project Terminal_GLFW_Vulkan_App is
       "../../zlib/config",
       "../../cryptolib/src",
       "../../cryptolib/config",
-      "../../cryptolib/src-" & Terminal_Glfw_Vulkan_App_Config.Alire_Host_OS);
+      "../../cryptolib/src-" & Cryptolib_Config.Alire_Host_OS);
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
    for Main use ("terminal_app_main.adb");
