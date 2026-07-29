@@ -10,6 +10,7 @@ terminal_pty_posix = "*"
 glfw_vulkan = "*"
 df_vulkan = "*"
 textrender = "*"
+zlib = "*"
 aunit = "*"
 
 [[pins]]
@@ -18,3 +19,4 @@ terminal_core = { path = "../terminal_core" }
 terminal_pty_posix = { path = "../terminal_pty_posix" }
 glfw_vulkan = { path = "../glfw_vulkan" }
 textrender = { path = "../../textrender" }
+zlib = { path = "../../zlib" }

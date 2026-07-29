@@ -4,23 +4,14 @@ with "../terminal_pty_posix/terminal_pty_posix.gpr";
 with "../glfw_vulkan/glfw_vulkan.gpr";
 with "../../textrender/textrender.gpr";
 with "df_vulkan";
---  cryptolib's generated config carries Alire_Host_OS; use it directly (its own
---  gpr is not withable here, and terminal_glfw_vulkan_app's config is not
---  generated during the top-level build -- only when this crate is built alone).
-with "../../cryptolib/config/cryptolib_config.gpr";
+with "zlib";
 
 project Terminal_GLFW_Vulkan_App is
-   --  cryptolib keeps its OS_Random backend in src-<os> (getrandom on Linux,
-   --  getentropy on macOS, BCrypt on Windows). We compile cryptolib's sources
-   --  directly, so pick the same per-host directory it would -- hardcoding
-   --  src-linux left macOS/Windows linking against the Linux syscalls.
-   for Source_Dirs use
-     ("src",
-      "../../zlib/src",
-      "../../zlib/config",
-      "../../cryptolib/src",
-      "../../cryptolib/config",
-      "../../cryptolib/src-" & Cryptolib_Config.Alire_Host_OS);
+   --  zlib is an Alire path-pinned crate (and it path-deps cryptolib, which keeps
+   --  its OS_Random backend in a per-host src-<os> directory). Withing zlib pulls
+   --  both in as libraries with their host-correct sources, so they no longer
+   --  need to be compiled directly here.
+   for Source_Dirs use ("src");
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
    for Main use ("terminal_app_main.adb");
