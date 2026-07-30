@@ -459,10 +459,22 @@ package body Terminal.PTY.Backend is
            (S.Output_Read, System.Null_Address, 0,
             System.Null_Address, Available'Address, System.Null_Address) = 0
       then
-         --  A failed peek is only the end if the child has actually gone. While
-         --  it is still running this is a hiccup, not a closed pipe, and
-         --  reporting the end would stop a caller reading for good -- which is
-         --  what it did: the shell was alive and had said nothing yet.
+         --  A failed peek is not proof there is nothing to read. Once the child
+         --  exits and the console closes its end, the peek fails while whatever
+         --  the child printed is still sitting in the pipe -- so try to read it
+         --  before calling this the end. A read on a genuinely broken pipe
+         --  returns nothing and costs one call.
+         if Read_File (S.Output_Read, Buffer (Buffer'First)'Address,
+                       DWORD (Buffer'Length), Got'Access, System.Null_Address) /= 0
+           and then Got > 0
+         then
+            Last := Buffer'First + Natural (Got) - 1;
+            Status := Ok;
+            return;
+         end if;
+
+         --  Nothing left, so it is the end if the child has gone; while it is
+         --  still running the peek merely hiccupped.
          Status := (if Is_Alive (S) then Would_Block else End_Of_File);
          return;
       end if;
