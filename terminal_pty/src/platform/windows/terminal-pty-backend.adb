@@ -156,13 +156,17 @@ package body Terminal.PTY.Backend is
 
    --  How much is already in the pipe. Reading without asking would block the
    --  whole render loop, because a console pipe has no non-blocking mode.
+   --  The three out-parameters are addresses rather than access values so the
+   --  optional ones can be null: with no buffer to read into, lpBytesRead and
+   --  lpBytesLeftThisMessage must be NULL, and passing them anyway makes the
+   --  call fail.
    function Peek_Named_Pipe
      (H              : HANDLE;
       Buffer         : System.Address;
       Size           : DWORD;
-      Read           : access DWORD;
-      Total_Available : access DWORD;
-      Left_This_Message : access DWORD) return BOOL
+      Read           : System.Address;
+      Total_Available : System.Address;
+      Left_This_Message : System.Address) return BOOL
      with Import, Convention => Stdcall, External_Name => "PeekNamedPipe";
 
    function Get_Exit_Code_Process
@@ -435,8 +439,6 @@ package body Terminal.PTY.Backend is
    is
       Available : aliased DWORD := 0;
       Got       : aliased DWORD := 0;
-      Peeked    : aliased DWORD := 0;
-      Remaining : aliased DWORD := 0;
    begin
       Last := Buffer'First - 1;
 
@@ -455,10 +457,13 @@ package body Terminal.PTY.Backend is
       --  said something.
       if Peek_Named_Pipe
            (S.Output_Read, System.Null_Address, 0,
-            Peeked'Access, Available'Access, Remaining'Access) = 0
+            System.Null_Address, Available'Address, System.Null_Address) = 0
       then
-         --  The child closed its end; the pipe is gone rather than empty.
-         Status := End_Of_File;
+         --  A failed peek is only the end if the child has actually gone. While
+         --  it is still running this is a hiccup, not a closed pipe, and
+         --  reporting the end would stop a caller reading for good -- which is
+         --  what it did: the shell was alive and had said nothing yet.
+         Status := (if Is_Alive (S) then Would_Block else End_Of_File);
          return;
       end if;
 
