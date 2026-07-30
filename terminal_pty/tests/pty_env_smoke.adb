@@ -41,6 +41,8 @@ procedure PTY_Env_Smoke is
    Last         : Natural := 0;
    Output       : String (1 .. 4096) := (others => ASCII.NUL);
    Output_Last  : Natural := 0;
+   Attempts     : Natural := 0;
+   Alive_After_Spawn : Boolean := False;
 
    function To_Bytes (Text : String) return Byte_Array is
       Result : Byte_Array (1 .. Text'Length);
@@ -112,7 +114,10 @@ begin
       Write_All (Data);
    end;
 
+   Alive_After_Spawn := Terminal.PTY.Backend.Is_Alive (S);
+
    for Attempt in 1 .. 300 loop
+      Attempts := Attempt;
       Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
       case Read_Status is
          when Terminal.PTY.Backend.Ok =>
@@ -129,16 +134,26 @@ begin
       exit when Contains (Term_Marker) and then Contains (Color_Marker);
    end loop;
 
-   Terminal.PTY.Backend.Close (S);
-
    --  Say what came back when it is not what was wanted. A bare assertion here
    --  tells whoever reads the log that the marker was absent and nothing about
    --  what the shell said instead -- which, when the only machine that can run
    --  this is a build runner, is the difference between a diagnosis and another
    --  round trip.
    if not (Contains (Term_Marker) and then Contains (Color_Marker)) then
+      --  Enough to tell a child that died at once from a read that never
+      --  worked: the first shows as not alive with nothing to read, the second
+      --  as alive with the loop giving up.
       Ada.Text_IO.Put_Line
-        ("pty_env_smoke: read" & Natural'Image (Output_Last) & " bytes:");
+        ("pty_env_smoke: read" & Natural'Image (Output_Last) & " bytes"
+         & " after" & Natural'Image (Attempts) & " attempts"
+         & "; alive after spawn: " & Boolean'Image (Alive_After_Spawn)
+         & "; alive at end: "
+         & Boolean'Image (Terminal.PTY.Backend.Is_Alive (S))
+         & "; last read: "
+         & Terminal.PTY.Backend.Read_Status'Image (Read_Status)
+         & "; child: "
+         & Terminal.PTY.Backend.Exit_State'Image
+             (Terminal.PTY.Backend.Child_State (S)));
 
       for I in 1 .. Output_Last loop
          if Output (I) in ' ' .. '~' then
@@ -151,6 +166,8 @@ begin
 
       Ada.Text_IO.New_Line;
    end if;
+
+   Terminal.PTY.Backend.Close (S);
 
    Assert (Contains (Term_Marker), "child shell should see TERM=xterm-256color");
    Assert
