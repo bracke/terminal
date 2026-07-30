@@ -12,6 +12,7 @@ package body Terminal.PTY.Backend is
    use type Interfaces.C.unsigned_long;
    use type Interfaces.C.long;
    use type Interfaces.C.size_t;
+   use type Interfaces.Unsigned_32;
    use type System.Address;
    use type Interfaces.C.char;
    use System.Storage_Elements;
@@ -35,12 +36,18 @@ package body Terminal.PTY.Backend is
    function To_Signed is new Ada.Unchecked_Conversion
      (Interfaces.Unsigned_32, Interfaces.Integer_32);
 
-   --  A console is sized in character cells, packed two 16-bit values to a word.
-   type COORD is record
-      X : Interfaces.Integer_16 := 0;
-      Y : Interfaces.Integer_16 := 0;
-   end record
-     with Convention => C;
+   --  A console size is a COORD: two 16-bit values, and four bytes in total.
+   --
+   --  Passed as the word it is rather than as a record. A small struct goes by
+   --  value in a register in this ABI, and an Ada record handed to a C import
+   --  may go by reference instead -- in which case every argument after it
+   --  shifts, CreatePseudoConsole still reports success, and the console it
+   --  builds writes to whatever the shifted handles happened to be. Which is
+   --  precisely the symptom this had: a console that starts, says nothing, and
+   --  takes the shell down with it.
+   function Console_Size (Rows, Cols : Positive) return Interfaces.Unsigned_32 is
+     (Interfaces.Unsigned_32 (Cols)
+      or Interfaces.Shift_Left (Interfaces.Unsigned_32 (Rows), 16));
 
    type STARTUPINFOEX is record
       Size          : DWORD := 0;
@@ -87,7 +94,7 @@ package body Terminal.PTY.Backend is
      with Import, Convention => Stdcall, External_Name => "CloseHandle";
 
    function Create_Pseudo_Console
-     (Size       : COORD;
+     (Size       : Interfaces.Unsigned_32;
       Input      : HANDLE;
       Output     : HANDLE;
       Flags      : DWORD;
@@ -96,7 +103,7 @@ package body Terminal.PTY.Backend is
 
    function Resize_Pseudo_Console
      (Console : HANDLE;
-      Size    : COORD) return Interfaces.C.long
+      Size    : Interfaces.Unsigned_32) return Interfaces.C.long
      with Import, Convention => Stdcall, External_Name => "ResizePseudoConsole";
 
    procedure Close_Pseudo_Console (Console : HANDLE)
@@ -334,7 +341,7 @@ package body Terminal.PTY.Backend is
       Trace.Pipes_Made := True;
 
       if Create_Pseudo_Console
-           ((X => Interfaces.Integer_16 (Cols), Y => Interfaces.Integer_16 (Rows)),
+           (Console_Size (Rows, Cols),
             Input_Read, Output_Write, 0, Console'Access) /= 0
       then
          Trace.Last_Error := Natural (Get_Last_Error);
@@ -540,8 +547,7 @@ package body Terminal.PTY.Backend is
       end if;
 
       if Resize_Pseudo_Console
-           (S.Console,
-            (X => Interfaces.Integer_16 (Cols), Y => Interfaces.Integer_16 (Rows))) /= 0
+           (S.Console, Console_Size (Rows, Cols)) /= 0
       then
          Status := Ioctl_Failed;
          return;
