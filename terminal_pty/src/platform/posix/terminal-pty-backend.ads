@@ -91,6 +91,17 @@ package Terminal.PTY.Backend is
 
    function Last_Spawn_Trace return Spawn_Trace;
 
+   --  The same shape as the Windows backend's, so a caller can report it
+   --  whichever host it is on.
+   type Read_Trace is record
+      Peeks       : Natural := 0;
+      Peek_Failed : Natural := 0;
+      Peek_Error  : Natural := 0;
+      Bytes_Seen  : Natural := 0;
+   end record;
+
+   function Last_Read_Trace return Read_Trace;
+
    function Is_Alive (S : Session) return Boolean;
 
    type Exit_State is

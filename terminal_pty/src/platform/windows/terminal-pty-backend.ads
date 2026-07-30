@@ -112,6 +112,18 @@ package Terminal.PTY.Backend is
 
    function Last_Spawn_Trace return Spawn_Trace;
 
+   --  What the last read did. Peek_Error is what Windows said when the peek
+   --  failed -- 109 is a broken pipe, meaning nothing is writing to it; 6 is a
+   --  bad handle, meaning this end is wrong.
+   type Read_Trace is record
+      Peeks       : Natural := 0;
+      Peek_Failed : Natural := 0;
+      Peek_Error  : Natural := 0;
+      Bytes_Seen  : Natural := 0;
+   end record;
+
+   function Last_Read_Trace return Read_Trace;
+
    function Is_Alive (S : Session) return Boolean;
 
    --  Signaled never occurs here: Windows reports one exit code and does not

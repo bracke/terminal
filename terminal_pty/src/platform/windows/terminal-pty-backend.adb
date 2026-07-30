@@ -192,8 +192,10 @@ package body Terminal.PTY.Backend is
      with Import, Convention => Stdcall, External_Name => "GetLastError";
 
    Trace : Spawn_Trace;
+   Reads : Read_Trace;
 
    function Last_Spawn_Trace return Spawn_Trace is (Trace);
+   function Last_Read_Trace return Read_Trace is (Reads);
 
    function Capabilities return Backend_Capabilities is
    begin
@@ -432,10 +434,14 @@ package body Terminal.PTY.Backend is
       --  Ask before reading: a console pipe cannot be put in non-blocking mode,
       --  and a blocking read here would stop the frame loop until the shell
       --  said something.
+      Reads.Peeks := Reads.Peeks + 1;
+
       if Peek_Named_Pipe
            (S.Output_Read, System.Null_Address, 0,
             System.Null_Address, Available'Address, System.Null_Address) = 0
       then
+         Reads.Peek_Failed := Reads.Peek_Failed + 1;
+         Reads.Peek_Error := Natural (Get_Last_Error);
          --  A failed peek is not proof there is nothing to read. Once the child
          --  exits and the console closes its end, the peek fails while whatever
          --  the child printed is still sitting in the pipe -- so try to read it
@@ -455,6 +461,8 @@ package body Terminal.PTY.Backend is
          Status := (if Is_Alive (S) then Would_Block else End_Of_File);
          return;
       end if;
+
+      Reads.Bytes_Seen := Reads.Bytes_Seen + Natural (Available);
 
       if Available = 0 then
          Status := Would_Block;

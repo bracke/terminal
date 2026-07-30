@@ -181,6 +181,18 @@ begin
             & " process=" & Boolean'Image (T.Process_Made)
             & " last_error=" & Natural'Image (T.Last_Error));
       end;
+
+      declare
+         R : constant Terminal.PTY.Backend.Read_Trace :=
+           Terminal.PTY.Backend.Last_Read_Trace;
+      begin
+         Ada.Text_IO.Put_Line
+           ("pty_env_smoke: read trace"
+            & " peeks=" & Natural'Image (R.Peeks)
+            & " failed=" & Natural'Image (R.Peek_Failed)
+            & " peek_error=" & Natural'Image (R.Peek_Error)
+            & " bytes_seen=" & Natural'Image (R.Bytes_Seen));
+      end;
    end if;
 
    Terminal.PTY.Backend.Close (S);

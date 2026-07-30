@@ -95,7 +95,10 @@ package body Terminal.PTY.Backend is
 
    Trace : Spawn_Trace;
 
+   Reads : Read_Trace;
+
    function Last_Spawn_Trace return Spawn_Trace is (Trace);
+   function Last_Read_Trace return Read_Trace is (Reads);
 
    function Capabilities return Backend_Capabilities is
    begin
