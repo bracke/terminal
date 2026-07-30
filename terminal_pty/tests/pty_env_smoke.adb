@@ -42,6 +42,7 @@ procedure PTY_Env_Smoke is
    Output       : String (1 .. 4096) := (others => ASCII.NUL);
    Output_Last  : Natural := 0;
    Attempts     : Natural := 0;
+   Reads        : Natural := 0;
    Alive_After_Spawn : Boolean := False;
 
    function To_Bytes (Text : String) return Byte_Array is
@@ -116,11 +117,12 @@ begin
 
    Alive_After_Spawn := Terminal.PTY.Backend.Is_Alive (S);
 
-   for Attempt in 1 .. 300 loop
+   for Attempt in 1 .. 1_500 loop
       Attempts := Attempt;
       Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
       case Read_Status is
          when Terminal.PTY.Backend.Ok =>
+            Reads := Reads + 1;
             Append_Output;
          when Terminal.PTY.Backend.Would_Block
             | Terminal.PTY.Backend.Interrupted =>
@@ -146,6 +148,7 @@ begin
       Ada.Text_IO.Put_Line
         ("pty_env_smoke: read" & Natural'Image (Output_Last) & " bytes"
          & " after" & Natural'Image (Attempts) & " attempts"
+         & "," & Natural'Image (Reads) & " of them returning data"
          & "; alive after spawn: " & Boolean'Image (Alive_After_Spawn)
          & "; alive at end: "
          & Boolean'Image (Terminal.PTY.Backend.Is_Alive (S))
