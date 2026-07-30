@@ -158,12 +158,21 @@ jobs:
         shell: bash
         run: |
           # Alire's gnat_native is mingw-w64, so its linker needs mingw import
-          # libraries. Take vulkan-loader and glfw from the runner's MSYS2.
+          # libraries. Take vulkan and glfw from the runner's MSYS2.
+          #
+          # vulkan-headers as well as the loader: the loader carries the import
+          # library, but glfw3.h includes vulkan/vulkan.h, and the C shim in
+          # glfw_vulkan includes glfw3.h. Without the headers the build died on a
+          # missing vulkan/vulkan.h -- which is what this job had been failing on,
+          # unnoticed, because it is allowed to fail. macOS installs both already.
           pacman() { /c/msys64/usr/bin/pacman "$@"; }
           pacman-key() { /c/msys64/usr/bin/pacman-key "$@"; }
           pacman-key --init || true
           pacman-key --populate msys2 || true
-          packages="mingw-w64-x86_64-vulkan-loader mingw-w64-x86_64-glfw mingw-w64-x86_64-harfbuzz"
+          packages="mingw-w64-x86_64-vulkan-loader
+                    mingw-w64-x86_64-vulkan-headers
+                    mingw-w64-x86_64-glfw
+                    mingw-w64-x86_64-harfbuzz"
           sync() { pacman -Sy --noconfirm --needed --disable-download-timeout "$@" $packages; }
           synced=""
           for attempt in 1 2 3; do
