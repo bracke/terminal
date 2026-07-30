@@ -25,6 +25,13 @@ package body Terminal.PTY.Backend is
 
    Still_Active : constant DWORD := 259;
 
+   --  Windows exit codes are unsigned and routinely have the top bit set --
+   --  0xC000013A is what a process gets when its console goes away -- so they
+   --  cannot simply be converted to Integer. Reinterpreted rather than clamped,
+   --  which is also how Windows itself prints them: -1073741510.
+   function To_Signed is new Ada.Unchecked_Conversion
+     (Interfaces.Unsigned_32, Interfaces.Integer_32);
+
    --  A console is sized in character cells, packed two 16-bit values to a word.
    type COORD is record
       X : Interfaces.Integer_16 := 0;
@@ -530,7 +537,8 @@ package body Terminal.PTY.Backend is
          then
             S.Last_State := Unknown;
          else
-            S.Last_Status := Integer (Code);
+            S.Last_Status :=
+              Integer (To_Signed (Interfaces.Unsigned_32 (Code)));
             S.Last_State := Exited;
          end if;
       end if;
