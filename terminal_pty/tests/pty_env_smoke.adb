@@ -16,10 +16,20 @@ procedure PTY_Env_Smoke is
      "__TERM=" & Terminal.PTY.Backend.Term_Name & "__";
    Color_Marker : constant String :=
      "__COLORTERM=" & Terminal.PTY.Backend.Color_Term & "__";
+   --  Asked in the shell the host actually runs. The backend spawns sh on POSIX
+   --  and cmd.exe on Windows, and neither understands the other's syntax; what
+   --  is under test is that the child was given the variables, not how it is
+   --  asked for them.
+   On_Windows : constant Boolean :=
+     Terminal.PTY.Backend.Capabilities.Windows_ConPTY;
+
    Command : constant String :=
-     "printf '__TERM=%s__\n' ""$TERM""; "
-     & "printf '__COLORTERM=%s__\n' ""$COLORTERM""; exit"
-     & Character'Val (13);
+     (if On_Windows
+      then "echo __TERM=%TERM%__& echo __COLORTERM=%COLORTERM%__& exit"
+             & Character'Val (13)
+      else "printf '__TERM=%s__\n' ""$TERM""; "
+             & "printf '__COLORTERM=%s__\n' ""$COLORTERM""; exit"
+             & Character'Val (13));
 
    S            : Terminal.PTY.Backend.Session;
    Spawn_Status : Terminal.PTY.Backend.Spawn_Status;

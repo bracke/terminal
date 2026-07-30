@@ -4,6 +4,7 @@ with Interfaces.C;
 with Interfaces.C.Strings;
 
 with System.Storage_Elements;
+use type System.Storage_Elements.Storage_Offset;
 
 package body Terminal.PTY.Backend is
    use type Interfaces.C.int;
@@ -12,6 +13,8 @@ package body Terminal.PTY.Backend is
    use type Interfaces.C.long;
    use type Interfaces.C.size_t;
    use type System.Address;
+   use type Interfaces.C.char;
+   use System.Storage_Elements;
 
    subtype DWORD is Interfaces.C.unsigned_long;
    subtype BOOL is Interfaces.C.int;
@@ -174,6 +177,14 @@ package body Terminal.PTY.Backend is
      return BOOL
      with Import, Convention => Stdcall, External_Name => "TerminateProcess";
 
+   function Get_Environment_Strings return System.Address
+     with Import, Convention => Stdcall,
+          External_Name => "GetEnvironmentStringsA";
+
+   function Free_Environment_Strings (Block : System.Address) return BOOL
+     with Import, Convention => Stdcall,
+          External_Name => "FreeEnvironmentStringsA";
+
    function Local_Alloc (Flags : Interfaces.C.unsigned; Bytes : Interfaces.C.size_t)
      return System.Address
      with Import, Convention => Stdcall, External_Name => "LocalAlloc";
@@ -206,6 +217,78 @@ package body Terminal.PTY.Backend is
       end if;
    end ConPTY_Status_Label;
 
+   --  The child's environment: everything this process has, plus TERM and
+   --  COLORTERM.
+   --
+   --  A block is name=value strings one after another, each null-terminated,
+   --  with a second null closing the block. Built rather than inherited because
+   --  the two variables have to be added, and rather than set on this process
+   --  because a terminal emulator should not have to change its own environment
+   --  to describe its child's.
+   type Env_Bytes is array (Positive range <>) of aliased Interfaces.C.char;
+
+   function Child_Environment return Env_Bytes is
+      Additions : constant String :=
+        "TERM=" & Term_Name & Character'Val (0)
+        & "COLORTERM=" & Color_Term & Character'Val (0);
+
+      Block : constant System.Address := Get_Environment_Strings;
+      Ignored : BOOL;
+      pragma Unreferenced (Ignored);
+
+      --  Walk to the double null that closes the block.
+      function Block_Length return Natural is
+         Length : Natural := 0;
+         Zeros  : Natural := 0;
+      begin
+         if Block = System.Null_Address then
+            return 0;
+         end if;
+
+         loop
+            declare
+               Item : Interfaces.C.char;
+               for Item'Address use
+                 Block + System.Storage_Elements.Storage_Offset (Length);
+            begin
+               exit when Zeros = 1 and then Item = Interfaces.C.nul;
+
+               Zeros := (if Item = Interfaces.C.nul then Zeros + 1 else 0);
+               Length := Length + 1;
+            end;
+
+            exit when Length > 1_000_000;
+         end loop;
+
+         return Length;
+      end Block_Length;
+
+      Inherited : constant Natural := Block_Length;
+      Result : Env_Bytes (1 .. Inherited + Additions'Length + 1) :=
+        [others => Interfaces.C.nul];
+   begin
+      for Index in 1 .. Inherited loop
+         declare
+            Item : Interfaces.C.char;
+            for Item'Address use
+              Block + System.Storage_Elements.Storage_Offset (Index - 1);
+         begin
+            Result (Index) := Item;
+         end;
+      end loop;
+
+      for Index in Additions'Range loop
+         Result (Inherited + Index - Additions'First + 1) :=
+           Interfaces.C.char'Val (Character'Pos (Additions (Index)));
+      end loop;
+
+      if Block /= System.Null_Address then
+         Ignored := Free_Environment_Strings (Block);
+      end if;
+
+      return Result;
+   end Child_Environment;
+
    procedure Spawn_Default_Shell
      (S      : out Session;
       Rows   : Positive;
@@ -222,6 +305,7 @@ package body Terminal.PTY.Backend is
       List_Size    : aliased Interfaces.C.size_t := 0;
       Command      : Interfaces.C.Strings.chars_ptr :=
         Interfaces.C.Strings.New_String ("cmd.exe");
+      Environment  : Env_Bytes := Child_Environment;
       Ignored      : BOOL;
       Freed        : System.Address;
       pragma Unreferenced (Ignored, Freed);
@@ -320,7 +404,7 @@ package body Terminal.PTY.Backend is
             System.Null_Address,
             0,
             Extended_Startupinfo_Present,
-            System.Null_Address,
+            Environment (Environment'First)'Address,
             System.Null_Address,
             Startup'Address,
             Info'Access) = 0
