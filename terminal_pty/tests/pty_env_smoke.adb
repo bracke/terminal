@@ -1,3 +1,5 @@
+with Ada.Text_IO;
+
 with AUnit.Assertions;
 
 with Terminal.Common.Bytes;
@@ -128,6 +130,27 @@ begin
    end loop;
 
    Terminal.PTY.Backend.Close (S);
+
+   --  Say what came back when it is not what was wanted. A bare assertion here
+   --  tells whoever reads the log that the marker was absent and nothing about
+   --  what the shell said instead -- which, when the only machine that can run
+   --  this is a build runner, is the difference between a diagnosis and another
+   --  round trip.
+   if not (Contains (Term_Marker) and then Contains (Color_Marker)) then
+      Ada.Text_IO.Put_Line
+        ("pty_env_smoke: read" & Natural'Image (Output_Last) & " bytes:");
+
+      for I in 1 .. Output_Last loop
+         if Output (I) in ' ' .. '~' then
+            Ada.Text_IO.Put (Output (I));
+         else
+            Ada.Text_IO.Put
+              ("<" & Natural'Image (Character'Pos (Output (I))) & ">");
+         end if;
+      end loop;
+
+      Ada.Text_IO.New_Line;
+   end if;
 
    Assert (Contains (Term_Marker), "child shell should see TERM=xterm-256color");
    Assert
