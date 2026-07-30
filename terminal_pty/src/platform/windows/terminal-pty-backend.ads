@@ -108,6 +108,12 @@ package Terminal.PTY.Backend is
       Attributes_Made : Boolean := False;
       Process_Made    : Boolean := False;
       Last_Error      : Natural := 0;
+
+      --  What was handed to CreateProcess. A cb that is not exactly
+      --  sizeof(STARTUPINFOEXA) makes it read the structure as the plain one and
+      --  ignore the attribute list, which attaches the child to nothing.
+      Startup_Size    : Natural := 0;
+      Attribute_Size  : Natural := 0;
    end record;
 
    function Last_Spawn_Trace return Spawn_Trace;

@@ -201,7 +201,9 @@ begin
             & " console=" & Boolean'Image (T.Console_Made)
             & " attributes=" & Boolean'Image (T.Attributes_Made)
             & " process=" & Boolean'Image (T.Process_Made)
-            & " last_error=" & Natural'Image (T.Last_Error));
+            & " last_error=" & Natural'Image (T.Last_Error)
+            & " startup_size=" & Natural'Image (T.Startup_Size)
+            & " attribute_size=" & Natural'Image (T.Attribute_Size));
       end;
 
       declare

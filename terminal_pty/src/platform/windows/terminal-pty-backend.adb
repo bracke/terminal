@@ -382,7 +382,13 @@ package body Terminal.PTY.Backend is
       end if;
 
       Trace.Attributes_Made := True;
-      Startup.Size := STARTUPINFOEX'Size / 8;
+      Trace.Attribute_Size := Natural (List_Size);
+
+      --  Object_Size, not Size: for a record the latter is the minimum number of
+      --  bits the type needs and may leave off trailing padding, and cb has to be
+      --  exactly what C calls sizeof -- 112 here.
+      Startup.Size := DWORD (STARTUPINFOEX'Object_Size / 8);
+      Trace.Startup_Size := Natural (Startup.Size);
 
       if Create_Process
            (System.Null_Address,
