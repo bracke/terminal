@@ -20,7 +20,12 @@ package Terminal.App.Vulkan_Submit is
    type Texture_Source is
      (Texture_None,
       Texture_Text_Atlas,
-      Texture_Image);
+      Texture_Image,
+
+      --  Colour glyphs, in a sheet of their own. Not Texture_Image: that holds
+      --  one inline picture at a time, and a line of emoji beside a Sixel has
+      --  to be able to draw.
+      Texture_Colour_Glyphs);
 
    type Vertex is record
       X        : Float := 0.0;
@@ -52,13 +57,10 @@ package Terminal.App.Vulkan_Submit is
 
    --  The colour glyphs of this frame, packed into one RGBA sheet.
    --
-   --  They share the image texture, because it is the only one bound that can
-   --  hold a colour: the glyph atlas is a single coverage channel. Packed rather
-   --  than uploaded one at a time, since a frame may show many emoji at once and
-   --  the texture is a single image.
+   --  Packed rather than uploaded one at a time, because a frame may show many
+   --  emoji at once and a texture holds one picture.
    --
-   --  Empty when the frame has no colour glyphs, or when it also draws a
-   --  Sixel-style image, which owns the texture for that frame.
+   --  Empty when the frame has no colour glyphs.
    function Colour_Atlas_Width (Batch : Submission_Batch) return Natural;
    function Colour_Atlas_Height (Batch : Submission_Batch) return Natural;
    function Colour_Atlas_Bytes (Batch : Submission_Batch) return Natural;

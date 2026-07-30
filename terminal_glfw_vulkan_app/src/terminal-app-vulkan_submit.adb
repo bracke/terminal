@@ -64,6 +64,8 @@ package body Terminal.App.Vulkan_Submit is
             return "text-atlas";
          when Texture_Image =>
             return "image";
+         when Texture_Colour_Glyphs =>
+            return "colour-glyphs";
       end case;
    end Texture_Source_Label;
 
@@ -382,7 +384,7 @@ package body Terminal.App.Vulkan_Submit is
                   Float (Placed (Slot).Y + Placed (Slot).H) / Float (Sheet_H),
                   (R => 1.0, G => 1.0, B => 1.0, A => 1.0),
                   True,
-                  Texture_Image);
+                  Texture_Colour_Glyphs);
                Batch.Colour_Glyph_Vertex_Total :=
                  Batch.Colour_Glyph_Vertex_Total + (Batch.Count - Before);
             end if;
@@ -597,11 +599,9 @@ package body Terminal.App.Vulkan_Submit is
       end loop;
 
       --  After the outlines, so an emoji sits over the cell background rather
-      --  than under it. Skipped when the frame also draws an image: that owns the
-      --  one texture the two of them share, and the emoji fall back to outlines.
-      if Batch.Last_Image_Texture_Source /= Texture_Image then
-         Append_Colour_Glyphs (Frame, Batch);
-      end if;
+      --  than under it. Unconditional: colour glyphs have a texture of their own,
+      --  so an inline picture in the same frame does not displace them.
+      Append_Colour_Glyphs (Frame, Batch);
 
 
       Status := Ok;

@@ -3,14 +3,17 @@ with AUnit.Assertions;
 
 with Interfaces;
 
+with Terminal.Common.Bytes;
 with Terminal.App.Render_Model;
 with Terminal.App.Vulkan_Submit;
 
---  Colour glyphs pack into the image texture and draw from it.
+--  Colour glyphs pack into a sheet of their own and draw from it.
 --
 --  A colour emoji cannot be a glyph command: those read the glyph atlas, which
 --  is a single coverage channel with nowhere to keep a colour. It carries its
---  own pixels and the submission packs them into the one texture that is RGBA.
+--  own pixels and the submission packs them into an RGBA sheet, bound at a
+--  binding of its own so an inline picture in the same frame does not displace
+--  it.
 --
 --  What this pins is the packing, because that is where it can go wrong quietly:
 --  two occurrences of one emoji must share a tile, two different emoji must not,
@@ -88,7 +91,7 @@ begin
       Items : constant VS.Vertex_Array_Access := VS.Vertices (Batch);
    begin
       for Index in 1 .. VS.Vertex_Count (Batch) loop
-         if Items (Index).Texture = VS.Texture_Image then
+         if Items (Index).Texture = VS.Texture_Colour_Glyphs then
             Colour_Quads := Colour_Quads + 1;
 
             --  A whole-texture quad would read 0..1; each of these must read a
@@ -114,7 +117,7 @@ begin
          Seen  : Natural := 0;
       begin
          for Index in 1 .. VS.Vertex_Count (Batch) loop
-            if Items (Index).Texture = VS.Texture_Image then
+            if Items (Index).Texture = VS.Texture_Colour_Glyphs then
                declare
                   Which : constant Natural := Seen / 6 + 1;
                begin
@@ -144,5 +147,72 @@ begin
    end;
 
    VS.Release (Batch);
+
+   --  The point of giving colour glyphs a binding of their own: a frame that
+   --  also draws an inline picture must still draw its emoji. While the two
+   --  shared the image texture, the picture took it and the emoji fell back to
+   --  outlines.
+   declare
+      --  An inline picture that genuinely claims the image texture: everything
+      --  the eligibility check asks for, including bytes to read.
+      Decoded : constant RM.Image_Data_Access :=
+        new Terminal.Common.Bytes.Byte_Array'(1 .. 2 * 2 * 4 => 255);
+      Images : aliased RM.Image_Array :=
+        [1 =>
+           (X => 0.0, Y => 0.0, Width => 10.0, Height => 10.0,
+            Protocol => RM.Image_Sixel,
+            Placeholder => False,
+            Pixel_Width => 2,
+            Pixel_Height => 2,
+            Raw_Format => 32,
+            Decoded_Row_Stride_Bytes => 2 * 4,
+            Payload_Preview_Complete => True,
+            Preview_Decode_Complete => True,
+            Decode_Status => RM.Image_Decode_Ok,
+            Decoded_Source => RM.Image_Decoded_Source_Buffer,
+            Decoded_Bytes => Decoded,
+            Decoded_Byte_Length => 2 * 2 * 4,
+            others => <>)];
+      With_Image : RM.Frame_Commands;
+      Image_Batch : VS.Submission_Batch;
+      Image_Status : VS.Build_Status;
+      Colour_Vertices : Natural := 0;
+   begin
+      With_Image.Width := 200;
+      With_Image.Height := 50;
+      With_Image.Colour_Glyphs := Colour'Unchecked_Access;
+      With_Image.Colour_Glyph_Count := 3;
+      With_Image.Images := Images'Unchecked_Access;
+      With_Image.Image_Count := 1;
+
+      VS.Build (With_Image, Image_Batch, Image_Status);
+      Assert (Image_Status = VS.Ok, "a frame with both builds");
+
+      declare
+         Items : constant VS.Vertex_Array_Access := VS.Vertices (Image_Batch);
+      begin
+         for Index in 1 .. VS.Vertex_Count (Image_Batch) loop
+            if Items (Index).Texture = VS.Texture_Colour_Glyphs then
+               Colour_Vertices := Colour_Vertices + 1;
+            end if;
+         end loop;
+      end;
+
+      --  The fixture has to be an image that actually claims the texture, or
+      --  this proves nothing: under the old arrangement the emoji were only
+      --  dropped when the picture was eligible for it.
+      Assert (VS.Last_Image_Texture_Source (Image_Batch) = VS.Texture_Image,
+              "the fixture picture claims the image texture, got "
+              & VS.Texture_Source_Label (VS.Last_Image_Texture_Source (Image_Batch)));
+
+      Assert (Colour_Vertices = 3 * 6,
+              "the emoji still draw alongside an inline picture, got"
+              & Natural'Image (Colour_Vertices));
+      Assert (VS.Colour_Atlas_Bytes (Image_Batch) > 0,
+              "and their sheet was still packed");
+
+      VS.Release (Image_Batch);
+   end;
+
    Ada.Text_IO.Put_Line ("colour glyph submit smoke: PASS");
 end Colour_Glyph_Submit_Smoke;

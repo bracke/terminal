@@ -189,7 +189,7 @@ package body Terminal.App.Vulkan_Device is
      array (Positive range 1 .. 1) of Vk.Descriptor_Pool_Size_T
      with Convention => C;
    type Descriptor_Set_Layout_Binding_Array is
-     array (Positive range 1 .. 2) of Vk.Descriptor_Set_Layout_Binding_T
+     array (Positive range 1 .. 3) of Vk.Descriptor_Set_Layout_Binding_T
      with Convention => C;
    type Image_Texture_Byte_Array is
      array (Positive range 1 .. Max_Image_Texture_Bytes) of Interfaces.Unsigned_8
@@ -270,6 +270,10 @@ package body Terminal.App.Vulkan_Device is
             return 1.0;
          when VS.Texture_Image =>
             return 2.0;
+
+         --  Matches the shader's third branch, frag_texture_id > 2.5.
+         when VS.Texture_Colour_Glyphs =>
+            return 3.0;
       end case;
    end Texture_ID;
 
@@ -300,6 +304,14 @@ package body Terminal.App.Vulkan_Device is
 
    procedure Destroy_Atlas_Image (Device : in out Logical_Device);
    procedure Destroy_Image_Texture (Device : in out Logical_Device);
+   procedure Destroy_Colour_Sheet (Device : in out Logical_Device);
+
+   --  One transparent pixel, for the colour sheet before any emoji exists.
+   type Blank_Pixel is array (1 .. 4) of Interfaces.Unsigned_8;
+   pragma Convention (C, Blank_Pixel);
+
+   --  Which of the two picture textures an upload is for.
+   type Texture_Slot is (Inline_Picture, Colour_Glyphs);
 
    procedure Upload_Atlas_Data
      (Device        : in out Logical_Device;
@@ -318,7 +330,8 @@ package body Terminal.App.Vulkan_Device is
       Height        : Natural;
       Bytes_Natural : Natural;
       Pixels        : System.Address;
-      Status        : out Create_Status);
+      Status        : out Create_Status;
+      Slot          : Texture_Slot := Inline_Picture);
 
    procedure Upload_Image_Texture_Rows
      (Device           : in out Logical_Device;
@@ -329,7 +342,8 @@ package body Terminal.App.Vulkan_Device is
       Row_Stride_Bytes : Natural;
       Bytes_Natural    : Natural;
       Pixels           : System.Address;
-      Status           : out Create_Status);
+      Status           : out Create_Status;
+      Slot             : Texture_Slot := Inline_Picture);
 
    procedure Reset
      (Choice : out Selection;
@@ -907,6 +921,16 @@ package body Terminal.App.Vulkan_Device is
                descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
                descriptor_Count => 1,
                stage_Flags => Vk.SHADER_STAGE_FRAGMENT_BIT,
+               p_Immutable_Samplers => System.Null_Address),
+
+            --  The colour glyph sheet. Its own binding rather than a share of
+            --  the image texture: that holds one picture at a time, and a line
+            --  of emoji beside a Sixel has to be able to draw.
+            3 =>
+              (binding => 2,
+               descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+               descriptor_Count => 1,
+               stage_Flags => Vk.SHADER_STAGE_FRAGMENT_BIT,
                p_Immutable_Samplers => System.Null_Address));
          Layout_Info : aliased Vk.Descriptor_Set_Layout_Create_Info_T :=
            (s_Type => Vk.STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
@@ -918,7 +942,7 @@ package body Terminal.App.Vulkan_Device is
          Pool_Size : aliased Descriptor_Pool_Size_Array :=
            (1 =>
               (type_F => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-               descriptor_Count => 2));
+               descriptor_Count => 3));
          Pool_Info : aliased Vk.Descriptor_Pool_Create_Info_T :=
            (s_Type => Vk.STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
             p_Next => System.Null_Address,
@@ -2389,6 +2413,30 @@ package body Terminal.App.Vulkan_Device is
       Device.Atlas_Bytes := 0;
    end Destroy_Atlas_Image;
 
+   procedure Destroy_Colour_Sheet (Device : in out Logical_Device) is
+   begin
+      if Device.Colour_Sheet_View /= System.Null_Address then
+         Vk.Destroy_Image_View
+           (Device.Device, Device.Colour_Sheet_View, System.Null_Address);
+         Device.Colour_Sheet_View := System.Null_Address;
+      end if;
+
+      if Device.Colour_Sheet_Image /= System.Null_Address then
+         Vk.Destroy_Image
+           (Device.Device, Device.Colour_Sheet_Image, System.Null_Address);
+         Device.Colour_Sheet_Image := System.Null_Address;
+      end if;
+
+      if Device.Colour_Sheet_Memory /= System.Null_Address then
+         Vk.Free_Memory
+           (Device.Device, Device.Colour_Sheet_Memory, System.Null_Address);
+         Device.Colour_Sheet_Memory := System.Null_Address;
+      end if;
+
+      Device.Colour_Sheet_Width := 0;
+      Device.Colour_Sheet_Height := 0;
+   end Destroy_Colour_Sheet;
+
    procedure Destroy_Image_Texture (Device : in out Logical_Device) is
    begin
       if Device.Image_Texture_View /= System.Null_Address then
@@ -2900,6 +2948,7 @@ package body Terminal.App.Vulkan_Device is
 
    procedure Upload_Image_Texture_Staging_Source
      (Device        : in out Logical_Device;
+      Slot          : Texture_Slot;
       Choice        : Selection;
       Width         : Natural;
       Height        : Natural;
@@ -3387,7 +3436,8 @@ package body Terminal.App.Vulkan_Device is
            (s_Type => Vk.STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             p_Next => System.Null_Address,
             dst_Set => Device.Descriptor_Set,
-            dst_Binding => 1,
+            dst_Binding =>
+              (if Slot = Colour_Glyphs then 2 else 1),
             dst_Array_Element => 0,
             descriptor_Count => 1,
             descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -3422,12 +3472,21 @@ package body Terminal.App.Vulkan_Device is
          end;
       end if;
 
-      Destroy_Image_Texture (Device);
-      Device.Image_Texture_Image := Image;
-      Device.Image_Texture_Memory := Image_Memory;
-      Device.Image_Texture_View := Image_View;
-      Device.Image_Texture_Width := Width;
-      Device.Image_Texture_Height := Height;
+      if Slot = Colour_Glyphs then
+         Destroy_Colour_Sheet (Device);
+         Device.Colour_Sheet_Image := Image;
+         Device.Colour_Sheet_Memory := Image_Memory;
+         Device.Colour_Sheet_View := Image_View;
+         Device.Colour_Sheet_Width := Width;
+         Device.Colour_Sheet_Height := Height;
+      else
+         Destroy_Image_Texture (Device);
+         Device.Image_Texture_Image := Image;
+         Device.Image_Texture_Memory := Image_Memory;
+         Device.Image_Texture_View := Image_View;
+         Device.Image_Texture_Width := Width;
+         Device.Image_Texture_Height := Height;
+      end if;
       Device.Image_Texture_Bytes := Upload_Bytes_Natural;
       Device.Image_Texture_Descriptor_Bound_Count := 2;
       Image := System.Null_Address;
@@ -3448,7 +3507,8 @@ package body Terminal.App.Vulkan_Device is
       Source_Byte   : not null access function
         (Row         : Natural;
          Byte_Offset : Natural) return Interfaces.Unsigned_8;
-      Status        : out Create_Status)
+      Status        : out Create_Status;
+      Slot          : Texture_Slot := Inline_Picture)
    is
       Target_Row_Bytes : constant Natural :=
         (if Width <= Max_Image_Texture_Bytes / 4 then Width * 4 else 0);
@@ -3529,7 +3589,8 @@ package body Terminal.App.Vulkan_Device is
       end Fill_Row_Source_Staging;
    begin
       Upload_Image_Texture_Staging_Source
-        (Device        => Device,
+        (Slot          => Slot,
+         Device        => Device,
          Choice        => Choice,
          Width         => Width,
          Height        => Height,
@@ -3736,7 +3797,8 @@ package body Terminal.App.Vulkan_Device is
       end Fill_Encoded_Staging;
    begin
       Upload_Image_Texture_Staging_Source
-        (Device        => Device,
+        (Slot          => Inline_Picture,
+         Device        => Device,
          Choice        => Choice,
          Width         => Width,
          Height        => Height,
@@ -3756,7 +3818,8 @@ package body Terminal.App.Vulkan_Device is
       Row_Stride_Bytes : Natural;
       Bytes_Natural : Natural;
       Pixels        : System.Address;
-      Status        : out Create_Status)
+      Status        : out Create_Status;
+      Slot          : Texture_Slot := Inline_Picture)
    is
       Source : constant Image_Texture_Byte_Mapping.Object_Pointer :=
         Image_Texture_Byte_Mapping.To_Pointer (Pixels);
@@ -3793,11 +3856,13 @@ package body Terminal.App.Vulkan_Device is
       Height        : Natural;
       Bytes_Natural : Natural;
       Pixels        : System.Address;
-      Status        : out Create_Status)
+      Status        : out Create_Status;
+      Slot          : Texture_Slot := Inline_Picture)
    is
    begin
       Upload_Image_Texture_Rows
-        (Device           => Device,
+        (Slot             => Slot,
+         Device           => Device,
          Choice           => Choice,
          Width            => Width,
          Height           => Height,
@@ -3969,9 +4034,11 @@ package body Terminal.App.Vulkan_Device is
       --  Colour glyphs, when no image took the texture for this frame. They are
       --  already packed and already RGBA, so this is the plain upload rather than
       --  the row-converting one the image protocols need.
-      if VS.Last_Image_Texture_Source (Batch) /= VS.Texture_Image
-        and then VS.Colour_Atlas_Bytes (Batch) > 0
-      then
+      --  Binding 2 has to point at something before anything draws: the shader
+      --  can reach all three samplers whichever branch a pixel takes, and a
+      --  descriptor nobody wrote is undefined. One transparent pixel does until
+      --  there is a colour glyph to show.
+      if VS.Colour_Atlas_Bytes (Batch) > 0 then
          Upload_Image_Texture_Data
            (Device        => Device,
             Choice        => Choice,
@@ -3979,11 +4046,31 @@ package body Terminal.App.Vulkan_Device is
             Height        => VS.Colour_Atlas_Height (Batch),
             Bytes_Natural => VS.Colour_Atlas_Bytes (Batch),
             Pixels        => VS.Colour_Atlas_Pixels (Batch),
-            Status        => Status);
+            Status        => Status,
+            Slot          => Colour_Glyphs);
 
          if Status /= Ok then
             return;
          end if;
+
+      elsif Device.Colour_Sheet_View = System.Null_Address then
+         declare
+            Blank : aliased constant Blank_Pixel := [others => 0];
+         begin
+            Upload_Image_Texture_Data
+              (Device        => Device,
+               Choice        => Choice,
+               Width         => 1,
+               Height        => 1,
+               Bytes_Natural => 4,
+               Pixels        => Blank'Address,
+               Status        => Status,
+               Slot          => Colour_Glyphs);
+
+            if Status /= Ok then
+               return;
+            end if;
+         end;
       end if;
 
       if VS.Last_Image_Texture_Source (Batch) = VS.Texture_Image then

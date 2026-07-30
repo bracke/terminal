@@ -255,6 +255,15 @@ private
       Image_Texture_Image : Vk.Image_T := System.Null_Address;
       Image_Texture_Memory : Vk.Device_Memory_T := System.Null_Address;
       Image_Texture_View : Vk.Image_View_T := System.Null_Address;
+
+      --  The colour glyph sheet, at binding 2. Its own image rather than a
+      --  share of the one above: that holds a single inline picture at a time,
+      --  and emoji have to be able to draw in the same frame as one.
+      Colour_Sheet_Image : Vk.Image_T := System.Null_Address;
+      Colour_Sheet_Memory : Vk.Device_Memory_T := System.Null_Address;
+      Colour_Sheet_View : Vk.Image_View_T := System.Null_Address;
+      Colour_Sheet_Width : Natural := 0;
+      Colour_Sheet_Height : Natural := 0;
       Image_Texture_Width : Natural := 0;
       Image_Texture_Height : Natural := 0;
       Image_Texture_Bytes : Natural := 0;
