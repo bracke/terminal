@@ -160,6 +160,13 @@ package body Terminal.PTY.Backend is
       Code    : access DWORD) return BOOL
      with Import, Convention => Stdcall, External_Name => "GetExitCodeProcess";
 
+   function Wait_For_Single_Object (H : HANDLE; Milliseconds : DWORD) return DWORD
+     with Import, Convention => Stdcall, External_Name => "WaitForSingleObject";
+
+   function Terminate_Process (Process : HANDLE; Code : Interfaces.C.unsigned)
+     return BOOL
+     with Import, Convention => Stdcall, External_Name => "TerminateProcess";
+
    function Local_Alloc (Flags : Interfaces.C.unsigned; Bytes : Interfaces.C.size_t)
      return System.Address
      with Import, Convention => Stdcall, External_Name => "LocalAlloc";
@@ -487,7 +494,9 @@ package body Terminal.PTY.Backend is
    procedure Close (S : in out Session) is
       Ignored : BOOL;
       Freed   : System.Address;
-      pragma Unreferenced (Ignored, Freed);
+      Waited  : DWORD;
+      Code    : aliased DWORD := 0;
+      pragma Unreferenced (Ignored, Freed, Waited);
    begin
       if S.Closed then
          return;
@@ -499,6 +508,31 @@ package body Terminal.PTY.Backend is
       if S.Console /= System.Null_Address then
          Close_Pseudo_Console (S.Console);
          S.Console := System.Null_Address;
+      end if;
+
+      --  Then wait for the child, and record how it went while the handle is
+      --  still open -- Child_State answers from what is recorded here once the
+      --  handle is gone. The POSIX side does the same after its SIGHUP.
+      if S.Process /= System.Null_Address then
+         Waited := Wait_For_Single_Object (S.Process, 500);
+
+         if Get_Exit_Code_Process (S.Process, Code'Access) /= 0
+           and then Code = Still_Active
+         then
+            --  Losing its console did not end it. Closing a session means the
+            --  child goes with it, so insist, then read the code again.
+            Ignored := Terminate_Process (S.Process, 1);
+            Waited := Wait_For_Single_Object (S.Process, 500);
+         end if;
+
+         if Get_Exit_Code_Process (S.Process, Code'Access) = 0
+           or else Code = Still_Active
+         then
+            S.Last_State := Unknown;
+         else
+            S.Last_Status := Integer (Code);
+            S.Last_State := Exited;
+         end if;
       end if;
 
       for H of Handle_List'[S.Input_Write, S.Output_Read, S.Thread, S.Process] loop
