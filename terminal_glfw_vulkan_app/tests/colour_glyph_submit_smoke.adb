@@ -2,6 +2,7 @@ with Ada.Text_IO;
 with AUnit.Assertions;
 
 with Interfaces;
+with System;
 
 with Terminal.Common.Bytes;
 with Terminal.App.Render_Model;
@@ -27,10 +28,14 @@ procedure Colour_Glyph_Submit_Smoke is
    package RM renames Terminal.App.Render_Model;
    package VS renames Terminal.App.Vulkan_Submit;
 
+   use type System.Address;
+
+   --  A glyph as Textrender hands it over: a place on screen and a rectangle of
+   --  the sheet. The packing that produced that rectangle is Textrender's, and
+   --  is tested there.
    function Tile
-     (Codepoint : Natural;
-      X         : Float;
-      Red       : Interfaces.Unsigned_8) return RM.Colour_Glyph_Command
+     (Left  : Float;
+      X     : Float) return RM.Colour_Glyph_Command
    is
       Result : RM.Colour_Glyph_Command;
    begin
@@ -38,24 +43,22 @@ procedure Colour_Glyph_Submit_Smoke is
       Result.Y := 0.0;
       Result.Width := 4;
       Result.Height := 4;
-      Result.Length := 4 * 4 * 4;
-      Result.Codepoint := Codepoint;
-
-      for Pixel in 0 .. 15 loop
-         Result.Pixels (Pixel * 4 + 1) := Red;
-         Result.Pixels (Pixel * 4 + 2) := 0;
-         Result.Pixels (Pixel * 4 + 3) := 0;
-         Result.Pixels (Pixel * 4 + 4) := 255;
-      end loop;
-
+      Result.U0 := Left;
+      Result.V0 := 0.0;
+      Result.U1 := Left + 0.05;
+      Result.V1 := 0.05;
       return Result;
    end Tile;
 
    --  Two of one emoji and one of another: three drawn, two tiles packed.
+   --  Two distinct glyphs, one of them drawn twice.
    Colour : aliased RM.Colour_Glyph_Array :=
-     [1 => Tile (16#1F389#, 0.0, 200),
-      2 => Tile (16#1F600#, 20.0, 100),
-      3 => Tile (16#1F389#, 40.0, 200)];
+     [1 => Tile (0.0, 0.0),
+      2 => Tile (0.5, 20.0),
+      3 => Tile (0.0, 40.0)];
+
+   --  Stands in for Textrender's sheet; the submission only passes it along.
+   Sheet : aliased constant Interfaces.Unsigned_8 := 0;
 
    Frame : RM.Frame_Commands;
    Batch : VS.Submission_Batch;
@@ -68,20 +71,18 @@ begin
    Frame.Height := 50;
    Frame.Colour_Glyphs := Colour'Unchecked_Access;
    Frame.Colour_Glyph_Count := 3;
+   Frame.Colour_Sheet_Width := 512;
+   Frame.Colour_Sheet_Height := 512;
+   Frame.Colour_Sheet_Pixels := Sheet'Address;
 
    VS.Build (Frame, Batch, Status);
    Assert (Status = VS.Ok, "the frame builds");
 
-   Assert (VS.Colour_Atlas_Bytes (Batch) > 0,
-           "a sheet was packed for the colour glyphs");
-   Assert (VS.Colour_Atlas_Width (Batch) > 0
-             and then VS.Colour_Atlas_Height (Batch) > 0,
-           "with a real size");
-
-   --  Two distinct emoji, four pixels tall: one shelf is enough for both.
-   Assert (VS.Colour_Atlas_Height (Batch) = 4,
-           "packed onto one shelf, got"
-           & Natural'Image (VS.Colour_Atlas_Height (Batch)));
+   Assert (VS.Colour_Atlas_Pixels (Batch) = Sheet'Address,
+           "the sheet is passed through to the device, not copied");
+   Assert (VS.Colour_Atlas_Width (Batch) = 512
+             and then VS.Colour_Atlas_Height (Batch) = 512,
+           "with the size Textrender gave it");
 
    Assert (VS.Colour_Glyph_Vertex_Count (Batch) = 3 * 6,
            "all three occurrences drew, got"
@@ -182,6 +183,9 @@ begin
       With_Image.Height := 50;
       With_Image.Colour_Glyphs := Colour'Unchecked_Access;
       With_Image.Colour_Glyph_Count := 3;
+      With_Image.Colour_Sheet_Width := 512;
+      With_Image.Colour_Sheet_Height := 512;
+      With_Image.Colour_Sheet_Pixels := Sheet'Address;
       With_Image.Images := Images'Unchecked_Access;
       With_Image.Image_Count := 1;
 
@@ -208,8 +212,8 @@ begin
       Assert (Colour_Vertices = 3 * 6,
               "the emoji still draw alongside an inline picture, got"
               & Natural'Image (Colour_Vertices));
-      Assert (VS.Colour_Atlas_Bytes (Image_Batch) > 0,
-              "and their sheet was still packed");
+      Assert (VS.Colour_Atlas_Pixels (Image_Batch) = Sheet'Address,
+              "and their sheet is still passed along");
 
       VS.Release (Image_Batch);
    end;

@@ -2733,7 +2733,6 @@ package body Terminal.App.Renderer is
       Code   : constant Textrender.Codepoint :=
         Textrender.Codepoint (Natural (Codepoint));
       Colour : Textrender.Colour_Glyph;
-      Pixels : access constant Textrender.Rgba_Buffer;
    begin
       if not R.Text_Loaded
         or else R.Colour_Glyphs = null
@@ -2746,14 +2745,7 @@ package body Terminal.App.Renderer is
       if Textrender.Get_Colour_Glyph (R.Text, Code, Colour) /= Textrender.Success
         or else Colour.Width = 0
         or else Colour.Height = 0
-        or else Colour.Width * Colour.Height * 4 > RM.Max_Colour_Glyph_Pixels
       then
-         return False;
-      end if;
-
-      Pixels := Textrender.Colour_Glyph_Pixels (R.Text, Code);
-
-      if Pixels = null then
          return False;
       end if;
 
@@ -2770,13 +2762,10 @@ package body Terminal.App.Renderer is
          Tile.Y := Y + Textrender.Ascent (R.Text) - Colour.Bearing_Y;
          Tile.Width := Colour.Width;
          Tile.Height := Colour.Height;
-         Tile.Length := Colour.Width * Colour.Height * 4;
-         Tile.Codepoint := Natural (Codepoint);
-
-         for Offset in 0 .. Tile.Length - 1 loop
-            Tile.Pixels (Offset + 1) :=
-              Interfaces.Unsigned_8 (Pixels (Pixels'First + Offset));
-         end loop;
+         Tile.U0 := Colour.U0;
+         Tile.V0 := Colour.V0;
+         Tile.U1 := Colour.U1;
+         Tile.V1 := Colour.V1;
       end;
 
       return True;
@@ -3447,6 +3436,13 @@ package body Terminal.App.Renderer is
          Glyph_Count     => R.Glyph_Count,
          Colour_Glyphs   => R.Colour_Glyphs,
          Colour_Glyph_Count => R.Colour_Glyph_Count,
+         Colour_Sheet_Width => Textrender.Colour_Sheet_Width (R.Text),
+         Colour_Sheet_Height => Textrender.Colour_Sheet_Height (R.Text),
+         Colour_Sheet_Pixels =>
+           (if Textrender.Colour_Sheet_Pixels (R.Text) = null
+            then System.Null_Address
+            else Textrender.Colour_Sheet_Pixels (R.Text).all'Address),
+         Colour_Sheet_Dirty => Textrender.Colour_Sheet_Dirty (R.Text),
          Images          => R.Images,
          Image_Count     => R.Image_Count,
          Text_Runs       => R.Text_Runs,

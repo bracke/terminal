@@ -133,10 +133,6 @@ package Terminal.App.Vulkan_Submit is
    function Image_Texture_Status_Label (Batch : Submission_Batch) return String;
 
 private
-   type Colour_Atlas_Bytes_Array is
-     array (Positive range <>) of Interfaces.Unsigned_8;
-   type Colour_Atlas_Access is access all Colour_Atlas_Bytes_Array;
-
    type Submission_Batch is new Ada.Finalization.Limited_Controlled with record
       Items                  : Vertex_Array_Access := null;
       Count                  : Natural := 0;
@@ -145,7 +141,7 @@ private
       Image_Vertex_Total     : Natural := 0;
       Image_Texture_Vertex_Total : Natural := 0;
       Image_Command_Total    : Natural := 0;
-      Colour_Atlas           : Colour_Atlas_Access := null;
+      Colour_Sheet_Source    : System.Address := System.Null_Address;
       Colour_Atlas_W         : Natural := 0;
       Colour_Atlas_H         : Natural := 0;
       Colour_Atlas_Byte_Count : Natural := 0;

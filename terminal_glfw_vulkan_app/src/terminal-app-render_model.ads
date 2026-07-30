@@ -42,24 +42,18 @@ package Terminal.App.Render_Model is
    --  a single coverage channel with nowhere to keep a colour. It carries its own
    --  pixels instead -- four bytes each in R, G, B, A -- and the submission packs
    --  them into the image texture alongside anything else drawn there.
-   Max_Colour_Glyph_Pixels : constant := 128 * 128 * 4;
-
-   subtype Colour_Glyph_Byte_Count is Natural range 0 .. Max_Colour_Glyph_Pixels;
-
-   type Colour_Glyph_Bytes is array (Positive range <>) of Interfaces.Unsigned_8;
-
    type Colour_Glyph_Command is record
       X      : Float := 0.0;
       Y      : Float := 0.0;
       Width  : Natural := 0;
       Height : Natural := 0;
 
-      --  Width * Height * 4 bytes, row by row from the top.
-      Pixels : Colour_Glyph_Bytes (1 .. Max_Colour_Glyph_Pixels) := [others => 0];
-      Length : Colour_Glyph_Byte_Count := 0;
-
-      --  Which codepoint this is, so repeats of one emoji share a packed tile.
-      Codepoint : Natural := 0;
+      --  Where the picture sits in the colour sheet. Textrender packs it and
+      --  deduplicates it, so nothing here carries pixels or repeats a tile.
+      U0 : Float := 0.0;
+      V0 : Float := 0.0;
+      U1 : Float := 0.0;
+      V1 : Float := 0.0;
    end record;
 
    type Image_Protocol is
@@ -358,5 +352,11 @@ package Terminal.App.Render_Model is
       Atlas_Pixels    : System.Address := System.Null_Address;
       Atlas_Bytes     : Natural := 0;
       Atlas_Dirty     : Boolean := False;
+
+      --  The colour glyph sheet, as Textrender packed it.
+      Colour_Sheet_Width  : Natural := 0;
+      Colour_Sheet_Height : Natural := 0;
+      Colour_Sheet_Pixels : System.Address := System.Null_Address;
+      Colour_Sheet_Dirty  : Boolean := False;
    end record;
 end Terminal.App.Render_Model;
