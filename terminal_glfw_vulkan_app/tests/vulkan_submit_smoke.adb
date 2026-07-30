@@ -130,6 +130,8 @@ procedure Vulkan_Submit_Smoke is
       Rectangle_Count => 1,
       Glyphs          => Glyphs'Unchecked_Access,
       Glyph_Count     => 1,
+      Colour_Glyphs   => null,
+      Colour_Glyph_Count => 0,
       Images          => Images'Unchecked_Access,
       Image_Count     => 1,
       Text_Runs       => Runs'Unchecked_Access,

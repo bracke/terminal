@@ -3966,6 +3966,26 @@ package body Terminal.App.Vulkan_Device is
          end if;
       end if;
 
+      --  Colour glyphs, when no image took the texture for this frame. They are
+      --  already packed and already RGBA, so this is the plain upload rather than
+      --  the row-converting one the image protocols need.
+      if VS.Last_Image_Texture_Source (Batch) /= VS.Texture_Image
+        and then VS.Colour_Atlas_Bytes (Batch) > 0
+      then
+         Upload_Image_Texture_Data
+           (Device        => Device,
+            Choice        => Choice,
+            Width         => VS.Colour_Atlas_Width (Batch),
+            Height        => VS.Colour_Atlas_Height (Batch),
+            Bytes_Natural => VS.Colour_Atlas_Bytes (Batch),
+            Pixels        => VS.Colour_Atlas_Pixels (Batch),
+            Status        => Status);
+
+         if Status /= Ok then
+            return;
+         end if;
+      end if;
+
       if VS.Last_Image_Texture_Source (Batch) = VS.Texture_Image then
          Device.Uploaded_Image_Texture_Staging_Bytes := 0;
          declare

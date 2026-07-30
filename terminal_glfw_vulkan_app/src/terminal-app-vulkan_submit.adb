@@ -67,6 +67,10 @@ package body Terminal.App.Vulkan_Submit is
       end case;
    end Texture_Source_Label;
 
+   use type RM.Colour_Glyph_Array_Access;
+
+   procedure Free_Colour_Atlas is new Ada.Unchecked_Deallocation
+     (Colour_Atlas_Bytes_Array, Colour_Atlas_Access);
    procedure Free_Vertices is new Ada.Unchecked_Deallocation
      (Vertex_Array, Vertex_Array_Access);
    procedure Free_Text_Runs is new Ada.Unchecked_Deallocation
@@ -153,12 +157,21 @@ package body Terminal.App.Vulkan_Submit is
          Batch.Text_Runs := null;
       end if;
 
+      if Batch.Colour_Atlas /= null then
+         Free_Colour_Atlas (Batch.Colour_Atlas);
+         Batch.Colour_Atlas := null;
+      end if;
+
       Batch.Count := 0;
       Batch.Rectangle_Vertex_Total := 0;
       Batch.Glyph_Vertex_Total := 0;
       Batch.Image_Vertex_Total := 0;
       Batch.Image_Texture_Vertex_Total := 0;
       Batch.Image_Command_Total := 0;
+      Batch.Colour_Atlas_W := 0;
+      Batch.Colour_Atlas_H := 0;
+      Batch.Colour_Atlas_Byte_Count := 0;
+      Batch.Colour_Glyph_Vertex_Total := 0;
       Batch.Last_Image_Protocol := RM.Image_Sixel;
       Batch.Last_Image_Width := 0;
       Batch.Last_Image_Height := 0;
@@ -195,6 +208,188 @@ package body Terminal.App.Vulkan_Submit is
       Release (Batch);
    end Finalize;
 
+   --  Pack this frame's colour glyphs into one RGBA sheet and draw them from it.
+   --
+   --  Shelf packing, widest-first is not worth it here: the tiles are all about
+   --  a cell tall, so a plain left-to-right run wrapping at the sheet's width
+   --  wastes very little. Repeats of one emoji share a tile, keyed by codepoint,
+   --  which is what keeps a screen full of the same character cheap.
+   function Colour_Atlas_Width (Batch : Submission_Batch) return Natural is
+   begin
+      return Batch.Colour_Atlas_W;
+   end Colour_Atlas_Width;
+
+   function Colour_Atlas_Height (Batch : Submission_Batch) return Natural is
+   begin
+      return Batch.Colour_Atlas_H;
+   end Colour_Atlas_Height;
+
+   function Colour_Atlas_Bytes (Batch : Submission_Batch) return Natural is
+   begin
+      return Batch.Colour_Atlas_Byte_Count;
+   end Colour_Atlas_Bytes;
+
+   function Colour_Atlas_Pixels (Batch : Submission_Batch) return System.Address is
+   begin
+      if Batch.Colour_Atlas = null then
+         return System.Null_Address;
+      end if;
+
+      return Batch.Colour_Atlas.all'Address;
+   end Colour_Atlas_Pixels;
+
+   function Colour_Glyph_Vertex_Count (Batch : Submission_Batch) return Natural is
+   begin
+      return Batch.Colour_Glyph_Vertex_Total;
+   end Colour_Glyph_Vertex_Count;
+
+   procedure Append_Colour_Glyphs
+     (Frame : RM.Frame_Commands;
+      Batch : in out Submission_Batch);
+
+   procedure Append_Colour_Glyphs
+     (Frame : RM.Frame_Commands;
+      Batch : in out Submission_Batch)
+   is
+      Sheet_W : constant := 512;
+
+      --  Where a codepoint's tile was placed, so the second occurrence reuses it.
+      type Placement is record
+         Codepoint : Natural := 0;
+         X, Y      : Natural := 0;
+         W, H      : Natural := 0;
+         Used      : Boolean := False;
+         Copied    : Boolean := False;
+      end record;
+
+      Placed     : array (1 .. 256) of Placement;
+      Placed_Count : Natural := 0;
+
+      Cursor_X : Natural := 0;
+      Cursor_Y : Natural := 0;
+      Shelf_H  : Natural := 0;
+      Sheet_H  : Natural := 0;
+
+      function Find (Codepoint : Natural) return Natural is
+      begin
+         for Index in 1 .. Placed_Count loop
+            if Placed (Index).Used and then Placed (Index).Codepoint = Codepoint then
+               return Index;
+            end if;
+         end loop;
+
+         return 0;
+      end Find;
+   begin
+      if Frame.Colour_Glyphs = null or else Frame.Colour_Glyph_Count = 0 then
+         return;
+      end if;
+
+      --  Decide every tile's place first, so the sheet's height is known before
+      --  a byte of it is allocated.
+      for Index in 1 .. Frame.Colour_Glyph_Count loop
+         declare
+            Tile : RM.Colour_Glyph_Command renames Frame.Colour_Glyphs (Index);
+         begin
+            if Tile.Width > 0
+              and then Tile.Height > 0
+              and then Tile.Length > 0
+              and then Find (Tile.Codepoint) = 0
+              and then Placed_Count < Placed'Length
+              and then Tile.Width <= Sheet_W
+            then
+               if Cursor_X + Tile.Width > Sheet_W then
+                  Cursor_X := 0;
+                  Cursor_Y := Cursor_Y + Shelf_H;
+                  Shelf_H := 0;
+               end if;
+
+               Placed_Count := Placed_Count + 1;
+               Placed (Placed_Count) :=
+                 (Codepoint => Tile.Codepoint,
+                  X => Cursor_X, Y => Cursor_Y,
+                  W => Tile.Width, H => Tile.Height,
+                  Used => True, Copied => False);
+
+               Cursor_X := Cursor_X + Tile.Width;
+               Shelf_H := Natural'Max (Shelf_H, Tile.Height);
+               Sheet_H := Natural'Max (Sheet_H, Cursor_Y + Tile.Height);
+            end if;
+         end;
+      end loop;
+
+      if Placed_Count = 0 or else Sheet_H = 0 then
+         return;
+      end if;
+
+      Batch.Colour_Atlas := new Colour_Atlas_Bytes_Array (1 .. Sheet_W * Sheet_H * 4);
+      Batch.Colour_Atlas.all := [others => 0];
+      Batch.Colour_Atlas_W := Sheet_W;
+      Batch.Colour_Atlas_H := Sheet_H;
+      Batch.Colour_Atlas_Byte_Count := Sheet_W * Sheet_H * 4;
+
+      --  Copy each distinct tile in once.
+      for Index in 1 .. Frame.Colour_Glyph_Count loop
+         declare
+            Tile : RM.Colour_Glyph_Command renames Frame.Colour_Glyphs (Index);
+            Slot : constant Natural := Find (Tile.Codepoint);
+         begin
+            if Slot > 0 and then not Placed (Slot).Copied then
+               Placed (Slot).Copied := True;
+
+               for Row in 0 .. Tile.Height - 1 loop
+                  for Column in 0 .. Tile.Width - 1 loop
+                     declare
+                        From : constant Natural := (Row * Tile.Width + Column) * 4;
+                        Into : constant Natural :=
+                          ((Placed (Slot).Y + Row) * Sheet_W
+                           + Placed (Slot).X + Column) * 4;
+                     begin
+                        if From + 4 <= Tile.Length
+                          and then Into + 4 <= Batch.Colour_Atlas'Length
+                        then
+                           for Channel in 0 .. 3 loop
+                              Batch.Colour_Atlas (Into + Channel + 1) :=
+                                Tile.Pixels (From + Channel + 1);
+                           end loop;
+                        end if;
+                     end;
+                  end loop;
+               end loop;
+            end if;
+         end;
+      end loop;
+
+      --  Then a quad per occurrence, reading its tile out of the sheet.
+      for Index in 1 .. Frame.Colour_Glyph_Count loop
+         declare
+            Tile : RM.Colour_Glyph_Command renames Frame.Colour_Glyphs (Index);
+            Slot : constant Natural := Find (Tile.Codepoint);
+            Before : constant Natural := Batch.Count;
+         begin
+            if Slot > 0 then
+               Append_Quad
+                 (Batch,
+                  Frame.Width,
+                  Frame.Height,
+                  Tile.X,
+                  Tile.Y,
+                  Float (Tile.Width),
+                  Float (Tile.Height),
+                  Float (Placed (Slot).X) / Float (Sheet_W),
+                  Float (Placed (Slot).Y) / Float (Sheet_H),
+                  Float (Placed (Slot).X + Placed (Slot).W) / Float (Sheet_W),
+                  Float (Placed (Slot).Y + Placed (Slot).H) / Float (Sheet_H),
+                  (R => 1.0, G => 1.0, B => 1.0, A => 1.0),
+                  True,
+                  Texture_Image);
+               Batch.Colour_Glyph_Vertex_Total :=
+                 Batch.Colour_Glyph_Vertex_Total + (Batch.Count - Before);
+            end if;
+         end;
+      end loop;
+   end Append_Colour_Glyphs;
+
    procedure Build
      (Frame  : RM.Frame_Commands;
       Batch  : in out Submission_Batch;
@@ -216,7 +411,8 @@ package body Terminal.App.Vulkan_Submit is
       end if;
 
       Max_Vertices :=
-        (Frame.Rectangle_Count + Frame.Glyph_Count + Frame.Image_Count) * 6;
+        (Frame.Rectangle_Count + Frame.Glyph_Count + Frame.Image_Count
+         + Frame.Colour_Glyph_Count) * 6;
       if Max_Vertices = 0 then
          Batch.Frame_Width := Frame.Width;
          Batch.Frame_Height := Frame.Height;
@@ -399,6 +595,14 @@ package body Terminal.App.Vulkan_Submit is
             end if;
          end;
       end loop;
+
+      --  After the outlines, so an emoji sits over the cell background rather
+      --  than under it. Skipped when the frame also draws an image: that owns the
+      --  one texture the two of them share, and the emoji fall back to outlines.
+      if Batch.Last_Image_Texture_Source /= Texture_Image then
+         Append_Colour_Glyphs (Frame, Batch);
+      end if;
+
 
       Status := Ok;
    exception

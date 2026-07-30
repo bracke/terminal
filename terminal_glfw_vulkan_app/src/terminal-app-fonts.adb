@@ -111,6 +111,14 @@ package body Terminal.App.Fonts is
    VL_Gothic     : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-Gothic-Regular.ttf";
    VL_PGothic    : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-PGothic-Regular.ttf";
 
+   --  Colour emoji, of the layered kind only. Textrender draws a COLR/CPAL glyph
+   --  from outlines and a palette, which needs nothing from the caller; the
+   --  bitmap kinds hold PNGs and want a decoder this application does not carry,
+   --  which is why NotoColorEmoji stays on the unsupported list below.
+   Twemoji       : aliased constant String := "/usr/share/fonts/truetype/twemoji/TwemojiMozilla.ttf";
+   Twemoji_TTF   : aliased constant String := "/usr/share/fonts/TTF/TwemojiMozilla.ttf";
+   Segoe_Emoji   : aliased constant String := "C:\Windows\Fonts\seguiemj.ttf";
+
    Primary_Candidates : constant Candidate_Array :=
      [Noto_Mono'Access,
       DejaVu_Mono'Access,
@@ -214,7 +222,14 @@ package body Terminal.App.Fonts is
       Noto_Nushu'Access,
       Noto_Tangut'Access,
       Noto_Khitan'Access,
-      Noto_CJK'Access];
+      Noto_CJK'Access,
+
+      --  Last: an emoji font maps far more than emoji -- arrows, stars, the
+      --  check mark -- so ahead of these it would capture characters they draw
+      --  perfectly well.
+      Twemoji'Access,
+      Twemoji_TTF'Access,
+      Segoe_Emoji'Access];
 
    Cached_Default_Path  : Font_Path;
    Cached_Default_Ready : Boolean := False;
@@ -414,6 +429,14 @@ package body Terminal.App.Fonts is
       for Candidate of Fallback_Candidates loop
          Consider (Candidate.all);
       end loop;
+
+      --  A font the user installed for themselves, which is where a layered
+      --  emoji font lands on a machine without root.
+      if Ada.Environment_Variables.Exists ("HOME") then
+         Consider
+           (Ada.Environment_Variables.Value ("HOME")
+            & "/.local/share/fonts/TwemojiMozilla.ttf");
+      end if;
 
       if Count = 0 then
          return (1 .. 0 => <>);

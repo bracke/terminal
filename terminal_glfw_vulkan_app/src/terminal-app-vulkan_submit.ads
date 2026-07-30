@@ -1,4 +1,5 @@
 with Ada.Finalization;
+with Interfaces;
 with System;
 
 with Terminal.Common.Bytes;
@@ -48,6 +49,21 @@ package Terminal.App.Vulkan_Submit is
    function Rectangle_Vertex_Count (Batch : Submission_Batch) return Natural;
    function Glyph_Vertex_Count (Batch : Submission_Batch) return Natural;
    function Image_Vertex_Count (Batch : Submission_Batch) return Natural;
+
+   --  The colour glyphs of this frame, packed into one RGBA sheet.
+   --
+   --  They share the image texture, because it is the only one bound that can
+   --  hold a colour: the glyph atlas is a single coverage channel. Packed rather
+   --  than uploaded one at a time, since a frame may show many emoji at once and
+   --  the texture is a single image.
+   --
+   --  Empty when the frame has no colour glyphs, or when it also draws a
+   --  Sixel-style image, which owns the texture for that frame.
+   function Colour_Atlas_Width (Batch : Submission_Batch) return Natural;
+   function Colour_Atlas_Height (Batch : Submission_Batch) return Natural;
+   function Colour_Atlas_Bytes (Batch : Submission_Batch) return Natural;
+   function Colour_Atlas_Pixels (Batch : Submission_Batch) return System.Address;
+   function Colour_Glyph_Vertex_Count (Batch : Submission_Batch) return Natural;
    function Image_Texture_Vertex_Count (Batch : Submission_Batch) return Natural;
    function Image_Command_Count (Batch : Submission_Batch) return Natural;
    function Last_Image_Protocol
@@ -115,6 +131,10 @@ package Terminal.App.Vulkan_Submit is
    function Image_Texture_Status_Label (Batch : Submission_Batch) return String;
 
 private
+   type Colour_Atlas_Bytes_Array is
+     array (Positive range <>) of Interfaces.Unsigned_8;
+   type Colour_Atlas_Access is access all Colour_Atlas_Bytes_Array;
+
    type Submission_Batch is new Ada.Finalization.Limited_Controlled with record
       Items                  : Vertex_Array_Access := null;
       Count                  : Natural := 0;
@@ -123,6 +143,11 @@ private
       Image_Vertex_Total     : Natural := 0;
       Image_Texture_Vertex_Total : Natural := 0;
       Image_Command_Total    : Natural := 0;
+      Colour_Atlas           : Colour_Atlas_Access := null;
+      Colour_Atlas_W         : Natural := 0;
+      Colour_Atlas_H         : Natural := 0;
+      Colour_Atlas_Byte_Count : Natural := 0;
+      Colour_Glyph_Vertex_Total : Natural := 0;
       Last_Image_Protocol    : Terminal.App.Render_Model.Image_Protocol :=
         Terminal.App.Render_Model.Image_Sixel;
       Last_Image_Width : Natural := 0;

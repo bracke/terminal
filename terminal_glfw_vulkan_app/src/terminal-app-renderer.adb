@@ -1,4 +1,5 @@
 with Ada.Unchecked_Deallocation;
+with Interfaces;
 with System;
 
 with Terminal.Common;
@@ -24,6 +25,7 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Ignored_Graphics_Protocol;
    use type Terminal.Core.Style;
    use type Terminal.Common.Code_Point;
+   use type RM.Colour_Glyph_Array_Access;
    use type RM.Glyph_Array_Access;
    use type RM.Image_Array_Access;
    use type RM.Image_Data_Access;
@@ -53,6 +55,8 @@ package body Terminal.App.Renderer is
      (RM.Image_Array, RM.Image_Array_Access);
    procedure Free_Text_Runs is new Ada.Unchecked_Deallocation
      (RM.Text_Run_Array, RM.Text_Run_Array_Access);
+   procedure Free_Colour_Glyphs is new Ada.Unchecked_Deallocation
+     (RM.Colour_Glyph_Array, RM.Colour_Glyph_Array_Access);
    procedure Free_Image_Data is new Ada.Unchecked_Deallocation
      (Terminal.Common.Bytes.Byte_Array, RM.Image_Data_Access);
    procedure Free_String is new Ada.Unchecked_Deallocation
@@ -311,8 +315,14 @@ package body Terminal.App.Renderer is
          Free_Text_Runs (R.Text_Runs);
          R.Text_Runs := null;
       end if;
+
+      if R.Colour_Glyphs /= null then
+         Free_Colour_Glyphs (R.Colour_Glyphs);
+         R.Colour_Glyphs := null;
+      end if;
       R.Rectangle_Count := 0;
       R.Glyph_Count := 0;
+      R.Colour_Glyph_Count := 0;
       R.Image_Count := 0;
       R.Text_Run_Count := 0;
       R.Shaped_Glyph_Count := 0;
@@ -2556,6 +2566,7 @@ package body Terminal.App.Renderer is
       R.CW := 8;
       R.CH := 16;
       R.Glyph_Count := 0;
+      R.Colour_Glyph_Count := 0;
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
       R.Text_Fallback_Run_Count := 0;
@@ -2698,6 +2709,79 @@ package body Terminal.App.Renderer is
         and then Natural (Cell.Text.Code_Point) /= 0;
    end Is_Drawable;
 
+   --  Record a colour glyph's picture for this frame, if the font has one.
+   --
+   --  Returns False when the codepoint has no colour glyph, when no font is
+   --  loaded, or when the picture is larger than a tile may be -- in every case
+   --  the caller carries on and looks for an outline exactly as it always did.
+   function Add_Colour_Glyph
+     (R         : in out Renderer;
+      Codepoint : Terminal.Common.Code_Point;
+      X         : Float;
+      Y         : Float)
+      return Boolean;
+
+   function Add_Colour_Glyph
+     (R         : in out Renderer;
+      Codepoint : Terminal.Common.Code_Point;
+      X         : Float;
+      Y         : Float)
+      return Boolean
+   is
+      use type Textrender.Status_Code;
+
+      Code   : constant Textrender.Codepoint :=
+        Textrender.Codepoint (Natural (Codepoint));
+      Colour : Textrender.Colour_Glyph;
+      Pixels : access constant Textrender.Rgba_Buffer;
+   begin
+      if not R.Text_Loaded
+        or else R.Colour_Glyphs = null
+        or else R.Colour_Glyph_Count >= R.Colour_Glyphs'Length
+        or else not Textrender.Has_Colour_Glyph (R.Text, Code)
+      then
+         return False;
+      end if;
+
+      if Textrender.Get_Colour_Glyph (R.Text, Code, Colour) /= Textrender.Success
+        or else Colour.Width = 0
+        or else Colour.Height = 0
+        or else Colour.Width * Colour.Height * 4 > RM.Max_Colour_Glyph_Pixels
+      then
+         return False;
+      end if;
+
+      Pixels := Textrender.Colour_Glyph_Pixels (R.Text, Code);
+
+      if Pixels = null then
+         return False;
+      end if;
+
+      R.Colour_Glyph_Count := R.Colour_Glyph_Count + 1;
+
+      declare
+         Tile : RM.Colour_Glyph_Command renames
+           R.Colour_Glyphs (R.Colour_Glyph_Count);
+      begin
+         Tile.X := X;
+
+         --  Sits in the line the way an outline does: the metric centres the
+         --  picture in the cell rather than resting it on the baseline.
+         Tile.Y := Y + Textrender.Ascent (R.Text) - Colour.Bearing_Y;
+         Tile.Width := Colour.Width;
+         Tile.Height := Colour.Height;
+         Tile.Length := Colour.Width * Colour.Height * 4;
+         Tile.Codepoint := Natural (Codepoint);
+
+         for Offset in 0 .. Tile.Length - 1 loop
+            Tile.Pixels (Offset + 1) :=
+              Interfaces.Unsigned_8 (Pixels (Pixels'First + Offset));
+         end loop;
+      end;
+
+      return True;
+   end Add_Colour_Glyph;
+
    procedure Draw_Glyph
      (R         : in out Renderer;
       Codepoint : Terminal.Common.Code_Point;
@@ -2709,15 +2793,26 @@ package body Terminal.App.Renderer is
       Status    : out Render_Status)
    is
       Metric       : Textrender.Glyph_Metric;
-      Glyph_Status : constant Textrender.Status_Code :=
+      Glyph_Status : Textrender.Status_Code;
+      Placement : Textrender.Glyph_Placement;
+   begin
+      --  A codepoint the font holds as a picture leaves here as a tile rather
+      --  than a glyph: the glyph atlas is one coverage channel, with nowhere to
+      --  keep a colour. Tried first, because for such a codepoint the outline
+      --  lookup below has nothing to find.
+      if Add_Colour_Glyph (R, Codepoint, X, Y) then
+         Status := Ok;
+         return;
+      end if;
+
+      Glyph_Status :=
         Textrender.Get_Glyph
           (R     => R.Text,
            C     => Textrender.Codepoint (Natural (Codepoint)),
            M     => Metric,
            Style =>
              (if Italic then Textrender.Italic else Textrender.Regular));
-      Placement : Textrender.Glyph_Placement;
-   begin
+
       case Glyph_Status is
          when Textrender.Success | Textrender.Glyph_Missing =>
             if Glyph_Status = Textrender.Glyph_Missing then
@@ -2925,6 +3020,9 @@ package body Terminal.App.Renderer is
                   (Terminal.Core.Max_Cluster_Attachments + 1,
                    RM.Max_Shaped_Glyphs_Per_Run)
               * 2);
+         --  One tile per cell is the most a frame can ask for, and emoji are
+         --  rare enough that a smaller cap would be a cliff rather than a saving.
+         R.Colour_Glyphs := new RM.Colour_Glyph_Array (1 .. Cell_Count);
          R.Images := new RM.Image_Array (1 .. 1);
          R.Text_Runs := new RM.Text_Run_Array (1 .. Cell_Count);
       exception
@@ -3159,6 +3257,7 @@ package body Terminal.App.Renderer is
       R.Has_Context := False;
       R.Text_Loaded := False;
       R.Glyph_Count := 0;
+      R.Colour_Glyph_Count := 0;
       R.Image_Count := 0;
       R.Text_Run_Count := 0;
       R.Shaped_Glyph_Count := 0;
@@ -3346,6 +3445,8 @@ package body Terminal.App.Renderer is
          Rectangle_Count => R.Rectangle_Count,
          Glyphs          => R.Glyphs,
          Glyph_Count     => R.Glyph_Count,
+         Colour_Glyphs   => R.Colour_Glyphs,
+         Colour_Glyph_Count => R.Colour_Glyph_Count,
          Images          => R.Images,
          Image_Count     => R.Image_Count,
          Text_Runs       => R.Text_Runs,

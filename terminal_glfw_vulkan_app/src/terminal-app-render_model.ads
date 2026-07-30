@@ -1,3 +1,4 @@
+with Interfaces;
 with System;
 with Terminal.Common.Bytes;
 
@@ -32,6 +33,32 @@ package Terminal.App.Render_Model is
       U1        : Float := 0.0;
       V1        : Float := 0.0;
       Color     : Pixel_Color;
+      Codepoint : Natural := 0;
+   end record;
+
+   --  A codepoint the font holds as a picture rather than an outline: emoji.
+   --
+   --  It cannot be a glyph command, because those read the glyph atlas, which is
+   --  a single coverage channel with nowhere to keep a colour. It carries its own
+   --  pixels instead -- four bytes each in R, G, B, A -- and the submission packs
+   --  them into the image texture alongside anything else drawn there.
+   Max_Colour_Glyph_Pixels : constant := 128 * 128 * 4;
+
+   subtype Colour_Glyph_Byte_Count is Natural range 0 .. Max_Colour_Glyph_Pixels;
+
+   type Colour_Glyph_Bytes is array (Positive range <>) of Interfaces.Unsigned_8;
+
+   type Colour_Glyph_Command is record
+      X      : Float := 0.0;
+      Y      : Float := 0.0;
+      Width  : Natural := 0;
+      Height : Natural := 0;
+
+      --  Width * Height * 4 bytes, row by row from the top.
+      Pixels : Colour_Glyph_Bytes (1 .. Max_Colour_Glyph_Pixels) := [others => 0];
+      Length : Colour_Glyph_Byte_Count := 0;
+
+      --  Which codepoint this is, so repeats of one emoji share a packed tile.
       Codepoint : Natural := 0;
    end record;
 
@@ -301,6 +328,9 @@ package Terminal.App.Render_Model is
       Fallback_Glyphs  : Boolean := True;
    end record;
 
+   type Colour_Glyph_Array is array (Positive range <>) of Colour_Glyph_Command;
+   type Colour_Glyph_Array_Access is access all Colour_Glyph_Array;
+
    type Rectangle_Array is array (Positive range <>) of Rectangle_Command;
    type Glyph_Array is array (Positive range <>) of Glyph_Command;
    type Image_Array is array (Positive range <>) of Image_Command;
@@ -317,6 +347,8 @@ package Terminal.App.Render_Model is
       Rectangle_Count : Natural := 0;
       Glyphs          : Glyph_Array_Access := null;
       Glyph_Count     : Natural := 0;
+      Colour_Glyphs   : Colour_Glyph_Array_Access := null;
+      Colour_Glyph_Count : Natural := 0;
       Images          : Image_Array_Access := null;
       Image_Count     : Natural := 0;
       Text_Runs       : Text_Run_Array_Access := null;

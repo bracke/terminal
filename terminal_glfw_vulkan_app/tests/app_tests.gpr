@@ -6,7 +6,8 @@ project App_Tests is
    for Object_Dir use "obj";
    for Exec_Dir use "bin";
    for Main use
-     ("vulkan_submit_smoke.adb",
+     ("colour_glyph_submit_smoke.adb",
+      "vulkan_submit_smoke.adb",
       "app_profile_smoke.adb",
       "vulkan_presenter_smoke.adb",
       "vulkan_device_smoke.adb",

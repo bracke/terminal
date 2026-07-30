@@ -137,11 +137,13 @@ private
       CH          : Positive := 20;
       Rectangles  : Terminal.App.Render_Model.Rectangle_Array_Access := null;
       Glyphs      : Terminal.App.Render_Model.Glyph_Array_Access := null;
+      Colour_Glyphs : Terminal.App.Render_Model.Colour_Glyph_Array_Access := null;
       Images      : Terminal.App.Render_Model.Image_Array_Access := null;
       Text_Runs   : Terminal.App.Render_Model.Text_Run_Array_Access := null;
       Batch       : Terminal.App.Vulkan_Submit.Submission_Batch;
       Rectangle_Count : Natural := 0;
       Glyph_Count : Natural := 0;
+      Colour_Glyph_Count : Natural := 0;
       Image_Count : Natural := 0;
       Text_Run_Count : Natural := 0;
       Shaped_Glyph_Count : Natural := 0;
