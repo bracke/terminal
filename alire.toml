@@ -2,6 +2,7 @@ name = "terminal"
 description = "Linux GLFW/Vulkan terminal emulator application"
 version = "0.1.0-dev"
 licenses = "MIT"
+long-description = "terminal is a Linux-first Ada 2022 terminal emulator, split so that the parts worth reusing are reusable: glfw_vulkan is a GLFW window, event and surface helper for any Vulkan application; terminal_common holds platform-neutral byte and status types; terminal_core is a deterministic byte-oriented emulator core that can be tested without a display; terminal_pty_posix is the Linux PTY and session backend; and terminal_glfw_vulkan_app is the wiring that makes an application of them."
 project-files = ["terminal.gpr"]
 
 [[depends-on]]

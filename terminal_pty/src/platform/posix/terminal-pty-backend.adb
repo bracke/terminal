@@ -93,6 +93,10 @@ package body Terminal.PTY.Backend is
       return C_Last_Errno;
    end Last_Errno;
 
+   Trace : Spawn_Trace;
+
+   function Last_Spawn_Trace return Spawn_Trace is (Trace);
+
    function Capabilities return Backend_Capabilities is
    begin
       return

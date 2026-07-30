@@ -168,6 +168,19 @@ begin
       end loop;
 
       Ada.Text_IO.New_Line;
+
+      declare
+         T : constant Terminal.PTY.Backend.Spawn_Trace :=
+           Terminal.PTY.Backend.Last_Spawn_Trace;
+      begin
+         Ada.Text_IO.Put_Line
+           ("pty_env_smoke: spawn trace"
+            & " pipes=" & Boolean'Image (T.Pipes_Made)
+            & " console=" & Boolean'Image (T.Console_Made)
+            & " attributes=" & Boolean'Image (T.Attributes_Made)
+            & " process=" & Boolean'Image (T.Process_Made)
+            & " last_error=" & Natural'Image (T.Last_Error));
+      end;
    end if;
 
    Terminal.PTY.Backend.Close (S);

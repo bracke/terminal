@@ -97,6 +97,21 @@ package Terminal.PTY.Backend is
       Cols   : Positive;
       Status : out Resize_Status);
 
+   --  What Windows said about the last spawn, step by step.
+   --
+   --  Exists because this backend can only be observed from a build runner: an
+   --  assertion tells you a shell said nothing, and nothing about which of the
+   --  half-dozen calls behind it declined to work.
+   type Spawn_Trace is record
+      Pipes_Made      : Boolean := False;
+      Console_Made    : Boolean := False;
+      Attributes_Made : Boolean := False;
+      Process_Made    : Boolean := False;
+      Last_Error      : Natural := 0;
+   end record;
+
+   function Last_Spawn_Trace return Spawn_Trace;
+
    function Is_Alive (S : Session) return Boolean;
 
    --  Signaled never occurs here: Windows reports one exit code and does not

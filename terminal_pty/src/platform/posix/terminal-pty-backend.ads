@@ -77,6 +77,20 @@ package Terminal.PTY.Backend is
       Cols   : Positive;
       Status : out Resize_Status);
 
+   --  What the last spawn did, step by step. The Windows backend fills this in
+   --  because it can only be watched from a build runner; here the steps either
+   --  work or the status says which one did not, so it reports the outcome and
+   --  errno rather than a trail.
+   type Spawn_Trace is record
+      Pipes_Made      : Boolean := False;
+      Console_Made    : Boolean := False;
+      Attributes_Made : Boolean := False;
+      Process_Made    : Boolean := False;
+      Last_Error      : Natural := 0;
+   end record;
+
+   function Last_Spawn_Trace return Spawn_Trace;
+
    function Is_Alive (S : Session) return Boolean;
 
    type Exit_State is

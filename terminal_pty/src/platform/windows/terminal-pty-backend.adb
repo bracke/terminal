@@ -188,6 +188,13 @@ package body Terminal.PTY.Backend is
    function Local_Free (Memory : System.Address) return System.Address
      with Import, Convention => Stdcall, External_Name => "LocalFree";
 
+   function Get_Last_Error return DWORD
+     with Import, Convention => Stdcall, External_Name => "GetLastError";
+
+   Trace : Spawn_Trace;
+
+   function Last_Spawn_Trace return Spawn_Trace is (Trace);
+
    function Capabilities return Backend_Capabilities is
    begin
       return (others => <>);
@@ -292,6 +299,7 @@ package body Terminal.PTY.Backend is
       end Abandon;
    begin
       Publish_Terminal_Environment;
+      Trace := (others => <>);
 
       S.Console := System.Null_Address;
       S.Input_Write := System.Null_Address;
@@ -321,14 +329,19 @@ package body Terminal.PTY.Backend is
          return;
       end if;
 
+      Trace.Pipes_Made := True;
+
       if Create_Pseudo_Console
            ((X => Interfaces.Integer_16 (Cols), Y => Interfaces.Integer_16 (Rows)),
             Input_Read, Output_Write, 0, Console'Access) /= 0
       then
+         Trace.Last_Error := Natural (Get_Last_Error);
          Abandon;
          Status := Open_PTY_Failed;
          return;
       end if;
+
+      Trace.Console_Made := True;
 
       --  The console holds its own copies of those two ends now.
       Ignored := Close_Handle (Input_Read);
@@ -353,11 +366,13 @@ package body Terminal.PTY.Backend is
                    System.Null_Address,
                    System.Null_Address) = 0
       then
+         Trace.Last_Error := Natural (Get_Last_Error);
          Abandon;
          Status := Open_PTY_Failed;
          return;
       end if;
 
+      Trace.Attributes_Made := True;
       Startup.Size := STARTUPINFOEX'Size / 8;
 
       if Create_Process
@@ -372,10 +387,13 @@ package body Terminal.PTY.Backend is
             Startup'Address,
             Info'Access) = 0
       then
+         Trace.Last_Error := Natural (Get_Last_Error);
          Abandon;
          Status := Fork_Failed;
          return;
       end if;
+
+      Trace.Process_Made := True;
 
       Interfaces.C.Strings.Free (Command);
 
