@@ -131,10 +131,15 @@ jobs:
   windows:
     name: Windows build + PTY smoke
     runs-on: windows-latest
-    # No longer expected to fail: terminal_pty has a ConPTY backend now, chosen
-    # with TERMINAL_PTY_OS below. Kept non-blocking for one more round while that
-    # backend proves itself on a real runner -- it has never run anywhere else --
-    # and to be made blocking once it has.
+    # Still non-blocking, and now for a narrower reason than before.
+    #
+    # Windows builds, links and runs the PTY smokes: pty_close passes, and the
+    # spawn itself reports every step succeeding -- pipes, pseudo-console,
+    # attribute list, process, no error. What does not work is output: the shell
+    # starts, produces nothing readable, and exits. pty_env fails on that.
+    #
+    # Make this blocking when the output path works. Until then it is tracking a
+    # known and specific defect rather than a whole missing platform.
     continue-on-error: true
     env:
       # Selects the ConPTY backend. The project language has no conditional
