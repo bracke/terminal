@@ -2,7 +2,7 @@ with Interfaces.C;
 with Interfaces.C.Strings;
 with System;
 
-package body Terminal.PTY.POSIX is
+package body Terminal.PTY.Backend is
    use Interfaces.C;
    use Interfaces.C.Strings;
 
@@ -54,10 +54,10 @@ package body Terminal.PTY.POSIX is
    function C_Set_Winsize
      (FD : int; Rows : unsigned_short; Cols : unsigned_short) return int
      with Import, Convention => C,
-          External_Name => "terminal_pty_posix_set_winsize";
+          External_Name => "terminal_pty_set_winsize";
    function C_Set_Controlling_Tty (FD : int) return int
      with Import, Convention => C,
-          External_Name => "terminal_pty_posix_set_controlling_tty";
+          External_Name => "terminal_pty_set_controlling_tty";
    function waitpid (PID : int; Status : System.Address; Options : int) return int
      with Import, Convention => C, External_Name => "waitpid";
    function kill (PID : int; Sig : int) return int
@@ -79,7 +79,7 @@ package body Terminal.PTY.POSIX is
    procedure c_exit (Status : int)
      with Import, Convention => C, External_Name => "_exit";
    function C_Last_Errno return int
-     with Import, Convention => C, External_Name => "terminal_pty_posix_last_errno";
+     with Import, Convention => C, External_Name => "terminal_pty_last_errno";
 
    procedure Close_FD (FD : int) is
       Ignored : int;
@@ -231,10 +231,10 @@ package body Terminal.PTY.POSIX is
             Shell : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Shell_Path);
             Term_Name : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String ("TERM");
             Term_Value : Interfaces.C.Strings.chars_ptr :=
-              Interfaces.C.Strings.New_String (Terminal.PTY.POSIX.Term_Name);
+              Interfaces.C.Strings.New_String (Terminal.PTY.Backend.Term_Name);
             Color_Name : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String ("COLORTERM");
             Color_Value : Interfaces.C.Strings.chars_ptr :=
-              Interfaces.C.Strings.New_String (Terminal.PTY.POSIX.Color_Term);
+              Interfaces.C.Strings.New_String (Terminal.PTY.Backend.Color_Term);
             Args : aliased Argv_Array :=
               (1 => Shell,
                2 => Interfaces.C.Strings.Null_Ptr);
@@ -405,4 +405,4 @@ package body Terminal.PTY.POSIX is
       end if;
       S.Closed := True;
    end Close;
-end Terminal.PTY.POSIX;
+end Terminal.PTY.Backend;

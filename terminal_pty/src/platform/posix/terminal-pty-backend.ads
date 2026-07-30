@@ -1,6 +1,6 @@
 with Terminal.Common.Bytes;
 
-package Terminal.PTY.POSIX is
+package Terminal.PTY.Backend is
    Max_Status_Label_Length : constant := 96;
 
    type Session is limited private;
@@ -97,4 +97,4 @@ private
       Last_Status : Integer := 0;
       Last_State  : Exit_State := Unknown;
    end record;
-end Terminal.PTY.POSIX;
+end Terminal.PTY.Backend;

@@ -15,7 +15,7 @@ with Terminal.App.Text_Blink;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Device;
 with Terminal.App.Vulkan_Submit;
-with Terminal.PTY.POSIX;
+with Terminal.PTY.Backend;
 
 package body Terminal.App.Diagnostics is
    use type Terminal.Core.Ignored_Graphics_Protocol;
@@ -106,11 +106,11 @@ package body Terminal.App.Diagnostics is
        (others => ' ');
    Last_PTY_Backend_Status_Length : PTY_Backend_Status_Length_Range := 0;
    Last_PTY_Backend_Status :
-     String (1 .. Terminal.PTY.POSIX.Max_Status_Label_Length) :=
+     String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
        (others => ' ');
    Last_ConPTY_Status_Length : PTY_Backend_Status_Length_Range := 0;
    Last_ConPTY_Status :
-     String (1 .. Terminal.PTY.POSIX.Max_Status_Label_Length) :=
+     String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
        (others => ' ');
    Last_Multiplexer_Status_Length : Multiplexer_Status_Length_Range := 0;
    Last_Multiplexer_Status :
@@ -304,7 +304,7 @@ package body Terminal.App.Diagnostics is
    function Bounded_PTY_Backend_Length
      (Text : String) return PTY_Backend_Status_Length_Range is
      (PTY_Backend_Status_Length_Range'Min
-        (Text'Length, Terminal.PTY.POSIX.Max_Status_Label_Length));
+        (Text'Length, Terminal.PTY.Backend.Max_Status_Label_Length));
 
    function Bounded_Multiplexer_Length
      (Text : String) return Multiplexer_Status_Length_Range is
@@ -670,12 +670,12 @@ package body Terminal.App.Diagnostics is
       PTY_Backend_Length : constant PTY_Backend_Status_Length_Range :=
         Bounded_PTY_Backend_Length (PTY_Backend_Status);
       PTY_Backend_Text :
-        String (1 .. Terminal.PTY.POSIX.Max_Status_Label_Length) :=
+        String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
           (others => ' ');
       ConPTY_Length : constant PTY_Backend_Status_Length_Range :=
         Bounded_PTY_Backend_Length (ConPTY_Status);
       ConPTY_Text :
-        String (1 .. Terminal.PTY.POSIX.Max_Status_Label_Length) :=
+        String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
           (others => ' ');
       Multiplexer_Length : constant Multiplexer_Status_Length_Range :=
         Bounded_Multiplexer_Length (Multiplexer_Status);

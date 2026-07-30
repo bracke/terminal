@@ -18,7 +18,7 @@ with Terminal.App.Tabs;
 with Terminal.App.Text_Blink;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Presenter;
-with Terminal.PTY.POSIX;
+with Terminal.PTY.Backend;
 
 package Terminal.App.Diagnostics is
    subtype Grid_Status_Length_Range is
@@ -54,7 +54,7 @@ package Terminal.App.Diagnostics is
    subtype Font_Status_Length_Range is
      Natural range 0 .. Terminal.App.Fonts.Max_Status_Label_Length;
    subtype PTY_Backend_Status_Length_Range is
-     Natural range 0 .. Terminal.PTY.POSIX.Max_Status_Label_Length;
+     Natural range 0 .. Terminal.PTY.Backend.Max_Status_Label_Length;
    subtype Multiplexer_Status_Length_Range is
      Natural range 0 .. Terminal.App.Max_Status_Label_Length;
    subtype Graphics_Header_Status_Length_Range is
@@ -131,11 +131,11 @@ package Terminal.App.Diagnostics is
           (others => ' ');
       PTY_Backend_Status_Length : PTY_Backend_Status_Length_Range := 0;
       PTY_Backend_Status :
-        String (1 .. Terminal.PTY.POSIX.Max_Status_Label_Length) :=
+        String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
           (others => ' ');
       ConPTY_Status_Length : PTY_Backend_Status_Length_Range := 0;
       ConPTY_Status :
-        String (1 .. Terminal.PTY.POSIX.Max_Status_Label_Length) :=
+        String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
           (others => ' ');
       Multiplexer_Status_Length : Multiplexer_Status_Length_Range := 0;
       Multiplexer_Status : String (1 .. Terminal.App.Max_Status_Label_Length) :=

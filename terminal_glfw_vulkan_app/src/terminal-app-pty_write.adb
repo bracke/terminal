@@ -1,5 +1,5 @@
 package body Terminal.App.PTY_Write is
-   use type Terminal.PTY.POSIX.Write_Status;
+   use type Terminal.PTY.Backend.Write_Status;
 
    function Status_Label (Status : Write_All_Status) return String is
    begin
@@ -16,13 +16,13 @@ package body Terminal.App.PTY_Write is
    end Status_Label;
 
    procedure Write_All
-     (S      : in out Terminal.PTY.POSIX.Session;
+     (S      : in out Terminal.PTY.Backend.Session;
       Chunk  : Terminal.App.Queues.Byte_Chunk;
       Status : out Write_All_Status)
    is
       Offset : Positive := 1;
       Last   : Natural := 0;
-      W      : Terminal.PTY.POSIX.Write_Status;
+      W      : Terminal.PTY.Backend.Write_Status;
    begin
       if Chunk.Length = 0 then
          Status := Ok;
@@ -32,22 +32,22 @@ package body Terminal.App.PTY_Write is
       for Attempt in 1 .. Max_Write_Attempts loop
          exit when Offset > Chunk.Length;
 
-         Terminal.PTY.POSIX.Write
+         Terminal.PTY.Backend.Write
            (S, Chunk.Data (Offset .. Chunk.Length), Last, W);
 
          case W is
-            when Terminal.PTY.POSIX.Ok | Terminal.PTY.POSIX.Partial =>
+            when Terminal.PTY.Backend.Ok | Terminal.PTY.Backend.Partial =>
                if Last > 0 then
                   Offset := Offset + Last;
                else
                   delay 0.001;
                end if;
-            when Terminal.PTY.POSIX.Interrupted =>
+            when Terminal.PTY.Backend.Interrupted =>
                null;
-            when Terminal.PTY.POSIX.Session_Closed =>
+            when Terminal.PTY.Backend.Session_Closed =>
                Status := Session_Closed;
                return;
-            when Terminal.PTY.POSIX.Failed =>
+            when Terminal.PTY.Backend.Failed =>
                Status := Failed;
                return;
          end case;

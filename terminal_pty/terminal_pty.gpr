@@ -1,0 +1,42 @@
+with "../terminal_common/terminal_common.gpr";
+
+library project Terminal_PTY is
+   --  One backend per host, chosen here rather than by the caller: the app names
+   --  Terminal.PTY.Backend and gets whichever one this host has.
+   --
+   --  The POSIX side carries a small C shim (terminal_pty_sys.c) so the platform
+   --  headers can resolve facilities whose values differ across Linux and
+   --  macOS/BSD -- errno's accessor symbol and the TIOCSWINSZ/TIOCSCTTY ioctl
+   --  request numbers. The Windows side is ConPTY and needs no shim.
+   --  Which backend to build.
+   --
+   --  A scenario variable rather than Alire's generated Alire_Host_OS, because
+   --  the root project builds this crate directly with gprbuild and that config
+   --  imports the crate's own dependencies, which the root has no path to. The
+   --  project language has no conditional expressions either, so the host cannot
+   --  be derived from the target triplet here.
+   --
+   --  Default posix. A Windows build sets TERMINAL_PTY_OS=windows; without it the
+   --  POSIX backend is selected and fails loudly on sys/ioctl.h, which names its
+   --  own cause.
+   type OS_Kind is ("posix", "windows");
+   Host : OS_Kind := external ("TERMINAL_PTY_OS", "posix");
+
+   case Host is
+      when "windows" =>
+         for Languages use ("Ada");
+         for Source_Dirs use ("src", "config", "src/platform/windows");
+      when others =>
+         for Languages use ("Ada", "C");
+         for Source_Dirs use ("src", "config", "src/platform/posix");
+   end case;
+   for Object_Dir use "obj";
+   for Library_Dir use "lib";
+   for Library_Name use "terminal_pty";
+   for Library_Kind use "static";
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwe");
+   end Compiler;
+end Terminal_PTY;
+

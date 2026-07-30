@@ -11,7 +11,7 @@ on:
 # crate's smoke suite is a gpr that "with"s aunit and is built from that crate's
 # directory via `alr exec -- gprbuild` (per README).
 #
-# Windows has no PTY backend yet (terminal_pty_posix is POSIX-only), so its job is
+# Windows has no PTY backend yet (terminal_pty is POSIX-only), so its job is
 # allowed to fail: it tracks the gap and will go green on its own once a ConPTY
 # backend lands.
 
@@ -61,13 +61,14 @@ jobs:
       - name: Build terminal
         working-directory: terminal
         run: alr --non-interactive build
+
       - name: Core smoke suite
         working-directory: terminal/terminal_core
         run: |
           alr --non-interactive exec -- gprbuild -p -P tests/core_tests.gpr
           for t in tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
       - name: PTY smoke suite
-        working-directory: terminal/terminal_pty_posix
+        working-directory: terminal/terminal_pty
         run: |
           alr --non-interactive exec -- gprbuild -p -P tests/pty_tests.gpr
           for t in tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
@@ -117,7 +118,7 @@ jobs:
         working-directory: terminal
         run: |
           ( cd terminal_core && alr --non-interactive exec -- gprbuild -p -P tests/core_tests.gpr )
-          ( cd terminal_pty_posix && alr --non-interactive exec -- gprbuild -p -P tests/pty_tests.gpr )
+          ( cd terminal_pty && alr --non-interactive exec -- gprbuild -p -P tests/pty_tests.gpr )
           ( cd terminal_glfw_vulkan_app && alr --non-interactive exec -- gprbuild -p -P tests/app_tests.gpr )
       - name: Run the headless-safe smokes (core + PTY)
         working-directory: terminal
@@ -125,15 +126,20 @@ jobs:
         # logic) and PTY (POSIX, works on Darwin) run headless.
         run: |
           for t in terminal_core/tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
-          for t in terminal_pty_posix/tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
+          for t in terminal_pty/tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
 
   windows:
-    name: Windows build (unsupported, tracking)
+    name: Windows build + PTY smoke
     runs-on: windows-latest
-    # terminal_pty_posix is POSIX-only; there is no Windows PTY backend yet, so the
-    # build is expected to fail here. Keep the job visible (it will go green once a
-    # ConPTY backend exists) without redding the workflow.
+    # No longer expected to fail: terminal_pty has a ConPTY backend now, chosen
+    # with TERMINAL_PTY_OS below. Kept non-blocking for one more round while that
+    # backend proves itself on a real runner -- it has never run anywhere else --
+    # and to be made blocking once it has.
     continue-on-error: true
+    env:
+      # Selects the ConPTY backend. The project language has no conditional
+      # expressions, so the crate cannot work the host out for itself.
+      TERMINAL_PTY_OS: windows
     steps:
       - uses: actions/checkout@v7
         with: { path: terminal }
@@ -194,3 +200,17 @@ jobs:
       - name: Build terminal
         working-directory: terminal
         run: alr --non-interactive build
+      - name: PTY smoke (ConPTY)
+        # The point of the whole job. A backend that compiles says nothing about
+        # whether it can start a shell, so this spawns one, writes to it, reads
+        # what comes back, and closes it.
+        shell: bash
+        working-directory: terminal/terminal_pty
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P tests/pty_tests.gpr \
+            -XTERMINAL_PTY_OS=windows
+          for t in tests/bin/*_smoke.exe; do
+            echo "== $t =="
+            "$t" || exit 1
+          done
+

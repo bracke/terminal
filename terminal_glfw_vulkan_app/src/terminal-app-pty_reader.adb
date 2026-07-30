@@ -6,7 +6,7 @@ package body Terminal.App.PTY_Reader is
    task body Reader is
       Chunk  : Terminal.App.Queues.Byte_Chunk;
       Last   : Natural;
-      Status : Terminal.PTY.POSIX.Read_Status;
+      Status : Terminal.PTY.Backend.Read_Status;
       Done   : Boolean := False;
    begin
       while not Done loop
@@ -20,15 +20,15 @@ package body Terminal.App.PTY_Reader is
 
          exit when Done;
 
-         Terminal.PTY.POSIX.Read (Session.all, Chunk.Data, Last, Status);
+         Terminal.PTY.Backend.Read (Session.all, Chunk.Data, Last, Status);
          case Status is
-            when Terminal.PTY.POSIX.Ok =>
+            when Terminal.PTY.Backend.Ok =>
                Chunk.Length := Last;
                Queue.Push (Chunk);
                --  Wake the main loop from its idle sleep so freshly read output
                --  is fed and drawn without waiting out the event timeout.
                GLFW_Vulkan.Events.Post_Empty_Event;
-            when Terminal.PTY.POSIX.End_Of_File | Terminal.PTY.POSIX.Session_Closed =>
+            when Terminal.PTY.Backend.End_Of_File | Terminal.PTY.Backend.Session_Closed =>
                exit;
             when others =>
                delay 0.01;

@@ -22,7 +22,7 @@ with Terminal.App.Text_Blink;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Submit;
 with Terminal.Core;
-with Terminal.PTY.POSIX;
+with Terminal.PTY.Backend;
 
 procedure Diagnostics_Smoke is
    use AUnit.Assertions;
@@ -65,12 +65,12 @@ begin
         Terminal.App.Theme.Status_Label (Config.Color_Theme);
       Font_Status : constant String :=
         Terminal.App.Fonts.Status_Label ("/tmp/MainFont.ttf", 3);
-      PTY_Capabilities : constant Terminal.PTY.POSIX.Backend_Capabilities :=
-        Terminal.PTY.POSIX.Capabilities;
+      PTY_Capabilities : constant Terminal.PTY.Backend.Backend_Capabilities :=
+        Terminal.PTY.Backend.Capabilities;
       PTY_Backend_Status : constant String :=
-        Terminal.PTY.POSIX.Backend_Status_Label (PTY_Capabilities);
+        Terminal.PTY.Backend.Backend_Status_Label (PTY_Capabilities);
       ConPTY_Status : constant String :=
-        Terminal.PTY.POSIX.ConPTY_Status_Label (PTY_Capabilities);
+        Terminal.PTY.Backend.ConPTY_Status_Label (PTY_Capabilities);
       Multiplexer_Status : constant String :=
         Terminal.App.Multiplexer_Status_Label (Terminal.App.Profile);
       Graphics_Event : Terminal.Core.Graphics_Event :=
@@ -304,15 +304,15 @@ begin
         (Contains
            (Line,
             "pty_backend_status=" &
-              Terminal.PTY.POSIX.Backend_Status_Label
-                (Terminal.PTY.POSIX.Capabilities)),
+              Terminal.PTY.Backend.Backend_Status_Label
+                (Terminal.PTY.Backend.Capabilities)),
          "PTY backend status should be included");
       Assert
         (Contains
            (Line,
             "conpty_status=" &
-              Terminal.PTY.POSIX.ConPTY_Status_Label
-                (Terminal.PTY.POSIX.Capabilities)),
+              Terminal.PTY.Backend.ConPTY_Status_Label
+                (Terminal.PTY.Backend.Capabilities)),
          "ConPTY status should be included");
       Assert
         (Contains

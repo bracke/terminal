@@ -14,13 +14,13 @@
 #include <termios.h>
 #include <unistd.h>
 
-int terminal_pty_posix_last_errno (void)
+int terminal_pty_last_errno (void)
 {
    return errno;
 }
 
 /* Set the window size on the tty behind FD. Returns 0 on success. */
-int terminal_pty_posix_set_winsize (int fd, unsigned short rows,
+int terminal_pty_set_winsize (int fd, unsigned short rows,
                                     unsigned short cols)
 {
    struct winsize ws;
@@ -33,7 +33,7 @@ int terminal_pty_posix_set_winsize (int fd, unsigned short rows,
 
 /* Make FD the controlling terminal of the calling (session-leader) process.
    Returns 0 on success. */
-int terminal_pty_posix_set_controlling_tty (int fd)
+int terminal_pty_set_controlling_tty (int fd)
 {
    return ioctl (fd, TIOCSCTTY, (void *) NULL);
 }

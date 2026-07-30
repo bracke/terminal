@@ -28,7 +28,7 @@ with Terminal.App.Text_Blink;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
-with Terminal.PTY.POSIX;
+with Terminal.PTY.Backend;
 
 package body Terminal.App.Main_Loop is
    use type Ada.Real_Time.Time;
@@ -42,8 +42,8 @@ package body Terminal.App.Main_Loop is
    use type Terminal.Core.Initialize_Status;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Resize_Status;
-   use type Terminal.PTY.POSIX.Spawn_Status;
-   use type Terminal.PTY.POSIX.Resize_Status;
+   use type Terminal.PTY.Backend.Spawn_Status;
+   use type Terminal.PTY.Backend.Resize_Status;
    use type Terminal.App.PTY_Write.Write_All_Status;
    use type Terminal.App.Splits.Split_Command;
    use type Terminal.App.Tabs.Tab_Command;
@@ -238,7 +238,7 @@ package body Terminal.App.Main_Loop is
 
    procedure Apply_Clipboard_Request
      (W : GLFW_Vulkan.Windows.Window;
-      S : in out Terminal.PTY.POSIX.Session;
+      S : in out Terminal.PTY.Backend.Session;
       Store : in out Terminal.App.Clipboard_OSC52.Target_Store;
       T : in out Terminal.Core.Terminal;
       Ok : out Boolean;
@@ -334,8 +334,8 @@ package body Terminal.App.Main_Loop is
       Window_Status : GLFW_Vulkan.Windows.Create_Status;
       T : Terminal.Core.Terminal;
       Core_Status : Terminal.Core.Initialize_Status;
-      S : aliased Terminal.PTY.POSIX.Session;
-      Spawn_Status : Terminal.PTY.POSIX.Spawn_Status;
+      S : aliased Terminal.PTY.Backend.Session;
+      Spawn_Status : Terminal.PTY.Backend.Spawn_Status;
       PTY_Q : aliased Terminal.App.Queues.PTY_Output_Queue;
       In_Q  : aliased Terminal.App.Queues.Input_Event_Queue;
       R     : Terminal.App.Renderer.Renderer;
@@ -379,12 +379,12 @@ package body Terminal.App.Main_Loop is
         Terminal.App.Fonts.Status_Label
           (Terminal.App.Fonts.Default_Font_Path,
            Terminal.App.Fonts.Fallback_Font_Paths'Length);
-      PTY_Capabilities : constant Terminal.PTY.POSIX.Backend_Capabilities :=
-        Terminal.PTY.POSIX.Capabilities;
+      PTY_Capabilities : constant Terminal.PTY.Backend.Backend_Capabilities :=
+        Terminal.PTY.Backend.Capabilities;
       Runtime_PTY_Backend_Status : constant String :=
-        Terminal.PTY.POSIX.Backend_Status_Label (PTY_Capabilities);
+        Terminal.PTY.Backend.Backend_Status_Label (PTY_Capabilities);
       Runtime_ConPTY_Status : constant String :=
-        Terminal.PTY.POSIX.ConPTY_Status_Label (PTY_Capabilities);
+        Terminal.PTY.Backend.ConPTY_Status_Label (PTY_Capabilities);
       Runtime_Multiplexer_Status : constant String :=
         Terminal.App.Multiplexer_Status_Label (Terminal.App.Profile);
       Last_Click_Time : Ada.Real_Time.Time := Blink_Origin;
@@ -523,14 +523,14 @@ package body Terminal.App.Main_Loop is
          Terminal.App.Renderer.Cell_Width (R),
          Terminal.App.Renderer.Cell_Height (R));
       Terminal.Core.Set_Window_Pixel_Size (T, FB_Width, FB_Height);
-      Terminal.PTY.POSIX.Spawn_Default_Shell
+      Terminal.PTY.Backend.Spawn_Default_Shell
         (S, Initial_Rows, Initial_Cols, Spawn_Status);
 
-      if Spawn_Status /= Terminal.PTY.POSIX.Ok then
+      if Spawn_Status /= Terminal.PTY.Backend.Ok then
          Terminal.App.Diagnostics.Log_Startup_Failure
            ("pty",
-            Terminal.PTY.POSIX.Spawn_Status'Image (Spawn_Status));
-         Terminal.PTY.POSIX.Close (S);
+            Terminal.PTY.Backend.Spawn_Status'Image (Spawn_Status));
+         Terminal.PTY.Backend.Close (S);
          Terminal.App.Renderer.Finalize (R);
          Terminal.App.Vulkan_Presenter.Finalize (Presenter);
          Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
@@ -1054,7 +1054,7 @@ package body Terminal.App.Main_Loop is
                      New_Rows : Positive;
                      New_Cols : Positive;
                      Core_Resize : Terminal.Core.Resize_Status;
-                     PTY_Resize  : Terminal.PTY.POSIX.Resize_Status;
+                     PTY_Resize  : Terminal.PTY.Backend.Resize_Status;
                   begin
                      Terminal.App.Resize.Pixels_To_Cells
                        (FB_Width,
@@ -1066,9 +1066,9 @@ package body Terminal.App.Main_Loop is
                         New_Cols);
                      if New_Rows /= Last_Rows or else New_Cols /= Last_Cols then
                         Terminal.Core.Resize (T, New_Rows, New_Cols, Core_Resize);
-                        Terminal.PTY.POSIX.Resize (S, New_Rows, New_Cols, PTY_Resize);
+                        Terminal.PTY.Backend.Resize (S, New_Rows, New_Cols, PTY_Resize);
                         if Core_Resize = Terminal.Core.Ok
-                          and then PTY_Resize = Terminal.PTY.POSIX.Ok
+                          and then PTY_Resize = Terminal.PTY.Backend.Ok
                         then
                            Last_Rows := New_Rows;
                            Last_Cols := New_Cols;
@@ -1296,7 +1296,7 @@ package body Terminal.App.Main_Loop is
          end loop;
 
          Reader_Task.Stop;
-         Terminal.PTY.POSIX.Close (S);
+         Terminal.PTY.Backend.Close (S);
       end;
 
       Input_Queue := null;

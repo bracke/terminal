@@ -8,7 +8,7 @@ with Terminal.App.Queues;
 with Terminal.App.Render_Policy;
 with Terminal.Common.Bytes;
 with Terminal.Core;
-with Terminal.PTY.POSIX;
+with Terminal.PTY.Backend;
 
 procedure App_Profile_Smoke is
    use AUnit.Assertions;
@@ -55,10 +55,10 @@ begin
      (Terminal.App.Color_Term = "truecolor",
       "terminal COLORTERM identity");
    Assert
-     (Terminal.App.Term_Name = Terminal.PTY.POSIX.Term_Name,
+     (Terminal.App.Term_Name = Terminal.PTY.Backend.Term_Name,
       "app and PTY TERM identity should match");
    Assert
-     (Terminal.App.Color_Term = Terminal.PTY.POSIX.Color_Term,
+     (Terminal.App.Color_Term = Terminal.PTY.Backend.Color_Term,
       "app and PTY COLORTERM identity should match");
    Assert (Profile.Bracketed_Paste, "profile bracketed paste");
    Assert (Profile.Focus_Reporting, "profile focus reporting");

@@ -1,15 +1,15 @@
 with AUnit.Assertions;
 
 with Terminal.Common.Bytes;
-with Terminal.PTY.POSIX;
+with Terminal.PTY.Backend;
 
 procedure PTY_Resize_Smoke is
    use AUnit.Assertions;
    use Terminal.Common.Bytes;
-   use type Terminal.PTY.POSIX.Read_Status;
-   use type Terminal.PTY.POSIX.Resize_Status;
-   use type Terminal.PTY.POSIX.Spawn_Status;
-   use type Terminal.PTY.POSIX.Write_Status;
+   use type Terminal.PTY.Backend.Read_Status;
+   use type Terminal.PTY.Backend.Resize_Status;
+   use type Terminal.PTY.Backend.Spawn_Status;
+   use type Terminal.PTY.Backend.Write_Status;
 
    Initial_Rows : constant Positive := 24;
    Initial_Cols : constant Positive := 80;
@@ -20,11 +20,11 @@ procedure PTY_Resize_Smoke is
    Ready_Marker  : constant String := "__PTY_READY__";
    Expected     : constant String := "33 101";
 
-   S             : Terminal.PTY.POSIX.Session;
-   Spawn_Status  : Terminal.PTY.POSIX.Spawn_Status;
-   Resize_Status : Terminal.PTY.POSIX.Resize_Status;
-   Write_Status  : Terminal.PTY.POSIX.Write_Status;
-   Read_Status   : Terminal.PTY.POSIX.Read_Status;
+   S             : Terminal.PTY.Backend.Session;
+   Spawn_Status  : Terminal.PTY.Backend.Spawn_Status;
+   Resize_Status : Terminal.PTY.Backend.Resize_Status;
+   Write_Status  : Terminal.PTY.Backend.Write_Status;
+   Read_Status   : Terminal.PTY.Backend.Read_Status;
    Buffer        : Byte_Array (1 .. 1024);
    Last          : Natural := 0;
    Output        : String (1 .. 8192) := (others => ASCII.NUL);
@@ -44,17 +44,17 @@ procedure PTY_Resize_Smoke is
       Wrote : Natural := 0;
    begin
       while First <= Data'Last loop
-         Terminal.PTY.POSIX.Write
+         Terminal.PTY.Backend.Write
            (S, Data (First .. Data'Last), Wrote, Write_Status);
 
          case Write_Status is
-            when Terminal.PTY.POSIX.Ok | Terminal.PTY.POSIX.Partial =>
+            when Terminal.PTY.Backend.Ok | Terminal.PTY.Backend.Partial =>
                Assert (Wrote > 0, "write made no progress");
                First := First + Wrote;
-            when Terminal.PTY.POSIX.Interrupted =>
+            when Terminal.PTY.Backend.Interrupted =>
                null;
-            when Terminal.PTY.POSIX.Failed
-               | Terminal.PTY.POSIX.Session_Closed =>
+            when Terminal.PTY.Backend.Failed
+               | Terminal.PTY.Backend.Session_Closed =>
                Assert (False, "pty write failed");
          end case;
       end loop;
@@ -91,16 +91,16 @@ procedure PTY_Resize_Smoke is
    begin
       Found := False;
       for Attempt in 1 .. 300 loop
-         Terminal.PTY.POSIX.Read (S, Buffer, Last, Read_Status);
+         Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
          case Read_Status is
-            when Terminal.PTY.POSIX.Ok =>
+            when Terminal.PTY.Backend.Ok =>
                Append_Output;
-            when Terminal.PTY.POSIX.Would_Block
-               | Terminal.PTY.POSIX.Interrupted =>
+            when Terminal.PTY.Backend.Would_Block
+               | Terminal.PTY.Backend.Interrupted =>
                delay 0.01;
-            when Terminal.PTY.POSIX.End_Of_File
-               | Terminal.PTY.POSIX.Failed
-               | Terminal.PTY.POSIX.Session_Closed =>
+            when Terminal.PTY.Backend.End_Of_File
+               | Terminal.PTY.Backend.Failed
+               | Terminal.PTY.Backend.Session_Closed =>
                exit;
          end case;
 
@@ -111,9 +111,9 @@ procedure PTY_Resize_Smoke is
       end loop;
    end Drain_Until;
 begin
-   Terminal.PTY.POSIX.Spawn_Default_Shell
+   Terminal.PTY.Backend.Spawn_Default_Shell
      (S, Initial_Rows, Initial_Cols, Spawn_Status);
-   Assert (Spawn_Status = Terminal.PTY.POSIX.Ok, "pty spawn failed");
+   Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
 
    declare
       Ready_Data : constant Byte_Array := To_Bytes (Ready_Command);
@@ -124,8 +124,8 @@ begin
       Assert (Ready, "shell should execute readiness command");
    end;
 
-   Terminal.PTY.POSIX.Resize (S, Resized_Rows, Resized_Cols, Resize_Status);
-   Assert (Resize_Status = Terminal.PTY.POSIX.Ok, "pty resize failed");
+   Terminal.PTY.Backend.Resize (S, Resized_Rows, Resized_Cols, Resize_Status);
+   Assert (Resize_Status = Terminal.PTY.Backend.Ok, "pty resize failed");
 
    declare
       Size_Data : constant Byte_Array := To_Bytes (Size_Command);
@@ -133,7 +133,7 @@ begin
    begin
       Write_All (Size_Data);
       Drain_Until (Expected, Found);
-      Terminal.PTY.POSIX.Close (S);
+      Terminal.PTY.Backend.Close (S);
       Assert (Found, "child shell should observe resized pty size");
    end;
 end PTY_Resize_Smoke;

@@ -1,30 +1,30 @@
 with AUnit.Assertions;
 
 with Terminal.Common.Bytes;
-with Terminal.PTY.POSIX;
+with Terminal.PTY.Backend;
 
 procedure PTY_Env_Smoke is
    use AUnit.Assertions;
    use Terminal.Common.Bytes;
-   use type Terminal.PTY.POSIX.Read_Status;
-   use type Terminal.PTY.POSIX.Spawn_Status;
-   use type Terminal.PTY.POSIX.Write_Status;
+   use type Terminal.PTY.Backend.Read_Status;
+   use type Terminal.PTY.Backend.Spawn_Status;
+   use type Terminal.PTY.Backend.Write_Status;
 
    Rows : constant Positive := 12;
    Cols : constant Positive := 80;
    Term_Marker : constant String :=
-     "__TERM=" & Terminal.PTY.POSIX.Term_Name & "__";
+     "__TERM=" & Terminal.PTY.Backend.Term_Name & "__";
    Color_Marker : constant String :=
-     "__COLORTERM=" & Terminal.PTY.POSIX.Color_Term & "__";
+     "__COLORTERM=" & Terminal.PTY.Backend.Color_Term & "__";
    Command : constant String :=
      "printf '__TERM=%s__\n' ""$TERM""; "
      & "printf '__COLORTERM=%s__\n' ""$COLORTERM""; exit"
      & Character'Val (13);
 
-   S            : Terminal.PTY.POSIX.Session;
-   Spawn_Status : Terminal.PTY.POSIX.Spawn_Status;
-   Write_Status : Terminal.PTY.POSIX.Write_Status;
-   Read_Status  : Terminal.PTY.POSIX.Read_Status;
+   S            : Terminal.PTY.Backend.Session;
+   Spawn_Status : Terminal.PTY.Backend.Spawn_Status;
+   Write_Status : Terminal.PTY.Backend.Write_Status;
+   Read_Status  : Terminal.PTY.Backend.Read_Status;
    Buffer       : Byte_Array (1 .. 1024);
    Last         : Natural := 0;
    Output       : String (1 .. 4096) := (others => ASCII.NUL);
@@ -44,17 +44,17 @@ procedure PTY_Env_Smoke is
       Wrote : Natural := 0;
    begin
       while First <= Data'Last loop
-         Terminal.PTY.POSIX.Write
+         Terminal.PTY.Backend.Write
            (S, Data (First .. Data'Last), Wrote, Write_Status);
 
          case Write_Status is
-            when Terminal.PTY.POSIX.Ok | Terminal.PTY.POSIX.Partial =>
+            when Terminal.PTY.Backend.Ok | Terminal.PTY.Backend.Partial =>
                Assert (Wrote > 0, "write made no progress");
                First := First + Wrote;
-            when Terminal.PTY.POSIX.Interrupted =>
+            when Terminal.PTY.Backend.Interrupted =>
                null;
-            when Terminal.PTY.POSIX.Failed
-               | Terminal.PTY.POSIX.Session_Closed =>
+            when Terminal.PTY.Backend.Failed
+               | Terminal.PTY.Backend.Session_Closed =>
                Assert (False, "pty write failed");
          end case;
       end loop;
@@ -85,14 +85,14 @@ procedure PTY_Env_Smoke is
    end Contains;
 begin
    Assert
-     (Terminal.PTY.POSIX.Term_Name = "xterm-256color",
+     (Terminal.PTY.Backend.Term_Name = "xterm-256color",
       "PTY TERM constant");
    Assert
-     (Terminal.PTY.POSIX.Color_Term = "truecolor",
+     (Terminal.PTY.Backend.Color_Term = "truecolor",
       "PTY COLORTERM constant");
 
-   Terminal.PTY.POSIX.Spawn_Default_Shell (S, Rows, Cols, Spawn_Status);
-   Assert (Spawn_Status = Terminal.PTY.POSIX.Ok, "pty spawn failed");
+   Terminal.PTY.Backend.Spawn_Default_Shell (S, Rows, Cols, Spawn_Status);
+   Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
 
    declare
       Data : constant Byte_Array := To_Bytes (Command);
@@ -101,23 +101,23 @@ begin
    end;
 
    for Attempt in 1 .. 300 loop
-      Terminal.PTY.POSIX.Read (S, Buffer, Last, Read_Status);
+      Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
       case Read_Status is
-         when Terminal.PTY.POSIX.Ok =>
+         when Terminal.PTY.Backend.Ok =>
             Append_Output;
-         when Terminal.PTY.POSIX.Would_Block
-            | Terminal.PTY.POSIX.Interrupted =>
+         when Terminal.PTY.Backend.Would_Block
+            | Terminal.PTY.Backend.Interrupted =>
             delay 0.01;
-         when Terminal.PTY.POSIX.End_Of_File
-            | Terminal.PTY.POSIX.Failed
-            | Terminal.PTY.POSIX.Session_Closed =>
+         when Terminal.PTY.Backend.End_Of_File
+            | Terminal.PTY.Backend.Failed
+            | Terminal.PTY.Backend.Session_Closed =>
             exit;
       end case;
 
       exit when Contains (Term_Marker) and then Contains (Color_Marker);
    end loop;
 
-   Terminal.PTY.POSIX.Close (S);
+   Terminal.PTY.Backend.Close (S);
 
    Assert (Contains (Term_Marker), "child shell should see TERM=xterm-256color");
    Assert

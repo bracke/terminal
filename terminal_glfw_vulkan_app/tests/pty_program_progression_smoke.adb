@@ -5,7 +5,7 @@ with Terminal.Common.Bytes;
 with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.Core;
-with Terminal.PTY.POSIX;
+with Terminal.PTY.Backend;
 
 procedure PTY_Program_Progression_Smoke is
    use AUnit.Assertions;
@@ -14,8 +14,8 @@ procedure PTY_Program_Progression_Smoke is
    use type Terminal.App.PTY_Write.Write_All_Status;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
-   use type Terminal.PTY.POSIX.Read_Status;
-   use type Terminal.PTY.POSIX.Spawn_Status;
+   use type Terminal.PTY.Backend.Read_Status;
+   use type Terminal.PTY.Backend.Spawn_Status;
 
    Rows : constant Positive := 24;
    Cols : constant Positive := 120;
@@ -54,12 +54,12 @@ procedure PTY_Program_Progression_Smoke is
    T            : Terminal.Core.Terminal;
    Init_Status  : Terminal.Core.Initialize_Status;
    Feed_Status  : Terminal.Core.Feed_Status;
-   S            : Terminal.PTY.POSIX.Session;
-   Spawn_Status : Terminal.PTY.POSIX.Spawn_Status;
+   S            : Terminal.PTY.Backend.Session;
+   Spawn_Status : Terminal.PTY.Backend.Spawn_Status;
    Write_Status : Terminal.App.PTY_Write.Write_All_Status;
    Buffer       : Byte_Array (1 .. 4096);
    Last         : Natural := 0;
-   Read_Status  : Terminal.PTY.POSIX.Read_Status;
+   Read_Status  : Terminal.PTY.Backend.Read_Status;
    Git_Found    : Boolean := False;
    Git_Status_Found : Boolean := False;
    Less_Found   : Boolean := False;
@@ -159,8 +159,8 @@ begin
    Terminal.Core.Initialize (T, Rows, Cols, 200, Init_Status);
    Assert (Init_Status = Terminal.Core.Ok, "core initialize failed");
 
-   Terminal.PTY.POSIX.Spawn_Default_Shell (S, Rows, Cols, Spawn_Status);
-   Assert (Spawn_Status = Terminal.PTY.POSIX.Ok, "pty spawn failed");
+   Terminal.PTY.Backend.Spawn_Default_Shell (S, Rows, Cols, Spawn_Status);
+   Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
 
    declare
       Data : constant Terminal.App.Queues.Byte_Chunk := To_Chunk (Command);
@@ -170,9 +170,9 @@ begin
    end;
 
    for Attempt in 1 .. 900 loop
-      Terminal.PTY.POSIX.Read (S, Buffer, Last, Read_Status);
+      Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
       case Read_Status is
-         when Terminal.PTY.POSIX.Ok =>
+         when Terminal.PTY.Backend.Ok =>
             if Last > 0 then
                Terminal.Core.Feed (T, Buffer (1 .. Last), Feed_Status);
                Assert
@@ -181,12 +181,12 @@ begin
                   "core feed should accept program output");
                Inspect_Snapshot;
             end if;
-         when Terminal.PTY.POSIX.Would_Block
-            | Terminal.PTY.POSIX.Interrupted =>
+         when Terminal.PTY.Backend.Would_Block
+            | Terminal.PTY.Backend.Interrupted =>
             delay 0.01;
-         when Terminal.PTY.POSIX.End_Of_File
-            | Terminal.PTY.POSIX.Failed
-            | Terminal.PTY.POSIX.Session_Closed =>
+         when Terminal.PTY.Backend.End_Of_File
+            | Terminal.PTY.Backend.Failed
+            | Terminal.PTY.Backend.Session_Closed =>
             exit;
       end case;
 
@@ -198,7 +198,7 @@ begin
         and then Top_Found;
    end loop;
 
-   Terminal.PTY.POSIX.Close (S);
+   Terminal.PTY.Backend.Close (S);
 
    Assert (Git_Found, "git status progression marker should be visible");
    Assert (Git_Status_Found, "git status should report changed tracked file");

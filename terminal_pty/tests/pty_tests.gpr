@@ -1,4 +1,4 @@
-with "../terminal_pty_posix.gpr";
+with "../terminal_pty.gpr";
 with "aunit";
 
 project PTY_Tests is
