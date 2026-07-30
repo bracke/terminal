@@ -20,8 +20,19 @@ project Terminal_GLFW_Vulkan_App is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwe");
    end Compiler;
 
+   --  MSYS2 names these libraries differently from every Unix: libglfw3.dll.a
+   --  and libvulkan-1.dll.a, so -lglfw and -lvulkan find nothing there. Same
+   --  scenario variable the PTY backend uses, so one setting picks the host.
+   type Link_OS_Kind is ("posix", "windows");
+   Link_Host : Link_OS_Kind := external ("TERMINAL_PTY_OS", "posix");
+
    package Linker is
-      for Switches ("Ada") use ("-lglfw", "-lvulkan", "-lharfbuzz");
+      case Link_Host is
+         when "windows" =>
+            for Switches ("Ada") use ("-lglfw3", "-lvulkan-1", "-lharfbuzz");
+         when "posix" =>
+            for Switches ("Ada") use ("-lglfw", "-lvulkan", "-lharfbuzz");
+      end case;
    end Linker;
    --  Bytes out as bytes in. Alire's generated switches carry -gnatW8 and the
    --  binder takes its run-time encoding from the same place, which makes
