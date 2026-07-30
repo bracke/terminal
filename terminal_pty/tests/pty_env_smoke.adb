@@ -43,6 +43,7 @@ procedure PTY_Env_Smoke is
    Output_Last  : Natural := 0;
    Attempts     : Natural := 0;
    Reads        : Natural := 0;
+   Unprompted   : Natural := 0;
    Alive_After_Spawn : Boolean := False;
 
    function To_Bytes (Text : String) return Byte_Array is
@@ -116,6 +117,27 @@ begin
    end;
 
    Alive_After_Spawn := Terminal.PTY.Backend.Is_Alive (S);
+
+   --  Listen before saying anything. A shell under a pseudo-console announces
+   --  itself -- cmd prints its version banner, sh its prompt -- so whatever
+   --  arrives here arrives without being asked for. Nothing at all separates a
+   --  console that is not connected from one that simply had nothing to say.
+   for Attempt in 1 .. 200 loop
+      Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
+
+      case Read_Status is
+         when Terminal.PTY.Backend.Ok =>
+            Unprompted := Unprompted + Last;
+            Append_Output;
+         when Terminal.PTY.Backend.Would_Block
+            | Terminal.PTY.Backend.Interrupted =>
+            delay 0.01;
+         when others =>
+            exit;
+      end case;
+
+      exit when Unprompted > 0;
+   end loop;
 
    for Attempt in 1 .. 1_500 loop
       Attempts := Attempt;
@@ -191,7 +213,9 @@ begin
             & " peeks=" & Natural'Image (R.Peeks)
             & " failed=" & Natural'Image (R.Peek_Failed)
             & " peek_error=" & Natural'Image (R.Peek_Error)
-            & " bytes_seen=" & Natural'Image (R.Bytes_Seen));
+            & " bytes_seen=" & Natural'Image (R.Bytes_Seen)
+            & "; unprompted bytes before any write:"
+            & Natural'Image (Unprompted));
       end;
    end if;
 
