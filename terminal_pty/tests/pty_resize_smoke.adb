@@ -1,3 +1,4 @@
+with Ada.Text_IO;
 with AUnit.Assertions;
 
 with Terminal.Common.Bytes;
@@ -208,6 +209,25 @@ begin
             Rows : constant Natural := Value_After ("Lines:");
             Cols : constant Natural := Value_After ("Columns:");
          begin
+            --  An assertion message is lost when AUnit's exception goes
+            --  uncaught, and what the console answered is the whole diagnosis.
+            Ada.Text_IO.Put_Line
+              ("pty_resize_smoke: asked for" & Natural'Image (Resized_Rows)
+               & " x" & Natural'Image (Resized_Cols)
+               & ", console answered" & Natural'Image (Rows)
+               & " x" & Natural'Image (Cols)
+               & " in" & Natural'Image (Output_Last) & " bytes");
+
+            for I in 1 .. Output_Last loop
+               if Output (I) >= ' ' and then Output (I) <= '~' then
+                  Ada.Text_IO.Put (Output (I));
+               else
+                  Ada.Text_IO.Put
+                    ("<" & Natural'Image (Character'Pos (Output (I))) & ">");
+               end if;
+            end loop;
+            Ada.Text_IO.New_Line;
+
             Assert (Rows = Resized_Rows and then Cols = Resized_Cols,
                     "child shell should observe resized pty size, saw"
                     & Natural'Image (Rows) & " x" & Natural'Image (Cols));
