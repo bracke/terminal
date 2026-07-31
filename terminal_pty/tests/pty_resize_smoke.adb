@@ -15,10 +15,28 @@ procedure PTY_Resize_Smoke is
    Initial_Cols : constant Positive := 80;
    Resized_Rows : constant Positive := 33;
    Resized_Cols : constant Positive := 101;
-   Ready_Command : constant String := "printf __PTY_READY__" & Character'Val (10);
-   Size_Command  : constant String := "stty size; exit" & Character'Val (13);
+   --  Each host is asked in its own shell's language, and answers in its own
+   --  shape: stty prints the pair of numbers, mode con prints two labelled and
+   --  padded lines.
+   On_Windows : constant Boolean :=
+     Terminal.PTY.Backend.Capabilities.Windows_ConPTY;
+
+   Ready_Command : constant String :=
+     (if On_Windows
+      then "echo __PTY_READY__" & Character'Val (13)
+      else "printf __PTY_READY__" & Character'Val (10));
+
+   --  No "exit" on the Windows side, deliberately, for the same reason as the
+   --  environment smoke: a pseudo-console paints on a tick, and a shell that
+   --  answers and leaves within milliseconds can be gone before the first paint.
+   --  Close ends it afterwards.
+   Size_Command  : constant String :=
+     (if On_Windows
+      then "mode con" & Character'Val (13)
+      else "stty size; exit" & Character'Val (13));
+
    Ready_Marker  : constant String := "__PTY_READY__";
-   Expected     : constant String := "33 101";
+   Expected      : constant String := "33 101";
 
    S             : Terminal.PTY.Backend.Session;
    Spawn_Status  : Terminal.PTY.Backend.Spawn_Status;
@@ -84,25 +102,71 @@ procedure PTY_Resize_Smoke is
       return False;
    end Contains;
 
+   --  The number a label stands in front of, however much padding is between
+   --  them: "    Columns:        101" is one line of mode con's answer.
+   function Value_After (Label : String) return Natural is
+      Result : Natural := 0;
+      Seen   : Boolean := False;
+   begin
+      if Output_Last < Label'Length then
+         return 0;
+      end if;
+
+      for Start in 1 .. Output_Last - Label'Length + 1 loop
+         if Output (Start .. Start + Label'Length - 1) = Label then
+            for I in Start + Label'Length .. Output_Last loop
+               if Output (I) in '0' .. '9' then
+                  Result := Result * 10 + (Character'Pos (Output (I))
+                                           - Character'Pos ('0'));
+                  Seen := True;
+               elsif Seen or else Output (I) not in ' ' | Character'Val (9) then
+                  return Result;
+               end if;
+            end loop;
+
+            return Result;
+         end if;
+      end loop;
+
+      return 0;
+   end Value_After;
+
+   procedure Pump (Ended : out Boolean) is
+   begin
+      Ended := False;
+      Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
+      case Read_Status is
+         when Terminal.PTY.Backend.Ok =>
+            Append_Output;
+         when Terminal.PTY.Backend.Would_Block
+            | Terminal.PTY.Backend.Interrupted =>
+            delay 0.01;
+         when Terminal.PTY.Backend.End_Of_File
+            | Terminal.PTY.Backend.Failed
+            | Terminal.PTY.Backend.Session_Closed =>
+            Ended := True;
+      end case;
+   end Pump;
+
+   procedure Drain_For (Attempts : Positive) is
+      Ended : Boolean;
+   begin
+      for Attempt in 1 .. Attempts loop
+         Pump (Ended);
+         exit when Ended;
+      end loop;
+   end Drain_For;
+
    procedure Drain_Until
      (Pattern : String;
       Found   : out Boolean)
    is
+      Ended : Boolean;
    begin
       Found := False;
       for Attempt in 1 .. 300 loop
-         Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
-         case Read_Status is
-            when Terminal.PTY.Backend.Ok =>
-               Append_Output;
-            when Terminal.PTY.Backend.Would_Block
-               | Terminal.PTY.Backend.Interrupted =>
-               delay 0.01;
-            when Terminal.PTY.Backend.End_Of_File
-               | Terminal.PTY.Backend.Failed
-               | Terminal.PTY.Backend.Session_Closed =>
-               exit;
-         end case;
+         Pump (Ended);
+         exit when Ended;
 
          if Contains (Pattern) then
             Found := True;
@@ -132,8 +196,26 @@ begin
       Found     : Boolean;
    begin
       Write_All (Size_Data);
-      Drain_Until (Expected, Found);
-      Terminal.PTY.Backend.Close (S);
-      Assert (Found, "child shell should observe resized pty size");
+
+      if On_Windows then
+         --  Wait for the label, then keep reading: the number it stands in
+         --  front of is painted after it, and may well be in a later read.
+         Drain_Until ("Columns:", Found);
+         Drain_For (50);
+         Terminal.PTY.Backend.Close (S);
+
+         declare
+            Rows : constant Natural := Value_After ("Lines:");
+            Cols : constant Natural := Value_After ("Columns:");
+         begin
+            Assert (Rows = Resized_Rows and then Cols = Resized_Cols,
+                    "child shell should observe resized pty size, saw"
+                    & Natural'Image (Rows) & " x" & Natural'Image (Cols));
+         end;
+      else
+         Drain_Until (Expected, Found);
+         Terminal.PTY.Backend.Close (S);
+         Assert (Found, "child shell should observe resized pty size");
+      end if;
    end;
 end PTY_Resize_Smoke;
