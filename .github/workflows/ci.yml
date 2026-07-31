@@ -131,16 +131,9 @@ jobs:
   windows:
     name: Windows build + PTY smoke
     runs-on: windows-latest
-    # Still non-blocking, and now for a narrower reason than before.
-    #
-    # Windows builds, links and runs the PTY smokes: pty_close passes, and the
-    # spawn itself reports every step succeeding -- pipes, pseudo-console,
-    # attribute list, process, no error. What does not work is output: the shell
-    # starts, produces nothing readable, and exits. pty_env fails on that.
-    #
-    # Make this blocking when the output path works. Until then it is tracking a
-    # known and specific defect rather than a whole missing platform.
-    continue-on-error: true
+    # Blocking, as of the run where the shell finally came up: the ConPTY
+    # backend starts cmd, the banner and prompt come back through the console,
+    # a resize is observed by the child, and all four PTY smokes pass.
     env:
       # Selects the ConPTY backend. The project language has no conditional
       # expressions, so the crate cannot work the host out for itself.

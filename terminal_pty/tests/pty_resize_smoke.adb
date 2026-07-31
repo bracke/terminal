@@ -218,15 +218,17 @@ begin
                & " x" & Natural'Image (Cols)
                & " in" & Natural'Image (Output_Last) & " bytes");
 
-            for I in 1 .. Output_Last loop
-               if Output (I) >= ' ' and then Output (I) <= '~' then
-                  Ada.Text_IO.Put (Output (I));
-               else
-                  Ada.Text_IO.Put
-                    ("<" & Natural'Image (Character'Pos (Output (I))) & ">");
-               end if;
-            end loop;
-            Ada.Text_IO.New_Line;
+            if Rows /= Resized_Rows or else Cols /= Resized_Cols then
+               for I in 1 .. Output_Last loop
+                  if Output (I) >= ' ' and then Output (I) <= '~' then
+                     Ada.Text_IO.Put (Output (I));
+                  else
+                     Ada.Text_IO.Put
+                       ("<" & Natural'Image (Character'Pos (Output (I))) & ">");
+                  end if;
+               end loop;
+               Ada.Text_IO.New_Line;
+            end if;
 
             Assert (Rows = Resized_Rows and then Cols = Resized_Cols,
                     "child shell should observe resized pty size, saw"
