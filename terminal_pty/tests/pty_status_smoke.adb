@@ -1,3 +1,4 @@
+with Ada.Text_IO;
 with AUnit.Assertions;
 with Terminal.Common.Bytes;
 with Terminal.PTY.Backend;
@@ -22,41 +23,67 @@ procedure PTY_Status_Smoke is
    --  first thing worth asserting: everything below reads differently depending
    --  on it.
    On_Windows : constant Boolean := Caps.Windows_ConPTY;
+
+   Failures : Natural := 0;
+
+   --  Every check is named and reported, rather than the first one raising:
+   --  an assertion message is lost when AUnit's exception goes uncaught, so a
+   --  failure would otherwise say only that something in here is wrong.
+   procedure Check (Condition : Boolean; Label : String) is
+   begin
+      if not Condition then
+         Failures := Failures + 1;
+         Ada.Text_IO.Put_Line ("pty_status_smoke: FAILED " & Label);
+      end if;
+   end Check;
 begin
-   Assert (Caps.POSIX_PTY xor Caps.Windows_ConPTY,
+   Ada.Text_IO.Put_Line
+     ("pty_status_smoke: posix=" & Boolean'Image (Caps.POSIX_PTY)
+      & " conpty=" & Boolean'Image (Caps.Windows_ConPTY)
+      & " resize=" & Boolean'Image (Caps.Resize)
+      & " env=" & Boolean'Image (Caps.Terminal_Env)
+      & " nonblocking=" & Boolean'Image (Caps.Nonblocking_Read));
+   Ada.Text_IO.Put_Line
+     ("pty_status_smoke: backend=[" &
+      Terminal.PTY.Backend.Backend_Status_Label (Caps) & "] conpty=[" &
+      Terminal.PTY.Backend.ConPTY_Status_Label (Caps) & "]");
+
+   Check (Caps.POSIX_PTY xor Caps.Windows_ConPTY,
            "exactly one PTY backend should be in use");
-   Assert (Caps.Resize, "PTY resize capability");
-   Assert (Caps.Terminal_Env, "terminal environment capability");
-   Assert (Caps.Nonblocking_Read, "nonblocking read capability");
-   Assert
+   Check (Caps.Resize, "PTY resize capability");
+   Check (Caps.Terminal_Env, "terminal environment capability");
+   Check (Caps.Nonblocking_Read, "nonblocking read capability");
+   Check
      (Terminal.PTY.Backend.Backend_Status_Label (Caps) =
       (if On_Windows
        then "Windows ConPTY backend with resize, env, and nonblocking read"
        else "POSIX PTY backend with resize, env, and nonblocking read"),
       "PTY backend status label");
-   Assert
+   Check
      (Terminal.PTY.Backend.Backend_Status_Label (Caps)'Length <=
       Terminal.PTY.Backend.Max_Status_Label_Length,
       "PTY backend status label should be bounded");
-   Assert
+   Check
      (Terminal.PTY.Backend.ConPTY_Status_Label (Caps) =
       (if On_Windows
        then "Windows ConPTY supported"
        else "Windows ConPTY unsupported by POSIX PTY backend"),
       "ConPTY status label");
-   Assert
+   Check
      (Terminal.PTY.Backend.ConPTY_Status_Label (Caps)'Length <=
       Terminal.PTY.Backend.Max_Status_Label_Length,
       "ConPTY status label should be bounded");
 
    Terminal.PTY.Backend.Read (S, Buffer, Last, R_Status);
-   Assert (R_Status = Terminal.PTY.Backend.Session_Closed, "closed read status");
-   Assert (Last = 0, "closed read last");
+   Check (R_Status = Terminal.PTY.Backend.Session_Closed, "closed read status");
+   Check (Last = 0, "closed read last");
 
    Terminal.PTY.Backend.Write (S, (1 => 16#0D#), Last, W_Status);
-   Assert (W_Status = Terminal.PTY.Backend.Session_Closed, "closed write status");
-   Assert (Last = 0, "closed write last");
+   Check (W_Status = Terminal.PTY.Backend.Session_Closed, "closed write status");
+   Check (Last = 0, "closed write last");
 
    Terminal.PTY.Backend.Resize (S, 24, 80, Z_Status);
-   Assert (Z_Status = Terminal.PTY.Backend.Session_Closed, "closed resize status");
+   Check (Z_Status = Terminal.PTY.Backend.Session_Closed, "closed resize status");
+   Assert (Failures = 0,
+           "capability smoke had" & Natural'Image (Failures) & " failures");
 end PTY_Status_Smoke;
