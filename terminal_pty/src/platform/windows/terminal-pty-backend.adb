@@ -352,11 +352,14 @@ package body Terminal.PTY.Backend is
 
       Trace.Console_Made := True;
 
-      --  The console holds its own copies of those two ends now.
-      Ignored := Close_Handle (Input_Read);
-      Input_Read := System.Null_Address;
-      Ignored := Close_Handle (Output_Write);
-      Output_Write := System.Null_Address;
+      --  The console's ends of the pipes stay open until the child exists.
+      --
+      --  The documentation says the console duplicates them and Microsoft's own
+      --  sample closes them here, so this ought not to matter -- but the shell
+      --  attaches, sets its title, and then nothing it draws ever comes back,
+      --  and this is the one ordering difference left between this and the
+      --  implementations that work. Holding them costs two handles for the
+      --  length of a CreateProcess call.
 
       --  A child is attached to a pseudo-console through a process attribute,
       --  not through inherited descriptors, so the attribute list has to be
@@ -421,6 +424,12 @@ package body Terminal.PTY.Backend is
       Trace.Process_Made := True;
 
       Interfaces.C.Strings.Free (Command);
+
+      --  Now the child is attached, these are the console's business alone.
+      Ignored := Close_Handle (Input_Read);
+      Input_Read := System.Null_Address;
+      Ignored := Close_Handle (Output_Write);
+      Output_Write := System.Null_Address;
 
       S.Console := Console;
       S.Input_Write := Input_Write;
