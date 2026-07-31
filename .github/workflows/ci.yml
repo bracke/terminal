@@ -225,6 +225,72 @@ jobs:
             -XTERMINAL_PTY_OS=windows
           ./tests/bin/pty_env_smoke.exe || true
 
+      - name: Reference ConPTY in C, for comparison
+        # The Ada spawn matches the documented prototypes field by field and
+        # every call reports success, yet the child ends up on the parent's
+        # console: hostname.exe printed the runner's name into this log instead
+        # of into the pipe. Either the Ada is wrong in a way reading it will not
+        # show, or a pseudo-console does not take here.
+        #
+        # Forty lines of C settle it. Same runner, same child, Microsoft's own
+        # sequence: if this captures the hostname the fault is mine, and if it
+        # does not the fault is the environment.
+        shell: bash
+        continue-on-error: true
+        run: |
+          cat > conpty.c <<'EOF'
+          #include <windows.h>
+          #include <stdio.h>
+          int main (void) {
+            HANDLE in_r, in_w, out_r, out_w;
+            HPCON pc;
+            STARTUPINFOEXA si;
+            PROCESS_INFORMATION pi;
+            SIZE_T size = 0;
+            COORD dim;
+            char buf[512];
+            DWORD got = 0, avail = 0;
+            int i;
+            dim.X = 80; dim.Y = 12;
+            CreatePipe (&in_r, &in_w, NULL, 0);
+            CreatePipe (&out_r, &out_w, NULL, 0);
+            printf ("CreatePseudoConsole hr=%ld\n",
+                    (long) CreatePseudoConsole (dim, in_r, out_w, 0, &pc));
+            ZeroMemory (&si, sizeof si);
+            si.StartupInfo.cb = sizeof si;
+            InitializeProcThreadAttributeList (NULL, 1, 0, &size);
+            si.lpAttributeList = HeapAlloc (GetProcessHeap (), 0, size);
+            printf ("init=%d size=%llu\n",
+                    InitializeProcThreadAttributeList (si.lpAttributeList, 1, 0, &size),
+                    (unsigned long long) size);
+            printf ("update=%d\n",
+                    UpdateProcThreadAttribute (si.lpAttributeList, 0,
+                      PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, pc, sizeof pc, NULL, NULL));
+            printf ("create=%d cb=%lu\n",
+                    CreateProcessA (NULL, "hostname.exe", NULL, NULL, FALSE,
+                      EXTENDED_STARTUPINFO_PRESENT, NULL, NULL,
+                      &si.StartupInfo, &pi),
+                    (unsigned long) si.StartupInfo.cb);
+            CloseHandle (in_r); CloseHandle (out_w);
+            for (i = 0; i < 200; i++) {
+              if (PeekNamedPipe (out_r, NULL, 0, NULL, &avail, NULL) && avail > 0) {
+                if (ReadFile (out_r, buf, sizeof buf - 1, &got, NULL) && got > 0) {
+                  buf[got] = 0;
+                  printf ("read %lu bytes: ", (unsigned long) got);
+                  for (DWORD j = 0; j < got; j++)
+                    printf ("%s", buf[j] >= 32 && buf[j] < 127 ? (char[]){buf[j],0} : ".");
+                  printf ("\n");
+                }
+              }
+              Sleep (10);
+            }
+            printf ("done\n");
+            return 0;
+          }
+          EOF
+          gcc -o conpty.exe conpty.c || exit 1
+          ./conpty.exe
+
       - name: PTY smoke (ConPTY)
         # The point of the whole job. A backend that compiles says nothing about
         # whether it can start a shell, so this spawns one, writes to it, reads
