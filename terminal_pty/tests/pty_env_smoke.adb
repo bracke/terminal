@@ -52,6 +52,8 @@ procedure PTY_Env_Smoke is
    Reads        : Natural := 0;
    Unprompted   : Natural := 0;
    Written_Total : Natural := 0;
+   Alive_Before_Write : Boolean := False;
+   Alive_After_Write  : Boolean := False;
    Alive_After_Spawn : Boolean := False;
 
    function To_Bytes (Text : String) return Byte_Array is
@@ -119,11 +121,18 @@ begin
    Terminal.PTY.Backend.Spawn_Default_Shell (S, Rows, Cols, Spawn_Status);
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
 
+   --  Was it still there when we spoke to it? This splits what is left in two:
+   --  gone already means the shell quits on its own with nothing to do with us,
+   --  still there means it quits because of what we sent.
+   Alive_Before_Write := Terminal.PTY.Backend.Is_Alive (S);
+
    declare
       Data : constant Byte_Array := To_Bytes (Command);
    begin
       Write_All (Data);
    end;
+
+   Alive_After_Write := Terminal.PTY.Backend.Is_Alive (S);
 
    Alive_After_Spawn := Terminal.PTY.Backend.Is_Alive (S);
 
@@ -232,7 +241,9 @@ begin
       Ada.Text_IO.Put_Line
         ("pty_env_smoke: wrote" & Natural'Image (Written_Total)
          & " of" & Natural'Image (Command'Length) & " bytes;"
-         & " child exited with"
+         & " alive before write: " & Boolean'Image (Alive_Before_Write)
+         & "; alive after write: " & Boolean'Image (Alive_After_Write)
+         & "; child exited with"
          & Integer'Image (Terminal.PTY.Backend.Child_Status (S)));
    end if;
 
