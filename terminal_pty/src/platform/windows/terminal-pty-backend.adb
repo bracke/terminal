@@ -81,6 +81,7 @@ package body Terminal.PTY.Backend is
      with Convention => C;
 
    Extended_Startupinfo_Present : constant DWORD := 16#0008_0000#;
+   Startf_Use_Std_Handles       : constant DWORD := 16#0000_0100#;
    Proc_Thread_Attribute_Pseudoconsole_Handle_List : constant := 16#0002_0016#;
 
    function Getenv (Name : Interfaces.C.Strings.chars_ptr)
@@ -424,6 +425,23 @@ package body Terminal.PTY.Backend is
 
       Trace.Attributes_Made := True;
       Trace.Attribute_Size := Natural (List_Size);
+
+      --  Say explicitly that the child gets no standard handles, so that the
+      --  pseudo-console is the only thing left for it to use.
+      --
+      --  Without this the child is handed whatever standard handles this process
+      --  has, and when this process is itself redirected -- a pipe rather than a
+      --  console, which is what a shell or a CI runner gives us -- those pipes
+      --  beat the pseudo-console. Everything still reports success: the console
+      --  is created, the attribute takes, the child runs. Its output simply goes
+      --  to our pipe rather than through the console, so the console emits its
+      --  start-up bytes and nothing further, which is the whole symptom.
+      --
+      --  The three handles are null by default and are meant to stay that way;
+      --  it is the flag that matters. Filling them in with the console's own pipe
+      --  ends also delivers the output, but as raw bytes with no console behind
+      --  them, which is no use to a shell that expects a screen.
+      Startup.Flags := Startf_Use_Std_Handles;
 
       --  Object_Size, not Size: for a record the latter is the minimum number of
       --  bits the type needs and may leave off trailing padding, and cb has to be
