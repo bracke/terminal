@@ -27,7 +27,14 @@ procedure PTY_Env_Smoke is
 
    Command : constant String :=
      (if On_Windows
-      then "echo __TERM=%TERM%__& echo __COLORTERM=%COLORTERM%__& exit"
+      then
+        --  No "exit" here, deliberately. A pseudo-console paints on a tick and
+        --  coalesces what it paints; a shell that runs two echoes and leaves
+        --  within milliseconds can be gone before the first paint, and then
+        --  conhost tears down with the output never written. Leaving the shell
+        --  up lets the console paint, which is also what a terminal does with a
+        --  real one. Close ends it afterwards.
+        "echo __TERM=%TERM%__& echo __COLORTERM=%COLORTERM%__"
              & Character'Val (13)
       else "printf '__TERM=%s__\n' ""$TERM""; "
              & "printf '__COLORTERM=%s__\n' ""$COLORTERM""; exit"
