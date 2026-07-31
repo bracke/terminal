@@ -44,6 +44,7 @@ procedure PTY_Env_Smoke is
    Attempts     : Natural := 0;
    Reads        : Natural := 0;
    Unprompted   : Natural := 0;
+   Written_Total : Natural := 0;
    Alive_After_Spawn : Boolean := False;
 
    function To_Bytes (Text : String) return Byte_Array is
@@ -66,6 +67,7 @@ procedure PTY_Env_Smoke is
          case Write_Status is
             when Terminal.PTY.Backend.Ok | Terminal.PTY.Backend.Partial =>
                Assert (Wrote > 0, "write made no progress");
+               Written_Total := Written_Total + Wrote;
                First := First + Wrote;
             when Terminal.PTY.Backend.Interrupted =>
                null;
@@ -219,6 +221,12 @@ begin
             & "; unprompted bytes before any write:"
             & Natural'Image (Unprompted));
       end;
+
+      Ada.Text_IO.Put_Line
+        ("pty_env_smoke: wrote" & Natural'Image (Written_Total)
+         & " of" & Natural'Image (Command'Length) & " bytes;"
+         & " child exited with"
+         & Integer'Image (Terminal.PTY.Backend.Child_Status (S)));
    end if;
 
    Terminal.PTY.Backend.Close (S);
