@@ -142,6 +142,11 @@ package Terminal.PTY.Backend is
 
    function Child_State (S : Session) return Exit_State;
 
+   --  What the child exited with, once it has. Zero until then. On Windows this
+   --  is the exit code reinterpreted as signed, which is how the platform prints
+   --  it; on POSIX it is the raw wait status.
+   function Child_Status (S : Session) return Integer;
+
    procedure Close (S : in out Session);
 
 private

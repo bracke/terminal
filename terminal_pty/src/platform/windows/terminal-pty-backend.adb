@@ -606,6 +606,8 @@ package body Terminal.PTY.Backend is
       end if;
    end Child_State;
 
+   function Child_Status (S : Session) return Integer is (S.Last_Status);
+
    procedure Close (S : in out Session) is
       Ignored : BOOL;
       Freed   : System.Address;
