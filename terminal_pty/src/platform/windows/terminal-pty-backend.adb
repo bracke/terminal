@@ -370,7 +370,17 @@ package body Terminal.PTY.Backend is
                   (Startup.Attributes,
                    0,
                    Proc_Thread_Attribute_Pseudoconsole_Handle_List,
-                   Console'Address,
+
+                   --  The console handle itself, not its address. lpValue is
+                   --  described as a pointer to the attribute value, and for
+                   --  most attributes it is -- but a pseudo-console attribute's
+                   --  value IS a handle, already pointer-sized, so Windows wants
+                   --  the HPCON where the pointer would go. Microsoft's own
+                   --  sample passes hPC, not &hPC. Passing the address of the
+                   --  variable attaches the child to whatever that address looks
+                   --  like: no error anywhere, a healthy console writing to a
+                   --  pipe nobody is connected to, and a shell that gives up.
+                   Console,
                    Console'Size / 8,
                    System.Null_Address,
                    System.Null_Address) = 0
