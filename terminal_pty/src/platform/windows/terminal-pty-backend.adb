@@ -83,6 +83,34 @@ package body Terminal.PTY.Backend is
    Extended_Startupinfo_Present : constant DWORD := 16#0008_0000#;
    Proc_Thread_Attribute_Pseudoconsole_Handle_List : constant := 16#0002_0016#;
 
+   function Getenv (Name : Interfaces.C.Strings.chars_ptr)
+      return Interfaces.C.Strings.chars_ptr
+     with Import, Convention => C, External_Name => "getenv";
+
+   --  COMSPEC is what SHELL is on a POSIX host: the command processor the user
+   --  has chosen, which is cmd.exe unless something set it otherwise. The POSIX
+   --  side has honoured SHELL from the start; this side had cmd.exe written into
+   --  it.
+   function Shell_Command return String is
+      Name  : Interfaces.C.Strings.chars_ptr :=
+        Interfaces.C.Strings.New_String ("COMSPEC");
+      Value : constant Interfaces.C.Strings.chars_ptr := Getenv (Name);
+   begin
+      Interfaces.C.Strings.Free (Name);
+
+      if not Interfaces.C.Strings."=" (Value, Interfaces.C.Strings.Null_Ptr) then
+         declare
+            Candidate : constant String := Interfaces.C.Strings.Value (Value);
+         begin
+            if Candidate'Length > 0 then
+               return Candidate;
+            end if;
+         end;
+      end if;
+
+      return "cmd.exe";
+   end Shell_Command;
+
    function Create_Pipe
      (Read_Handle  : access HANDLE;
       Write_Handle : access HANDLE;
@@ -281,7 +309,7 @@ package body Terminal.PTY.Backend is
       Startup      : aliased STARTUPINFOEX;
       List_Size    : aliased Interfaces.C.size_t := 0;
       Command      : Interfaces.C.Strings.chars_ptr :=
-        Interfaces.C.Strings.New_String ("cmd.exe");
+        Interfaces.C.Strings.New_String (Shell_Command);
 
       Ignored      : BOOL;
       Freed        : System.Address;

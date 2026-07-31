@@ -219,3 +219,20 @@ jobs:
             "$t" || exit 1
           done
 
+      - name: Probe whether a child's output reaches us at all
+        # Diagnosis, not a test -- it is expected to fail its assertion, and it
+        # is here to answer one question the failing smoke cannot.
+        #
+        # The shell attaches to the pseudo-console and nothing it draws comes
+        # back, but the only bytes seen so far are the console's own start-up
+        # burst, which does not prove a child can be heard. hostname.exe writes
+        # one line and exits, wanting no input and no interactive session: if its
+        # line comes back the output path works and the fault is in the input
+        # half, and if it does not the fault is that no child output reaches us.
+        shell: bash
+        working-directory: terminal/terminal_pty
+        continue-on-error: true
+        env:
+          COMSPEC: C:\Windows\System32\hostname.exe
+        run: ./tests/bin/pty_env_smoke.exe || true
+
