@@ -17,15 +17,22 @@ procedure PTY_Status_Smoke is
    Z_Status : Terminal.PTY.Backend.Resize_Status;
    Caps : constant Terminal.PTY.Backend.Backend_Capabilities :=
      Terminal.PTY.Backend.Capabilities;
+
+   --  Exactly one of the two backends answers on any host, and which one is the
+   --  first thing worth asserting: everything below reads differently depending
+   --  on it.
+   On_Windows : constant Boolean := Caps.Windows_ConPTY;
 begin
-   Assert (Caps.POSIX_PTY, "POSIX PTY capability");
-   Assert (not Caps.Windows_ConPTY, "ConPTY should not be provided by POSIX backend");
+   Assert (Caps.POSIX_PTY xor Caps.Windows_ConPTY,
+           "exactly one PTY backend should be in use");
    Assert (Caps.Resize, "PTY resize capability");
    Assert (Caps.Terminal_Env, "terminal environment capability");
    Assert (Caps.Nonblocking_Read, "nonblocking read capability");
    Assert
      (Terminal.PTY.Backend.Backend_Status_Label (Caps) =
-      "POSIX PTY backend with resize, env, and nonblocking read",
+      (if On_Windows
+       then "Windows ConPTY backend with resize, env, and nonblocking read"
+       else "POSIX PTY backend with resize, env, and nonblocking read"),
       "PTY backend status label");
    Assert
      (Terminal.PTY.Backend.Backend_Status_Label (Caps)'Length <=
@@ -33,7 +40,9 @@ begin
       "PTY backend status label should be bounded");
    Assert
      (Terminal.PTY.Backend.ConPTY_Status_Label (Caps) =
-      "Windows ConPTY unsupported by POSIX PTY backend",
+      (if On_Windows
+       then "Windows ConPTY supported"
+       else "Windows ConPTY unsupported by POSIX PTY backend"),
       "ConPTY status label");
    Assert
      (Terminal.PTY.Backend.ConPTY_Status_Label (Caps)'Length <=

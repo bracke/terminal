@@ -241,10 +241,17 @@ package body Terminal.PTY.Backend is
    function Backend_Status_Label
      (Capabilities : Backend_Capabilities) return String is
    begin
-      if Capabilities.Windows_ConPTY then
-         return "PTY backend: Windows ConPTY";
+      --  Phrased as the POSIX side phrases it, and degrading the same way: the
+      --  two go to the same diagnostic line, and a reader should not have to
+      --  learn which host wrote it.
+      if Capabilities.Windows_ConPTY
+        and then Capabilities.Resize
+        and then Capabilities.Terminal_Env
+        and then Capabilities.Nonblocking_Read
+      then
+         return "Windows ConPTY backend with resize, env, and nonblocking read";
       else
-         return "PTY backend: none";
+         return "reduced Windows ConPTY backend";
       end if;
    end Backend_Status_Label;
 
@@ -252,9 +259,9 @@ package body Terminal.PTY.Backend is
      (Capabilities : Backend_Capabilities) return String is
    begin
       if Capabilities.Windows_ConPTY then
-         return "ConPTY: supported";
+         return "Windows ConPTY supported";
       else
-         return "ConPTY: unsupported";
+         return "Windows ConPTY unsupported by this build";
       end if;
    end ConPTY_Status_Label;
 
