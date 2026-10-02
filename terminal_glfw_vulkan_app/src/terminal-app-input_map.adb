@@ -198,6 +198,20 @@ package body Terminal.App.Input_Map is
       Col       : Positive;
       Release   : Boolean)
    is
+      procedure Append_UTF8_Value (Value : Natural) is
+         Encoded : constant Natural := Value + 32;
+      begin
+         if Encoded <= 16#7F# then
+            Append (Chunk, Byte (Encoded));
+         elsif Encoded <= 16#7FF# then
+            Append (Chunk, Byte (16#C0# + Encoded / 64));
+            Append (Chunk, Byte (16#80# + Encoded mod 64));
+         elsif Encoded <= 16#FFFF# then
+            Append (Chunk, Byte (16#E0# + Encoded / 4096));
+            Append (Chunk, Byte (16#80# + (Encoded / 64) mod 64));
+            Append (Chunk, Byte (16#80# + Encoded mod 64));
+         end if;
+      end Append_UTF8_Value;
    begin
       if Modes.Mouse_SGR then
          Append_String (Chunk, ASCII.ESC & "[<");
@@ -207,6 +221,19 @@ package body Terminal.App.Input_Map is
          Append (Chunk, Byte (Character'Pos (';')));
          Append_Natural (Chunk, Row);
          Append (Chunk, Byte (Character'Pos ((if Release then 'm' else 'M'))));
+      elsif Modes.Mouse_URXVT then
+         Append_String (Chunk, ASCII.ESC & "[");
+         Append_Natural (Chunk, Code + 32);
+         Append (Chunk, Byte (Character'Pos (';')));
+         Append_Natural (Chunk, Col);
+         Append (Chunk, Byte (Character'Pos (';')));
+         Append_Natural (Chunk, Row);
+         Append (Chunk, Byte (Character'Pos ('M')));
+      elsif Modes.Mouse_UTF8 then
+         Append_String (Chunk, ASCII.ESC & "[M");
+         Append_UTF8_Value (Code);
+         Append_UTF8_Value (Col);
+         Append_UTF8_Value (Row);
       elsif Col <= 223 and then Row <= 223 and then Code <= 223 then
          Append_String (Chunk, ASCII.ESC & "[M");
          Append (Chunk, Byte (Code + 32));

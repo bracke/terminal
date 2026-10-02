@@ -11,7 +11,9 @@ package Terminal.App is
       Bracketed_Paste       : Boolean := True;
       Focus_Reporting       : Boolean := True;
       Xterm_Mouse_Reporting : Boolean := True;
+      UTF8_Mouse_Coordinates : Boolean := True;
       SGR_Mouse_Coordinates : Boolean := True;
+      URXVT_Mouse_Coordinates : Boolean := True;
       Synchronized_Update   : Boolean := True;
       OSC52_Clipboard       : Boolean := True;
       OSC52_App_Local_Selections : Boolean := True;

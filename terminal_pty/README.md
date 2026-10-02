@@ -1,6 +1,7 @@
-# terminal_pty_posix
+# terminal_pty
 
-Linux-only POSIX PTY/session backend. File descriptors, process IDs, `ioctl`,
-and other POSIX details do not leave this crate. The public capability snapshot
-reports POSIX PTY, resize, terminal environment, and nonblocking read support;
-Windows ConPTY is explicitly reported as unsupported by this backend.
+Platform PTY/session backend. On POSIX hosts, file descriptors, process IDs,
+`ioctl`, and other POSIX details do not leave this crate. On Windows builds,
+the `TERMINAL_PTY_OS=windows` scenario selects the ConPTY backend. The public
+capability snapshot reports the selected backend, resize, terminal environment,
+and nonblocking read support through bounded status labels.

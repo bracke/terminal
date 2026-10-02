@@ -539,7 +539,36 @@ begin
        5 => Byte (5 + 32), 6 => Byte (4 + 32)),
       "legacy right ctrl press");
 
+   Modes.Mouse_URXVT := True;
+   IM.Encode_Mouse_Button (Mouse_Event (GI.Left), Modes, 4, 300, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[32;300;4M"),
+      "urxvt large-coordinate left press");
+
+   Modes.Mouse_URXVT := False;
+   Modes.Mouse_UTF8 := True;
+   IM.Encode_Mouse_Button (Mouse_Event (GI.Left), Modes, 4, 300, Chunk);
+   Assert_Bytes
+     (Chunk,
+      (1 => 16#1B#,
+       2 => Byte (Character'Pos ('[')),
+       3 => Byte (Character'Pos ('M')),
+       4 => Byte (Character'Pos (' ')),
+       5 => 16#C5#,
+       6 => 16#8C#,
+       7 => Byte (Character'Pos ('$'))),
+      "UTF-8 large-coordinate left press");
+
    Modes.Mouse_SGR := True;
+   Modes.Mouse_URXVT := True;
+   Modes.Mouse_UTF8 := True;
+   IM.Encode_Mouse_Button (Mouse_Event (GI.Left), Modes, 4, 300, Chunk);
+   Assert_Bytes
+     (Chunk,
+      To_Bytes (ASCII.ESC & "[<0;300;4M"),
+      "SGR mouse encoding has priority");
+
    IM.Encode_Mouse_Wheel (Scroll_Event (1.0), Modes, 4, 5, Chunk);
    Assert_Bytes
      (Chunk,

@@ -25,6 +25,11 @@ procedure PTY_Program_Progression_Smoke is
    Nano_Marker : constant String := "ADA_NANO_DONE";
    Vim_Marker  : constant String := "ADA_VIM_DONE";
    Top_Marker  : constant String := "ADA_TOP_DONE";
+   Htop_Marker : constant String := "ADA_HTOP_DONE";
+   Tig_Marker  : constant String := "ADA_TIG_DONE";
+   Lazygit_Marker : constant String := "ADA_LAZYGIT_DONE";
+   Tmux_Marker : constant String := "ADA_TMUX_DONE";
+   Screen_Marker : constant String := "ADA_SCREEN_DONE";
 
    Command : constant String :=
      "set +e; "
@@ -47,6 +52,16 @@ procedure PTY_Program_Progression_Smoke is
      & "printf 'ADA_VIM_DONE\n'; "
      & "if command -v top >/dev/null 2>&1; then top -b -n 1 | head -n 1; fi; "
      & "printf 'ADA_TOP_DONE\n'; "
+     & "if command -v htop >/dev/null 2>&1; then htop --version | head -n 1; fi; "
+     & "printf 'ADA_HTOP_DONE\n'; "
+     & "if command -v tig >/dev/null 2>&1; then tig --version | head -n 1; fi; "
+     & "printf 'ADA_TIG_DONE\n'; "
+     & "if command -v lazygit >/dev/null 2>&1; then lazygit --version | head -n 1; fi; "
+     & "printf 'ADA_LAZYGIT_DONE\n'; "
+     & "if command -v tmux >/dev/null 2>&1; then tmux -V; fi; "
+     & "printf 'ADA_TMUX_DONE\n'; "
+     & "if command -v screen >/dev/null 2>&1; then screen -v; fi; "
+     & "printf 'ADA_SCREEN_DONE\n'; "
      & "rm -rf /tmp/terminal_program_progression_smoke; "
      & "exit"
      & Character'Val (13);
@@ -66,6 +81,11 @@ procedure PTY_Program_Progression_Smoke is
    Nano_Found   : Boolean := False;
    Vim_Found    : Boolean := False;
    Top_Found    : Boolean := False;
+   Htop_Found   : Boolean := False;
+   Tig_Found    : Boolean := False;
+   Lazygit_Found : Boolean := False;
+   Tmux_Found   : Boolean := False;
+   Screen_Found : Boolean := False;
 
    function To_Bytes (Text : String) return Byte_Array is
       Result : Byte_Array (1 .. Text'Length);
@@ -153,6 +173,21 @@ procedure PTY_Program_Progression_Smoke is
       if not Top_Found then
          Top_Found := Find_Text (Snap, Top_Marker);
       end if;
+      if not Htop_Found then
+         Htop_Found := Find_Text (Snap, Htop_Marker);
+      end if;
+      if not Tig_Found then
+         Tig_Found := Find_Text (Snap, Tig_Marker);
+      end if;
+      if not Lazygit_Found then
+         Lazygit_Found := Find_Text (Snap, Lazygit_Marker);
+      end if;
+      if not Tmux_Found then
+         Tmux_Found := Find_Text (Snap, Tmux_Marker);
+      end if;
+      if not Screen_Found then
+         Screen_Found := Find_Text (Snap, Screen_Marker);
+      end if;
       Terminal.Core.Release (Snap);
    end Inspect_Snapshot;
 begin
@@ -195,7 +230,12 @@ begin
         and then Less_Found
         and then Nano_Found
         and then Vim_Found
-        and then Top_Found;
+        and then Top_Found
+        and then Htop_Found
+        and then Tig_Found
+        and then Lazygit_Found
+        and then Tmux_Found
+        and then Screen_Found;
    end loop;
 
    Terminal.PTY.Backend.Close (S);
@@ -206,4 +246,9 @@ begin
    Assert (Nano_Found, "nano progression marker should be visible");
    Assert (Vim_Found, "vim progression marker should be visible");
    Assert (Top_Found, "top progression marker should be visible");
+   Assert (Htop_Found, "htop progression marker should be visible");
+   Assert (Tig_Found, "tig progression marker should be visible");
+   Assert (Lazygit_Found, "lazygit progression marker should be visible");
+   Assert (Tmux_Found, "tmux progression marker should be visible");
+   Assert (Screen_Found, "screen progression marker should be visible");
 end PTY_Program_Progression_Smoke;

@@ -1,9 +1,12 @@
 with AUnit.Assertions;
+with System;
 with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Splits;
+with Terminal.App.Tabs;
 
 procedure Renderer_Metrics_Smoke is
    use AUnit.Assertions;
@@ -18,8 +21,11 @@ procedure Renderer_Metrics_Smoke is
    use type Terminal.App.Render_Model.Text_Run_Kind;
    use type Terminal.App.Render_Model.Text_Run_Script;
    use type Terminal.App.Render_Model.Text_Run_Shape_Status;
+   use type System.Address;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
+   use type Terminal.App.Splits.Split_Status;
+   use type Terminal.App.Tabs.Tab_Status;
 
    R      : Terminal.App.Renderer.Renderer;
    Status : Terminal.App.Renderer.Init_Status;
@@ -90,6 +96,16 @@ begin
         (Terminal.App.Renderer.Color_Emoji_Status_Label (Diagnostics) =
          "Color emoji rendered with monochrome fallback",
          "color emoji fallback status label");
+      Diagnostics.Last_Color_Glyph_Count := 1;
+      Assert
+        (Terminal.App.Renderer.Color_Emoji_Status_Label (Diagnostics) =
+         "Color emoji glyphs rendered with fallback",
+         "mixed color emoji status label");
+      Diagnostics.Last_Color_Emoji_Fallback_Count := 0;
+      Assert
+        (Terminal.App.Renderer.Color_Emoji_Status_Label (Diagnostics) =
+         "Color emoji glyphs rendered",
+         "color emoji rendered status label");
 
       Diagnostics.Last_Paragraph_Bidi_Fallback_Count := 1;
       Assert
@@ -134,6 +150,59 @@ begin
         (Frame.Rectangles (3).Height <= Float (Terminal.App.Renderer.Cell_Height (R)),
          "cursor block should fit within the terminal cell");
    end;
+
+   Terminal.Core.Initialize (T, 1, 32, 100, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "hyperlink overlay initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "]8;id=abc;https://example.test" & ASCII.ESC & "\"
+         & "x"
+         & ASCII.ESC & "]8;;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "hyperlink overlay feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Link : constant Terminal.Core.Hyperlink :=
+        Terminal.App.Hyperlinks.Link_At (Snap, (Row => 1, Col => 1));
+   begin
+      Terminal.App.Renderer.Set_Hovered_Link (R, (others => <>));
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "plain hyperlink render failed");
+
+      declare
+         Plain_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Terminal.App.Renderer.Set_Hovered_Link (R, Link);
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "hovered hyperlink render failed");
+
+         declare
+            Hover_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+              Terminal.App.Renderer.Last_Frame (R);
+         begin
+            Assert (Link.Active, "hovered link should be active");
+            Assert
+              (Hover_Frame.Rectangle_Count >= Plain_Frame.Rectangle_Count + 2,
+               "hovered link should add underline and status background rectangles");
+            Assert
+              (Hover_Frame.Glyph_Count > Plain_Frame.Glyph_Count,
+               "hovered link should draw status label glyphs");
+         end;
+      end;
+
+      Terminal.App.Renderer.Set_Hovered_Link (R, (others => <>));
+      Terminal.Core.Release (Snap);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
+   Assert (Core_Status = Terminal.Core.Ok, "core reinitialize failed");
 
    Terminal.Core.Feed
      (T,
@@ -2000,8 +2069,19 @@ begin
            (Diag.Last_Text_Run_Count = Frame.Text_Run_Count,
             "renderer diagnostics should report text run count");
          Assert
-           (Diag.Last_Color_Emoji_Fallback_Count = 1,
-            "renderer diagnostics should report color emoji fallback");
+           (Diag.Last_Color_Glyph_Count > 0,
+            "renderer diagnostics should report emitted color emoji glyphs");
+         Assert
+           (Diag.Last_Color_Emoji_Fallback_Count = 0,
+            "color emoji should not fall back when a color font is available");
+         Assert
+           (Frame.Colour_Glyph_Count = Diag.Last_Color_Glyph_Count,
+            "renderer diagnostics should report emitted color glyphs");
+         Assert
+           (Frame.Colour_Sheet_Width > 0
+              and then Frame.Colour_Sheet_Height > 0
+              and then Frame.Colour_Sheet_Pixels /= System.Null_Address,
+            "color emoji render should expose a color sheet");
          if Frame.Text_Runs (2).Fallback_Glyphs then
             Assert
               (Diag.Last_Text_Fallback_Run_Count = 1,
@@ -2229,8 +2309,12 @@ begin
            Terminal.App.Render_Model.Direction_Right_To_Left,
          "RTL digit split third direction");
       Assert
-        (Diag.Last_Paragraph_Bidi_Fallback_Count = 1,
-         "mixed LTR/RTL row should report paragraph BiDi fallback");
+        (Frame.Text_Runs (3).X < Frame.Text_Runs (2).X
+         and then Frame.Text_Runs (2).X < Frame.Text_Runs (1).X,
+         "mixed RTL paragraph should be visually reordered");
+      Assert
+        (Diag.Last_Paragraph_Bidi_Fallback_Count = 0,
+         "mixed LTR/RTL row should not report paragraph BiDi fallback");
    end;
 
    Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);
@@ -2455,5 +2539,75 @@ begin
 
    Terminal.App.Renderer.Initialize_Headless (R, Status);
    Assert (Status = Terminal.App.Renderer.Ok, "renderer reinitialize failed");
+
+   declare
+      T1 : Terminal.Core.Terminal;
+      T2 : Terminal.Core.Terminal;
+      Tabs : Terminal.App.Tabs.Tab_State;
+      Splits : Terminal.App.Splits.Split_State;
+      Tab_Status : Terminal.App.Tabs.Tab_Status;
+      Split_Status : Terminal.App.Splits.Split_Status;
+      S1 : Terminal.Core.Initialize_Status;
+      S2 : Terminal.Core.Initialize_Status;
+      F1 : Terminal.Core.Feed_Status;
+      F2 : Terminal.Core.Feed_Status;
+   begin
+      Terminal.Core.Initialize (T1, 1, 8, 10, S1);
+      Terminal.Core.Initialize (T2, 1, 8, 10, S2);
+      Assert
+        (S1 = Terminal.Core.Ok and then S2 = Terminal.Core.Ok,
+         "composited render core initialize failed");
+      Terminal.Core.Feed (T1, To_Bytes ("pane-one"), F1);
+      Terminal.Core.Feed (T2, To_Bytes ("pane-two"), F2);
+      Assert
+        (F1 = Terminal.Core.Ok and then F2 = Terminal.Core.Ok,
+         "composited render feed failed");
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Tabs.Apply (Tabs, Terminal.App.Tabs.New_Tab, Tab_Status);
+      Terminal.App.Splits.Initialize (Splits);
+      Terminal.App.Splits.Apply
+        (Splits, Terminal.App.Splits.Split_Horizontal, Split_Status);
+      Assert
+        (Tab_Status = Terminal.App.Tabs.Ok
+         and then Split_Status = Terminal.App.Splits.Ok,
+         "composited render tab/split model failed");
+
+      declare
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 2) :=
+           (1 => Terminal.Core.Snapshot (T1),
+            2 => Terminal.Core.Snapshot (T2));
+      begin
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            2,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Terminal.Core.Release (Snaps (1));
+         Terminal.Core.Release (Snaps (2));
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "composited render failed");
+
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Height >=
+            3 * Terminal.App.Renderer.Cell_Height (R)
+            + Terminal.App.Renderer.Content_Margin * 4,
+            "composited render should include tab strip and two panes");
+         Assert
+           (Frame.Rectangle_Count > 10,
+            "composited render should include pane and tab chrome");
+         Assert
+           (Frame.Glyph_Count >= 16,
+            "composited render should draw both pane labels and tab labels");
+      end;
+   end;
+
    Terminal.App.Renderer.Finalize (R);
 end Renderer_Metrics_Smoke;

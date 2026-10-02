@@ -40,7 +40,7 @@ begin
    Assert (Tabs.Active (State) = 1, "initial active tab");
    Assert (Tabs.Title_Suffix (State) = "", "single tab suffix");
    Assert
-     (Tabs.Status_Label (State) = "Single live session; tab model ready",
+     (Tabs.Status_Label (State) = "Single live session",
       "single tab status label");
    Assert
      (Tabs.Status_Label (State)'Length <= Tabs.Max_Status_Label_Length,
@@ -78,7 +78,7 @@ begin
    Assert (Tabs.Title_Suffix (State) = " [2/2]", "new tab title suffix");
    Assert
      (Tabs.Status_Label (State) =
-      "Tab model active; multi-session rendering postponed",
+      "Live tab sessions=2 active=2",
       "active tab model status label");
    declare
       Info  : constant Tabs.Tab_Snapshot := Tabs.Snapshot (State);

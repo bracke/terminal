@@ -25,6 +25,8 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Ignored_Graphics_Protocol;
    use type Terminal.Core.Style;
    use type Terminal.Common.Code_Point;
+   use type Terminal.App.Splits.Split_Orientation;
+   use type Terminal.App.Graphics.Data_Decode_Status;
    use type RM.Colour_Glyph_Array_Access;
    use type RM.Glyph_Array_Access;
    use type RM.Image_Array_Access;
@@ -40,6 +42,15 @@ package body Terminal.App.Renderer is
    Pixel_Size   : constant Positive := 16;
    Atlas_Width  : constant Positive := 1024;
    Atlas_Height : constant Positive := 1024;
+   Max_Link_Overlay_Chars : constant Natural := 96;
+   Tab_Bar_Rows : constant Natural := 1;
+   Pane_Border_Pixels : constant Natural := 2;
+
+   function Origin_X (R : Renderer) return Natural is
+     (R.Draw_Offset_X + Content_Margin);
+
+   function Origin_Y (R : Renderer) return Natural is
+     (R.Draw_Offset_Y + Content_Margin);
 
    function Trimmed_Natural (Value : Natural) return String is
       Text : constant String := Natural'Image (Value);
@@ -105,6 +116,111 @@ package body Terminal.App.Renderer is
 
       return Ceiling_Positive (Max_Width) + 1;
    end Measured_Cell_Width;
+
+   function Is_Emoji_Scalar (Codepoint : Terminal.Common.Code_Point) return Boolean is
+      C : constant Natural := Natural (Codepoint);
+   begin
+      return (C in 16#1F000# .. 16#1FAFF#)
+        or else (C in 16#2600# .. 16#27BF#);
+   end Is_Emoji_Scalar;
+
+   function Colour_PNG_Extent
+     (Data   : Textrender.Encoded_Image;
+      Width  : out Natural;
+      Height : out Natural)
+      return Boolean
+   is
+      Result : Terminal.App.Graphics.Graphics_Data_Preview;
+   begin
+      Width := 0;
+      Height := 0;
+
+      if Data'Length = 0 then
+         return False;
+      end if;
+
+      declare
+         Source : Terminal.Common.Bytes.Byte_Array (1 .. Data'Length);
+      begin
+         for I in Data'Range loop
+            Source (I - Data'First + 1) :=
+              Terminal.Common.Bytes.Byte (Data (I));
+         end loop;
+
+         Terminal.App.Graphics.Decode_PNG_RGBA_Data
+           (PNG    => Source,
+            Length => Source'Length,
+            Result => Result);
+      end;
+
+      Width := Result.Pixel_Width;
+      Height := Result.Pixel_Height;
+      Terminal.App.Graphics.Release (Result);
+
+      return Width > 0 and then Height > 0;
+   exception
+      when others =>
+         Width := 0;
+         Height := 0;
+         Terminal.App.Graphics.Release (Result);
+         return False;
+   end Colour_PNG_Extent;
+
+   function Decode_Colour_PNG
+     (Data   : Textrender.Encoded_Image;
+      Width  : Natural;
+      Height : Natural;
+      Pixels : out Textrender.Rgba_Buffer)
+      return Boolean
+   is
+      Result : Terminal.App.Graphics.Graphics_Data_Preview;
+   begin
+      if Data'Length = 0
+        or else Width = 0
+        or else Height = 0
+        or else Pixels'Length /= Width * Height * 4
+      then
+         return False;
+      end if;
+
+      declare
+         Source : Terminal.Common.Bytes.Byte_Array (1 .. Data'Length);
+      begin
+         for I in Data'Range loop
+            Source (I - Data'First + 1) :=
+              Terminal.Common.Bytes.Byte (Data (I));
+         end loop;
+
+         Terminal.App.Graphics.Decode_PNG_RGBA_Data
+           (PNG    => Source,
+            Length => Source'Length,
+            Result => Result);
+      end;
+
+      if Result.Decode_Status /= Terminal.App.Graphics.Decode_Ok
+        or else not Result.Decode_Complete
+        or else Result.Pixel_Width /= Width
+        or else Result.Pixel_Height /= Height
+        or else Result.Decoded_Length /= Pixels'Length
+        or else Result.Bytes = null
+      then
+         Terminal.App.Graphics.Release (Result);
+         return False;
+      end if;
+
+      for I in Pixels'Range loop
+         Pixels (I) :=
+           Textrender.Alpha
+             (Result.Bytes (Result.Bytes'First + I - Pixels'First));
+      end loop;
+
+      Terminal.App.Graphics.Release (Result);
+      return True;
+   exception
+      when others =>
+         Terminal.App.Graphics.Release (Result);
+         return False;
+   end Decode_Colour_PNG;
 
    function XTerm_Cube_Component (Value : Natural) return Float is
    begin
@@ -328,6 +444,7 @@ package body Terminal.App.Renderer is
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
       R.Text_Fallback_Run_Count := 0;
+      R.Color_Glyph_Count := 0;
       R.Color_Emoji_Fallback_Count := 0;
       R.Paragraph_Bidi_Fallback_Count := 0;
       R.Vertex_Count := 0;
@@ -835,9 +952,9 @@ package body Terminal.App.Renderer is
                  Row_Stride);
             First_Data : constant Natural := Kitty_Data_Start (First_Text);
             X : constant Float :=
-              Float (Content_Margin + (Item.Col - 1) * R.CW);
+              Float (Origin_X (R) + (Item.Col - 1) * R.CW);
             Y : constant Float :=
-              Float (Content_Margin + (Item.Row - 1) * R.CH);
+              Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
             Segment_Count : Natural := 0;
             Data : Terminal.App.Graphics.Graphics_Data_Preview;
             Image_Bytes : RM.Image_Data_Access := null;
@@ -1093,9 +1210,9 @@ package body Terminal.App.Renderer is
                  Row_Stride);
          First_Data : constant Natural := Kitty_Data_Start (Image_Text);
          X : constant Float :=
-           Float (Content_Margin + (Item.Col - 1) * R.CW);
+           Float (Origin_X (R) + (Item.Col - 1) * R.CW);
          Y : constant Float :=
-           Float (Content_Margin + (Item.Row - 1) * R.CH);
+           Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
          Encoded_Length : Natural := 0;
          Data : Terminal.App.Graphics.Graphics_Data_Preview;
          Image_Bytes : RM.Image_Data_Access := null;
@@ -1283,9 +1400,9 @@ package body Terminal.App.Renderer is
                 (Terminal.Core.Kitty_Graphics, First_Text);
             First_Data : constant Natural := Kitty_Data_Start (First_Text);
             X : constant Float :=
-              Float (Content_Margin + (Item.Col - 1) * R.CW);
+              Float (Origin_X (R) + (Item.Col - 1) * R.CW);
             Y : constant Float :=
-              Float (Content_Margin + (Item.Row - 1) * R.CH);
+              Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
             Segment_Count : Natural := 0;
             Encoded_Length : Natural := 0;
             PNG_Length : Natural := 0;
@@ -1537,9 +1654,9 @@ package body Terminal.App.Renderer is
          Object : constant Image_Object_Access :=
            Find_Image_Object (R, Header.Kitty_ID);
          X : constant Float :=
-           Float (Content_Margin + (Item.Col - 1) * R.CW);
+           Float (Origin_X (R) + (Item.Col - 1) * R.CW);
          Y : constant Float :=
-           Float (Content_Margin + (Item.Row - 1) * R.CH);
+           Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
          Preview_Length : Natural := 0;
          Preview_Bytes : Terminal.Common.Bytes.Byte_Array
            (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
@@ -1594,9 +1711,9 @@ package body Terminal.App.Renderer is
       is
          From : Natural := 0;
          X : constant Float :=
-           Float (Content_Margin + (Item.Col - 1) * R.CW);
+           Float (Origin_X (R) + (Item.Col - 1) * R.CW);
          Y : constant Float :=
-           Float (Content_Margin + (Item.Row - 1) * R.CH);
+           Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
          Encoded_Length : Natural := 0;
          PNG_Length : Natural := 0;
          Data : Terminal.App.Graphics.Graphics_Data_Preview :=
@@ -1816,9 +1933,9 @@ package body Terminal.App.Renderer is
          Image_Text : String) return Boolean
       is
          X : constant Float :=
-           Float (Content_Margin + (Item.Col - 1) * R.CW);
+           Float (Origin_X (R) + (Item.Col - 1) * R.CW);
          Y : constant Float :=
-           Float (Content_Margin + (Item.Row - 1) * R.CH);
+           Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
          Data : Terminal.App.Graphics.Graphics_Data_Preview :=
            (Header_Recognized => Header.Recognized,
             Has_Data          => Header.Has_Data,
@@ -1951,9 +2068,9 @@ package body Terminal.App.Renderer is
          Image_Text : String)
       is
          X : constant Float :=
-           Float (Content_Margin + (Item.Col - 1) * R.CW);
+           Float (Origin_X (R) + (Item.Col - 1) * R.CW);
          Y : constant Float :=
-           Float (Content_Margin + (Item.Row - 1) * R.CH);
+           Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
          Data : Terminal.App.Graphics.Graphics_Data_Preview :=
            Terminal.App.Graphics.Data_Preview_Text (Item.Protocol, Image_Text);
          Header : constant Terminal.App.Graphics.Graphics_Header :=
@@ -2345,9 +2462,6 @@ package body Terminal.App.Renderer is
       if Shape_Status = RM.Needs_Shaping_Backend then
          R.Shaping_Fallback_Count := R.Shaping_Fallback_Count + 1;
       end if;
-      if R.Text_Runs (R.Text_Run_Count).Script = RM.Script_Emoji then
-         R.Color_Emoji_Fallback_Count := R.Color_Emoji_Fallback_Count + 1;
-      end if;
    end Add_Text_Run;
 
    function Cell_Direction
@@ -2462,6 +2576,91 @@ package body Terminal.App.Renderer is
       return True;
    end Cell_Joins_Run;
 
+   procedure Reorder_Mixed_Bidi_Row
+     (R     : in out Renderer;
+      First : Positive;
+      Last  : Natural;
+      Right : Float)
+   is
+      Base : RM.Text_Run_Direction := RM.Direction_Left_To_Right;
+   begin
+      if Last < First then
+         return;
+      end if;
+
+      for I in First .. Last loop
+         if R.Text_Runs (I).Direction /= RM.Direction_Neutral then
+            Base := R.Text_Runs (I).Direction;
+            exit;
+         end if;
+      end loop;
+
+      if Base = RM.Direction_Right_To_Left then
+         declare
+            Cursor : Float := Right;
+         begin
+            for I in First .. Last loop
+               declare
+                  Width : constant Float :=
+                    R.Text_Runs (I).Cell_Width
+                    * Float (R.Text_Runs (I).Cell_Span);
+               begin
+                  Cursor := Cursor - Width;
+                  R.Text_Runs (I).X := Cursor;
+               end;
+            end loop;
+         end;
+      else
+         declare
+            I : Natural := First;
+         begin
+            while I <= Last loop
+               if R.Text_Runs (I).Direction = RM.Direction_Right_To_Left then
+                  declare
+                     J : Natural := I;
+                     Span_Left  : constant Float := R.Text_Runs (I).X;
+                     Span_Right : Float := R.Text_Runs (I).X;
+                     Cursor     : Float;
+                  begin
+                     while J <= Last
+                       and then R.Text_Runs (J).Direction =
+                         RM.Direction_Right_To_Left
+                     loop
+                        Span_Right := R.Text_Runs (J).X
+                          + R.Text_Runs (J).Cell_Width
+                            * Float (R.Text_Runs (J).Cell_Span);
+                        J := J + 1;
+                     end loop;
+
+                     Cursor := Span_Right;
+                     for K in I .. J - 1 loop
+                        declare
+                           Width : constant Float :=
+                             R.Text_Runs (K).Cell_Width
+                             * Float (R.Text_Runs (K).Cell_Span);
+                        begin
+                           Cursor := Cursor - Width;
+                           R.Text_Runs (K).X := Cursor;
+                        end;
+                     end loop;
+
+                     if Cursor < Span_Left then
+                        for K in I .. J - 1 loop
+                           R.Text_Runs (K).X :=
+                             R.Text_Runs (K).X + (Span_Left - Cursor);
+                        end loop;
+                     end if;
+
+                     I := J;
+                  end;
+               else
+                  I := I + 1;
+               end if;
+            end loop;
+         end;
+      end if;
+   end Reorder_Mixed_Bidi_Row;
+
    procedure Build_Text_Runs
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot)
@@ -2472,6 +2671,7 @@ package body Terminal.App.Renderer is
             Col : Positive := 1;
             Row_Has_LTR : Boolean := False;
             Row_Has_RTL : Boolean := False;
+            Row_Run_First : constant Positive := R.Text_Run_Count + 1;
          begin
             while Col <= Snapshot.Cols loop
                declare
@@ -2513,9 +2713,9 @@ package body Terminal.App.Renderer is
                         First_Col => First,
                         Last_Col  => Positive (Last),
                         X         =>
-                          Float (Content_Margin + (First - 1) * R.CW),
+                          Float (Origin_X (R) + (First - 1) * R.CW),
                         Y         =>
-                          Float (Content_Margin + (Row - 1) * R.CH),
+                          Float (Origin_Y (R) + (Row - 1) * R.CH),
                         Width     => Float (R.CW),
                         Height    => Float (R.CH),
                         Color     =>
@@ -2548,8 +2748,12 @@ package body Terminal.App.Renderer is
             end loop;
 
             if Row_Has_LTR and then Row_Has_RTL then
-               R.Paragraph_Bidi_Fallback_Count :=
-                 R.Paragraph_Bidi_Fallback_Count + 1;
+               Reorder_Mixed_Bidi_Row
+                 (R,
+                  First => Row_Run_First,
+                  Last  => R.Text_Run_Count,
+                  Right =>
+                    Float (Origin_X (R) + Snapshot.Cols * R.CW));
             end if;
          end;
       end loop;
@@ -2570,6 +2774,7 @@ package body Terminal.App.Renderer is
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
       R.Text_Fallback_Run_Count := 0;
+      R.Color_Glyph_Count := 0;
       R.Color_Emoji_Fallback_Count := 0;
       R.Paragraph_Bidi_Fallback_Count := 0;
       R.Missing_Glyph_Count := 0;
@@ -2639,6 +2844,11 @@ package body Terminal.App.Renderer is
                Status     => Shape_Backend_Status);
          end if;
       end;
+
+      Textrender.Set_Image_Decoder
+        (R      => R.Text,
+         Extent => Colour_PNG_Extent'Access,
+         Decode => Decode_Colour_PNG'Access);
 
       R.CH := Positive'Max
         (R.CH, Ceiling_Positive (Textrender.Line_Height (R.Text)));
@@ -2790,8 +3000,13 @@ package body Terminal.App.Renderer is
       --  keep a colour. Tried first, because for such a codepoint the outline
       --  lookup below has nothing to find.
       if Add_Colour_Glyph (R, Codepoint, X, Y) then
+         R.Color_Glyph_Count := R.Color_Glyph_Count + 1;
          Status := Ok;
          return;
+      end if;
+
+      if Is_Emoji_Scalar (Codepoint) then
+         R.Color_Emoji_Fallback_Count := R.Color_Emoji_Fallback_Count + 1;
       end if;
 
       Glyph_Status :=
@@ -2836,6 +3051,304 @@ package body Terminal.App.Renderer is
             Status := Glyph_Load_Failed;
       end case;
    end Draw_Glyph;
+
+   function Draw_Emoji_Run_Color
+     (R   : in out Renderer;
+      Run : RM.Text_Run_Command)
+      return Boolean
+   is
+      Pen_X  : Float := Run.X;
+      Drawn  : Natural := 0;
+      Missed : Natural := 0;
+   begin
+      if Run.Script /= RM.Script_Emoji then
+         return False;
+      end if;
+
+      for I in 1 .. Run.Codepoint_Count loop
+         declare
+            C : constant Terminal.Common.Code_Point :=
+              Terminal.Common.Code_Point (Run.Codepoints (I));
+         begin
+            if Is_Emoji_Scalar (C) then
+               if Add_Colour_Glyph (R, C, Pen_X, Run.Y) then
+                  R.Color_Glyph_Count := R.Color_Glyph_Count + 1;
+                  Drawn := Drawn + 1;
+                  Pen_X := Pen_X + Float (R.CW * 2);
+               else
+                  Missed := Missed + 1;
+               end if;
+            end if;
+         end;
+      end loop;
+
+      R.Color_Emoji_Fallback_Count :=
+        R.Color_Emoji_Fallback_Count + Missed;
+      return Drawn > 0;
+   end Draw_Emoji_Run_Color;
+
+   procedure Add_Link_Overlay
+     (R        : in out Renderer;
+      Snapshot : Terminal.Core.Render_Snapshot;
+      Status   : out Render_Status)
+   is
+      Label : constant String :=
+        Terminal.App.Hyperlinks.Status_Label (R.Hovered_Link);
+      Count : constant Natural :=
+        Natural'Min
+          (Natural'Min (Label'Length, Max_Link_Overlay_Chars),
+           Snapshot.Cols);
+      X : constant Float := Float (Origin_X (R));
+      Y : constant Float :=
+        Float (Origin_Y (R) + (Snapshot.Rows - 1) * R.CH);
+   begin
+      if Count = 0 then
+         Status := Ok;
+         return;
+      end if;
+
+      Add_Rectangle
+        (R,
+         X      => X,
+         Y      => Y,
+         Width  => Float (Count * R.CW),
+         Height => Float (R.CH),
+         Color  => (R => 0.0, G => 0.0, B => 0.0, A => 0.92));
+
+      for Offset in 0 .. Count - 1 loop
+         Draw_Glyph
+           (R,
+            Codepoint =>
+              Terminal.Common.Code_Point
+                (Character'Pos (Label (Label'First + Offset))),
+            X      => X + Float (Offset * R.CW),
+            Y      => Y,
+            Color  => R.Color_Theme.Default_FG,
+            Bold   => False,
+            Italic => False,
+            Status => Status);
+         if Status /= Ok then
+            return;
+         end if;
+      end loop;
+
+      Status := Ok;
+   end Add_Link_Overlay;
+
+   procedure Draw_Label
+     (R      : in out Renderer;
+      Text   : String;
+      X      : Float;
+      Y      : Float;
+      Limit  : Natural;
+      Color  : RM.Pixel_Color;
+      Status : out Render_Status)
+   is
+      Count : constant Natural := Natural'Min (Text'Length, Limit);
+   begin
+      for Offset in 0 .. Count - 1 loop
+         Draw_Glyph
+           (R,
+            Codepoint =>
+              Terminal.Common.Code_Point
+                (Character'Pos (Text (Text'First + Offset))),
+            X      => X + Float (Offset * R.CW),
+            Y      => Y,
+            Color  => Color,
+            Bold   => False,
+            Italic => False,
+            Status => Status);
+         if Status /= Ok then
+            return;
+         end if;
+      end loop;
+
+      Status := Ok;
+   end Draw_Label;
+
+   procedure Draw_Shaped_Run
+     (R      : in out Renderer;
+      Run    : RM.Text_Run_Command;
+      Status : out Render_Status);
+
+   function Shaped_Run_Start
+     (R : Renderer;
+      X : Float;
+      Y : Float) return Natural;
+
+   function Covered_By_Shaped_Run
+     (R : Renderer;
+      X : Float;
+      Y : Float) return Boolean;
+
+   procedure Draw_Snapshot_Into
+     (R            : in out Renderer;
+      Snapshot     : Terminal.Core.Render_Snapshot;
+      Show_Overlay : Boolean;
+      Status       : out Render_Status)
+   is
+   begin
+      Build_Text_Runs (R, Snapshot);
+
+      for Row in 1 .. Snapshot.Rows loop
+         for Col in 1 .. Snapshot.Cols loop
+            declare
+               Cell : constant Terminal.Core.Cell :=
+                 Terminal.Core.Cell_At (Snapshot, Row, Col);
+               X    : constant Float :=
+                 Float (Origin_X (R) + (Col - 1) * R.CW);
+               Y    : constant Float :=
+                 Float (Origin_Y (R) + (Row - 1) * R.CH);
+               Cell_W : constant Positive :=
+                 (if Cell.Text.Width = Terminal.Core.Width_Two then R.CW * 2 else R.CW);
+               Cursor_Cell : constant Boolean := Is_Cursor_Cell (Snapshot, Row, Col);
+               Block_Cursor : constant Boolean :=
+                 Is_Block_Cursor (Snapshot, Row, Col);
+               FG : constant RM.Pixel_Color :=
+                 (if Block_Cursor
+                  then R.Color_Theme.Cursor_FG
+                  else Foreground (R, Cell));
+               BG : constant RM.Pixel_Color := Background (R, Cell);
+            begin
+               if Cell.Kind /= Terminal.Core.Wide_Continuation then
+                  Add_Rectangle
+                    (R,
+                     X      => X,
+                     Y      => Y,
+                     Width  => Float (Cell_W),
+                     Height => Float (R.CH),
+                     Color  => BG);
+                  if Cursor_Cell then
+                     case Snapshot.Cursor.Shape is
+                        when Terminal.Core.Cursor_Block =>
+                           Add_Rectangle
+                             (R,
+                              X      => X,
+                              Y      => Cursor_Block_Y (R, Y),
+                              Width  => Float (Cell_W),
+                              Height => Float (Cursor_Block_Height (R)),
+                              Color  => R.Color_Theme.Cursor_BG);
+                        when Terminal.Core.Cursor_Underline =>
+                           Add_Rectangle
+                             (R,
+                              X      => X,
+                              Y      =>
+                                Y + Float (R.CH - Cursor_Underline_Height (R)),
+                              Width  => Float (Cell_W),
+                              Height => Float (Cursor_Underline_Height (R)),
+                              Color  => R.Color_Theme.Cursor_BG);
+                        when Terminal.Core.Cursor_Bar =>
+                           Add_Rectangle
+                             (R,
+                              X      => X,
+                              Y      => Cursor_Block_Y (R, Y),
+                              Width  => Float (Cursor_Bar_Width (R)),
+                              Height => Float (Cursor_Block_Height (R)),
+                              Color  => R.Color_Theme.Cursor_BG);
+                     end case;
+                  end if;
+               end if;
+
+               if Is_Drawable (Cell) and then not Cell.Style.Conceal then
+                  declare
+                     Glyph_Render_Status : Render_Status;
+                     Run_Index           : constant Natural :=
+                       Shaped_Run_Start (R, X, Y);
+                  begin
+                     if Run_Index > 0 then
+                        if not Draw_Emoji_Run_Color
+                          (R, R.Text_Runs (Run_Index))
+                        then
+                           Draw_Shaped_Run
+                             (R,
+                              Run    => R.Text_Runs (Run_Index),
+                              Status => Glyph_Render_Status);
+                           if Glyph_Render_Status /= Ok then
+                              Status := Glyph_Render_Status;
+                              return;
+                           end if;
+                        end if;
+                     elsif not Covered_By_Shaped_Run (R, X, Y) then
+                        Draw_Glyph
+                          (R,
+                           Codepoint => Cell.Text.Code_Point,
+                           X         => X,
+                           Y         => Y,
+                           Color     => FG,
+                           Bold      => Cell.Style.Bold,
+                           Italic    => Cell.Style.Italic,
+                           Status    => Glyph_Render_Status);
+                        if Glyph_Render_Status /= Ok then
+                           Status := Glyph_Render_Status;
+                           return;
+                        end if;
+
+                        for I in 1 .. Cell.Text.Attachment_Count loop
+                           if Terminal.Core.Is_Renderable_Attachment
+                             (Cell.Text.Attachments (I))
+                           then
+                              Draw_Glyph
+                                (R,
+                                 Codepoint => Cell.Text.Attachments (I),
+                                 X         => X,
+                                 Y         => Y,
+                                 Color     => FG,
+                                 Bold      => Cell.Style.Bold,
+                                 Italic    => Cell.Style.Italic,
+                                 Status    => Glyph_Render_Status);
+                              if Glyph_Render_Status /= Ok then
+                                 Status := Glyph_Render_Status;
+                                 return;
+                              end if;
+                           end if;
+                        end loop;
+                     end if;
+                  end;
+
+                  if Cell.Style.Overline then
+                     Add_Rectangle
+                       (R,
+                        X      => X,
+                        Y      => Y,
+                        Width  => Float (Cell_W),
+                        Height => 1.0,
+                        Color  => FG);
+                  end if;
+
+                  if Cell.Style.Underline or else Is_Hovered_Link_Cell (R, Cell) then
+                     Add_Underline
+                       (R,
+                        (if Cell.Style.Underline
+                         then Cell.Style.Underline_Kind
+                         else Terminal.Core.Underline_Single),
+                        X,
+                        Y,
+                        Float (Cell_W),
+                        Underline_Color (R, Cell, FG));
+                  end if;
+
+                  if Cell.Style.Strikethrough then
+                     Add_Rectangle
+                       (R,
+                        X      => X,
+                        Y      => Y + Float (R.CH) / 2.0,
+                        Width  => Float (Cell_W),
+                        Height => 1.0,
+                        Color  => FG);
+                  end if;
+               end if;
+            end;
+         end loop;
+      end loop;
+
+      Add_Image (R, Snapshot.Graphics);
+
+      if Show_Overlay then
+         Add_Link_Overlay (R, Snapshot, Status);
+      else
+         Status := Ok;
+      end if;
+   end Draw_Snapshot_Into;
 
    procedure Draw_Shaped_Run
      (R      : in out Renderer;
@@ -2995,11 +3508,12 @@ package body Terminal.App.Renderer is
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
       R.Text_Fallback_Run_Count := 0;
+      R.Color_Glyph_Count := 0;
       R.Color_Emoji_Fallback_Count := 0;
       R.Paragraph_Bidi_Fallback_Count := 0;
 
       Cell_Count := Snapshot.Rows * Snapshot.Cols;
-      Rect_Max := Cell_Count * 4 + 2;
+      Rect_Max := Cell_Count * 4 + 3;
       begin
          R.Rectangles := new RM.Rectangle_Array (1 .. Rect_Max);
          R.Glyphs := new RM.Glyph_Array
@@ -3008,7 +3522,8 @@ package body Terminal.App.Renderer is
               * Natural'Max
                   (Terminal.Core.Max_Cluster_Attachments + 1,
                    RM.Max_Shaped_Glyphs_Per_Run)
-              * 2);
+              * 2
+              + Max_Link_Overlay_Chars);
          --  One tile per cell is the most a frame can ask for, and emoji are
          --  rare enough that a smaller cap would be a cliff rather than a saving.
          R.Colour_Glyphs := new RM.Colour_Glyph_Array (1 .. Cell_Count);
@@ -3050,9 +3565,9 @@ package body Terminal.App.Renderer is
                Cell : constant Terminal.Core.Cell :=
                  Terminal.Core.Cell_At (Snapshot, Row, Col);
                X    : constant Float :=
-                 Float (Content_Margin + (Col - 1) * R.CW);
+                 Float (Origin_X (R) + (Col - 1) * R.CW);
                Y    : constant Float :=
-                 Float (Content_Margin + (Row - 1) * R.CH);
+                 Float (Origin_Y (R) + (Row - 1) * R.CH);
                Cell_W : constant Positive :=
                  (if Cell.Text.Width = Terminal.Core.Width_Two then R.CW * 2 else R.CW);
                Cursor_Cell : constant Boolean := Is_Cursor_Cell (Snapshot, Row, Col);
@@ -3110,13 +3625,17 @@ package body Terminal.App.Renderer is
                        Shaped_Run_Start (R, X, Y);
                   begin
                      if Run_Index > 0 then
-                        Draw_Shaped_Run
-                          (R,
-                           Run    => R.Text_Runs (Run_Index),
-                           Status => Glyph_Render_Status);
-                        if Glyph_Render_Status /= Ok then
-                           Set_Render_Status (R, Status, Glyph_Render_Status);
-                           return;
+                        if not Draw_Emoji_Run_Color
+                          (R, R.Text_Runs (Run_Index))
+                        then
+                           Draw_Shaped_Run
+                             (R,
+                              Run    => R.Text_Runs (Run_Index),
+                              Status => Glyph_Render_Status);
+                           if Glyph_Render_Status /= Ok then
+                              Set_Render_Status (R, Status, Glyph_Render_Status);
+                              return;
+                           end if;
                         end if;
                      elsif not Covered_By_Shaped_Run (R, X, Y) then
                         Draw_Glyph
@@ -3194,6 +3713,12 @@ package body Terminal.App.Renderer is
 
       Add_Image (R, Snapshot.Graphics);
 
+      Add_Link_Overlay (R, Snapshot, Status);
+      if Status /= Ok then
+         Set_Render_Status (R, Status, Status);
+         return;
+      end if;
+
       R.Atlas_Dirty := Textrender.Atlas_Dirty (R.Text);
       if R.Atlas_Dirty then
          Textrender.Clear_Atlas_Dirty (R.Text);
@@ -3212,6 +3737,262 @@ package body Terminal.App.Renderer is
 
       Set_Render_Status (R, Status, Ok);
    end Render;
+
+   procedure Render_App
+     (R              : in out Renderer;
+      Snapshots      : Snapshot_Array;
+      Active_Index   : Positive;
+      Tabs           : Terminal.App.Tabs.Tab_Snapshot;
+      Splits         : Terminal.App.Splits.Split_Snapshot;
+      Status         : out Render_Status)
+   is
+      Cell_Count : Natural := 0;
+      Rect_Max   : Natural;
+      Glyph_Max  : Natural;
+      Text_Run_Max : Natural := 0;
+      Colour_Max : Natural := 0;
+      Image_Max  : Natural := Natural'Max (1, Snapshots'Length);
+      Tab_Height : constant Natural :=
+        (if Tabs.Count > 1 then R.CH + Pane_Border_Pixels else 0);
+      Frame_W : Natural := 0;
+      Frame_H : Natural := Tab_Height;
+      Pane_X  : Natural := 0;
+      Pane_Y  : Natural := Tab_Height;
+      Draw_Status : Render_Status;
+
+      function Pane_Width (S : Terminal.Core.Render_Snapshot) return Natural is
+        (S.Cols * R.CW + Content_Margin * 2);
+
+      function Pane_Height (S : Terminal.Core.Render_Snapshot) return Natural is
+        (S.Rows * R.CH + Content_Margin * 2);
+
+      procedure Draw_Pane_Border
+        (X      : Natural;
+         Y      : Natural;
+         Width  : Natural;
+         Height : Natural;
+         Active : Boolean)
+      is
+         Color : constant RM.Pixel_Color :=
+           (if Active then R.Color_Theme.Cursor_BG else
+              (R => 0.22, G => 0.24, B => 0.27, A => 1.0));
+         Thickness : constant Float := Float (Pane_Border_Pixels);
+      begin
+         if Width = 0 or else Height = 0 then
+            return;
+         end if;
+         Add_Rectangle (R, Float (X), Float (Y), Float (Width), Thickness, Color);
+         Add_Rectangle
+           (R,
+            Float (X),
+            Float (Y + Height - Pane_Border_Pixels),
+            Float (Width),
+            Thickness,
+            Color);
+         Add_Rectangle (R, Float (X), Float (Y), Thickness, Float (Height), Color);
+         Add_Rectangle
+           (R,
+            Float (X + Width - Pane_Border_Pixels),
+            Float (Y),
+            Thickness,
+            Float (Height),
+            Color);
+      end Draw_Pane_Border;
+
+      procedure Draw_Tab_Bar is
+         Count : constant Positive := Positive (Tabs.Count);
+         Base  : constant Natural := Natural'Max (Terminal.App.Tabs.Min_Tab_Width, Frame_W / Count);
+         X     : Natural := 0;
+      begin
+         if Tabs.Count <= 1 then
+            return;
+         end if;
+
+         Add_Rectangle
+           (R,
+            X      => 0.0,
+            Y      => 0.0,
+            Width  => Float (Frame_W),
+            Height => Float (Tab_Height),
+            Color  => (R => 0.08, G => 0.09, B => 0.10, A => 1.0));
+
+         for I in 1 .. Tabs.Count loop
+            declare
+               Remaining : constant Natural :=
+                 (if I = Tabs.Count then Frame_W - X else Base);
+               Col_Width : constant Natural := Natural'Max (1, Remaining / R.CW);
+               Label : constant String :=
+                 Terminal.App.Tabs.Fitted_Label (Tabs.Labels (I), Col_Width);
+               Active : constant Boolean := I = Tabs.Active;
+            begin
+               Add_Rectangle
+                 (R,
+                  X      => Float (X),
+                  Y      => 0.0,
+                  Width  => Float (Remaining),
+                  Height => Float (R.CH),
+                  Color  =>
+                    (if Active
+                     then (R => 0.18, G => 0.25, B => 0.34, A => 1.0)
+                     else (R => 0.12, G => 0.13, B => 0.15, A => 1.0)));
+               Draw_Label
+                 (R,
+                  Text   => Label,
+                  X      => Float (X + 1),
+                  Y      => 0.0,
+                  Limit  => Col_Width,
+                  Color  => R.Color_Theme.Default_FG,
+                  Status => Draw_Status);
+               if Draw_Status /= Ok then
+                  Status := Draw_Status;
+                  return;
+               end if;
+               X := X + Remaining;
+            end;
+         end loop;
+
+         Status := Ok;
+      end Draw_Tab_Bar;
+   begin
+      if not R.Initialized or else not R.Text_Loaded then
+         Set_Render_Status (R, Status, Not_Initialized);
+         return;
+      elsif Snapshots'Length = 0
+        or else Active_Index < Snapshots'First
+        or else Active_Index > Snapshots'Last
+      then
+         Set_Render_Status (R, Status, Invalid_Snapshot);
+         return;
+      end if;
+
+      for I in Snapshots'Range loop
+         if Snapshots (I).Rows = 0 or else Snapshots (I).Cols = 0 then
+            Set_Render_Status (R, Status, Invalid_Snapshot);
+            return;
+         end if;
+         Cell_Count := Cell_Count + Snapshots (I).Rows * Snapshots (I).Cols;
+         Text_Run_Max := Text_Run_Max + Snapshots (I).Rows * Snapshots (I).Cols;
+         Colour_Max := Colour_Max + Snapshots (I).Rows * Snapshots (I).Cols;
+
+         if Splits.Orientation = Terminal.App.Splits.Vertical
+           and then Snapshots'Length > 1
+         then
+            Frame_W := Frame_W + Pane_Width (Snapshots (I));
+            Frame_H := Natural'Max (Frame_H, Tab_Height + Pane_Height (Snapshots (I)));
+         else
+            Frame_W := Natural'Max (Frame_W, Pane_Width (Snapshots (I)));
+            Frame_H := Frame_H + Pane_Height (Snapshots (I));
+         end if;
+      end loop;
+
+      Frame_W := Natural'Max (Frame_W, R.Target_Frame_Width);
+      Frame_H := Natural'Max (Frame_H, R.Target_Frame_Height);
+
+      Release_Frame (R);
+      R.Missing_Glyph_Count := 0;
+      R.Shaped_Glyph_Count := 0;
+      R.Shaping_Fallback_Count := 0;
+      R.Text_Fallback_Run_Count := 0;
+      R.Color_Glyph_Count := 0;
+      R.Color_Emoji_Fallback_Count := 0;
+      R.Paragraph_Bidi_Fallback_Count := 0;
+      R.Last_Cell_Count := Cell_Count;
+      R.Last_Frame_Width := Frame_W;
+      R.Last_Frame_Height := Frame_H;
+
+      Rect_Max := Cell_Count * 4 + Snapshots'Length * 8 + Tabs.Count + 8;
+      Glyph_Max :=
+        Cell_Count
+        * Natural'Max
+            (Terminal.Core.Max_Cluster_Attachments + 1,
+             RM.Max_Shaped_Glyphs_Per_Run)
+        * 2
+        + Max_Link_Overlay_Chars
+        + Terminal.App.Tabs.Max_Tab_Label_Length * Natural (Tabs.Count);
+      begin
+         R.Rectangles := new RM.Rectangle_Array (1 .. Natural'Max (1, Rect_Max));
+         R.Glyphs := new RM.Glyph_Array (1 .. Natural'Max (1, Glyph_Max));
+         R.Colour_Glyphs :=
+           new RM.Colour_Glyph_Array (1 .. Natural'Max (1, Colour_Max));
+         R.Images := new RM.Image_Array (1 .. Image_Max);
+         R.Text_Runs := new RM.Text_Run_Array (1 .. Natural'Max (1, Text_Run_Max));
+      exception
+         when Storage_Error =>
+            Release_Frame (R);
+            Set_Render_Status (R, Status, Allocation_Failed);
+            return;
+      end;
+
+      Add_Rectangle
+        (R,
+         X      => 0.0,
+         Y      => 0.0,
+         Width  => Float (R.Last_Frame_Width),
+         Height => Float (R.Last_Frame_Height),
+         Color  => R.Color_Theme.Default_BG);
+
+      Draw_Tab_Bar;
+      if Status /= Ok then
+         Set_Render_Status (R, Status, Status);
+         return;
+      end if;
+
+      for I in Snapshots'Range loop
+         declare
+            W : constant Natural := Pane_Width (Snapshots (I));
+            H : constant Natural := Pane_Height (Snapshots (I));
+         begin
+            Draw_Pane_Border
+              (Pane_X,
+               Pane_Y,
+               W,
+               H,
+               Active_Index = I);
+            R.Draw_Offset_X := Pane_X;
+            R.Draw_Offset_Y := Pane_Y;
+            Draw_Snapshot_Into
+              (R,
+               Snapshots (I),
+               Show_Overlay => Active_Index = I,
+               Status       => Draw_Status);
+            if Draw_Status /= Ok then
+               R.Draw_Offset_X := 0;
+               R.Draw_Offset_Y := 0;
+               Set_Render_Status (R, Status, Draw_Status);
+               return;
+            end if;
+
+            if Splits.Orientation = Terminal.App.Splits.Vertical
+              and then Snapshots'Length > 1
+            then
+               Pane_X := Pane_X + W;
+            else
+               Pane_Y := Pane_Y + H;
+            end if;
+         end;
+      end loop;
+
+      R.Draw_Offset_X := 0;
+      R.Draw_Offset_Y := 0;
+
+      R.Atlas_Dirty := Textrender.Atlas_Dirty (R.Text);
+      if R.Atlas_Dirty then
+         Textrender.Clear_Atlas_Dirty (R.Text);
+      end if;
+
+      declare
+         Batch_Status : VS.Build_Status;
+      begin
+         VS.Build (Last_Frame (R), R.Batch, Batch_Status);
+         if Batch_Status /= VS.Ok then
+            Set_Render_Status (R, Status, Batch_Build_Failed);
+            return;
+         end if;
+         R.Vertex_Count := VS.Vertex_Count (R.Batch);
+      end;
+
+      Set_Render_Status (R, Status, Ok);
+   end Render_App;
 
    procedure Set_Framebuffer_Size
      (R      : in out Renderer;
@@ -3252,6 +4033,7 @@ package body Terminal.App.Renderer is
       R.Shaped_Glyph_Count := 0;
       R.Shaping_Fallback_Count := 0;
       R.Text_Fallback_Run_Count := 0;
+      R.Color_Glyph_Count := 0;
       R.Color_Emoji_Fallback_Count := 0;
       R.Paragraph_Bidi_Fallback_Count := 0;
       R.Vertex_Count := 0;
@@ -3338,6 +4120,7 @@ package body Terminal.App.Renderer is
          Last_Shaped_Glyph_Count => R.Shaped_Glyph_Count,
          Last_Shaping_Fallback_Count => R.Shaping_Fallback_Count,
          Last_Text_Fallback_Run_Count => R.Text_Fallback_Run_Count,
+         Last_Color_Glyph_Count => R.Color_Glyph_Count,
          Last_Color_Emoji_Fallback_Count => R.Color_Emoji_Fallback_Count,
          Last_Paragraph_Bidi_Fallback_Count =>
            R.Paragraph_Bidi_Fallback_Count,
@@ -3350,7 +4133,13 @@ package body Terminal.App.Renderer is
    function Color_Emoji_Status_Label
      (Diagnostics : Renderer_Diagnostics) return String is
    begin
-      if Diagnostics.Last_Color_Emoji_Fallback_Count = 0 then
+      if Diagnostics.Last_Color_Glyph_Count > 0
+        and then Diagnostics.Last_Color_Emoji_Fallback_Count = 0
+      then
+         return "Color emoji glyphs rendered";
+      elsif Diagnostics.Last_Color_Glyph_Count > 0 then
+         return "Color emoji glyphs rendered with fallback";
+      elsif Diagnostics.Last_Color_Emoji_Fallback_Count = 0 then
          return "";
       else
          return "Color emoji rendered with monochrome fallback";

@@ -13,6 +13,7 @@ glfw_vulkan = "*"
 df_vulkan = "*"
 textrender = "*"
 zlib = "*"
+jpeglib = "*"
 
 [[pins]]
 terminal_common = { path = "terminal_common" }
@@ -21,3 +22,4 @@ terminal_pty = { path = "terminal_pty" }
 glfw_vulkan = { path = "glfw_vulkan" }
 textrender = { path = "../textrender" }
 zlib = { path = "../zlib" }
+jpeglib = { path = "../jpeglib" }

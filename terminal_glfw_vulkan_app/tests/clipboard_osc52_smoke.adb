@@ -40,8 +40,8 @@ begin
    begin
       Assert
         (Clipboard_Cap.Native_Backing
-         and then not Clipboard_Cap.App_Local_Backing,
-         "clipboard target should use native GLFW clipboard backing");
+         and then Clipboard_Cap.App_Local_Backing,
+         "clipboard target should use native GLFW clipboard with app mirror");
       Assert
         (not Primary_Cap.Native_Backing
          and then Primary_Cap.App_Local_Backing,
@@ -52,8 +52,8 @@ begin
          "selection target should be app-local without a native backend");
       Assert
         (Terminal.App.Clipboard_OSC52.Status_Label
-           (Terminal.Core.Clipboard_Clipboard) =
-         "Clipboard target uses native clipboard",
+         (Terminal.Core.Clipboard_Clipboard) =
+         "Clipboard target uses native clipboard with app mirror",
          "clipboard status label");
       Assert
         (Terminal.App.Clipboard_OSC52.Status_Label
@@ -123,9 +123,15 @@ begin
       "bounded OSC 52 response framing");
 
    Terminal.App.Clipboard_OSC52.Store
+     (Store, Terminal.Core.Clipboard_Clipboard, "clipboard");
+   Terminal.App.Clipboard_OSC52.Store
      (Store, Terminal.Core.Clipboard_Primary, "primary");
    Terminal.App.Clipboard_OSC52.Store
      (Store, Terminal.Core.Clipboard_Selection, "selection");
+   Assert
+     (Terminal.App.Clipboard_OSC52.Text
+        (Store, Terminal.Core.Clipboard_Clipboard) = "clipboard",
+      "clipboard target should round-trip through app mirror");
    Assert
      (Terminal.App.Clipboard_OSC52.Text
         (Store, Terminal.Core.Clipboard_Primary) = "primary",
@@ -134,11 +140,6 @@ begin
      (Terminal.App.Clipboard_OSC52.Text
         (Store, Terminal.Core.Clipboard_Selection) = "selection",
       "selection target should round-trip independently");
-   Assert
-     (Terminal.App.Clipboard_OSC52.Text
-        (Store, Terminal.Core.Clipboard_Clipboard) = "",
-      "system clipboard target is not stored in app target cache");
-
    Terminal.App.Clipboard_OSC52.Store_Local_Selection
      (Store, "local");
    Assert

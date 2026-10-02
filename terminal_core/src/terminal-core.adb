@@ -299,7 +299,9 @@ package body Terminal.Core is
          Mouse_Button             => False,
          Mouse_Drag               => False,
          Mouse_Any_Event          => False,
+         Mouse_UTF8               => False,
          Mouse_SGR                => False,
+         Mouse_URXVT              => False,
          Focus_Reporting          => False,
          Synchronized_Update      => False,
          Alternate_Screen         => Alternate_Screen,
@@ -2135,8 +2137,12 @@ package body Terminal.Core is
                return (if T.Current_Modes.Mouse_Any_Event then 1 else 2);
             when 1004 =>
                return (if T.Current_Modes.Focus_Reporting then 1 else 2);
+            when 1005 =>
+               return (if T.Current_Modes.Mouse_UTF8 then 1 else 2);
             when 1006 =>
                return (if T.Current_Modes.Mouse_SGR then 1 else 2);
+            when 1015 =>
+               return (if T.Current_Modes.Mouse_URXVT then 1 else 2);
             when 2004 =>
                return (if T.Current_Modes.Bracketed_Paste then 1 else 2);
             when 2026 =>
@@ -2311,8 +2317,12 @@ package body Terminal.Core is
             end if;
          when 1004 =>
             T.Current_Modes.Focus_Reporting := Enable;
+         when 1005 =>
+            T.Current_Modes.Mouse_UTF8 := Enable;
          when 1006 =>
             T.Current_Modes.Mouse_SGR := Enable;
+         when 1015 =>
+            T.Current_Modes.Mouse_URXVT := Enable;
          when 47 | 1047 =>
             T.Current_Modes.Alternate_Screen := Enable;
             T.Active := (if Enable then Alternate else Primary);

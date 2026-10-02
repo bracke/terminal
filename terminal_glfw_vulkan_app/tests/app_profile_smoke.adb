@@ -63,7 +63,9 @@ begin
    Assert (Profile.Bracketed_Paste, "profile bracketed paste");
    Assert (Profile.Focus_Reporting, "profile focus reporting");
    Assert (Profile.Xterm_Mouse_Reporting, "profile xterm mouse reporting");
+   Assert (Profile.UTF8_Mouse_Coordinates, "profile UTF-8 mouse coordinates");
    Assert (Profile.SGR_Mouse_Coordinates, "profile SGR mouse coordinates");
+   Assert (Profile.URXVT_Mouse_Coordinates, "profile urxvt mouse coordinates");
    Assert (Profile.Synchronized_Update, "profile synchronized update");
    Assert (Profile.OSC52_Clipboard, "profile OSC 52 clipboard");
    Assert
@@ -82,7 +84,7 @@ begin
       "profile status label should be bounded");
    Assert
      (Terminal.App.Multiplexer_Status_Label (Profile) =
-      "tmux DCS passthrough enabled; full multiplexer sessions postponed",
+      "tmux DCS passthrough enabled",
       "profile multiplexer status label");
    Assert
      (Terminal.App.Multiplexer_Status_Label (Profile)'Length <=
@@ -223,6 +225,9 @@ begin
                Assert
                  (Clipboard_Cap.Native_Backing,
                   "profile OSC 52 clipboard native capability");
+               Assert
+                 (Clipboard_Cap.App_Local_Backing,
+                  "profile OSC 52 clipboard app mirror capability");
                Assert
                  (not Primary_Cap.Native_Backing
                   and then Primary_Cap.App_Local_Backing,

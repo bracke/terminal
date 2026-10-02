@@ -250,10 +250,10 @@ begin
         (Contains (Line, "link_activation=No link under pointer"),
          "default link activation status should be included");
       Assert
-        (Contains (Line, "tab_status=Single live session; tab model ready"),
+        (Contains (Line, "tab_status=Single live session"),
          "tab status should be included");
       Assert
-        (Contains (Line, "split_status=Single live pane; split model ready"),
+        (Contains (Line, "split_status=Single live pane"),
          "split status should be included");
       Assert
         (Contains

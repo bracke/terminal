@@ -1,6 +1,8 @@
 with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Render_Model;
+with Terminal.App.Splits;
+with Terminal.App.Tabs;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
@@ -12,6 +14,7 @@ package Terminal.App.Renderer is
    Max_Status_Label_Length : constant := 64;
 
    type Renderer is limited private;
+   type Snapshot_Array is array (Positive range <>) of Terminal.Core.Render_Snapshot;
 
    type Init_Status is (Ok, Vulkan_Adapter_Missing, Failed);
    type Render_Status is
@@ -55,6 +58,7 @@ package Terminal.App.Renderer is
       Last_Shaped_Glyph_Count : Natural := 0;
       Last_Shaping_Fallback_Count : Natural := 0;
       Last_Text_Fallback_Run_Count : Natural := 0;
+      Last_Color_Glyph_Count : Natural := 0;
       Last_Color_Emoji_Fallback_Count : Natural := 0;
       Last_Paragraph_Bidi_Fallback_Count : Natural := 0;
       Last_Vertex_Count   : Natural := 0;
@@ -74,6 +78,13 @@ package Terminal.App.Renderer is
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
       Status   : out Render_Status);
+   procedure Render_App
+     (R              : in out Renderer;
+      Snapshots      : Snapshot_Array;
+      Active_Index   : Positive;
+      Tabs           : Terminal.App.Tabs.Tab_Snapshot;
+      Splits         : Terminal.App.Splits.Split_Snapshot;
+      Status         : out Render_Status);
    procedure Set_Framebuffer_Size
      (R      : in out Renderer;
       Width  : Natural;
@@ -149,6 +160,7 @@ private
       Shaped_Glyph_Count : Natural := 0;
       Shaping_Fallback_Count : Natural := 0;
       Text_Fallback_Run_Count : Natural := 0;
+      Color_Glyph_Count : Natural := 0;
       Color_Emoji_Fallback_Count : Natural := 0;
       Paragraph_Bidi_Fallback_Count : Natural := 0;
       Vertex_Count : Natural := 0;
@@ -162,6 +174,8 @@ private
       Color_Theme : Terminal.App.Theme.Theme :=
         Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark);
       Hovered_Link : Terminal.Core.Hyperlink;
+      Draw_Offset_X : Natural := 0;
+      Draw_Offset_Y : Natural := 0;
       Atlas_Dirty : Boolean := False;
       Kitty_Chunk_Head : Kitty_Chunk_Segment_Access := null;
       Kitty_Chunk_Tail : Kitty_Chunk_Segment_Access := null;

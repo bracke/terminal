@@ -13,7 +13,7 @@ package body Terminal.App.Clipboard_OSC52 is
    is
    begin
       if Target = Terminal.Core.Clipboard_Clipboard then
-         return (Native_Backing => True, App_Local_Backing => False);
+         return (Native_Backing => True, App_Local_Backing => True);
       else
          return (Native_Backing => False, App_Local_Backing => True);
       end if;
@@ -24,7 +24,7 @@ package body Terminal.App.Clipboard_OSC52 is
    begin
       case Target is
          when Terminal.Core.Clipboard_Clipboard =>
-            return "Clipboard target uses native clipboard";
+            return "Clipboard target uses native clipboard with app mirror";
          when Terminal.Core.Clipboard_Primary =>
             return "Primary target uses app-local selection";
          when Terminal.Core.Clipboard_Selection =>
@@ -86,7 +86,9 @@ package body Terminal.App.Clipboard_OSC52 is
          end loop;
       end Copy;
    begin
-      if Target = Terminal.Core.Clipboard_Primary then
+      if Target = Terminal.Core.Clipboard_Clipboard then
+         Copy (State.Clipboard);
+      elsif Target = Terminal.Core.Clipboard_Primary then
          Copy (State.Primary);
       elsif Target = Terminal.Core.Clipboard_Selection then
          Copy (State.Selection);
@@ -107,7 +109,9 @@ package body Terminal.App.Clipboard_OSC52 is
       Target : Terminal.Core.Clipboard_Target) return String
    is
    begin
-      if Target = Terminal.Core.Clipboard_Primary then
+      if Target = Terminal.Core.Clipboard_Clipboard then
+         return State.Clipboard.Data (1 .. State.Clipboard.Length);
+      elsif Target = Terminal.Core.Clipboard_Primary then
          return State.Primary.Data (1 .. State.Primary.Length);
       elsif Target = Terminal.Core.Clipboard_Selection then
          return State.Selection.Data (1 .. State.Selection.Length);

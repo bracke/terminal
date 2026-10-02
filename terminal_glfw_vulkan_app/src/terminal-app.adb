@@ -11,7 +11,9 @@ package body Terminal.App is
         (Bracketed_Paste       => True,
          Focus_Reporting       => True,
          Xterm_Mouse_Reporting => True,
+         UTF8_Mouse_Coordinates => True,
          SGR_Mouse_Coordinates => True,
+         URXVT_Mouse_Coordinates => True,
          Synchronized_Update   => True,
          OSC52_Clipboard       => True,
          OSC52_App_Local_Selections => True,
@@ -38,7 +40,7 @@ package body Terminal.App is
      (Profile : Terminal_Profile) return String is
    begin
       if Profile.Tmux_DCS_Passthrough then
-         return "tmux DCS passthrough enabled; full multiplexer sessions postponed";
+         return "tmux DCS passthrough enabled";
       else
          return "terminal multiplexer passthrough disabled";
       end if;

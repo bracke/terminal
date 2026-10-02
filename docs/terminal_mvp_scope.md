@@ -195,22 +195,23 @@ raw or PNG continuation chunks as app-owned encoded segments beyond the core
 128 KiB preview cap, decodes raw `f=24`/`f=32` chunks directly across those
 segments, and decodes chunked kitty PNG Base64 directly across those segments
 into an exact upper-bound PNG byte staging buffer used by the current PNG
-decoder API. Raw kitty, PNG, and sixel decoded output buffers are sized to the
+decoder API. Raw kitty, PNG/JPEG, and sixel decoded output buffers are sized to the
 actual decoded byte count rather than the maximum cap. It renders the combined
 payload when the final chunk arrives. It
-also retains a heap-backed kitty `i=` image object table for later
+also retains a heap-backed kitty `i=` image object table for subsequent
 placement-only kitty commands that reuse decoded pixels without resending image
 data. Initial `i=` transmissions transfer decoded pixels into that table
 without a second pixel copy, placements borrow stored pixels without copying
 them into each frame, kitty delete actions can release individual IDs or the
 full table, and the existing per-image decode/upload caps remain in place.
-General file-format image decoding remains limited to PNG in the current draw
-path, but the renderer model now has image commands for sixel, kitty, and iTerm2
+General file-format image decoding supports PNG and JPEG in the current draw
+path, and the renderer model has image commands for sixel, kitty, and iTerm2
 placeholders plus a real textured path for complete bounded kitty raw RGB/RGBA
 payloads with explicit `f=24` or `f=32` format and `s`/`v` pixel dimensions,
-bounded kitty `f=100` PNG payloads, bounded sixel rasters decoded to RGBA
-pixels, and bounded iTerm2 PNG payloads inflated through the local zlib crate.
-The PNG path supports grayscale, RGB, indexed, grayscale-alpha, and RGBA images
+bounded kitty `f=100` PNG/JPEG payloads, bounded sixel rasters decoded to RGBA
+pixels, and bounded iTerm2 PNG/JPEG payloads. The PNG path is inflated through
+the local zlib crate; JPEG is decoded through the local jpeglib crate. The PNG
+path supports grayscale, RGB, indexed, grayscale-alpha, and RGBA images
 across valid PNG bit depths, including palette, simple transparency chunks,
 16-bit downconversion, and Adam7 interlace.
 Image commands include total payload length, raw pixel format/dimensions,
@@ -221,7 +222,7 @@ preview byte buffer. The app renderer maps the snapshot
 graphics event into either a protocol-tinted placeholder image command or a
 texture-backed decoded image command, and the Vulkan submit path turns those
 image commands into quads, so the draw pipeline can carry visible image
-placeholders and real kitty/sixel/iTerm2 PNG image textures while retaining the last image
+placeholders and real kitty/sixel/iTerm2 PNG/JPEG image textures while retaining the last image
 command's payload, preview counts, decoded diagnostics preview bytes, computed placeholder
 dimensions, pixel dimensions, and image vertex counts in renderer diagnostics,
 the submit batch, presenter diagnostics, and Vulkan device upload diagnostics.
@@ -352,16 +353,19 @@ glyph path and do not fabricate font glyph indexes from Unicode codepoints.
 Runs shaped only to `.notdef` glyphs are rejected as shaped output: simple runs
 fall back to codepoint rendering, while complex runs remain backend-needed. The
 submit/presenter/device layers carry those runs without parsing terminal data.
-Full paragraph BiDi reordering and color emoji glyph rendering are still outside
-the current draw path. Mixed-direction rows are detected and counted as
-paragraph-BiDi fallbacks so that this missing reordering path is visible in
-diagnostics. Emoji clusters are preserved and classified as emoji text runs, but
-the renderer currently draws them through monochrome/font fallback paths rather
-than layered color glyph/image glyph paths. Renderer diagnostics expose
-paragraph-BiDi and color-emoji fallback counts along with aggregate shaped-glyph
-counts, fallback-run counts, and bounded fallback status labels for those paths.
+Mixed-direction rows are visually reordered at the renderer text-run level:
+RTL-base rows place logical runs from the right edge, and LTR-base rows reverse
+contiguous RTL run groups in place. Paragraph-BiDi fallback diagnostics remain
+available for unhandled reorder paths. Emoji clusters are preserved and
+classified as emoji text runs, but
+the renderer now tries `textrender` color glyph output before shaped monochrome
+text. Layered COLR/CPAL emoji and bitmap CBDT/CBLC or sbix PNG strikes render
+through a dedicated RGBA color-glyph sheet, separate from inline image textures.
+Renderer diagnostics expose emitted color glyph counts, paragraph-BiDi and
+color-emoji fallback counts, aggregate shaped-glyph counts, fallback-run counts,
+and bounded fallback status labels for those paths.
 The app graphics capability surface reports emoji clusters as preserved with
-monochrome fallback and no color glyph rendering.
+monochrome fallback available and color glyph rendering enabled.
 
 ## Cursor
 
@@ -399,7 +403,7 @@ active. Releasing a non-empty local selection also updates the app-owned OSC 52
 primary and selection target slots. `Ctrl+Shift+C`, `Super+C`, and
 `Ctrl+Insert` copy the current selection without sending bytes to the PTY.
 Selection state exposes a public snapshot with active/range status, mode,
-anchor, and focus positions for future mouse UI routing without exposing the
+anchor, and focus positions for mouse UI routing without exposing the
 private representation. The selection model exposes a bounded status label for
 empty, linear, and rectangular selection states.
 Double-clicking selects the token under the pointer, where token characters
@@ -414,8 +418,11 @@ from each selected visible row.
 
 Mouse-aware terminal programs can enable basic xterm mouse reporting through
 DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates
-through `?1006`. When reporting is enabled, the app sends mouse press, release,
-and configured motion events to the PTY instead of starting local selection.
+through `?1006`. Legacy UTF-8 mouse coordinates (`?1005`) and urxvt
+coordinates (`?1015`) are also tracked and encoded, with SGR preferred when
+multiple coordinate encodings are enabled. When reporting is enabled, the app
+sends mouse press, release, and configured motion events to the PTY instead of
+starting local selection.
 `Shift+Left` overrides reporting and starts/extends a local selection, matching
 the common terminal escape hatch for copying text from mouse-aware programs.
 The input mapper exposes a bounded mouse status label that distinguishes local
@@ -423,17 +430,18 @@ selection routing from terminal mouse-reporting routing, plus a combined
 bounded input-mode status label that summarizes keyboard lock, paste, focus,
 and mouse routing.
 Button, drag, and any-event tracking are treated as exclusive xterm tracking
-modes; enabling one clears the other two. SGR coordinates are an independent
-encoding mode. Mouse wheel events are encoded as xterm wheel button packets,
-including horizontal wheel packets, when reporting is enabled; otherwise the
-GLFW app uses the wheel for app-owned scrollback viewing.
+modes; enabling one clears the other two. UTF-8, SGR, and urxvt coordinates
+are independent encoding modes. Mouse wheel events are encoded as xterm wheel
+button packets, including horizontal wheel packets, when reporting is enabled;
+otherwise the GLFW app uses the wheel for app-owned scrollback viewing.
 OSC 52 clipboard set and query requests are supported for bounded text
 payloads, and `c`/`p`/`s` targets are recognized. Query responses are capped so
 their OSC framing and base64 payload fit in one bounded app byte chunk.
-The normal `c` target is backed by the native GLFW clipboard. Distinct
-platform-native primary and selection clipboards remain postponed; the clipboard
-module exposes this capability split with bounded status labels, and app-owned
-bounded target slots are used for `p` and `s`.
+The normal `c` target is backed by the native GLFW clipboard and mirrored into
+the bounded app target store. GLFW exposes no portable native primary/selection
+clipboard API, so the clipboard module reports that capability split explicitly
+with bounded status labels, and app-owned bounded target slots provide `p` and
+`s` behavior.
 
 Focus reporting via DEC private mode `?1004` is supported. When enabled, the
 app sends xterm focus-in and focus-out reports to the PTY as window focus
@@ -451,11 +459,12 @@ desktop opener. Supported URI scheme matching is case-insensitive, and URIs
 with bare schemes, spaces, or control bytes are rejected before launcher command
 construction. Supported links under the pointer are underlined and use a hand
 cursor. While a supported link is hovered, the app window title includes the
-target URI as a link hint. `Ctrl+Left Click` activation results are retained as
-bounded activation outcome labels and included in the refreshed title/status
-surface. The hyperlink helper exposes a bounded sanitized URI-only label and
-bounded open/unsupported status label for future status/tooltip surfaces.
-In-content tooltips and richer link previews remain postponed.
+target URI as a link hint and the renderer draws an in-content status overlay on
+the active terminal row with the bounded open/unsupported link preview.
+`Ctrl+Left Click` activation results are retained as bounded activation outcome
+labels and included in the refreshed title/status surface. The hyperlink helper
+exposes bounded sanitized URI-only and open/unsupported labels for these
+surfaces.
 
 ## TERM and Environment
 
@@ -467,20 +476,22 @@ execs the shell with `execv`. The PTY backend exposes these identity strings as
 constants, and a PTY smoke verifies the exported terminal identity seen by the
 child shell. The core unwraps tmux DCS passthrough payloads by collapsing
 doubled ESC bytes and feeding the inner control sequence back through the normal
-parser, with a diagnostic count; full tmux/screen session behavior remains
-postponed. The app profile exposes a bounded multiplexer status label for this
-distinction and a bounded diagnostic label for the handled passthrough count,
-which is included in runtime diagnostics when passthrough has occurred.
-The POSIX PTY package exposes a backend capability snapshot that marks POSIX
-PTY, resize, terminal environment, and nonblocking reads as supported, and
-Windows ConPTY as unsupported, with bounded backend and ConPTY status labels.
+parser, with a diagnostic count. The app profile exposes a bounded multiplexer
+status label for this passthrough support and a bounded diagnostic label for the
+handled passthrough count, which is included in runtime diagnostics when
+passthrough has occurred.
+The PTY package exposes a backend capability snapshot with bounded backend and
+ConPTY status labels. The POSIX-selected backend reports POSIX PTY, resize,
+terminal environment, and nonblocking reads; the Windows-selected backend uses
+ConPTY with resize, terminal environment publishing, and nonblocking reads via
+pipe peeking.
 The app PTY write-all helper exposes bounded labels for complete, incomplete,
 failed, and closed-session write outcomes. The app
 package exposes the terminal profile advertised by the frontend:
 `TERM=xterm-256color`, `COLORTERM=truecolor`,
-bracketed paste, focus reporting, xterm mouse reporting with SGR coordinates,
-DEC synchronized update, OSC 52 clipboard, OSC 8 hyperlinks, and truecolor
-support. The profile also records tmux DCS passthrough and that OSC 52
+bracketed paste, focus reporting, xterm mouse reporting with UTF-8, SGR, and
+urxvt coordinate encodings, DEC synchronized update, OSC 52 clipboard, OSC 8
+hyperlinks, and truecolor support. The profile also records tmux DCS passthrough and that OSC 52
 primary/selection targets are app-local rather than platform-native, with a
 bounded profile status label summarizing the advertised terminal identity.
 
@@ -510,7 +521,7 @@ blank/comment lines, malformed lines, unknown keys, and invalid values while the
 startup loader continues to tolerate missing or unreadable config files, with
 bounded labels for each line status. The config package exposes a stable
 effective-config image for diagnostics and
-future help/status surfaces, plus bounded status labels for the selected theme,
+help/status surfaces, plus bounded status labels for the selected theme,
 window size, and startup grid.
 
 ## Tabs
@@ -519,18 +530,20 @@ The app has a bounded tab state model with up to eight tabs and app-owned
 shortcut classification for `Ctrl+Shift+T`, `Ctrl+Shift+W`,
 `Ctrl+Page_Down`, and `Ctrl+Page_Up`. These shortcuts are reserved by the app
 instead of being sent to the PTY. When more than one tab exists, the window
-title includes the active/count suffix, such as `[2/3]`. Full multi-session tab
-rendering is still in progress; the current visible app owns one live
-PTY/session. The tab model exposes bounded per-tab labels so a future tab bar
-can render stable UI metadata before tabs own independent sessions. The active
+title includes the active/count suffix, such as `[2/3]`. New tabs allocate
+independent app-owned terminal cores, PTYs, PTY output queues, and reader tasks
+through the bounded runtime table; tab navigation switches the active visible
+runtime and routes input, clipboard replies, resize, scrollback, diagnostics,
+and rendering through that active session. The composited renderer draws a
+visible tab strip using bounded per-tab labels and active-tab highlighting. The active
 tab label is updated from the bounded terminal title when OSC title changes are
 processed. A public tab snapshot exposes count, active index, and bounded
 labels for renderers, with helpers to extract and fit label text for a target
 cell width. It also computes a deterministic tab-strip layout and column
 hit-testing with a fixed minimum tab width and active-tab flags, plus
-activate-by-column and close-by-column behavior for future mouse activation.
-The tab model exposes a bounded status label that distinguishes the current
-single live session from the postponed multi-session tab renderer.
+activate-by-column and close-by-column behavior for mouse activation. The tab
+model exposes a bounded status label for the live session count and active
+index.
 
 ## Splits
 
@@ -545,10 +558,13 @@ that axis evenly. A public split snapshot exposes count, active index, and
 orientation for renderers, with helpers to generate and fit pane labels for a
 target cell width. The layout can also map a terminal row/column back to a pane
 index, marks the active pane, activates the hit pane, and closes the hit pane
-for future mouse/input routing. Full split-pane rendering is still in progress;
-the current visible app owns one live PTY/session. The split model exposes a
-bounded status label that distinguishes the current single live pane from the
-postponed split-pane renderer.
+for mouse/input routing. New panes allocate independent app-owned terminal
+cores, PTYs, PTY output queues, and reader tasks through the bounded runtime
+table. Pane navigation switches the active runtime for input, clipboard replies,
+scrollback, and diagnostics, while the composited renderer draws all visible
+pane snapshots with active-pane chrome in one frame. Split panes are live
+sessions rather than placeholders. The split model exposes a bounded status
+label for the live pane count and active index.
 
 ## Input Mapping
 
@@ -567,7 +583,7 @@ core mode snapshot.
 primary-selection paste when mouse reporting is disabled. Bracketed-paste mode
 has a bounded status label so UI surfaces can distinguish bracketed and plain
 paste routing. A combined bounded input-mode status label summarizes keyboard
-lock, paste, focus, and mouse routing for future status/help surfaces.
+lock, paste, focus, and mouse routing for status/help surfaces.
 GLFW character events are encoded as UTF-8 only when they are valid Unicode
 scalar values; surrogate code points and values above `U+10FFFF` are dropped at
 the app boundary. Plain printable space is sent through the character callback;

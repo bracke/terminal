@@ -111,10 +111,11 @@ package body Terminal.App.Fonts is
    VL_Gothic     : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-Gothic-Regular.ttf";
    VL_PGothic    : aliased constant String := "/usr/share/fonts/truetype/vlgothic/VL-PGothic-Regular.ttf";
 
-   --  Colour emoji, of the layered kind only. Textrender draws a COLR/CPAL glyph
-   --  from outlines and a palette, which needs nothing from the caller; the
-   --  bitmap kinds hold PNGs and want a decoder this application does not carry,
-   --  which is why NotoColorEmoji stays on the unsupported list below.
+   --  Colour emoji fallbacks. Textrender draws COLR/CPAL glyphs from outlines
+   --  and a palette, and the terminal renderer supplies a PNG decoder for
+   --  CBDT/CBLC and sbix bitmap strikes.
+   Noto_Color_Emoji : aliased constant String := "/usr/share/fonts/truetype/noto/NotoColorEmoji.ttf";
+   Noto_Color_Emoji_Alt : aliased constant String := "/usr/share/fonts/noto/NotoColorEmoji.ttf";
    Twemoji       : aliased constant String := "/usr/share/fonts/truetype/twemoji/TwemojiMozilla.ttf";
    Twemoji_TTF   : aliased constant String := "/usr/share/fonts/TTF/TwemojiMozilla.ttf";
    Segoe_Emoji   : aliased constant String := "C:\Windows\Fonts\seguiemj.ttf";
@@ -227,6 +228,8 @@ package body Terminal.App.Fonts is
       --  Last: an emoji font maps far more than emoji -- arrows, stars, the
       --  check mark -- so ahead of these it would capture characters they draw
       --  perfectly well.
+      Noto_Color_Emoji'Access,
+      Noto_Color_Emoji_Alt'Access,
       Twemoji'Access,
       Twemoji_TTF'Access,
       Segoe_Emoji'Access];
@@ -299,8 +302,7 @@ package body Terminal.App.Fonts is
    function Is_Known_Unsupported_Renderer_Font (Path : String) return Boolean is
       Lower : constant String := To_Lower (Ada.Directories.Simple_Name (Path));
    begin
-      return Lower = "notocoloremoji.ttf"
-        or else Lower = "unifont.ttf"
+      return Lower = "unifont.ttf"
         or else Lower = "droidsansfallbackfull.ttf";
    exception
       when others =>

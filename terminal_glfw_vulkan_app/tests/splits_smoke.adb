@@ -42,7 +42,7 @@ begin
    Assert (Splits.Active (State) = 1, "initial active pane");
    Assert (Splits.Title_Suffix (State) = "", "single pane suffix");
    Assert
-     (Splits.Status_Label (State) = "Single live pane; split model ready",
+     (Splits.Status_Label (State) = "Single live pane",
       "single split status label");
    Assert
      (Splits.Status_Label (State)'Length <= Splits.Max_Status_Label_Length,
@@ -71,7 +71,7 @@ begin
    Assert (Splits.Title_Suffix (State) = " pane 2/2", "split title suffix");
    Assert
      (Splits.Status_Label (State) =
-      "Split model active; split-pane rendering postponed",
+      "Live split panes=2 active=2",
       "active split model status label");
    declare
       Info : constant Splits.Split_Snapshot := Splits.Snapshot (State);

@@ -3,6 +3,10 @@ with Terminal.Common.Bytes;
 with Terminal.Common.Status;
 with Ada.Finalization;
 with Ada.Unchecked_Deallocation;
+with Jpeglib.Decoding;
+with Jpeglib.Images;
+with Jpeglib.Results;
+with Jpeglib.Streams;
 with Zlib;
 
 package body Terminal.App.Graphics is
@@ -10,11 +14,17 @@ package body Terminal.App.Graphics is
    use type Terminal.Core.Ignored_Graphics_Protocol;
    use type Terminal.Common.Bytes.Byte;
    use type Terminal.App.Render_Model.Image_Data_Access;
+   use type Jpeglib.Byte;
+   use type Jpeglib.Results.Result;
+   use type Jpeglib.Streams.Byte_Array_Access;
    use type Zlib.Status_Code;
 
    procedure Free_Image_Data is new Ada.Unchecked_Deallocation
      (Terminal.Common.Bytes.Byte_Array,
       Terminal.App.Render_Model.Image_Data_Access);
+   procedure Free_JPEG_Data is new Ada.Unchecked_Deallocation
+     (Jpeglib.Streams.Byte_Array,
+      Jpeglib.Streams.Byte_Array_Access);
    type Inflate_Filter_Holder is
      new Ada.Finalization.Limited_Controlled with record
       Filter : Zlib.Filter_Type;
@@ -196,6 +206,16 @@ package body Terminal.App.Graphics is
    begin
       return Raw_Decoded_Length (32, Pixel_Width, Pixel_Height);
    end RGBA_Decoded_Length;
+
+   function Is_JPEG
+     (Data   : Terminal.Common.Bytes.Byte_Array;
+      Length : Natural) return Boolean is
+   begin
+      return Length >= 2
+        and then Data'Length >= 2
+        and then Data (Data'First) = 16#FF#
+        and then Data (Data'First + 1) = 16#D8#;
+   end Is_JPEG;
 
    type Sixel_Info is record
       Width  : Natural := 0;
@@ -1547,6 +1567,162 @@ package body Terminal.App.Graphics is
       Decode_PNG_RGBA (PNG, Length, Result);
    end Decode_PNG_RGBA_Data;
 
+   procedure Decode_JPEG_RGBA_Data
+     (JPEG   : Terminal.Common.Bytes.Byte_Array;
+      Length : Natural;
+      Result : in out Graphics_Data_Preview)
+   is
+   begin
+      if Length = 0 or else Length > JPEG'Length then
+         Result.Decode_Status := Decode_Unsupported_Format;
+         Result.Decode_Complete := False;
+         return;
+      elsif not Is_JPEG (JPEG, Length) then
+         Result.Decode_Status := Decode_Unsupported_Format;
+         Result.Decode_Complete := False;
+         return;
+      end if;
+
+      declare
+         Input : Jpeglib.Streams.Byte_Array_Access :=
+           new Jpeglib.Streams.Byte_Array (1 .. Length);
+         Source : aliased Jpeglib.Streams.Memory_Source;
+         Decoder : Jpeglib.Decoding.Decoder;
+         Decoder_Initialized : Boolean := False;
+         Outcome : Jpeglib.Results.Result;
+         Info : Jpeglib.Decoding.Image_Info;
+      begin
+         for I in Input'Range loop
+            Input (I) := Jpeglib.Byte (JPEG (JPEG'First + I - Input'First));
+         end loop;
+
+         Jpeglib.Streams.Open
+           (Source, Jpeglib.Streams.Const_Byte_Array_Access (Input));
+         Jpeglib.Decoding.Initialize
+           (Decoder,
+            Source'Access,
+           (Output_Format => Jpeglib.Images.RGBA_32,
+             Alpha_Fill => 255,
+             others => <>));
+         Decoder_Initialized := True;
+
+         Outcome := Jpeglib.Decoding.Read_Header (Decoder);
+         if not Jpeglib.Results.Succeeded (Outcome) then
+            Result.Decode_Status := Decode_Invalid_Byte;
+            Result.Decode_Complete := False;
+            Jpeglib.Decoding.Finalize (Decoder);
+            Decoder_Initialized := False;
+            Free_JPEG_Data (Input);
+            return;
+         end if;
+
+         Info := Jpeglib.Decoding.Header (Decoder);
+         if Natural (Info.Width) = 0
+           or else Natural (Info.Height) = 0
+           or else RGBA_Decoded_Length
+             (Natural (Info.Width), Natural (Info.Height)) = 0
+         then
+            Result.Decode_Status := Decode_Preview_Truncated;
+            Result.Decode_Complete := False;
+            Result.Decoded_Length := Max_Data_Preview_Length;
+            Jpeglib.Decoding.Finalize (Decoder);
+            Decoder_Initialized := False;
+            Free_JPEG_Data (Input);
+            return;
+         end if;
+
+         declare
+            Width : constant Natural := Natural (Info.Width);
+            Height : constant Natural := Natural (Info.Height);
+            RGBA_Bytes : constant Natural :=
+              RGBA_Decoded_Length (Width, Height);
+            Output : Jpeglib.Streams.Byte_Array_Access :=
+              new Jpeglib.Streams.Byte_Array (1 .. RGBA_Bytes);
+            View : Jpeglib.Images.Mutable_Image_View :=
+              (Descriptor =>
+                 (Width => Info.Width,
+                  Height => Info.Height,
+                  Format => Jpeglib.Images.RGBA_32,
+                  Stride => Jpeglib.Row_Stride (Width * 4),
+                  Accessible_Bytes => Jpeglib.Byte_Count (RGBA_Bytes)),
+               Storage => Output);
+         begin
+            Output.all := (others => 0);
+            Outcome := Jpeglib.Decoding.Decode_Image (Decoder, View);
+            if not Jpeglib.Results.Succeeded (Outcome) then
+               Result.Decode_Status := Decode_Invalid_Byte;
+               Result.Decode_Complete := False;
+               Free_JPEG_Data (Output);
+               Jpeglib.Decoding.Finalize (Decoder);
+               Decoder_Initialized := False;
+               Free_JPEG_Data (Input);
+               return;
+            end if;
+
+            Ensure_Bytes (Result, RGBA_Bytes);
+            for I in 1 .. RGBA_Bytes loop
+               Result.Bytes (I) := Terminal.Common.Bytes.Byte (Output (I));
+            end loop;
+            Free_JPEG_Data (Output);
+
+            Result.Raw_Format := 32;
+            Result.Pixel_Width := Width;
+            Result.Pixel_Height := Height;
+            Result.Decoded_Row_Stride_Bytes := Width * 4;
+            Result.Decoded_Length := RGBA_Bytes;
+            Result.Decode_Complete := True;
+            Result.Decode_Status := Decode_Ok;
+         exception
+            when others =>
+               if Output /= null then
+                  Free_JPEG_Data (Output);
+               end if;
+               raise;
+         end;
+
+         Jpeglib.Decoding.Finalize (Decoder);
+         Decoder_Initialized := False;
+         Free_JPEG_Data (Input);
+      exception
+         when Constraint_Error =>
+            Result.Decode_Status := Decode_Preview_Truncated;
+            Result.Decode_Complete := False;
+            Result.Decoded_Length := Max_Data_Preview_Length;
+            if Decoder_Initialized then
+               Jpeglib.Decoding.Finalize (Decoder);
+            end if;
+            if Input /= null then
+               Free_JPEG_Data (Input);
+            end if;
+         when others =>
+            Result.Decode_Status := Decode_Invalid_Byte;
+            Result.Decode_Complete := False;
+            if Decoder_Initialized then
+               Jpeglib.Decoding.Finalize (Decoder);
+            end if;
+            if Input /= null then
+               Free_JPEG_Data (Input);
+            end if;
+      end;
+   end Decode_JPEG_RGBA_Data;
+
+   procedure Decode_Image_RGBA_Data
+     (Data   : Terminal.Common.Bytes.Byte_Array;
+      Length : Natural;
+      Result : in out Graphics_Data_Preview)
+   is
+   begin
+      Decode_PNG_RGBA (Data, Length, Result);
+      if Result.Decode_Status = Decode_Unsupported_Format then
+         Result.Decoded_Length := 0;
+         Result.Decoded_Row_Stride_Bytes := 0;
+         Result.Raw_Format := 0;
+         Result.Pixel_Width := 0;
+         Result.Pixel_Height := 0;
+         Decode_JPEG_RGBA_Data (Data, Length, Result);
+      end if;
+   end Decode_Image_RGBA_Data;
+
    function Field_Value
      (Header : String;
       Name   : String) return String
@@ -2535,7 +2711,7 @@ package body Terminal.App.Graphics is
       return
         (Cluster_Preserved    => True,
          Monochrome_Fallback  => True,
-         Color_Glyph_Rendered => False);
+         Color_Glyph_Rendered => True);
    end Color_Emoji;
 
    function Name (Protocol : Graphics_Protocol) return String is
@@ -2572,9 +2748,9 @@ package body Terminal.App.Graphics is
          when Sixel =>
             return "sixel graphics recognized; raster texture rendering available";
          when Kitty =>
-            return "kitty graphics recognized; raw/PNG texture rendering available";
+            return "kitty graphics recognized; raw/PNG/JPEG texture rendering available";
          when ITerm2 =>
-            return "iTerm2 images recognized; PNG texture rendering available";
+            return "iTerm2 images recognized; PNG/JPEG texture rendering available";
       end case;
    end Capability_Status_Label;
 
@@ -2759,7 +2935,7 @@ package body Terminal.App.Graphics is
                   Result.Raw_Format := 0;
                   Result.Pixel_Width := 0;
                   Result.Pixel_Height := 0;
-                  Decode_PNG_RGBA (PNG.all, PNG_Length, Result);
+                  Decode_Image_RGBA_Data (PNG.all, PNG_Length, Result);
                   Free_Image_Data (PNG);
                end;
             end if;
@@ -2777,7 +2953,7 @@ package body Terminal.App.Graphics is
                   Result.Raw_Format := 0;
                   Result.Pixel_Width := 0;
                   Result.Pixel_Height := 0;
-                  Decode_PNG_RGBA (PNG.all, PNG_Length, Result);
+                  Decode_Image_RGBA_Data (PNG.all, PNG_Length, Result);
                   Free_Image_Data (PNG);
                end;
             end if;

@@ -259,9 +259,12 @@ package body Terminal.App.Tabs is
    function Status_Label (State : Tab_State) return String is
    begin
       if State.Current_Count <= 1 then
-         return "Single live session; tab model ready";
+         return "Single live session";
       else
-         return "Tab model active; multi-session rendering postponed";
+         return "Live tab sessions="
+           & Trim_Image (State.Current_Count)
+           & " active="
+           & Trim_Image (State.Active_Index);
       end if;
    end Status_Label;
 

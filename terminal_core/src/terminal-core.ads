@@ -108,7 +108,9 @@ package Terminal.Core is
       Mouse_Button       : Boolean := False;
       Mouse_Drag         : Boolean := False;
       Mouse_Any_Event    : Boolean := False;
+      Mouse_UTF8         : Boolean := False;
       Mouse_SGR          : Boolean := False;
+      Mouse_URXVT        : Boolean := False;
       Focus_Reporting    : Boolean := False;
       Synchronized_Update : Boolean := False;
       Alternate_Screen   : Boolean := False;

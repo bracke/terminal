@@ -85,6 +85,10 @@ package Terminal.App.Graphics is
      (PNG    : Terminal.Common.Bytes.Byte_Array;
       Length : Natural;
       Result : in out Graphics_Data_Preview);
+   procedure Decode_JPEG_RGBA_Data
+     (JPEG   : Terminal.Common.Bytes.Byte_Array;
+      Length : Natural;
+      Result : in out Graphics_Data_Preview);
    procedure Decode_PNG_RGBA_Source_Rows
      (Length   : Natural;
       PNG_Byte : not null access function

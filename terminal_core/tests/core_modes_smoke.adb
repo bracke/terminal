@@ -122,7 +122,7 @@ begin
    end;
 
    Feed_Text
-     (ASCII.ESC & "[?1003;1004;1006h",
+     (ASCII.ESC & "[?1003;1004;1005;1006;1015h",
       "mouse any-event mode set feed failed");
    declare
       M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
@@ -131,12 +131,14 @@ begin
       Assert (not M.Mouse_Drag, "mouse any-event disables drag mode");
       Assert (M.Mouse_Any_Event, "mouse any-event reporting");
       Assert (M.Focus_Reporting, "focus reporting");
+      Assert (M.Mouse_UTF8, "mouse UTF-8 reporting");
       Assert (M.Mouse_SGR, "mouse SGR reporting");
+      Assert (M.Mouse_URXVT, "mouse urxvt reporting");
       Assert (not M.Synchronized_Update, "synchronized update still off");
    end;
 
    Feed_Text
-     (ASCII.ESC & "[?1000;1002;1003;1004;1006l",
+     (ASCII.ESC & "[?1000;1002;1003;1004;1005;1006;1015l",
       "mouse mode reset feed failed");
    declare
       M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
@@ -145,7 +147,9 @@ begin
       Assert (not M.Mouse_Drag, "mouse drag reporting reset");
       Assert (not M.Mouse_Any_Event, "mouse any-event reporting reset");
       Assert (not M.Focus_Reporting, "focus reporting reset");
+      Assert (not M.Mouse_UTF8, "mouse UTF-8 reporting reset");
       Assert (not M.Mouse_SGR, "mouse SGR reporting reset");
+      Assert (not M.Mouse_URXVT, "mouse urxvt reporting reset");
       Assert (not M.Synchronized_Update, "synchronized update mode reset");
    end;
 

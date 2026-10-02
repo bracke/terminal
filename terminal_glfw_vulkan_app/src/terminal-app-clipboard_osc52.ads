@@ -49,6 +49,7 @@ private
    end record;
 
    type Target_Store is record
+      Clipboard : Stored_Text;
       Primary   : Stored_Text;
       Selection : Stored_Text;
    end record;

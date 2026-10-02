@@ -78,13 +78,16 @@ status labels. The terminal renderer draws successful shaped runs through
 `textrender`'s glyph-index rasterization API, using the primary/fallback
 font-index order and placing RTL runs from the run's right edge and LTR runs
 from the left edge. RTL placement uses the full coalesced run width and steps
-the pen according to the HarfBuzz advance sign. If every configured face
-shapes a run to `.notdef`, the shaper rejects that as a shaped result. Complex
-runs remain explicitly marked as `Needs_Shaping_Backend`; simple runs stay
-renderable through the existing codepoint fallback path. Submit batches,
-presenter diagnostics, and device upload diagnostics also carry aggregate
-shaped-glyph counts so the shaped-text path remains observable across the whole
-render path.
+the pen according to the HarfBuzz advance sign. Mixed-direction rows are
+visually reordered at the text-run level before drawing. Emoji runs first try
+`textrender` color glyph output, including layered COLR/CPAL glyphs and bitmap
+PNG strikes decoded by the app, then fall back to shaped monochrome text when a
+color glyph is unavailable. If every configured face shapes a run to `.notdef`,
+the shaper rejects that as a shaped result. Complex runs remain explicitly
+marked as `Needs_Shaping_Backend`; simple runs stay renderable through the
+existing codepoint fallback path. Submit batches, presenter diagnostics, and
+device upload diagnostics also carry aggregate shaped-glyph and color-glyph
+counts so the shaped-text path remains observable across the whole render path.
 Cells covered by a successfully shaped run are suppressed from the per-cell
 fallback draw path for the full run span.
 `Text_Run_Command.Cell_Width` is one terminal grid cell; `Cell_Span` carries the
@@ -97,25 +100,27 @@ Graphics protocol payloads are first consumed by `Terminal.Core` as bounded
 events with a 128 KiB inline graphics preview cap. The app graphics layer parses
 kitty/iTerm2 headers, decodes bounded kitty base64 payloads, rasterizes bounded
 sixel payloads to RGBA pixels, and decodes bounded kitty `f=100` plus iTerm2
-PNG payloads with the local zlib crate. The renderer accumulates bounded kitty
+PNG payloads with the local zlib crate or JPEG payloads with the local jpeglib
+crate. The renderer accumulates bounded kitty
 `m=1` raw or PNG continuation chunks as app-owned encoded segments beyond the
 core preview cap, decodes raw `f=24`/`f=32` kitty chunks directly across those
 segments, and decodes chunked kitty PNG Base64 directly across those segments
 into an exact upper-bound PNG byte staging buffer used by the current PNG
 decoder API. Complete decoded pixel data is stored separately from the shorter
-diagnostics preview, with raw kitty, PNG, and sixel decoded output buffers
+diagnostics preview, with raw kitty, PNG/JPEG, and sixel decoded output buffers
 sized to the actual decoded byte count instead of the maximum cap. It also
 keeps a
-heap-backed kitty image object table keyed by `i=` so later placement-only
+heap-backed kitty image object table keyed by `i=` so subsequent placement-only
 kitty commands can reuse already decoded pixel data without resending the
 payload. Initial `i=` transmissions transfer the decoded buffer into that table
 instead of duplicating pixels, placements borrow stored pixels without copying
 them into each frame, kitty delete actions release individual IDs or the whole
 table, and individual image payloads still use the app decode/upload caps.
 Complete bounded kitty raw RGB/RGBA payloads with explicit pixel
-dimensions, supported kitty/iTerm2 PNGs, and bounded sixel rasters become
+dimensions, supported kitty/iTerm2 PNGs and JPEGs, and bounded sixel rasters become
 texture-backed image commands; valid bounded PNG bit depths, transparency, and
-Adam7 interlace are expanded to RGBA, while JPEG remains placeholder-rendered
+Adam7 interlace are expanded to RGBA, and JPEG is decoded through jpeglib
+into RGBA image data for texture-backed rendering
 with decode diagnostics, and payloads beyond the cap remain preview-only.
 Submit batches mark textured image vertices with the image texture source, the
 Vulkan device uploads an RGBA image to descriptor binding 1, using decoded RGBA
@@ -160,8 +165,8 @@ Mouse selection is also app-owned. `glfw_vulkan` exposes generic mouse events,
 the main loop converts event coordinates to visible grid cells, and
 `Terminal.App.Selection` extracts UTF-8 text from render snapshots and marks
 selected cells with inverse style before rendering. OSC 52 target policy is
-app-owned as well: `c` uses the GLFW system clipboard, while `p` and `s` use
-bounded app-owned target slots. The diagnostics line reports bounded input-mode
+app-owned as well: `c` uses the GLFW system clipboard with a bounded app
+mirror, while `p` and `s` use bounded app-owned target slots. The diagnostics line reports bounded input-mode
 and mouse-routing labels from the same mapper used to encode keyboard, paste,
 focus, and mouse events. The core does not know about selection or platform
 clipboard ownership.

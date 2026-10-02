@@ -132,6 +132,7 @@ package body Terminal.App.Diagnostics is
    Last_Shaped_Glyphs : Natural := 0;
    Last_Shaping_Fallbacks : Natural := 0;
    Last_Text_Fallbacks : Natural := 0;
+   Last_Color_Glyphs : Natural := 0;
    Last_Color_Emoji_Fallbacks : Natural := 0;
    Last_Paragraph_Bidi_Fallbacks : Natural := 0;
    Last_Image_Count : Natural := 0;
@@ -927,6 +928,9 @@ package body Terminal.App.Diagnostics is
           S.Renderer.Last_Text_Fallback_Run_Count /=
             Last_Text_Fallbacks
         or else
+          S.Renderer.Last_Color_Glyph_Count /=
+            Last_Color_Glyphs
+        or else
           S.Renderer.Last_Color_Emoji_Fallback_Count /=
             Last_Color_Emoji_Fallbacks
         or else
@@ -1117,6 +1121,7 @@ package body Terminal.App.Diagnostics is
       Last_Shaped_Glyphs := S.Renderer.Last_Shaped_Glyph_Count;
       Last_Shaping_Fallbacks := S.Renderer.Last_Shaping_Fallback_Count;
       Last_Text_Fallbacks := S.Renderer.Last_Text_Fallback_Run_Count;
+      Last_Color_Glyphs := S.Renderer.Last_Color_Glyph_Count;
       Last_Color_Emoji_Fallbacks :=
         S.Renderer.Last_Color_Emoji_Fallback_Count;
       Last_Paragraph_Bidi_Fallbacks :=
@@ -1519,6 +1524,8 @@ package body Terminal.App.Diagnostics is
            Natural'Image (S.Renderer.Last_Shaping_Fallback_Count)
          & " text_fallback_runs=" &
            Natural'Image (S.Renderer.Last_Text_Fallback_Run_Count)
+         & " color_glyphs=" &
+           Natural'Image (S.Renderer.Last_Color_Glyph_Count)
          & " color_emoji_fallbacks=" &
          Natural'Image (S.Renderer.Last_Color_Emoji_Fallback_Count)
          & " paragraph_bidi_fallbacks=" &

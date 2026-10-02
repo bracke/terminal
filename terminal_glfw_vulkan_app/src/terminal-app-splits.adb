@@ -216,9 +216,12 @@ package body Terminal.App.Splits is
    function Status_Label (State : Split_State) return String is
    begin
       if State.Current_Count <= 1 then
-         return "Single live pane; split model ready";
+         return "Single live pane";
       else
-         return "Split model active; split-pane rendering postponed";
+         return "Live split panes="
+           & Trim_Image (State.Current_Count)
+           & " active="
+           & Trim_Image (State.Active_Index);
       end if;
    end Status_Label;
 

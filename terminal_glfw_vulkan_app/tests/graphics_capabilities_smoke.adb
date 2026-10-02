@@ -1,5 +1,10 @@
 with AUnit.Assertions;
 
+with Jpeglib.Encoding;
+with Jpeglib.Images;
+with Jpeglib.Results;
+with Jpeglib.Streams;
+
 with Terminal.App.Graphics;
 with Terminal.App.Render_Model;
 with Terminal.Common.Bytes;
@@ -13,6 +18,7 @@ procedure Graphics_Capabilities_Smoke is
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
    use type Terminal.Common.Bytes.Byte;
+   use type Jpeglib.Destination_Offset;
 
    package Graphics renames Terminal.App.Graphics;
    package RM renames Terminal.App.Render_Model;
@@ -100,8 +106,8 @@ begin
         (Emoji.Monochrome_Fallback,
          "emoji should report monochrome fallback path");
       Assert
-        (not Emoji.Color_Glyph_Rendered,
-         "emoji should not claim color glyph rendering");
+        (Emoji.Color_Glyph_Rendered,
+         "emoji should report color glyph rendering");
    end;
 
    Assert (Graphics.Name (Graphics.Sixel) = "sixel", "sixel name");
@@ -233,11 +239,11 @@ begin
       "sixel capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.Kitty) =
-      "kitty graphics recognized; raw/PNG texture rendering available",
+      "kitty graphics recognized; raw/PNG/JPEG texture rendering available",
       "kitty capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2) =
-      "iTerm2 images recognized; PNG texture rendering available",
+      "iTerm2 images recognized; PNG/JPEG texture rendering available",
       "iTerm2 capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2)'Length <=
@@ -300,6 +306,14 @@ begin
          Preview_Length => 0,
          Preview        => (others => ASCII.NUL));
       ITerm2_PNG : Terminal.Core.Graphics_Event :=
+        (Pending        => True,
+         Protocol       => Terminal.Core.ITerm2_Graphics,
+         Row            => 1,
+         Col            => 1,
+         Payload_Length => 0,
+         Preview_Length => 0,
+         Preview        => (others => ASCII.NUL));
+      ITerm2_JPEG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
          Row            => 1,
@@ -419,6 +433,14 @@ begin
          Payload_Length => 0,
          Preview_Length => 0,
          Preview        => (others => ASCII.NUL));
+      Kitty_JPEG : Terminal.Core.Graphics_Event :=
+        (Pending        => True,
+         Protocol       => Terminal.Core.Kitty_Graphics,
+         Row            => 1,
+         Col            => 1,
+         Payload_Length => 0,
+         Preview_Length => 0,
+         Preview        => (others => ASCII.NUL));
       Kitty_Large_RGBA : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
@@ -466,12 +488,14 @@ begin
       Kitty_RGBA_Data : Graphics.Graphics_Data_Preview;
       Kitty_Chunk_Header : Graphics.Graphics_Header;
       Kitty_PNG_Data : Graphics.Graphics_Data_Preview;
+      Kitty_JPEG_Data : Graphics.Graphics_Data_Preview;
       Kitty_Large_RGBA_Data : Graphics.Graphics_Data_Preview;
       Kitty_Oversized_RGBA_Data : Graphics.Graphics_Data_Preview;
       Kitty_Partial_Data : Graphics.Graphics_Data_Preview;
       Kitty_Trailing_Data : Graphics.Graphics_Data_Preview;
       ITerm2_Data : Graphics.Graphics_Data_Preview;
       ITerm2_PNG_Data : Graphics.Graphics_Data_Preview;
+      ITerm2_JPEG_Data : Graphics.Graphics_Data_Preview;
       ITerm2_Gray_PNG_Data : Graphics.Graphics_Data_Preview;
       ITerm2_Palette_PNG_Data : Graphics.Graphics_Data_Preview;
       ITerm2_Gray1_PNG_Data : Graphics.Graphics_Data_Preview;
@@ -556,6 +580,76 @@ begin
         (others => 0);
       Adam7_Second_Row : Terminal.Common.Bytes.Byte_Array (1 .. 8) :=
         (others => 0);
+      JPEG_Input : aliased Jpeglib.Streams.Byte_Array :=
+        (1 => 16#FF#, 2 => 16#00#, 3 => 16#00#);
+      JPEG_Storage : aliased Jpeglib.Streams.Byte_Array :=
+        (1 .. 2048 => 0);
+      JPEG_Length : Natural := 0;
+
+      function Base64_Encode
+        (Data   : Jpeglib.Streams.Byte_Array;
+         Length : Natural) return String
+      is
+         Alphabet : constant String :=
+           "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+         Result : String (1 .. ((Length + 2) / 3) * 4);
+         Out_Pos : Natural := Result'First;
+         In_Pos : Natural := Data'First;
+      begin
+         while In_Pos <= Data'First + Length - 1 loop
+            declare
+               Remaining : constant Natural :=
+                 Data'First + Length - In_Pos;
+               B1 : constant Natural := Natural (Data (In_Pos));
+               B2 : constant Natural :=
+                 (if Remaining >= 2 then Natural (Data (In_Pos + 1)) else 0);
+               B3 : constant Natural :=
+                 (if Remaining >= 3 then Natural (Data (In_Pos + 2)) else 0);
+               Value : constant Natural := B1 * 16#10000# + B2 * 16#100# + B3;
+            begin
+               Result (Out_Pos) := Alphabet (Value / 16#40000# + 1);
+               Result (Out_Pos + 1) :=
+                 Alphabet ((Value / 16#1000#) mod 64 + 1);
+               Result (Out_Pos + 2) :=
+                 (if Remaining >= 2
+                  then Alphabet ((Value / 16#40#) mod 64 + 1)
+                  else '=');
+               Result (Out_Pos + 3) :=
+                 (if Remaining >= 3 then Alphabet (Value mod 64 + 1) else '=');
+               Out_Pos := Out_Pos + 4;
+               In_Pos := In_Pos + 3;
+            end;
+         end loop;
+         return Result;
+      end Base64_Encode;
+
+      procedure Build_JPEG is
+         Destination : aliased Jpeglib.Streams.Fixed_Buffer_Destination;
+         Encoder : Jpeglib.Encoding.Encoder;
+         Input : constant Jpeglib.Images.Image_View :=
+           (Descriptor =>
+              (Width => 1,
+               Height => 1,
+               Format => Jpeglib.Images.RGB_24,
+               Stride => 3,
+               Accessible_Bytes => 3),
+            Storage => JPEG_Input'Unchecked_Access);
+         Outcome : Jpeglib.Results.Result;
+      begin
+         Jpeglib.Streams.Open (Destination, JPEG_Storage'Unchecked_Access);
+         Jpeglib.Encoding.Initialize
+           (Encoder,
+            Destination'Access,
+            (Quality => 100,
+             Subsampling => Jpeglib.Encoding.Subsampling_444,
+             others => <>));
+         Outcome := Jpeglib.Encoding.Encode_Image (Encoder, Input);
+         Assert
+           (Jpeglib.Results.Succeeded (Outcome),
+            "test JPEG fixture should encode");
+         JPEG_Length := Natural (Jpeglib.Streams.Offset (Destination));
+         Assert (JPEG_Length > 0, "test JPEG fixture length");
+      end Build_JPEG;
 
       procedure Capture_PNG_Row
         (Y : Natural;
@@ -807,6 +901,18 @@ begin
       Set_Preview
         (ITerm2_PNG,
          "File=name=pixel.png;inline=1:iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC");
+      Build_JPEG;
+      declare
+         JPEG_Base64 : constant String :=
+           Base64_Encode (JPEG_Storage, JPEG_Length);
+      begin
+         Set_Preview
+           (ITerm2_JPEG,
+            "File=name=pixel.jpg;inline=1:" & JPEG_Base64);
+         Set_Preview
+           (Kitty_JPEG,
+            "Gf=100,a=T,c=1,r=1;" & JPEG_Base64);
+      end;
       Set_Preview
         (ITerm2_Gray_PNG,
          "File=name=gray.png;inline=1:iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAADUlEQVR4AQECAP3/AIAAggCBw24l4AAAAABJRU5ErkJggg==");
@@ -929,6 +1035,22 @@ begin
          and then Kitty_PNG_Data.Bytes (3) = 16#00#
          and then Kitty_PNG_Data.Bytes (4) = 16#FF#,
          "kitty PNG decoded RGBA bytes");
+
+      Kitty_JPEG_Data := Graphics.Data_Preview (Kitty_JPEG);
+      Assert
+        (Kitty_JPEG_Data.Raw_Format = 32
+         and then Kitty_JPEG_Data.Pixel_Width = 1
+         and then Kitty_JPEG_Data.Pixel_Height = 1,
+         "kitty JPEG pixel metadata");
+      Assert
+        (Kitty_JPEG_Data.Decoded_Length = 4
+         and then Kitty_JPEG_Data.Decode_Complete
+         and then Kitty_JPEG_Data.Decode_Status = Graphics.Decode_Ok,
+         "kitty JPEG decode complete");
+      Assert
+        (Kitty_JPEG_Data.Bytes /= null
+         and then Kitty_JPEG_Data.Bytes (4) = 16#FF#,
+         "kitty JPEG decoded alpha");
 
       Graphics.Decode_PNG_RGBA_Rows
         (PNG_Row_Data,
@@ -1346,6 +1468,22 @@ begin
          and then ITerm2_PNG_Data.Bytes (3) = 16#00#
          and then ITerm2_PNG_Data.Bytes (4) = 16#FF#,
          "iTerm2 PNG decoded RGBA bytes");
+
+      ITerm2_JPEG_Data := Graphics.Data_Preview (ITerm2_JPEG);
+      Assert
+        (ITerm2_JPEG_Data.Raw_Format = 32
+         and then ITerm2_JPEG_Data.Pixel_Width = 1
+         and then ITerm2_JPEG_Data.Pixel_Height = 1,
+         "iTerm2 JPEG pixel metadata");
+      Assert
+        (ITerm2_JPEG_Data.Decoded_Length = 4
+         and then ITerm2_JPEG_Data.Decode_Complete
+         and then ITerm2_JPEG_Data.Decode_Status = Graphics.Decode_Ok,
+         "iTerm2 JPEG decode complete");
+      Assert
+        (ITerm2_JPEG_Data.Bytes /= null
+         and then ITerm2_JPEG_Data.Bytes (4) = 16#FF#,
+         "iTerm2 JPEG decoded alpha");
 
       ITerm2_Gray_PNG_Data := Graphics.Data_Preview (ITerm2_Gray_PNG);
       Assert
