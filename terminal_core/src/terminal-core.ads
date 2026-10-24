@@ -68,6 +68,69 @@ package Terminal.Core is
       Attachments : Cluster_Attachment_Array := (others => 0);
    end record;
 
+   Kitty_Image_Placeholder : constant Terminal.Common.Code_Point := 16#10EEEE#;
+
+   type Graphics_ID is mod 2 ** 32;
+   for Graphics_ID'Size use 32;
+
+   type Graphics_Stream_ID is mod 2 ** 64;
+   for Graphics_Stream_ID'Size use 64;
+   type Graphics_Screen_Generation is mod 2 ** 64;
+   for Graphics_Screen_Generation'Size use 64;
+   type Graphics_Event_Sequence is mod 2 ** 64;
+   for Graphics_Event_Sequence'Size use 64;
+   type Graphics_Transaction_Generation is mod 2 ** 64;
+   for Graphics_Transaction_Generation'Size use 64;
+   type Graphics_Scroll_Sequence is mod 2 ** 64;
+   for Graphics_Scroll_Sequence'Size use 64;
+
+   Max_Graphics_Scroll_Events : constant := 4_096;
+   type Graphics_Scroll_Direction is (Graphics_Scroll_Up, Graphics_Scroll_Down);
+   type Graphics_Scroll_Event is record
+      Sequence  : Graphics_Scroll_Sequence := 0;
+      Direction : Graphics_Scroll_Direction := Graphics_Scroll_Up;
+      Top       : Positive := 1;
+      Bottom    : Positive := 1;
+      Count     : Positive := 1;
+   end record;
+   type Graphics_Scroll_Event_Array is
+     array (Positive range <>) of Graphics_Scroll_Event;
+   type Graphics_Scroll_Event_Array_Access is
+     access all Graphics_Scroll_Event_Array;
+
+   --  Configured by the embedding application. The core owns framing and
+   --  immediate query replies, but must never infer backend capabilities.
+   type Graphics_Capability_Profile is record
+      Kitty_Direct_RGB         : Boolean := False;
+      Kitty_Direct_RGBA        : Boolean := False;
+      Kitty_Indexed_RGB        : Boolean := False;
+      Kitty_Indexed_RGBA       : Boolean := False;
+      Kitty_Direct_PNG         : Boolean := False;
+      Kitty_Zlib_Compression   : Boolean := False;
+      Kitty_File_Transfer      : Boolean := False;
+      Kitty_Temporary_Transfer : Boolean := False;
+      Kitty_Shared_Memory      : Boolean := False;
+      Sixel                    : Boolean := False;
+      ITerm2_Inline_Images     : Boolean := False;
+      ITerm2_File_Downloads    : Boolean := False;
+   end record;
+
+   --  Decoded identity carried by a Kitty Unicode placeholder cell.  The
+   --  original code point, combining characters, and colors remain in Text and
+   --  Style so ordinary terminal operations and multiplexers can still treat
+   --  the placeholder as text.
+   type Image_Cell_Metadata is record
+      Is_Placeholder       : Boolean := False;
+      Image_ID_Valid       : Boolean := False;
+      Image_ID             : Graphics_ID := 0;
+      Placement_ID         : Graphics_ID := 0;
+      Image_Row            : Natural := 0;
+      Image_Column         : Natural := 0;
+      Row_Specified        : Boolean := False;
+      Column_Specified     : Boolean := False;
+      High_Byte_Specified  : Boolean := False;
+   end record;
+
    Max_Hyperlink_URI_Length : constant := 512;
    Max_Hyperlink_ID_Length  : constant := 128;
    subtype Hyperlink_URI_Length_Range is
@@ -88,6 +151,7 @@ package Terminal.Core is
       Text  : Text_Cluster;
       Style : Cell_Style;
       Link  : Hyperlink;
+      Image : Image_Cell_Metadata;
    end record;
 
    type Cursor_Shape is (Cursor_Block, Cursor_Underline, Cursor_Bar);
@@ -121,6 +185,9 @@ package Terminal.Core is
       Keyboard_Locked    : Boolean := False;
       Insert_Mode        : Boolean := False;
       Linefeed_New_Line  : Boolean := False;
+      Sixel_Display_Mode : Boolean := False;
+      Sixel_Private_Colors : Boolean := True;
+      Sixel_Scrolls_Right : Boolean := False;
    end record;
 
    type Ignored_Graphics_Protocol is
@@ -130,18 +197,81 @@ package Terminal.Core is
       ITerm2_Graphics);
 
    Max_Graphics_Preview_Length : constant := 128 * 1024;
+   --  Compatibility snapshots retain only this bounded prefix.  Complete
+   --  graphics commands are delivered through Read_Graphics_Event below.
    subtype Graphics_Preview_Length_Range is
      Natural range 0 .. Max_Graphics_Preview_Length;
 
+   Max_Graphics_Transaction_Length : constant := 8 * 1024 * 1024;
+   --  A conforming direct transfer may use thousands of 4096-byte APC
+   --  chunks.  The byte quota is the primary memory bound; this separate
+   --  count also bounds streams of payload-free commands.
+   Max_Pending_Graphics_Events     : constant := 4_096;
+   Max_Pending_Graphics_Bytes      : constant := 16 * 1024 * 1024;
+   Max_Deferred_Input_Bytes        : constant := 16 * 1024 * 1024;
+   Max_Graphics_Pixel_Dimension    : constant := 16_384;
+
+   type Graphics_Resource_Limits is record
+      Transaction_Length : Positive range 1 .. Max_Graphics_Transaction_Length :=
+        Max_Graphics_Transaction_Length;
+      Pending_Events : Positive range 1 .. Max_Pending_Graphics_Events :=
+        Max_Pending_Graphics_Events;
+      Pending_Bytes : Positive range 1 .. Max_Pending_Graphics_Bytes :=
+        Max_Pending_Graphics_Bytes;
+      Deferred_Input_Bytes : Positive range 1 .. Max_Deferred_Input_Bytes :=
+        Max_Deferred_Input_Bytes;
+      Pixel_Dimension : Positive range 1 .. Max_Graphics_Pixel_Dimension :=
+        Max_Graphics_Pixel_Dimension;
+   end record;
+
+   Default_Graphics_Resource_Limits : constant Graphics_Resource_Limits :=
+     (others => <>);
+
    type Graphics_Event is record
       Pending        : Boolean := False;
+      Cancelled      : Boolean := False;
       Protocol       : Ignored_Graphics_Protocol := No_Graphics;
+      Stream_ID      : Graphics_Stream_ID := 0;
+      Sequence       : Graphics_Event_Sequence := 0;
+      Transaction_Generation : Graphics_Transaction_Generation := 0;
+      Alternate_Screen : Boolean := False;
+      Screen_Generation : Graphics_Screen_Generation := 0;
+      Scroll_Sequence : Graphics_Scroll_Sequence := 0;
+      Sixel_Private_Colors : Boolean := True;
       Row            : Positive := 1;
       Col            : Positive := 1;
       Payload_Length : Natural := 0;
       Preview_Length : Graphics_Preview_Length_Range := 0;
       Preview        : String (1 .. Max_Graphics_Preview_Length) :=
         (others => ASCII.NUL);
+   end record;
+
+   type Kitty_Graphics_Result_Code is
+     (Kitty_No_Response,
+      Kitty_OK,
+      Kitty_EINVAL,
+      Kitty_ENOENT,
+      Kitty_ENOMEM,
+      Kitty_ENOSPC,
+      Kitty_EBADF,
+      Kitty_ENOTSUP,
+      Kitty_ENOPARENT,
+      Kitty_ECYCLE,
+      Kitty_ETOODEEP);
+
+   type Kitty_Graphics_Result is record
+      Code               : Kitty_Graphics_Result_Code := Kitty_No_Response;
+      Image_ID           : Graphics_ID := 0;
+      Image_Number       : Graphics_ID := 0;
+      Has_Image_Number   : Boolean := False;
+      Placement_ID       : Graphics_ID := 0;
+      Has_Placement_ID   : Boolean := False;
+      Quiet              : Natural range 0 .. 2 := 0;
+      Respond            : Boolean := True;
+      Move_Cursor        : Boolean := False;
+      Cursor_To_Line_Start : Boolean := False;
+      Placement_Columns  : Positive := 1;
+      Placement_Rows     : Positive := 1;
    end record;
 
    type Diagnostic_Snapshot is record
@@ -199,8 +329,19 @@ package Terminal.Core is
    type Render_Snapshot is record
       Rows   : Natural := 0;
       Cols   : Natural := 0;
+      Graphics_Stream : Graphics_Stream_ID := 0;
+      Graphics_Transaction : Graphics_Transaction_Generation := 0;
+      Alternate_Screen : Boolean := False;
+      Screen_Generation : Graphics_Screen_Generation := 0;
+      Scrollback_Offset : Natural := 0;
+      Scrollback_Rows : Natural := 0;
+      Graphics_Scroll_Current : Graphics_Scroll_Sequence := 0;
+      Graphics_Scroll_Oldest : Graphics_Scroll_Sequence := 0;
+      Graphics_Scroll_Count : Natural range 0 .. Max_Graphics_Scroll_Events := 0;
+      Graphics_Scroll_Events : Graphics_Scroll_Event_Array_Access := null;
       Cells  : Cell_Array_Access := null;
       Dirty  : Dirty_Row_Array_Access := null;
+      Image_Cell_Count : Natural := 0;
       Cursor : Cursor_State;
       Graphics : Graphics_Event;
    end record;
@@ -208,11 +349,13 @@ package Terminal.Core is
    type Terminal is limited private;
 
    procedure Initialize
-     (T                : out Terminal;
+     (T                : in out Terminal;
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural := 10_000;
       Status           : out Initialize_Status);
+
+   procedure Finalize (T : in out Terminal);
 
    procedure Feed
       (T      : in out Terminal;
@@ -235,7 +378,26 @@ package Terminal.Core is
       Width  : Natural;
       Height : Natural);
 
+   procedure Set_Graphics_Capabilities
+     (T       : in out Terminal;
+      Profile : Graphics_Capability_Profile);
+
+   procedure Set_Graphics_Stream_ID
+     (T  : in out Terminal;
+      ID : Graphics_Stream_ID);
+   procedure Set_Graphics_Resource_Limits
+     (T      : in out Terminal;
+      Limits : Graphics_Resource_Limits);
+   function Graphics_Resource_Limit
+     (T : Terminal) return Graphics_Resource_Limits;
+
    function Snapshot (T : Terminal) return Render_Snapshot;
+   --  Refresh an existing snapshot, retaining its backing arrays when their
+   --  dimensions still match.  This is the allocation-free path for steady
+   --  state rendering.
+   procedure Snapshot
+     (T : Terminal;
+      S : in out Render_Snapshot);
    procedure Release (S : in out Render_Snapshot);
    function Modes (T : Terminal) return Mode_Snapshot;
    function Diagnostics (T : Terminal) return Diagnostic_Snapshot;
@@ -248,6 +410,39 @@ package Terminal.Core is
    procedure Clear_Clipboard (T : in out Terminal);
    function Scrollback_Row_Count (T : Terminal) return Natural;
    function Pending_Response_Length (T : Terminal) return Natural;
+
+   --  Complete graphics commands form a FIFO independent of the legacy
+   --  preview in Render_Snapshot.  Read_Graphics_Event returns the event at
+   --  the head and the next payload bytes.  End_Of_Event is true on the call
+   --  that consumes the event; Event.Pending is false when the FIFO is empty.
+   function Pending_Graphics_Event_Count (T : Terminal) return Natural;
+   function Pending_Graphics_Byte_Count (T : Terminal) return Natural;
+
+   procedure Peek_Graphics_Event
+     (T     : Terminal;
+      Event : out Graphics_Event);
+
+   --  Return a stable copy of the current FIFO head's complete payload.
+   --  This is intentionally separate from the bounded snapshot preview.
+   function Graphics_Event_Payload
+     (T     : Terminal;
+      Event : Graphics_Event) return String;
+
+   procedure Discard_Graphics_Event (T : in out Terminal);
+
+   --  Atomically queues the backend result for the current Kitty command and
+   --  releases that FIFO head. A stale/mismatched event is left untouched.
+   procedure Complete_Graphics_Event
+     (T      : in out Terminal;
+      Event  : Graphics_Event;
+      Result : Kitty_Graphics_Result);
+
+   procedure Read_Graphics_Event
+     (T            : in out Terminal;
+      Event        : out Graphics_Event;
+      Buffer       : out Core_Byte_Array;
+      Last         : out Natural;
+      End_Of_Event : out Boolean);
 
    procedure Read_Response
      (T      : in out Terminal;
@@ -301,9 +496,34 @@ private
    subtype Response_Index is Positive range 1 .. Max_Response_Length;
    type Response_Buffer is
      array (Response_Index) of Common.Bytes.Byte;
-   Max_OSC_Payload_Length : constant := 128 * 1024;
-   subtype OSC_Index is Positive range 1 .. Max_OSC_Payload_Length;
-   type OSC_Buffer is array (OSC_Index) of Standard.Character;
+   Max_OSC_Payload_Length : constant := 1024 * 1024;
+   Max_Ignored_String_Preview_Length : constant := 128 * 1024;
+   subtype Ignored_String_Index is
+     Positive range 1 .. Max_Ignored_String_Preview_Length;
+   type Ignored_String_Buffer is
+     array (Ignored_String_Index) of Standard.Character;
+
+   type String_Access is access all String;
+   type Core_Byte_Array_Access is access all Core_Byte_Array;
+   type Graphics_Event_Node;
+   type Graphics_Event_Node_Access is access Graphics_Event_Node;
+   type Graphics_Event_Node is record
+      Protocol       : Ignored_Graphics_Protocol := No_Graphics;
+      Cancelled      : Boolean := False;
+      Sequence       : Graphics_Event_Sequence := 0;
+      Transaction_Generation : Graphics_Transaction_Generation := 0;
+      Blocks_Input   : Boolean := False;
+      Alternate_Screen : Boolean := False;
+      Screen_Generation : Graphics_Screen_Generation := 0;
+      Scroll_Sequence : Graphics_Scroll_Sequence := 0;
+      Sixel_Private_Colors : Boolean := True;
+      Row            : Positive := 1;
+      Col            : Positive := 1;
+      Payload_Length : Natural := 0;
+      Payload        : String_Access := null;
+      Read_Offset    : Natural := 0;
+      Next           : Graphics_Event_Node_Access := null;
+   end record;
 
    type Terminal is limited record
       Initialized      : Boolean := False;
@@ -354,6 +574,47 @@ private
       Single_Shift_Charset : Charset_Slot := G2;
       Diag          : Diagnostic_Snapshot;
       Last_Graphics : Graphics_Event;
+      Graphics_Head : Graphics_Event_Node_Access := null;
+      Graphics_Tail : Graphics_Event_Node_Access := null;
+      Graphics_Event_Count : Natural range 0 .. Max_Pending_Graphics_Events := 0;
+      Graphics_Byte_Count  : Natural range 0 .. Max_Pending_Graphics_Bytes := 0;
+      Graphics_Stream      : Graphics_Stream_ID := 0;
+      Primary_Graphics_Generation : Graphics_Screen_Generation := 0;
+      Alternate_Graphics_Generation : Graphics_Screen_Generation := 0;
+      Primary_Graphics_Scroll_Sequence : Graphics_Scroll_Sequence := 0;
+      Alternate_Graphics_Scroll_Sequence : Graphics_Scroll_Sequence := 0;
+      Primary_Graphics_Scroll_Head : Natural range 0 .. Max_Graphics_Scroll_Events - 1 := 0;
+      Alternate_Graphics_Scroll_Head : Natural range 0 .. Max_Graphics_Scroll_Events - 1 := 0;
+      Primary_Graphics_Scroll_Count : Natural range 0 .. Max_Graphics_Scroll_Events := 0;
+      Alternate_Graphics_Scroll_Count : Natural range 0 .. Max_Graphics_Scroll_Events := 0;
+      Primary_Graphics_Scroll_Events :
+        Graphics_Scroll_Event_Array_Access := null;
+      Alternate_Graphics_Scroll_Events :
+        Graphics_Scroll_Event_Array_Access := null;
+      Next_Graphics_Sequence : Graphics_Event_Sequence := 1;
+      Graphics_Transaction : Graphics_Transaction_Generation := 1;
+      Graphics_Input_Blocked : Boolean := False;
+      Graphics_Queue_Backpressure : Boolean := False;
+      Graphics_Queue_Overflowed : Boolean := False;
+      Kitty_Chunk_Active : Boolean := False;
+      Kitty_Chunk_Blocks_Input : Boolean := False;
+      Kitty_Chunk_Action : Standard.Character := 't';
+      Kitty_Chunk_Data : String_Access := null;
+      Kitty_Chunk_Length : Natural range 0 .. Max_Graphics_Transaction_Length := 0;
+      Kitty_Chunk_Capacity : Natural range 0 .. Max_Graphics_Transaction_Length := 0;
+      Deferred_Input : Core_Byte_Array_Access := null;
+      Deferred_Input_Length : Natural range 0 .. Max_Deferred_Input_Bytes := 0;
+      Deferred_Input_Capacity : Natural range 0 .. Max_Deferred_Input_Bytes := 0;
+      Graphics_Transfer : String_Access := null;
+      Graphics_Limits : Graphics_Resource_Limits :=
+        Default_Graphics_Resource_Limits;
+      Graphics_Transfer_Length : Natural range 0 .. Max_Graphics_Transaction_Length := 0;
+      Graphics_Transfer_Capacity : Natural range 0 .. Max_Graphics_Transaction_Length := 0;
+      ITerm2_Multipart : String_Access := null;
+      ITerm2_Multipart_Length : Natural range 0 .. Max_Graphics_Transaction_Length := 0;
+      ITerm2_Multipart_Capacity : Natural range 0 .. Max_Graphics_Transaction_Length := 0;
+      ITerm2_Multipart_Active : Boolean := False;
+      Graphics_Capabilities : Graphics_Capability_Profile := (others => False);
       Last_Printable : Common.Code_Point := 0;
       Has_Last_Printable : Boolean := False;
       Window_Title  : Title_Text;
@@ -372,9 +633,10 @@ private
       CSI_Count     : Natural := 0;
       CSI_Intermediates : CSI_Intermediate_Array := (others => ASCII.NUL);
       CSI_Intermediate_Count : Natural := 0;
-      OSC_Data      : OSC_Buffer := (others => ASCII.NUL);
+      OSC_Data      : String_Access := null;
       OSC_Count     : Natural := 0;
-      Ignored_String_Data : OSC_Buffer := (others => ASCII.NUL);
+      OSC_Capacity  : Natural range 0 .. Max_OSC_Payload_Length := 0;
+      Ignored_String_Data : Ignored_String_Buffer := (others => ASCII.NUL);
       Ignored_String_Count : Natural := 0;
       Ignored_String_Is_DCS : Boolean := False;
       Ignored_String_Is_APC : Boolean := False;

@@ -22,6 +22,13 @@ procedure Core_OSC_Smoke is
       return Result;
    end To_Bytes;
 
+   function Repeat_Char (Ch : Character; Count : Natural) return String is
+      Result : String (1 .. Count);
+   begin
+      Result := (others => Ch);
+      return Result;
+   end Repeat_Char;
+
    --  A DCS whose payload exceeds the parser's escape buffer, so Feed must
    --  report Parser_Overflow. Sized off the actual limit (not a literal) so it
    --  keeps overflowing if Max_Escape_Length changes -- as it did when the OSC
@@ -85,6 +92,36 @@ begin
    begin
       Assert (Title.Length = 5, "OSC 0 title length");
       Assert (Title.Text (1 .. Title.Length) = "title", "OSC 0 title text");
+   end;
+
+   Terminal.Core.Set_Graphics_Capabilities
+     (T,
+      (Kitty_Direct_RGB         => True,
+       Kitty_Direct_RGBA        => True,
+       Kitty_Indexed_RGB        => True,
+       Kitty_Indexed_RGBA       => True,
+       Kitty_Direct_PNG         => True,
+       Kitty_Zlib_Compression   => True,
+       Kitty_File_Transfer      => False,
+       Kitty_Temporary_Transfer => True,
+       Kitty_Shared_Memory      => True,
+       Sixel                    => True,
+       ITerm2_Inline_Images     => True,
+       ITerm2_File_Downloads    => True));
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "]1337;Capabilities" & ASCII.ESC & "\"),
+      Feed_Status);
+   declare
+      Expected : constant Byte_Array :=
+        To_Bytes (ASCII.ESC & "]1337;Capabilities=FSx" & ASCII.ESC & "\");
+      Response : Byte_Array (1 .. Expected'Length);
+      Last : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Response, Last);
+      Assert
+        (Last = Expected'Length and then Response = Expected,
+         "feature report advertises complete FILE when enabled");
    end;
 
    Terminal.Core.Feed
@@ -370,6 +407,277 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 2, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "sixel shared palette initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[?1070l"
+         & ASCII.ESC & "Pq#5;2;100;0;0~" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "sixel shared palette feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (not Terminal.Core.Modes (T).Sixel_Private_Colors
+         and then S.Graphics.Pending
+         and then not S.Graphics.Sixel_Private_Colors,
+         "sixel palette mode should be captured with each graphics event");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 4, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "oversized sixel cursor initialize failed");
+   Terminal.Core.Set_Graphics_Resource_Limits
+     (T, (Pixel_Dimension => 64, others => <>));
+   Terminal.Core.Set_Cell_Pixel_Size (T, Width => 8, Height => 10);
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[2;3H"
+         & ASCII.ESC & "Pq""1;1;1;999999999~" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "oversized sixel cursor feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Graphics.Pending
+         and then S.Cursor.Row = 2
+         and then S.Cursor.Col = 3,
+         "oversized rejected sixel must not perform unbounded cursor work");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 4, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "sixel aspect cursor initialize failed");
+   Terminal.Core.Set_Cell_Pixel_Size (T, Width => 8, Height => 10);
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[1;3H"
+         & ASCII.ESC & "Pq""2;1;8;6~" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "sixel aspect cursor feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Row = 3 and then S.Cursor.Col = 3,
+         "sixel cursor advance should include Pan/Pad vertical scaling");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 4, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "sixel DCS aspect initialize failed");
+   Terminal.Core.Set_Cell_Pixel_Size (T, Width => 8, Height => 10);
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[1;3H"
+         & ASCII.ESC & "P5q~" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "sixel DCS aspect feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Cursor.Row = 3 and then S.Cursor.Col = 3,
+         "sixel DCS aspect selector should affect cursor advancement");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 4, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "sixel cursor initialize failed");
+   Terminal.Core.Set_Cell_Pixel_Size (T, Width => 8, Height => 10);
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[2;3H"
+         & ASCII.ESC & "Pq""1;1;8;15~" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "sixel cursor feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Graphics.Pending
+         and then S.Graphics.Row = 2
+         and then S.Graphics.Col = 3,
+         "scrolling sixel should retain its starting cursor cell");
+      Assert
+        (S.Cursor.Row = 4 and then S.Cursor.Col = 3,
+         "scrolling sixel should advance to the next complete text line");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 4, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "DECSDM initialize failed");
+   Terminal.Core.Set_Cell_Pixel_Size (T, Width => 8, Height => 10);
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[3;4H" & ASCII.ESC & "[?80h"
+         & ASCII.ESC & "Pq~" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "DECSDM sixel feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert
+        (M.Sixel_Display_Mode
+         and then S.Graphics.Row = 1
+         and then S.Graphics.Col = 1,
+         "DECSDM should place sixel graphics at the page origin");
+      Assert
+        (S.Cursor.Row = 3 and then S.Cursor.Col = 4,
+         "DECSDM should leave the text cursor unchanged");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 4, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "sixel right-scroll initialize failed");
+   Terminal.Core.Set_Cell_Pixel_Size (T, Width => 8, Height => 10);
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "[2;2H" & ASCII.ESC & "[?8452h"
+         & ASCII.ESC & "Pq""1;1;17;6~" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok, "sixel right-scroll feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      M : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (T);
+   begin
+      Assert
+        (M.Sixel_Scrolls_Right
+         and then S.Cursor.Row = 2
+         and then S.Cursor.Col = 5,
+         "sixel right-scroll mode should move past the raster width");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 3, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "iTerm2 cursor initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "]1337;File=inline=1:AAAA" & ASCII.BEL & "x"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "iTerm2 cursor feed failed");
+   declare
+      Event : Terminal.Core.Graphics_Event;
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 0,
+         "default iTerm2 cursor movement defers following input");
+      Terminal.Core.Release (S);
+      Terminal.Core.Peek_Graphics_Event (T, Event);
+      Assert
+        (Event.Pending
+         and then Event.Protocol = Terminal.Core.ITerm2_Graphics,
+         "default iTerm2 cursor event is pending");
+      Terminal.Core.Complete_Graphics_Event
+        (T,
+         Event,
+         (Code => Terminal.Core.Kitty_OK,
+          Move_Cursor => True,
+          Cursor_To_Line_Start => True,
+          Placement_Rows => 1,
+          others => <>));
+      S := Terminal.Core.Snapshot (T);
+      Assert
+        (Terminal.Core.Cell_At (S, 2, 1).Text.Code_Point = 16#78#,
+         "iTerm2 trailing input resumes at the line below the image");
+      Assert
+        (S.Cursor.Row = 2 and then S.Cursor.Col = 2,
+         "iTerm2 cursor commits to the next line before deferred input");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC
+         & "]1337;File=inline=1;doNotMoveCursor=1:AAAA"
+         & ASCII.BEL & "y"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "iTerm2 fixed-cursor feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 2, 2).Text.Code_Point = 16#79#,
+         "doNotMoveCursor leaves following input at the current cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "large iTerm2 part initialize failed");
+   declare
+      Part_Length : constant Natural := 128 * 1024 + 17;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "]1337;MultipartFile=inline=1" & ASCII.BEL
+            & ASCII.ESC & "]1337;FilePart="
+            & Repeat_Char ('A', Part_Length) & ASCII.BEL
+            & ASCII.ESC & "]1337;FileEnd" & ASCII.BEL),
+         Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "iTerm2 FilePart up to the one-MiB protocol limit is accepted");
+      declare
+         Event : Terminal.Core.Graphics_Event;
+      begin
+         Terminal.Core.Peek_Graphics_Event (T, Event);
+         Assert
+           (Event.Pending
+            and then Event.Protocol = Terminal.Core.ITerm2_Graphics
+            and then Event.Payload_Length =
+              String'("File=inline=1:")'Length + Part_Length,
+            "large iTerm2 multipart payload assembled without truncation");
+      end;
+   end;
+
+   Terminal.Core.Initialize (T, 1, 10, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "iTerm2 multipart initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC
+         & "]1337;MultipartFile=name=a;inline=1;doNotMoveCursor=1"
+         & ASCII.BEL
+         & ASCII.ESC & "]1337;FilePart=QU" & ASCII.BEL
+         & ASCII.ESC & "]1337;FilePart=FB" & ASCII.BEL
+         & ASCII.ESC & "]1337;FileEnd" & ASCII.BEL
+         & "x"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "iTerm2 multipart feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (S.Graphics.Pending
+         and then S.Graphics.Protocol = Terminal.Core.ITerm2_Graphics,
+         "iTerm2 multipart event exposed");
+      Assert
+        (S.Graphics.Preview (1 .. S.Graphics.Preview_Length) =
+           "File=name=a;inline=1;doNotMoveCursor=1:QUFB",
+         "iTerm2 multipart payload assembled");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#78#,
+         "iTerm2 multipart trailing text preserved");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 1, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "DCS initialize failed");
    Terminal.Core.Feed
@@ -450,12 +758,48 @@ begin
 
    Terminal.Core.Initialize (T, 1, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "graphics protocol initialize failed");
+
+   Terminal.Core.Set_Graphics_Capabilities
+     (T,
+      (Kitty_Direct_RGB         => True,
+       Kitty_Direct_RGBA        => True,
+       Kitty_Indexed_RGB        => True,
+       Kitty_Indexed_RGBA       => True,
+       Kitty_Direct_PNG         => True,
+       Kitty_Zlib_Compression   => True,
+       Kitty_File_Transfer      => False,
+       Kitty_Temporary_Transfer => True,
+       Kitty_Shared_Memory      => True,
+       Sixel                    => True,
+       ITerm2_Inline_Images     => True,
+       ITerm2_File_Downloads    => False));
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "]1337;Capabilities" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "feature report feed failed");
+   declare
+      Expected : constant Byte_Array :=
+        To_Bytes (ASCII.ESC & "]1337;Capabilities=Sx" & ASCII.ESC & "\");
+      Response : Byte_Array (1 .. Expected'Length + 8);
+      Last     : Natural;
+   begin
+      Terminal.Core.Read_Response (T, Response, Last);
+      Assert (Last = Expected'Length, "feature report response length");
+      Assert
+        (Response (Response'First .. Response'First + Last - 1) = Expected,
+         "feature report must advertise Sixel but not FILE downloads");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 0,
+         "feature report response should drain atomically");
+   end;
+
    Terminal.Core.Feed
      (T,
       To_Bytes
         (ASCII.ESC & "Pqabcdef" & ASCII.ESC & "\x"
-         & ASCII.ESC & "_Gf=100,a=T;AAAA" & ASCII.ESC & "\y"
-         & ASCII.ESC & "]1337;File=name=a;inline=1:AAAA" & ASCII.BEL
+         & ASCII.ESC & "_Gq=2,f=100,a=T,C=1;AAAA" & ASCII.ESC & "\y"
+         & ASCII.ESC & "]1337;File=name=a;inline=1;doNotMoveCursor=1:AAAA" & ASCII.BEL
          & "z"),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "graphics protocol feed failed");
@@ -484,7 +828,7 @@ begin
         (D.Last_Graphics_Protocol = Terminal.Core.ITerm2_Graphics,
          "last ignored graphics protocol");
       Assert
-        (D.Last_Graphics_Payload_Length = 25,
+        (D.Last_Graphics_Payload_Length = 43,
          "last ignored graphics payload length");
       Assert (S.Graphics.Pending, "graphics event should be exposed");
       Assert
@@ -494,14 +838,14 @@ begin
         (S.Graphics.Row = 1 and then S.Graphics.Col = 3,
          "graphics event position should use protocol cursor cell");
       Assert
-        (S.Graphics.Payload_Length = 25,
+        (S.Graphics.Payload_Length = 43,
          "graphics event payload length");
       Assert
-        (S.Graphics.Preview_Length = 25,
+        (S.Graphics.Preview_Length = 43,
          "graphics event preview length");
       Assert
         (S.Graphics.Preview (1 .. S.Graphics.Preview_Length) =
-         "File=name=a;inline=1:AAAA",
+         "File=name=a;inline=1;doNotMoveCursor=1:AAAA",
          "graphics event preview");
       Terminal.Core.Release (S);
    end;

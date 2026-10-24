@@ -21,7 +21,11 @@ project Core_Tests is
       "core_cursor_smoke.adb",
       "core_wrap_smoke.adb",
       "core_damage_smoke.adb",
-      "core_response_smoke.adb");
+      "core_response_smoke.adb",
+      "core_graphics_stream_smoke.adb",
+      "core_large_graphics_smoke.adb",
+      "core_image_cells_smoke.adb",
+      "core_graphics_fuzz_smoke.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata");

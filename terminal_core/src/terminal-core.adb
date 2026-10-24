@@ -9,14 +9,475 @@ package body Terminal.Core is
      (Cell_Array, Cell_Array_Access);
    procedure Free_Dirty is new Ada.Unchecked_Deallocation
      (Dirty_Row_Array, Dirty_Row_Array_Access);
+   procedure Free_Graphics_Scroll_Events is new Ada.Unchecked_Deallocation
+     (Graphics_Scroll_Event_Array, Graphics_Scroll_Event_Array_Access);
    procedure Free_Tab_Stops is new Ada.Unchecked_Deallocation
      (Tab_Stop_Array, Tab_Stop_Array_Access);
+   procedure Free_String is new Ada.Unchecked_Deallocation
+     (String, String_Access);
+   procedure Free_Graphics_Node is new Ada.Unchecked_Deallocation
+     (Graphics_Event_Node, Graphics_Event_Node_Access);
+   procedure Free_Deferred_Input is new Ada.Unchecked_Deallocation
+     (Core_Byte_Array, Core_Byte_Array_Access);
+
+   procedure Clear_Deferred_Input (T : in out Terminal) is
+   begin
+      if T.Deferred_Input /= null then
+         Free_Deferred_Input (T.Deferred_Input);
+      end if;
+      T.Deferred_Input := null;
+      T.Deferred_Input_Length := 0;
+      T.Deferred_Input_Capacity := 0;
+   end Clear_Deferred_Input;
+
+   procedure Clear_Graphics_Transfer (T : in out Terminal) is
+   begin
+      if T.Graphics_Transfer /= null then
+         Free_String (T.Graphics_Transfer);
+      end if;
+      T.Graphics_Transfer := null;
+      T.Graphics_Transfer_Length := 0;
+      T.Graphics_Transfer_Capacity := 0;
+   end Clear_Graphics_Transfer;
+
+   procedure Clear_Kitty_Chunk (T : in out Terminal) is
+   begin
+      if T.Kitty_Chunk_Data /= null then
+         Free_String (T.Kitty_Chunk_Data);
+      end if;
+      T.Kitty_Chunk_Data := null;
+      T.Kitty_Chunk_Length := 0;
+      T.Kitty_Chunk_Capacity := 0;
+      T.Kitty_Chunk_Active := False;
+      T.Kitty_Chunk_Blocks_Input := False;
+      T.Kitty_Chunk_Action := 't';
+   end Clear_Kitty_Chunk;
+
+   procedure Advance_Graphics_Transaction (T : in out Terminal) is
+   begin
+      T.Graphics_Transaction := T.Graphics_Transaction + 1;
+      if T.Graphics_Transaction = 0 then
+         T.Graphics_Transaction := 1;
+      end if;
+   end Advance_Graphics_Transaction;
+
+   procedure Clear_ITerm2_Multipart (T : in out Terminal) is
+   begin
+      if T.ITerm2_Multipart /= null then
+         Free_String (T.ITerm2_Multipart);
+      end if;
+      T.ITerm2_Multipart := null;
+      T.ITerm2_Multipart_Length := 0;
+      T.ITerm2_Multipart_Capacity := 0;
+      T.ITerm2_Multipart_Active := False;
+   end Clear_ITerm2_Multipart;
+
+   function Append_ITerm2_Multipart
+     (T    : in out Terminal;
+      Text : String) return Boolean
+   is
+      Required : Natural := 0;
+      New_Capacity : Natural := 0;
+      Replacement : String_Access := null;
+   begin
+      if Text'Length = 0 then
+         return True;
+      elsif Text'Length > T.Graphics_Limits.Transaction_Length
+        or else T.ITerm2_Multipart_Length >
+          T.Graphics_Limits.Transaction_Length - Text'Length
+      then
+         Clear_ITerm2_Multipart (T);
+         return False;
+      end if;
+      Required := T.ITerm2_Multipart_Length + Text'Length;
+      if Required > T.ITerm2_Multipart_Capacity then
+         New_Capacity := Natural'Min
+           (T.Graphics_Limits.Transaction_Length,
+            Natural'Max (4_096, T.ITerm2_Multipart_Capacity));
+         while New_Capacity < Required loop
+            if New_Capacity > T.Graphics_Limits.Transaction_Length / 2 then
+               New_Capacity := T.Graphics_Limits.Transaction_Length;
+            else
+               New_Capacity := New_Capacity * 2;
+            end if;
+         end loop;
+         Replacement := new String (1 .. New_Capacity);
+         if T.ITerm2_Multipart_Length > 0 then
+            Replacement (1 .. T.ITerm2_Multipart_Length) :=
+              T.ITerm2_Multipart (1 .. T.ITerm2_Multipart_Length);
+         end if;
+         if T.ITerm2_Multipart /= null then
+            Free_String (T.ITerm2_Multipart);
+         end if;
+         T.ITerm2_Multipart := Replacement;
+         T.ITerm2_Multipart_Capacity := New_Capacity;
+         Replacement := null;
+      end if;
+      T.ITerm2_Multipart
+        (T.ITerm2_Multipart_Length + 1 .. Required) := Text;
+      T.ITerm2_Multipart_Length := Required;
+      return True;
+   exception
+      when Storage_Error =>
+         if Replacement /= null then
+            Free_String (Replacement);
+         end if;
+         Clear_ITerm2_Multipart (T);
+         return False;
+   end Append_ITerm2_Multipart;
+
+   procedure Clear_Graphics_Events (T : in out Terminal) is
+      Current : Graphics_Event_Node_Access := T.Graphics_Head;
+      Next    : Graphics_Event_Node_Access;
+   begin
+      while Current /= null loop
+         Next := Current.Next;
+         if Current.Payload /= null then
+            Free_String (Current.Payload);
+         end if;
+         Free_Graphics_Node (Current);
+         Current := Next;
+      end loop;
+      T.Graphics_Head := null;
+      T.Graphics_Tail := null;
+      T.Graphics_Event_Count := 0;
+      T.Graphics_Byte_Count := 0;
+      T.Graphics_Input_Blocked := False;
+      T.Graphics_Queue_Backpressure := False;
+      T.Graphics_Queue_Overflowed := False;
+      Clear_Kitty_Chunk (T);
+   end Clear_Graphics_Events;
+
+   function Kitty_Field_Value
+     (Payload : String;
+      Key     : Standard.Character) return String
+   is
+      Header_Last : Natural := Payload'Last;
+      Field_First : Natural := Payload'First;
+      I : Natural;
+   begin
+      for Pos in Payload'Range loop
+         if Payload (Pos) = ';' then
+            Header_Last := Pos - 1;
+            exit;
+         end if;
+      end loop;
+      if Header_Last < Payload'First then
+         return "";
+      end if;
+
+      I := Payload'First;
+      if Payload (I) = 'G' then
+         I := I + 1;
+      end if;
+      Field_First := I;
+      while I <= Header_Last + 1 loop
+         if I = Header_Last + 1 or else Payload (I) = ',' then
+            if I >= Field_First + 2
+              and then Payload (Field_First) = Key
+              and then Payload (Field_First + 1) = '='
+            then
+               return Payload (Field_First + 2 .. I - 1);
+            end if;
+            Field_First := I + 1;
+         end if;
+         I := I + 1;
+      end loop;
+      return "";
+   end Kitty_Field_Value;
+
+   function Kitty_Command_Blocks_Input
+     (T       : in out Terminal;
+      Payload : String) return Boolean
+   is
+      Action_Text : constant String := Kitty_Field_Value (Payload, 'a');
+      More_Text   : constant String := Kitty_Field_Value (Payload, 'm');
+      Quiet_Text  : constant String := Kitty_Field_Value (Payload, 'q');
+      Cursor_Text : constant String := Kitty_Field_Value (Payload, 'C');
+      Virtual_Text : constant String := Kitty_Field_Value (Payload, 'U');
+      Parent_Text : constant String := Kitty_Field_Value (Payload, 'P');
+      Action : constant Standard.Character :=
+        (if Action_Text'Length = 0 then 't' else Action_Text (Action_Text'First));
+      Placement_Would_Move : constant Boolean :=
+        Action in 'T' | 'p'
+        and then Cursor_Text /= "1"
+        and then Virtual_Text /= "1"
+        and then (Parent_Text'Length = 0 or else Parent_Text = "0");
+      Could_Respond : constant Boolean := Quiet_Text /= "2";
+   begin
+      if More_Text = "1" then
+         return False;
+      elsif More_Text = "0" then
+         return
+           (if T.Kitty_Chunk_Active
+            then T.Kitty_Chunk_Blocks_Input
+            else Could_Respond or else Placement_Would_Move);
+      end if;
+      --  The app produces both success and error replies after decoding and
+      --  transport validation.  Serialize every command which may reply so a
+      --  later synchronous terminal reply cannot overtake it.  q=2 commands
+      --  need a barrier only when their placement also moves the cursor.
+      return Could_Respond or else Placement_Would_Move;
+   end Kitty_Command_Blocks_Input;
+
+   function ITerm2_Command_Blocks_Input (Payload : String) return Boolean is
+      function Has_Field (Field : String) return Boolean is
+         First : Natural := Payload'First + 5;
+         Last  : Natural;
+      begin
+         if Payload'Length < 5
+           or else Payload (Payload'First .. Payload'First + 4) /= "File="
+         then
+            return False;
+         end if;
+
+         while First <= Payload'Last loop
+            Last := First;
+            while Last <= Payload'Last
+              and then Payload (Last) not in ';' | ':'
+            loop
+               Last := Last + 1;
+            end loop;
+            if Last - First = Field'Length
+              and then Payload (First .. Last - 1) = Field
+            then
+               return True;
+            end if;
+            exit when Last > Payload'Last or else Payload (Last) = ':';
+            First := Last + 1;
+         end loop;
+         return False;
+      end Has_Field;
+   begin
+      --  Inline images normally move the cursor below their rendered pixel
+      --  height.  That height is known only after bounded decode and sizing
+      --  in the app, so preserve input ordering until presentation commits.
+      return Has_Field ("inline=1")
+        and then not Has_Field ("doNotMoveCursor=1");
+   end ITerm2_Command_Blocks_Input;
+
+   procedure Drop_Graphics_Head (T : in out Terminal) is
+      Node : Graphics_Event_Node_Access := T.Graphics_Head;
+   begin
+      if Node = null then
+         return;
+      end if;
+
+      T.Graphics_Head := Node.Next;
+      if T.Graphics_Head = null then
+         T.Graphics_Tail := null;
+      end if;
+      T.Graphics_Event_Count := T.Graphics_Event_Count - 1;
+      T.Graphics_Byte_Count := T.Graphics_Byte_Count - Node.Payload_Length;
+      if Node.Payload /= null then
+         Free_String (Node.Payload);
+      end if;
+      Free_Graphics_Node (Node);
+   end Drop_Graphics_Head;
+
+   procedure Refresh_Graphics_Input_Block (T : in out Terminal) is
+      Current : Graphics_Event_Node_Access := T.Graphics_Head;
+      Has_Semantic_Barrier : Boolean := False;
+   begin
+      T.Graphics_Queue_Backpressure :=
+        T.Graphics_Event_Count >= T.Graphics_Limits.Pending_Events
+        or else
+          (T.Graphics_Event_Count > 0
+           and then
+             (T.Graphics_Byte_Count >= T.Graphics_Limits.Pending_Bytes
+              or else
+                T.Graphics_Limits.Pending_Bytes - T.Graphics_Byte_Count <
+                  Natural'Min
+                    (T.Graphics_Limits.Transaction_Length,
+                     T.Graphics_Limits.Pending_Bytes)));
+      while Current /= null and then not Has_Semantic_Barrier loop
+         Has_Semantic_Barrier := Current.Blocks_Input;
+         Current := Current.Next;
+      end loop;
+      T.Graphics_Input_Blocked :=
+        T.Graphics_Queue_Backpressure or else Has_Semantic_Barrier;
+   end Refresh_Graphics_Input_Block;
+
+   procedure Enqueue_Graphics_Event
+     (T              : in out Terminal;
+      Protocol       : Ignored_Graphics_Protocol;
+      Row            : Positive;
+      Col            : Positive;
+      Payload        : String;
+      Cancelled      : Boolean := False)
+   is
+      Stored : String_Access := null;
+      Node   : Graphics_Event_Node_Access := null;
+      Blocks_Input : Boolean := False;
+      Old_Chunk_Active : constant Boolean := T.Kitty_Chunk_Active;
+      Old_Chunk_Blocks : constant Boolean := T.Kitty_Chunk_Blocks_Input;
+   begin
+      if T.Graphics_Event_Count >= T.Graphics_Limits.Pending_Events
+        or else Payload'Length > T.Graphics_Limits.Pending_Bytes
+        or else T.Graphics_Byte_Count >
+          T.Graphics_Limits.Pending_Bytes - Payload'Length
+      then
+         T.Diag.Queue_Overflow := T.Diag.Queue_Overflow + 1;
+         T.Graphics_Queue_Overflowed := True;
+         return;
+      end if;
+
+      Blocks_Input :=
+        not Cancelled
+        and then
+          (case Protocol is
+              when Kitty_Graphics => Kitty_Command_Blocks_Input (T, Payload),
+              when ITerm2_Graphics => ITerm2_Command_Blocks_Input (Payload),
+              when Sixel_Graphics => False,
+              when No_Graphics => False);
+      Stored := new String'(Payload);
+      Node := new Graphics_Event_Node'
+        (Protocol       => Protocol,
+         Cancelled      => Cancelled,
+         Sequence       => T.Next_Graphics_Sequence,
+         Transaction_Generation => T.Graphics_Transaction,
+         Blocks_Input   => Blocks_Input,
+         Alternate_Screen => T.Active = Alternate,
+         Screen_Generation =>
+           (if T.Active = Alternate
+            then T.Alternate_Graphics_Generation
+            else T.Primary_Graphics_Generation),
+         Scroll_Sequence =>
+           (if T.Active = Alternate
+            then T.Alternate_Graphics_Scroll_Sequence
+            else T.Primary_Graphics_Scroll_Sequence),
+         Sixel_Private_Colors => T.Current_Modes.Sixel_Private_Colors,
+         Row            => Row,
+         Col            => Col,
+         Payload_Length => Payload'Length,
+         Payload        => Stored,
+         Read_Offset    => 0,
+         Next           => null);
+
+      if T.Graphics_Tail = null then
+         T.Graphics_Head := Node;
+      else
+         T.Graphics_Tail.Next := Node;
+      end if;
+      T.Graphics_Tail := Node;
+      T.Graphics_Event_Count := T.Graphics_Event_Count + 1;
+      T.Graphics_Byte_Count := T.Graphics_Byte_Count + Payload'Length;
+      T.Graphics_Queue_Backpressure :=
+        T.Graphics_Event_Count >= T.Graphics_Limits.Pending_Events
+        or else
+          (T.Graphics_Event_Count > 0
+           and then
+             T.Graphics_Limits.Pending_Bytes - T.Graphics_Byte_Count <
+               Natural'Min
+                 (T.Graphics_Limits.Transaction_Length,
+                  T.Graphics_Limits.Pending_Bytes));
+      T.Graphics_Input_Blocked :=
+        T.Graphics_Input_Blocked
+        or else Blocks_Input
+        or else T.Graphics_Queue_Backpressure;
+      T.Last_Graphics.Stream_ID := T.Graphics_Stream;
+      T.Last_Graphics.Sequence := Node.Sequence;
+      T.Last_Graphics.Transaction_Generation := T.Graphics_Transaction;
+      T.Last_Graphics.Alternate_Screen := Node.Alternate_Screen;
+      T.Last_Graphics.Screen_Generation := Node.Screen_Generation;
+      T.Last_Graphics.Scroll_Sequence := Node.Scroll_Sequence;
+      T.Last_Graphics.Sixel_Private_Colors := Node.Sixel_Private_Colors;
+      T.Next_Graphics_Sequence := T.Next_Graphics_Sequence + 1;
+      if T.Next_Graphics_Sequence = 0 then
+         T.Next_Graphics_Sequence := 1;
+      end if;
+   exception
+      when Storage_Error =>
+         if Node /= null then
+            Free_Graphics_Node (Node);
+         end if;
+         if Stored /= null then
+            Free_String (Stored);
+         end if;
+         T.Kitty_Chunk_Active := Old_Chunk_Active;
+         T.Kitty_Chunk_Blocks_Input := Old_Chunk_Blocks;
+         T.Diag.Queue_Overflow := T.Diag.Queue_Overflow + 1;
+         T.Graphics_Queue_Overflowed := True;
+   end Enqueue_Graphics_Event;
 
    function Index (T : Terminal; Row : Positive; Col : Positive) return Positive is
      ((Row - 1) * T.Cols + Col);
 
    function Active_Cells (T : Terminal) return Cell_Array_Access is
      (if T.Active = Primary then T.Primary_Cells else T.Alt_Cells);
+
+   type Image_Diacritic_Array is
+     array (Natural range <>) of Common.Code_Point;
+
+   --  Ordered exactly as Kitty's rowcolumn-diacritics.txt.  The position in
+   --  this array, starting at zero, is the encoded row, column, or high image
+   --  ID byte value.
+   Image_Diacritics : constant Image_Diacritic_Array :=
+     (16#0305#, 16#030D#, 16#030E#, 16#0310#, 16#0312#, 16#033D#,
+      16#033E#, 16#033F#, 16#0346#, 16#034A#, 16#034B#, 16#034C#,
+      16#0350#, 16#0351#, 16#0352#, 16#0357#, 16#035B#, 16#0363#,
+      16#0364#, 16#0365#, 16#0366#, 16#0367#, 16#0368#, 16#0369#,
+      16#036A#, 16#036B#, 16#036C#, 16#036D#, 16#036E#, 16#036F#,
+      16#0483#, 16#0484#, 16#0485#, 16#0486#, 16#0487#, 16#0592#,
+      16#0593#, 16#0594#, 16#0595#, 16#0597#, 16#0598#, 16#0599#,
+      16#059C#, 16#059D#, 16#059E#, 16#059F#, 16#05A0#, 16#05A1#,
+      16#05A8#, 16#05A9#, 16#05AB#, 16#05AC#, 16#05AF#, 16#05C4#,
+      16#0610#, 16#0611#, 16#0612#, 16#0613#, 16#0614#, 16#0615#,
+      16#0616#, 16#0617#, 16#0657#, 16#0658#, 16#0659#, 16#065A#,
+      16#065B#, 16#065D#, 16#065E#, 16#06D6#, 16#06D7#, 16#06D8#,
+      16#06D9#, 16#06DA#, 16#06DB#, 16#06DC#, 16#06DF#, 16#06E0#,
+      16#06E1#, 16#06E2#, 16#06E4#, 16#06E7#, 16#06E8#, 16#06EB#,
+      16#06EC#, 16#0730#, 16#0732#, 16#0733#, 16#0735#, 16#0736#,
+      16#073A#, 16#073D#, 16#073F#, 16#0740#, 16#0741#, 16#0743#,
+      16#0745#, 16#0747#, 16#0749#, 16#074A#, 16#07EB#, 16#07EC#,
+      16#07ED#, 16#07EE#, 16#07EF#, 16#07F0#, 16#07F1#, 16#07F3#,
+      16#0816#, 16#0817#, 16#0818#, 16#0819#, 16#081B#, 16#081C#,
+      16#081D#, 16#081E#, 16#081F#, 16#0820#, 16#0821#, 16#0822#,
+      16#0823#, 16#0825#, 16#0826#, 16#0827#, 16#0829#, 16#082A#,
+      16#082B#, 16#082C#, 16#082D#, 16#0951#, 16#0953#, 16#0954#,
+      16#0F82#, 16#0F83#, 16#0F86#, 16#0F87#, 16#135D#, 16#135E#,
+      16#135F#, 16#17DD#, 16#193A#, 16#1A17#, 16#1A75#, 16#1A76#,
+      16#1A77#, 16#1A78#, 16#1A79#, 16#1A7A#, 16#1A7B#, 16#1A7C#,
+      16#1B6B#, 16#1B6D#, 16#1B6E#, 16#1B6F#, 16#1B70#, 16#1B71#,
+      16#1B72#, 16#1B73#, 16#1CD0#, 16#1CD1#, 16#1CD2#, 16#1CDA#,
+      16#1CDB#, 16#1CE0#, 16#1DC0#, 16#1DC1#, 16#1DC3#, 16#1DC4#,
+      16#1DC5#, 16#1DC6#, 16#1DC7#, 16#1DC8#, 16#1DC9#, 16#1DCB#,
+      16#1DCC#, 16#1DD1#, 16#1DD2#, 16#1DD3#, 16#1DD4#, 16#1DD5#,
+      16#1DD6#, 16#1DD7#, 16#1DD8#, 16#1DD9#, 16#1DDA#, 16#1DDB#,
+      16#1DDC#, 16#1DDD#, 16#1DDE#, 16#1DDF#, 16#1DE0#, 16#1DE1#,
+      16#1DE2#, 16#1DE3#, 16#1DE4#, 16#1DE5#, 16#1DE6#, 16#1DFE#,
+      16#20D0#, 16#20D1#, 16#20D4#, 16#20D5#, 16#20D6#, 16#20D7#,
+      16#20DB#, 16#20DC#, 16#20E1#, 16#20E7#, 16#20E9#, 16#20F0#,
+      16#2CEF#, 16#2CF0#, 16#2CF1#, 16#2DE0#, 16#2DE1#, 16#2DE2#,
+      16#2DE3#, 16#2DE4#, 16#2DE5#, 16#2DE6#, 16#2DE7#, 16#2DE8#,
+      16#2DE9#, 16#2DEA#, 16#2DEB#, 16#2DEC#, 16#2DED#, 16#2DEE#,
+      16#2DEF#, 16#2DF0#, 16#2DF1#, 16#2DF2#, 16#2DF3#, 16#2DF4#,
+      16#2DF5#, 16#2DF6#, 16#2DF7#, 16#2DF8#, 16#2DF9#, 16#2DFA#,
+      16#2DFB#, 16#2DFC#, 16#2DFD#, 16#2DFE#, 16#2DFF#, 16#A66F#,
+      16#A67C#, 16#A67D#, 16#A6F0#, 16#A6F1#, 16#A8E0#, 16#A8E1#,
+      16#A8E2#, 16#A8E3#, 16#A8E4#, 16#A8E5#, 16#A8E6#, 16#A8E7#,
+      16#A8E8#, 16#A8E9#, 16#A8EA#, 16#A8EB#, 16#A8EC#, 16#A8ED#,
+      16#A8EE#, 16#A8EF#, 16#A8F0#, 16#A8F1#, 16#AAB0#, 16#AAB2#,
+      16#AAB3#, 16#AAB7#, 16#AAB8#, 16#AABE#, 16#AABF#, 16#AAC1#,
+      16#FE20#, 16#FE21#, 16#FE22#, 16#FE23#, 16#FE24#, 16#FE25#,
+      16#FE26#, 16#10A0F#, 16#10A38#, 16#1D185#, 16#1D186#,
+      16#1D187#, 16#1D188#, 16#1D189#, 16#1D1AA#, 16#1D1AB#,
+      16#1D1AC#, 16#1D1AD#, 16#1D242#, 16#1D243#, 16#1D244#);
+
+   function Image_Diacritic_Value
+     (CP    : Common.Code_Point;
+      Value : out Natural) return Boolean
+   is
+   begin
+      for I in Image_Diacritics'Range loop
+         if Image_Diacritics (I) = CP then
+            Value := I;
+            return True;
+         end if;
+      end loop;
+      Value := 0;
+      return False;
+   end Image_Diacritic_Value;
 
    function Bounded_Status_Label (Label : String) return String is
    begin
@@ -47,18 +508,42 @@ package body Terminal.Core is
      (T        : in out Terminal;
       Protocol : Graphics_Protocol;
       Payload_Length : Natural;
-      Preview        : String := "")
+      Preview        : String := "";
+      Enqueue        : Boolean := True;
+      At_Row         : Natural := 0;
+      At_Col         : Natural := 0;
+      Kitty_Validation_Error : Boolean := False)
    is
       Preview_Length : constant Graphics_Preview_Length_Range :=
         Graphics_Preview_Length_Range'Min
           (Preview'Length, Max_Graphics_Preview_Length);
+      Previous_Graphics : constant Graphics_Event := T.Last_Graphics;
    begin
       T.Diag.Graphics_Protocol_Ignored :=
         T.Diag.Graphics_Protocol_Ignored + 1;
       T.Diag.Last_Graphics_Payload_Length := Payload_Length;
       T.Last_Graphics.Pending := True;
-      T.Last_Graphics.Row := T.Cursor_Row;
-      T.Last_Graphics.Col := T.Cursor_Col;
+      T.Last_Graphics.Cancelled := Kitty_Validation_Error;
+      T.Last_Graphics.Stream_ID := T.Graphics_Stream;
+      T.Last_Graphics.Sequence := 0;
+      T.Last_Graphics.Transaction_Generation := T.Graphics_Transaction;
+      T.Last_Graphics.Alternate_Screen := T.Active = Alternate;
+      T.Last_Graphics.Screen_Generation :=
+        (if T.Active = Alternate
+         then T.Alternate_Graphics_Generation
+         else T.Primary_Graphics_Generation);
+      T.Last_Graphics.Scroll_Sequence :=
+        (if T.Active = Alternate
+         then T.Alternate_Graphics_Scroll_Sequence
+         else T.Primary_Graphics_Scroll_Sequence);
+      T.Last_Graphics.Sixel_Private_Colors :=
+        T.Current_Modes.Sixel_Private_Colors;
+      T.Last_Graphics.Row :=
+        (if At_Row = 0 then T.Cursor_Row
+         else Positive'Min (T.Rows, Positive (At_Row)));
+      T.Last_Graphics.Col :=
+        (if At_Col = 0 then T.Cursor_Col
+         else Positive'Min (T.Cols, Positive (At_Col)));
       T.Last_Graphics.Payload_Length := Payload_Length;
       T.Last_Graphics.Preview_Length := Preview_Length;
       T.Last_Graphics.Preview := (others => ASCII.NUL);
@@ -82,7 +567,455 @@ package body Terminal.Core is
             T.Diag.Last_Graphics_Protocol := ITerm2_Graphics;
             T.Last_Graphics.Protocol := ITerm2_Graphics;
       end case;
+
+      if Enqueue then
+         Enqueue_Graphics_Event
+           (T,
+            T.Last_Graphics.Protocol,
+            T.Last_Graphics.Row,
+            T.Last_Graphics.Col,
+            Preview,
+            Cancelled => Kitty_Validation_Error);
+         --  The compatibility snapshot must never publish a command rejected
+         --  by the bounded queue.  Successful queue entries always receive a
+         --  nonzero sequence number from Enqueue_Graphics_Event.
+         if T.Last_Graphics.Sequence = 0 then
+            T.Last_Graphics := Previous_Graphics;
+         end if;
+      end if;
    end Note_Graphics_Protocol;
+
+   type Kitty_Chunk_Control is record
+      Valid            : Boolean := False;
+      More_Specified   : Boolean := False;
+      More             : Boolean := False;
+      More_Value_Index : Natural := 0;
+      Data_First       : Natural := 0;
+      Action           : Standard.Character := 't';
+      Transmission     : Standard.Character := 'd';
+      Quiet_Specified  : Boolean := False;
+      Quiet            : Natural range 0 .. 2 := 0;
+   end record;
+
+   function Parse_Kitty_Chunk_Control
+     (Payload       : String;
+      Continuation  : Boolean;
+      Initial_Action : Standard.Character := 't') return Kitty_Chunk_Control
+   is
+      Result       : Kitty_Chunk_Control;
+      Header_Last  : Natural := 0;
+      Field_First  : Natural;
+      More_Seen    : Boolean := False;
+      Quiet_Seen   : Boolean := False;
+      Action_Seen  : Boolean := False;
+   begin
+      if Payload'Length < 2 or else Payload (Payload'First) /= 'G' then
+         return Result;
+      end if;
+
+      for I in Payload'First + 1 .. Payload'Last loop
+         if Payload (I) = ';' then
+            Header_Last := I - 1;
+            Result.Data_First := I + 1;
+            exit;
+         end if;
+      end loop;
+      if Header_Last = 0 then
+         Header_Last := Payload'Last;
+         Result.Data_First := 0;
+      end if;
+
+      Field_First := Payload'First + 1;
+      if Field_First <= Header_Last then
+         for I in Field_First .. Header_Last + 1 loop
+            if I = Header_Last + 1 or else Payload (I) = ',' then
+               declare
+                  Field_Last : constant Natural := I - 1;
+                  Key        : Standard.Character;
+                  Value_First : Natural;
+                  Value_Last  : Natural;
+               begin
+                  if Field_Last < Field_First + 2
+                    or else Payload (Field_First + 1) /= '='
+                  then
+                     return Result;
+                  end if;
+                  Key := Payload (Field_First);
+                  Value_First := Field_First + 2;
+                  Value_Last := Field_Last;
+
+                  if Continuation then
+                     case Key is
+                        when 'm' =>
+                           if More_Seen
+                             or else Value_First /= Value_Last
+                             or else Payload (Value_First) not in '0' | '1'
+                           then
+                              return Result;
+                           end if;
+                           More_Seen := True;
+                           Result.More_Specified := True;
+                           Result.More := Payload (Value_First) = '1';
+                           Result.More_Value_Index := Value_First;
+                        when 'q' =>
+                           if Quiet_Seen
+                             or else Value_First /= Value_Last
+                             or else Payload (Value_First) not in '0' | '1' | '2'
+                           then
+                              return Result;
+                           end if;
+                           Quiet_Seen := True;
+                           Result.Quiet_Specified := True;
+                           Result.Quiet :=
+                             Standard.Character'Pos (Payload (Value_First))
+                               - Standard.Character'Pos ('0');
+                        when 'a' =>
+                           if Action_Seen
+                             or else Value_First /= Value_Last
+                             or else Payload (Value_First) /= 'f'
+                             or else Initial_Action /= 'f'
+                           then
+                              return Result;
+                           end if;
+                           Action_Seen := True;
+                        when others =>
+                           return Result;
+                     end case;
+                  else
+                     case Key is
+                        when 'm' =>
+                           if More_Seen
+                             or else Value_First /= Value_Last
+                             or else Payload (Value_First) not in '0' | '1'
+                           then
+                              return Result;
+                           end if;
+                           More_Seen := True;
+                           Result.More_Specified := True;
+                           Result.More := Payload (Value_First) = '1';
+                           Result.More_Value_Index := Value_First;
+                        when 'a' =>
+                           if Value_First /= Value_Last then
+                              return Result;
+                           end if;
+                           Result.Action := Payload (Value_First);
+                        when 't' =>
+                           if Value_First /= Value_Last then
+                              return Result;
+                           end if;
+                           Result.Transmission := Payload (Value_First);
+                        when 'q' =>
+                           if Quiet_Seen
+                             or else Value_First /= Value_Last
+                             or else Payload (Value_First) not in '0' | '1' | '2'
+                           then
+                              return Result;
+                           end if;
+                           Quiet_Seen := True;
+                           Result.Quiet_Specified := True;
+                           Result.Quiet :=
+                             Standard.Character'Pos (Payload (Value_First))
+                               - Standard.Character'Pos ('0');
+                        when others =>
+                           null;
+                     end case;
+                  end if;
+               end;
+               Field_First := I + 1;
+            end if;
+         end loop;
+      end if;
+
+      Result.Valid :=
+        (not Continuation
+         or else
+           (Result.More_Specified
+            and then
+              (Initial_Action /= 'f' or else Action_Seen)));
+      return Result;
+   end Parse_Kitty_Chunk_Control;
+
+   function Append_Kitty_Chunk_Data
+     (T    : in out Terminal;
+      Text : String) return Boolean
+   is
+      Required     : Natural;
+      New_Capacity : Natural;
+      Replacement  : String_Access := null;
+   begin
+      if Text'Length = 0 then
+         return True;
+      elsif Text'Length > T.Graphics_Limits.Transaction_Length
+        or else T.Kitty_Chunk_Length >
+          T.Graphics_Limits.Transaction_Length - Text'Length
+      then
+         return False;
+      end if;
+
+      Required := T.Kitty_Chunk_Length + Text'Length;
+      if Required > T.Kitty_Chunk_Capacity then
+         New_Capacity := Natural'Min
+           (T.Graphics_Limits.Transaction_Length,
+            Natural'Max (4_096, T.Kitty_Chunk_Capacity));
+         while New_Capacity < Required loop
+            if New_Capacity > T.Graphics_Limits.Transaction_Length / 2 then
+               New_Capacity := T.Graphics_Limits.Transaction_Length;
+            else
+               New_Capacity := New_Capacity * 2;
+            end if;
+         end loop;
+         Replacement := new String (1 .. New_Capacity);
+         if T.Kitty_Chunk_Length > 0 then
+            Replacement (1 .. T.Kitty_Chunk_Length) :=
+              T.Kitty_Chunk_Data (1 .. T.Kitty_Chunk_Length);
+         end if;
+         if T.Kitty_Chunk_Data /= null then
+            Free_String (T.Kitty_Chunk_Data);
+         end if;
+         T.Kitty_Chunk_Data := Replacement;
+         T.Kitty_Chunk_Capacity := New_Capacity;
+         Replacement := null;
+      end if;
+      T.Kitty_Chunk_Data
+        (T.Kitty_Chunk_Length + 1 .. Required) := Text;
+      T.Kitty_Chunk_Length := Required;
+      return True;
+   exception
+      when Storage_Error =>
+         if Replacement /= null then
+            Free_String (Replacement);
+         end if;
+         return False;
+   end Append_Kitty_Chunk_Data;
+
+   function Apply_Kitty_Chunk_Quiet
+     (T     : in out Terminal;
+      Quiet : Natural) return Boolean
+   is
+      Header_Last : Natural := 0;
+      Field_First : Natural := 0;
+      Old_Length  : Natural;
+   begin
+      if T.Kitty_Chunk_Data = null or else T.Kitty_Chunk_Length = 0 then
+         return False;
+      end if;
+
+      for I in 1 .. T.Kitty_Chunk_Length loop
+         if T.Kitty_Chunk_Data (I) = ';' then
+            Header_Last := I - 1;
+            exit;
+         end if;
+      end loop;
+      if Header_Last = 0 then
+         return False;
+      end if;
+
+      Field_First := 2;
+      for I in 2 .. Header_Last + 1 loop
+         if I = Header_Last + 1 or else T.Kitty_Chunk_Data (I) = ',' then
+            if I = Field_First + 3
+              and then T.Kitty_Chunk_Data (Field_First .. Field_First + 1) =
+                "q="
+            then
+               T.Kitty_Chunk_Data (Field_First + 2) :=
+                 Standard.Character'Val
+                   (Standard.Character'Pos ('0') + Quiet);
+               return True;
+            end if;
+            Field_First := I + 1;
+         end if;
+      end loop;
+
+      Old_Length := T.Kitty_Chunk_Length;
+      if not Append_Kitty_Chunk_Data (T, "    ") then
+         return False;
+      end if;
+      for I in reverse Header_Last + 1 .. Old_Length loop
+         T.Kitty_Chunk_Data (I + 4) := T.Kitty_Chunk_Data (I);
+      end loop;
+      T.Kitty_Chunk_Data (Header_Last + 1 .. Header_Last + 4) :=
+        ",q=" & Standard.Character'Val
+          (Standard.Character'Pos ('0') + Quiet);
+      return True;
+   end Apply_Kitty_Chunk_Quiet;
+
+   procedure Process_Kitty_Graphics_APC
+     (T       : in out Terminal;
+      Payload : String)
+   is
+      Control : constant Kitty_Chunk_Control :=
+        Parse_Kitty_Chunk_Control
+          (Payload,
+           Continuation => T.Kitty_Chunk_Active,
+           Initial_Action => T.Kitty_Chunk_Action);
+      Data_Length : constant Natural :=
+        (if Control.Data_First = 0
+           or else Control.Data_First > Payload'Last
+         then 0
+         else Payload'Last - Control.Data_First + 1);
+
+      procedure Queue_Current
+        (Text       : String;
+         Invalid    : Boolean := False) is
+      begin
+         Note_Graphics_Protocol
+           (T,
+            Graphics_Kitty,
+            Text'Length,
+            Text,
+            Kitty_Validation_Error => Invalid);
+      end Queue_Current;
+
+      procedure Queue_Partial_Error is
+      begin
+         if T.Kitty_Chunk_Data /= null and then T.Kitty_Chunk_Length > 0 then
+            Queue_Current
+              (T.Kitty_Chunk_Data (1 .. T.Kitty_Chunk_Length),
+               Invalid => True);
+         else
+            Queue_Current (Payload, Invalid => True);
+         end if;
+         Advance_Graphics_Transaction (T);
+         Clear_Kitty_Chunk (T);
+      end Queue_Partial_Error;
+   begin
+      if not T.Kitty_Chunk_Active then
+         if Control.Valid and then Control.More_Specified and then Control.More
+         then
+            if Control.Transmission in 'f' | 't' | 's'
+              or else Data_Length > 4_096
+              or else Data_Length mod 4 /= 0
+            then
+               Queue_Current (Payload, Invalid => True);
+               return;
+            end if;
+
+            if Control.Data_First = 0 then
+               --  Some real clients (notably Chafa) send a metadata-only
+               --  first chunk and begin the base64 data in the next APC.
+               --  Preserve the separator needed by the assembled command.
+               declare
+                  Normalized : String := Payload & ";";
+               begin
+                  Normalized (Control.More_Value_Index) := '0';
+                  if not Append_Kitty_Chunk_Data (T, Normalized) then
+                     Queue_Current (Payload, Invalid => True);
+                     Clear_Kitty_Chunk (T);
+                     return;
+                  end if;
+               end;
+            else
+               declare
+                  Normalized : String := Payload;
+               begin
+                  Normalized (Control.More_Value_Index) := '0';
+                  if not Append_Kitty_Chunk_Data (T, Normalized) then
+                     Queue_Current (Payload, Invalid => True);
+                     Clear_Kitty_Chunk (T);
+                     return;
+                  end if;
+               end;
+            end if;
+            T.Kitty_Chunk_Active := True;
+            T.Kitty_Chunk_Action := Control.Action;
+            --  A partial transaction is not a renderable graphics event.  In
+            --  particular, do not leave the legacy snapshot pointing at an
+            --  older command while the core waits for the final chunk.
+            T.Last_Graphics.Pending := False;
+            T.Kitty_Chunk_Blocks_Input :=
+              (not Control.Quiet_Specified or else Control.Quiet /= 2)
+              or else
+                (Control.Action in 'T' | 'p'
+                 and then Kitty_Field_Value (Payload, 'C') /= "1"
+                 and then Kitty_Field_Value (Payload, 'U') /= "1"
+                 and then
+                   (Kitty_Field_Value (Payload, 'P')'Length = 0
+                    or else Kitty_Field_Value (Payload, 'P') = "0"));
+            return;
+         end if;
+
+         Queue_Current
+           (Payload,
+            Invalid =>
+              (Control.More_Specified and then not Control.Valid));
+         return;
+      end if;
+
+      --  A delete command is explicitly allowed to cancel a partial upload.
+      if not Control.Valid
+        and then Kitty_Field_Value (Payload, 'a') = "d"
+        and then Data_Length = 0
+      then
+         Advance_Graphics_Transaction (T);
+         Clear_Kitty_Chunk (T);
+         Queue_Current (Payload);
+         return;
+      end if;
+
+      if not Control.Valid
+        or else Data_Length > 4_096
+        or else (Control.More and then Data_Length mod 4 /= 0)
+      then
+         Queue_Partial_Error;
+         return;
+      end if;
+
+      if Data_Length > 0
+        and then not Append_Kitty_Chunk_Data
+          (T, Payload (Control.Data_First .. Payload'Last))
+      then
+         Queue_Partial_Error;
+         return;
+      end if;
+
+      if Control.Quiet_Specified then
+         if not Apply_Kitty_Chunk_Quiet (T, Control.Quiet) then
+            Queue_Partial_Error;
+            return;
+         end if;
+         T.Kitty_Chunk_Blocks_Input :=
+           Control.Quiet /= 2
+           or else
+             (T.Kitty_Chunk_Action in 'T' | 'p'
+              and then
+                Kitty_Field_Value
+                  (T.Kitty_Chunk_Data (1 .. T.Kitty_Chunk_Length), 'C') /= "1"
+              and then
+                Kitty_Field_Value
+                  (T.Kitty_Chunk_Data (1 .. T.Kitty_Chunk_Length), 'U') /= "1"
+              and then
+                (Kitty_Field_Value
+                   (T.Kitty_Chunk_Data (1 .. T.Kitty_Chunk_Length), 'P')'Length = 0
+                 or else Kitty_Field_Value
+                   (T.Kitty_Chunk_Data (1 .. T.Kitty_Chunk_Length), 'P') = "0"));
+      end if;
+
+      if Control.More then
+         T.Last_Graphics.Pending := False;
+         return;
+      end if;
+
+      Queue_Current
+        (T.Kitty_Chunk_Data (1 .. T.Kitty_Chunk_Length));
+      Clear_Kitty_Chunk (T);
+   end Process_Kitty_Graphics_APC;
+
+   procedure Reject_Kitty_Chunk_Interleave (T : in out Terminal) is
+   begin
+      if not T.Kitty_Chunk_Active then
+         return;
+      end if;
+      if T.Kitty_Chunk_Data /= null and then T.Kitty_Chunk_Length > 0 then
+         Note_Graphics_Protocol
+           (T,
+            Graphics_Kitty,
+            T.Kitty_Chunk_Length,
+            T.Kitty_Chunk_Data (1 .. T.Kitty_Chunk_Length),
+            Kitty_Validation_Error => True);
+      end if;
+      Advance_Graphics_Transaction (T);
+      Clear_Kitty_Chunk (T);
+   end Reject_Kitty_Chunk_Interleave;
 
    function OSC_Slice
      (T     : Terminal;
@@ -116,7 +1049,97 @@ package body Terminal.Core is
       Bottom : Positive;
       Count  : Positive := 1);
 
+   procedure Reset_Graphics_Scroll
+     (T : in out Terminal;
+      Alternate_Screen : Boolean)
+   is
+   begin
+      if Alternate_Screen then
+         T.Alternate_Graphics_Scroll_Sequence := 0;
+         T.Alternate_Graphics_Scroll_Head := 0;
+         T.Alternate_Graphics_Scroll_Count := 0;
+         if T.Alternate_Graphics_Scroll_Events /= null then
+            T.Alternate_Graphics_Scroll_Events.all := (others => <>);
+         end if;
+      else
+         T.Primary_Graphics_Scroll_Sequence := 0;
+         T.Primary_Graphics_Scroll_Head := 0;
+         T.Primary_Graphics_Scroll_Count := 0;
+         if T.Primary_Graphics_Scroll_Events /= null then
+            T.Primary_Graphics_Scroll_Events.all := (others => <>);
+         end if;
+      end if;
+   end Reset_Graphics_Scroll;
+
+   procedure Note_Graphics_Scroll
+     (T         : in out Terminal;
+      Direction : Graphics_Scroll_Direction;
+      Top       : Positive;
+      Bottom    : Positive;
+      Count     : Positive)
+   is
+      Sequence : Graphics_Scroll_Sequence;
+      Slot : Natural;
+   begin
+      if T.Primary_Graphics_Scroll_Events = null
+        or else T.Alternate_Graphics_Scroll_Events = null
+      then
+         return;
+      end if;
+      if T.Active = Alternate then
+         T.Alternate_Graphics_Scroll_Sequence :=
+           T.Alternate_Graphics_Scroll_Sequence + 1;
+         if T.Alternate_Graphics_Scroll_Sequence = 0 then
+            T.Alternate_Graphics_Scroll_Sequence := 1;
+         end if;
+         Sequence := T.Alternate_Graphics_Scroll_Sequence;
+         if T.Alternate_Graphics_Scroll_Count < Max_Graphics_Scroll_Events then
+            Slot :=
+              (T.Alternate_Graphics_Scroll_Head
+               + T.Alternate_Graphics_Scroll_Count)
+              mod Max_Graphics_Scroll_Events;
+            T.Alternate_Graphics_Scroll_Count :=
+              T.Alternate_Graphics_Scroll_Count + 1;
+         else
+            Slot := T.Alternate_Graphics_Scroll_Head;
+            T.Alternate_Graphics_Scroll_Head :=
+              (T.Alternate_Graphics_Scroll_Head + 1)
+              mod Max_Graphics_Scroll_Events;
+         end if;
+         T.Alternate_Graphics_Scroll_Events (Slot + 1) :=
+           (Sequence, Direction, Top, Bottom, Count);
+      else
+         T.Primary_Graphics_Scroll_Sequence :=
+           T.Primary_Graphics_Scroll_Sequence + 1;
+         if T.Primary_Graphics_Scroll_Sequence = 0 then
+            T.Primary_Graphics_Scroll_Sequence := 1;
+         end if;
+         Sequence := T.Primary_Graphics_Scroll_Sequence;
+         if T.Primary_Graphics_Scroll_Count < Max_Graphics_Scroll_Events then
+            Slot :=
+              (T.Primary_Graphics_Scroll_Head
+               + T.Primary_Graphics_Scroll_Count)
+              mod Max_Graphics_Scroll_Events;
+            T.Primary_Graphics_Scroll_Count :=
+              T.Primary_Graphics_Scroll_Count + 1;
+         else
+            Slot := T.Primary_Graphics_Scroll_Head;
+            T.Primary_Graphics_Scroll_Head :=
+              (T.Primary_Graphics_Scroll_Head + 1)
+              mod Max_Graphics_Scroll_Events;
+         end if;
+         T.Primary_Graphics_Scroll_Events (Slot + 1) :=
+           (Sequence, Direction, Top, Bottom, Count);
+      end if;
+   end Note_Graphics_Scroll;
+
    procedure New_Line (T : in out Terminal);
+   procedure Append_Response_Char
+     (T  : in out Terminal;
+      Ch : Standard.Character);
+   procedure Append_Response_String
+     (T    : in out Terminal;
+      Text : String);
 
    procedure Mark_Dirty (T : in out Terminal; Row : Positive) is
    begin
@@ -226,7 +1249,8 @@ package body Terminal.Core is
            (Kind  => Character,
             Text  => (Code_Point => 16#45#, Width => Width_One, others => <>),
             Style => T.Current_Style,
-            Link  => T.Current_Link);
+            Link  => T.Current_Link,
+            Image => <>);
       end loop;
       T.Pending_Wrap := False;
       Mark_All_Dirty (T);
@@ -311,11 +1335,32 @@ package body Terminal.Core is
          Cursor_Blinking          => False,
          Keyboard_Locked          => False,
          Insert_Mode              => False,
-         Linefeed_New_Line        => False);
+         Linefeed_New_Line        => False,
+         Sixel_Display_Mode       => False,
+         Sixel_Private_Colors     => True,
+         Sixel_Scrolls_Right      => False);
+
    end Default_Modes;
 
    procedure Reset_Terminal (T : in out Terminal) is
    begin
+      Clear_Graphics_Transfer (T);
+      Clear_ITerm2_Multipart (T);
+      Clear_Graphics_Events (T);
+      Advance_Graphics_Transaction (T);
+      Clear_Deferred_Input (T);
+      T.Primary_Graphics_Generation :=
+        T.Primary_Graphics_Generation + 1;
+      if T.Primary_Graphics_Generation = 0 then
+         T.Primary_Graphics_Generation := 1;
+      end if;
+      T.Alternate_Graphics_Generation :=
+        T.Alternate_Graphics_Generation + 1;
+      if T.Alternate_Graphics_Generation = 0 then
+         T.Alternate_Graphics_Generation := 1;
+      end if;
+      Reset_Graphics_Scroll (T, False);
+      Reset_Graphics_Scroll (T, True);
       T.Active := Primary;
       T.Current_Modes := Default_Modes;
       T.Cursor_Row := 1;
@@ -358,7 +1403,6 @@ package body Terminal.Core is
       T.CSI_Count := 0;
       T.CSI_Intermediates := (others => ASCII.NUL);
       T.CSI_Intermediate_Count := 0;
-      T.OSC_Data := (others => ASCII.NUL);
       T.OSC_Count := 0;
       T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
@@ -402,6 +1446,17 @@ package body Terminal.Core is
          T.Tab_Stops := null;
       end if;
 
+      if T.Primary_Graphics_Scroll_Events = null then
+         T.Primary_Graphics_Scroll_Events :=
+           new Graphics_Scroll_Event_Array (1 .. Max_Graphics_Scroll_Events);
+         T.Primary_Graphics_Scroll_Events.all := (others => <>);
+      end if;
+      if T.Alternate_Graphics_Scroll_Events = null then
+         T.Alternate_Graphics_Scroll_Events :=
+           new Graphics_Scroll_Event_Array (1 .. Max_Graphics_Scroll_Events);
+         T.Alternate_Graphics_Scroll_Events.all := (others => <>);
+      end if;
+
       T.Primary_Cells := new Cell_Array (1 .. Count);
       T.Alt_Cells := new Cell_Array (1 .. Count);
       if T.Scrollback_Limit > 0 then
@@ -426,7 +1481,7 @@ package body Terminal.Core is
    end Allocate_Buffers;
 
    procedure Initialize
-     (T                : out Terminal;
+     (T                : in out Terminal;
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural := 10_000;
@@ -434,6 +1489,10 @@ package body Terminal.Core is
    is
       Allocated : Boolean;
    begin
+      --  Initialize is intentionally repeatable.  Reclaim every allocation
+      --  owned by an earlier initialization (including a partially failed
+      --  one) before establishing the new state.
+      Finalize (T);
       if Rows = 0 or else Cols = 0 then
          Status := Invalid_Size;
          return;
@@ -467,6 +1526,40 @@ package body Terminal.Core is
       T.Saved_G3_Charset := ASCII_Charset;
       T.Saved_Active_Charset := G0;
       T.Diag := (others => <>);
+      T.Last_Graphics := (others => <>);
+      T.Graphics_Head := null;
+      T.Graphics_Tail := null;
+      T.Graphics_Event_Count := 0;
+      T.Graphics_Byte_Count := 0;
+      T.Graphics_Stream := 0;
+      T.Primary_Graphics_Generation := 0;
+      T.Alternate_Graphics_Generation := 0;
+      T.Primary_Graphics_Scroll_Events := null;
+      T.Alternate_Graphics_Scroll_Events := null;
+      Reset_Graphics_Scroll (T, False);
+      Reset_Graphics_Scroll (T, True);
+      T.Next_Graphics_Sequence := 1;
+      T.Graphics_Transaction := 1;
+      T.Graphics_Input_Blocked := False;
+      T.Graphics_Queue_Backpressure := False;
+      T.Kitty_Chunk_Active := False;
+      T.Kitty_Chunk_Blocks_Input := False;
+      T.Kitty_Chunk_Action := 't';
+      T.Kitty_Chunk_Data := null;
+      T.Kitty_Chunk_Length := 0;
+      T.Kitty_Chunk_Capacity := 0;
+      T.Deferred_Input := null;
+      T.Deferred_Input_Length := 0;
+      T.Deferred_Input_Capacity := 0;
+      T.Graphics_Transfer := null;
+      T.Graphics_Transfer_Length := 0;
+      T.Graphics_Transfer_Capacity := 0;
+      T.Graphics_Limits := Default_Graphics_Resource_Limits;
+      T.ITerm2_Multipart := null;
+      T.ITerm2_Multipart_Length := 0;
+      T.ITerm2_Multipart_Capacity := 0;
+      T.ITerm2_Multipart_Active := False;
+      T.Graphics_Capabilities := (others => False);
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
       T.Window_Title := (others => <>);
@@ -483,8 +1576,9 @@ package body Terminal.Core is
       T.CSI_Count := 0;
       T.CSI_Intermediates := (others => ASCII.NUL);
       T.CSI_Intermediate_Count := 0;
-      T.OSC_Data := (others => ASCII.NUL);
+      T.OSC_Data := null;
       T.OSC_Count := 0;
+      T.OSC_Capacity := 0;
       T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
       T.Ignored_String_Is_DCS := False;
@@ -496,6 +1590,7 @@ package body Terminal.Core is
       T.Scrollback_Limit := Scrollback_Limit;
       Allocate_Buffers (T, Rows, Cols, Allocated);
       if not Allocated then
+         Finalize (T);
          Status := Allocation_Failed;
          return;
       end if;
@@ -505,20 +1600,86 @@ package body Terminal.Core is
       Status := Ok;
    end Initialize;
 
+   procedure Finalize (T : in out Terminal) is
+   begin
+      Clear_Graphics_Transfer (T);
+      Clear_ITerm2_Multipart (T);
+      Clear_Graphics_Events (T);
+      Clear_Deferred_Input (T);
+      if T.OSC_Data /= null then
+         Free_String (T.OSC_Data);
+      end if;
+      T.OSC_Count := 0;
+      T.OSC_Capacity := 0;
+      if T.Primary_Cells /= null then
+         Free_Cells (T.Primary_Cells);
+      end if;
+      if T.Alt_Cells /= null then
+         Free_Cells (T.Alt_Cells);
+      end if;
+      if T.Scrollback /= null then
+         Free_Cells (T.Scrollback);
+      end if;
+      if T.Dirty /= null then
+         Free_Dirty (T.Dirty);
+      end if;
+      if T.Tab_Stops /= null then
+         Free_Tab_Stops (T.Tab_Stops);
+      end if;
+      if T.Primary_Graphics_Scroll_Events /= null then
+         Free_Graphics_Scroll_Events (T.Primary_Graphics_Scroll_Events);
+      end if;
+      if T.Alternate_Graphics_Scroll_Events /= null then
+         Free_Graphics_Scroll_Events (T.Alternate_Graphics_Scroll_Events);
+      end if;
+      T.Initialized := False;
+      T.Last_Graphics := (others => <>);
+   end Finalize;
+
    procedure Append_OSC_Byte
      (T          : in out Terminal;
       Ch         : Standard.Character;
       Overflowed : in out Boolean)
    is
+      New_Capacity : Natural;
+      Replacement  : String_Access := null;
    begin
       if T.OSC_Count >= Parser.Max_OSC_Length then
          T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
          Overflowed := True;
          T.State := OSC_Overflow;
       else
+         if T.OSC_Count = T.OSC_Capacity then
+            if T.OSC_Capacity = 0 then
+               New_Capacity := Natural'Min (4 * 1024, Parser.Max_OSC_Length);
+            elsif T.OSC_Capacity > Parser.Max_OSC_Length / 2 then
+               New_Capacity := Parser.Max_OSC_Length;
+            else
+               New_Capacity := T.OSC_Capacity * 2;
+            end if;
+            Replacement := new String (1 .. New_Capacity);
+            if T.OSC_Count > 0 then
+               Replacement (1 .. T.OSC_Count) :=
+                 T.OSC_Data (1 .. T.OSC_Count);
+            end if;
+            if T.OSC_Data /= null then
+               Free_String (T.OSC_Data);
+            end if;
+            T.OSC_Data := Replacement;
+            T.OSC_Capacity := New_Capacity;
+            Replacement := null;
+         end if;
          T.OSC_Count := T.OSC_Count + 1;
          T.OSC_Data (T.OSC_Count) := Ch;
       end if;
+   exception
+      when Storage_Error =>
+         if Replacement /= null then
+            Free_String (Replacement);
+         end if;
+         T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+         Overflowed := True;
+         T.State := OSC_Overflow;
    end Append_OSC_Byte;
 
    procedure Finish_OSC (T : in out Terminal) is
@@ -819,12 +1980,77 @@ package body Terminal.Core is
          Decode_OSC8 (Payload_First, T.OSC_Count);
       elsif Command = 52 then
          Decode_OSC52 (Payload_First, T.OSC_Count);
+      elsif Command = 1337
+        and then T.OSC_Count - Payload_First + 1 = 12
+        and then OSC_Slice (T, Payload_First, T.OSC_Count) = "Capabilities"
+      then
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_String (T, "]1337;Capabilities=");
+         if T.Graphics_Capabilities.ITerm2_Inline_Images
+           and then T.Graphics_Capabilities.ITerm2_File_Downloads
+         then
+            Append_Response_Char (T, 'F');
+         end if;
+         if T.Graphics_Capabilities.Sixel then
+            Append_Response_String (T, "Sx");
+         end if;
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '\');
       elsif Command = 1337 and then Payload_Starts_With ("File=") then
          Note_Graphics_Protocol
            (T,
             Graphics_ITerm2,
             T.OSC_Count - Payload_First + 1,
             OSC_Slice (T, Payload_First, T.OSC_Count));
+      elsif Command = 1337
+        and then Payload_Starts_With ("MultipartFile=")
+      then
+         Clear_ITerm2_Multipart (T);
+         T.ITerm2_Multipart_Active := True;
+         declare
+            Accepted : Boolean := Append_ITerm2_Multipart (T, "File=");
+         begin
+            if Accepted and then Payload_First + 14 <= T.OSC_Count then
+               Accepted := Append_ITerm2_Multipart
+                 (T, OSC_Slice (T, Payload_First + 14, T.OSC_Count));
+            end if;
+            if Accepted then
+               Accepted := Append_ITerm2_Multipart (T, ":");
+            end if;
+            if not Accepted then
+               Clear_ITerm2_Multipart (T);
+            end if;
+         end;
+      elsif Command = 1337
+        and then Payload_Starts_With ("FilePart=")
+        and then T.ITerm2_Multipart_Active
+      then
+         declare
+            Accepted : Boolean := True;
+         begin
+            if Payload_First + 9 <= T.OSC_Count then
+               Accepted := Append_ITerm2_Multipart
+                 (T, OSC_Slice (T, Payload_First + 9, T.OSC_Count));
+            end if;
+            if not Accepted then
+               Clear_ITerm2_Multipart (T);
+            end if;
+         end;
+      elsif Command = 1337
+        and then T.ITerm2_Multipart_Active
+        and then T.OSC_Count - Payload_First + 1 = 7
+        and then OSC_Slice (T, Payload_First, T.OSC_Count) = "FileEnd"
+      then
+         if T.ITerm2_Multipart /= null
+           and then T.ITerm2_Multipart_Length > 6
+         then
+            Note_Graphics_Protocol
+              (T,
+               Graphics_ITerm2,
+               T.ITerm2_Multipart_Length,
+               T.ITerm2_Multipart (1 .. T.ITerm2_Multipart_Length));
+         end if;
+         Clear_ITerm2_Multipart (T);
       end if;
 
       T.State := Ground;
@@ -835,8 +2061,89 @@ package body Terminal.Core is
       Ch         : Standard.Character;
       Overflowed : in out Boolean)
    is
+      Is_Full_Graphics_Capture : constant Boolean :=
+        (T.Ignored_String_Is_DCS
+         and then
+           (T.Graphics_Transfer_Length > 0
+            or else
+              (T.Ignored_String_Count = 0
+               and then Ch in '0' .. '9' | ';' | '?' | 'q' | 't')))
+        or else
+          (T.Ignored_String_Is_APC
+           and then
+             (T.Graphics_Transfer_Length > 0
+              or else (T.Ignored_String_Count = 0 and then Ch = 'G')));
+
+      procedure Append_Graphics_Byte is
+         New_Capacity : Natural;
+         Replacement  : String_Access;
+      begin
+         if T.Graphics_Transfer_Length >=
+           T.Graphics_Limits.Transaction_Length
+         then
+            if T.Kitty_Chunk_Active and then T.Ignored_String_Is_APC then
+               Advance_Graphics_Transaction (T);
+               Clear_Kitty_Chunk (T);
+            end if;
+            T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+            Overflowed := True;
+            Clear_Graphics_Transfer (T);
+            T.State := Ignored_String_Overflow;
+            return;
+         end if;
+
+         if T.Graphics_Transfer_Length = T.Graphics_Transfer_Capacity then
+            if T.Graphics_Transfer_Capacity = 0 then
+               New_Capacity := Natural'Min
+                 (4 * 1024, T.Graphics_Limits.Transaction_Length);
+            elsif T.Graphics_Transfer_Capacity >
+              T.Graphics_Limits.Transaction_Length / 2
+            then
+               New_Capacity := T.Graphics_Limits.Transaction_Length;
+            else
+               New_Capacity := T.Graphics_Transfer_Capacity * 2;
+            end if;
+
+            Replacement := new String (1 .. New_Capacity);
+            if T.Graphics_Transfer_Length > 0 then
+               Replacement (1 .. T.Graphics_Transfer_Length) :=
+                 T.Graphics_Transfer (1 .. T.Graphics_Transfer_Length);
+            end if;
+            if T.Graphics_Transfer /= null then
+               Free_String (T.Graphics_Transfer);
+            end if;
+            T.Graphics_Transfer := Replacement;
+            T.Graphics_Transfer_Capacity := New_Capacity;
+         end if;
+
+         T.Graphics_Transfer_Length := T.Graphics_Transfer_Length + 1;
+         T.Graphics_Transfer (T.Graphics_Transfer_Length) := Ch;
+      exception
+         when Storage_Error =>
+            if T.Kitty_Chunk_Active and then T.Ignored_String_Is_APC then
+               Advance_Graphics_Transaction (T);
+               Clear_Kitty_Chunk (T);
+            end if;
+            T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+            Overflowed := True;
+            Clear_Graphics_Transfer (T);
+            T.State := Ignored_String_Overflow;
+      end Append_Graphics_Byte;
    begin
-      if T.Ignored_String_Count >= Parser.Max_Escape_Length then
+      if Is_Full_Graphics_Capture then
+         Append_Graphics_Byte;
+         if T.State = Ignored_String_Overflow then
+            return;
+         end if;
+
+         --  Retain the legacy prefix for Snapshot.Graphics and non-graphics
+         --  DCS parsing without allowing that preview bound to terminate a
+         --  complete Kitty, Sixel, or tmux passthrough transaction.
+         if T.Ignored_String_Count < Parser.Max_Escape_Length then
+            T.Ignored_String_Count := T.Ignored_String_Count + 1;
+            T.Ignored_String_Data (T.Ignored_String_Count) := Ch;
+         end if;
+      elsif T.Ignored_String_Count >= Parser.Max_Escape_Length then
          T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
          Overflowed := True;
          T.State := Ignored_String_Overflow;
@@ -852,6 +2159,7 @@ package body Terminal.Core is
       Is_APC : Boolean := False)
    is
    begin
+      Clear_Graphics_Transfer (T);
       T.Ignored_String_Data := (others => ASCII.NUL);
       T.Ignored_String_Count := 0;
       T.Ignored_String_Is_DCS := Is_DCS;
@@ -933,6 +2241,8 @@ package body Terminal.Core is
          end loop;
          Clear_Row (T, Bottom, 1, T.Cols);
       end loop;
+      Note_Graphics_Scroll
+        (T, Graphics_Scroll_Up, Top, Bottom, Count);
    end Scroll_Up_Region;
 
    procedure Scroll_Down_Region
@@ -956,6 +2266,8 @@ package body Terminal.Core is
          end loop;
          Clear_Row (T, Top, 1, T.Cols);
       end loop;
+      Note_Graphics_Scroll
+        (T, Graphics_Scroll_Down, Top, Bottom, Count);
    end Scroll_Down_Region;
 
    procedure New_Line (T : in out Terminal) is
@@ -1038,9 +2350,11 @@ package body Terminal.Core is
 
    function Is_Zero_Width (CP : Common.Code_Point) return Boolean is
       V : constant Natural := Natural (CP);
+      Image_Value : Natural;
    begin
       return
-        V = 16#200C#
+        Image_Diacritic_Value (CP, Image_Value)
+        or else V = 16#200C#
         or else V = 16#200D#
         or else (V in 16#0300# .. 16#036F#)
         or else V = 16#034F#
@@ -1125,6 +2439,123 @@ package body Terminal.Core is
         or else (V in 16#20D0# .. 16#20FF#)
         or else (V in 16#FE20# .. 16#FE2F#);
    end Is_Renderable_Attachment;
+
+   function Color_Graphics_ID
+     (Value : Color;
+      Valid : out Boolean) return Graphics_ID
+   is
+   begin
+      case Value.Kind is
+         when Default =>
+            Valid := False;
+            return 0;
+         when Indexed =>
+            Valid := True;
+            return Graphics_ID (Value.Index);
+         when RGB =>
+            Valid := True;
+            return
+              Graphics_ID
+                (Value.R * 16#1_0000# + Value.G * 16#100# + Value.B);
+      end case;
+   end Color_Graphics_ID;
+
+   procedure Decode_Image_Cell
+     (T          : in out Terminal;
+      Cell_Index : Positive)
+   is
+      Cells : constant Cell_Array_Access := Active_Cells (T);
+      Low_ID : Graphics_ID;
+      Placement_Valid : Boolean;
+      Image_Valid : Boolean;
+      Values : array (Positive range 1 .. 3) of Natural := (others => 0);
+      Decoded_Count : Natural := 0;
+      High_Value : Natural := 0;
+      Col : Positive;
+   begin
+      if Cells = null or else Cell_Index not in Cells'Range then
+         return;
+      end if;
+
+      Cells (Cell_Index).Image := (others => <>);
+      if Cells (Cell_Index).Kind /= Character
+        or else Cells (Cell_Index).Text.Code_Point /= Kitty_Image_Placeholder
+      then
+         return;
+      end if;
+
+      Cells (Cell_Index).Image.Is_Placeholder := True;
+      Low_ID :=
+        Color_Graphics_ID (Cells (Cell_Index).Style.Foreground, Image_Valid);
+      Cells (Cell_Index).Image.Image_ID_Valid := Image_Valid;
+      Cells (Cell_Index).Image.Placement_ID :=
+        Color_Graphics_ID
+          (Cells (Cell_Index).Style.Underline_Color, Placement_Valid);
+
+      for I in 1 .. Natural'Min
+        (Cells (Cell_Index).Text.Attachment_Count, Values'Length)
+      loop
+         exit when not Image_Diacritic_Value
+           (Cells (Cell_Index).Text.Attachments (I), Values (I));
+         Decoded_Count := I;
+      end loop;
+
+      if Decoded_Count >= 1 then
+         Cells (Cell_Index).Image.Image_Row := Values (1);
+         Cells (Cell_Index).Image.Row_Specified := True;
+      end if;
+      if Decoded_Count >= 2 then
+         Cells (Cell_Index).Image.Image_Column := Values (2);
+         Cells (Cell_Index).Image.Column_Specified := True;
+      end if;
+      if Decoded_Count >= 3 and then Values (3) <= 255 then
+         High_Value := Values (3);
+         Cells (Cell_Index).Image.High_Byte_Specified := True;
+      elsif Decoded_Count >= 3 then
+         Cells (Cell_Index).Image.Image_ID_Valid := False;
+      end if;
+
+      Col := Positive (((Cell_Index - 1) mod T.Cols) + 1);
+      if Col > 1 then
+         declare
+            Left : Cell renames Cells (Cell_Index - 1);
+            Same_Colors : constant Boolean :=
+              Left.Image.Is_Placeholder
+              and then Left.Style.Foreground =
+                Cells (Cell_Index).Style.Foreground
+              and then Left.Style.Underline_Color =
+                Cells (Cell_Index).Style.Underline_Color;
+            Left_High : constant Natural :=
+              Natural (Left.Image.Image_ID / Graphics_ID (16#1_000000#));
+         begin
+            if Same_Colors and then Decoded_Count = 0 then
+               Cells (Cell_Index).Image.Image_Row := Left.Image.Image_Row;
+               Cells (Cell_Index).Image.Image_Column :=
+                 Left.Image.Image_Column + 1;
+               High_Value := Left_High;
+            elsif Same_Colors
+              and then Decoded_Count = 1
+              and then Values (1) = Left.Image.Image_Row
+            then
+               Cells (Cell_Index).Image.Image_Column :=
+                 Left.Image.Image_Column + 1;
+               High_Value := Left_High;
+            elsif Same_Colors
+              and then Decoded_Count = 2
+              and then Values (1) = Left.Image.Image_Row
+              and then Values (2) = Left.Image.Image_Column + 1
+            then
+               High_Value := Left_High;
+            end if;
+         end;
+      end if;
+
+      Cells (Cell_Index).Image.Image_ID :=
+        Low_ID + Graphics_ID (High_Value) * Graphics_ID (16#1_000000#);
+      Cells (Cell_Index).Image.Image_ID_Valid :=
+        Cells (Cell_Index).Image.Image_ID_Valid
+        and then Cells (Cell_Index).Image.Image_ID /= 0;
+   end Decode_Image_Cell;
 
    procedure Clear_Wide_Overlap
      (T        : in out Terminal;
@@ -1279,6 +2710,12 @@ package body Terminal.Core is
       for R in Row .. Positive'Min (T.Bottom_Margin, Row + Amount - 1) loop
          Clear_Row (T, R, 1, T.Cols);
       end loop;
+      Note_Graphics_Scroll
+        (T,
+         Graphics_Scroll_Down,
+         Row,
+         T.Bottom_Margin,
+         Positive (Amount));
    end Insert_Blank_Lines;
 
    procedure Delete_Lines
@@ -1311,6 +2748,12 @@ package body Terminal.Core is
       for R in Positive'Max (Row, T.Bottom_Margin - Amount + 1) .. T.Bottom_Margin loop
          Clear_Row (T, R, 1, T.Cols);
       end loop;
+      Note_Graphics_Scroll
+        (T,
+         Graphics_Scroll_Up,
+         Row,
+         T.Bottom_Margin,
+         Positive (Amount));
    end Delete_Lines;
 
    procedure Put_Code_Point (T : in out Terminal; CP : Common.Code_Point) is
@@ -1378,7 +2821,8 @@ package body Terminal.Core is
                          Width      => Width_Zero,
                          others     => <>),
                Style => Cells (Cell_Index).Style,
-               Link  => Cells (Cell_Index).Link);
+               Link  => Cells (Cell_Index).Link,
+               Image => <>);
 
             if T.Cursor_Col = Next_Col then
                if Next_Col = T.Cols then
@@ -1407,6 +2851,7 @@ package body Terminal.Core is
               Cells (Cell_Index).Text.Attachment_Count + 1;
             Cells (Cell_Index).Text.Attachments
               (Cells (Cell_Index).Text.Attachment_Count) := Attached_CP;
+            Decode_Image_Cell (T, Positive (Cell_Index));
             Promote_Emoji_Width;
             Mark_Dirty (T, T.Cursor_Row);
             return True;
@@ -1483,7 +2928,9 @@ package body Terminal.Core is
         (Kind  => Character,
          Text  => (Code_Point => CP, Width => W, others => <>),
          Style => T.Current_Style,
-         Link  => T.Current_Link);
+         Link  => T.Current_Link,
+         Image => <>);
+      Decode_Image_Cell (T, Index (T, T.Cursor_Row, T.Cursor_Col));
       T.Last_Printable := CP;
       T.Has_Last_Printable := True;
       Mark_Dirty (T, T.Cursor_Row);
@@ -1494,7 +2941,8 @@ package body Terminal.Core is
               (Kind => Wide_Continuation,
                Text => (Code_Point => 0, Width => Width_Zero, others => <>),
                Style => T.Current_Style,
-               Link  => T.Current_Link);
+               Link  => T.Current_Link,
+               Image => <>);
          end if;
          if T.Cursor_Col + 1 >= T.Cols then
             T.Cursor_Col := T.Cols;
@@ -1588,6 +3036,19 @@ package body Terminal.Core is
          end if;
       end loop;
    end Append_Response_Natural;
+
+   procedure Append_Response_Graphics_ID
+     (T     : in out Terminal;
+      Value : Graphics_ID)
+   is
+      Text : constant String := Graphics_ID'Image (Value);
+   begin
+      for Ch of Text loop
+         if Ch /= ' ' then
+            Append_Response_Char (T, Ch);
+         end if;
+      end loop;
+   end Append_Response_Graphics_ID;
 
    procedure Append_DECRQSS_Start
      (T     : in out Terminal;
@@ -1739,37 +3200,48 @@ package body Terminal.Core is
    procedure Finish_Ignored_String (T : in out Terminal) is
       function Finish_Tmux_Passthrough return Boolean is
          Prefix : constant String := "tmux;";
-         Decoded : Core_Byte_Array (1 .. Max_OSC_Payload_Length);
+         Decoded : Core_Byte_Array_Access := null;
          Decoded_Count : Natural := 0;
          I : Natural;
          Status : Feed_Status;
       begin
          if not T.Ignored_String_Is_DCS
-           or else T.Ignored_String_Count <= Prefix'Length
+           or else T.Graphics_Transfer = null
+           or else T.Graphics_Transfer_Length <= Prefix'Length
          then
             return False;
          end if;
 
          for J in Prefix'Range loop
-            if T.Ignored_String_Data (J) /= Prefix (J) then
+            if T.Graphics_Transfer (J) /= Prefix (J) then
                return False;
             end if;
          end loop;
 
+         begin
+            Decoded :=
+              new Core_Byte_Array
+                (1 .. T.Graphics_Transfer_Length - Prefix'Length);
+         exception
+            when Storage_Error =>
+               T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+               return True;
+         end;
+
          I := Prefix'Length + 1;
-         while I <= T.Ignored_String_Count loop
-            if T.Ignored_String_Data (I) = ASCII.ESC
-              and then I < T.Ignored_String_Count
-              and then T.Ignored_String_Data (I + 1) = ASCII.ESC
+         while I <= T.Graphics_Transfer_Length loop
+            if T.Graphics_Transfer (I) = ASCII.ESC
+              and then I < T.Graphics_Transfer_Length
+              and then T.Graphics_Transfer (I + 1) = ASCII.ESC
             then
                Decoded_Count := Decoded_Count + 1;
-               Decoded (Decoded_Count) := 16#1B#;
+               Decoded.all (Decoded_Count) := 16#1B#;
                I := I + 2;
             else
                Decoded_Count := Decoded_Count + 1;
-               Decoded (Decoded_Count) :=
+               Decoded.all (Decoded_Count) :=
                  Common.Bytes.Byte
-                   (Standard.Character'Pos (T.Ignored_String_Data (I)));
+                   (Standard.Character'Pos (T.Graphics_Transfer (I)));
                I := I + 1;
             end if;
          end loop;
@@ -1779,12 +3251,20 @@ package body Terminal.Core is
          T.State := Ground;
          T.Diag.Multiplexer_Passthrough :=
            T.Diag.Multiplexer_Passthrough + 1;
+         Clear_Graphics_Transfer (T);
 
          if Decoded_Count > 0 then
-            Feed (T, Decoded (1 .. Decoded_Count), Status);
+            Feed (T, Decoded.all (1 .. Decoded_Count), Status);
          end if;
+         Free_Deferred_Input (Decoded);
 
          return True;
+      exception
+         when others =>
+            if Decoded /= null then
+               Free_Deferred_Input (Decoded);
+            end if;
+            raise;
       end Finish_Tmux_Passthrough;
 
       function Cursor_Style_Param return Natural is
@@ -1802,12 +3282,15 @@ package body Terminal.Core is
       function Is_Sixel_DCS return Boolean is
          I : Natural := 1;
       begin
-         if not T.Ignored_String_Is_DCS or else T.Ignored_String_Count = 0 then
+         if not T.Ignored_String_Is_DCS
+           or else T.Graphics_Transfer = null
+           or else T.Graphics_Transfer_Length = 0
+         then
             return False;
          end if;
 
-         while I <= T.Ignored_String_Count loop
-            case T.Ignored_String_Data (I) is
+         while I <= T.Graphics_Transfer_Length loop
+            case T.Graphics_Transfer (I) is
                when '0' .. '9' | ';' | '?' =>
                   I := I + 1;
                when 'q' =>
@@ -1820,27 +3303,249 @@ package body Terminal.Core is
          return False;
       end Is_Sixel_DCS;
 
+      type Sixel_Extent is record
+         Width  : Natural := 0;
+         Height : Natural := 0;
+      end record;
+
+      function Measure_Sixel return Sixel_Extent is
+         I : Natural := 1;
+         X : Natural := 0;
+         Y : Natural := 0;
+         Max_X : Natural := 0;
+         Max_Y : Natural := 0;
+         Repeat_Count : Natural := 1;
+         Declared_Width : Natural := 0;
+         Declared_Height : Natural := 0;
+         Vertical_Aspect : Positive := 1;
+         Q_Position : Natural := 0;
+
+         function Read_Number return Natural is
+            Value : Natural := 0;
+         begin
+            while I <= T.Graphics_Transfer_Length
+              and then T.Graphics_Transfer (I) in '0' .. '9'
+            loop
+               declare
+                  Digit : constant Natural :=
+                    Standard.Character'Pos (T.Graphics_Transfer (I))
+                    - Standard.Character'Pos ('0');
+               begin
+                  if Value > (Natural'Last - Digit) / 10 then
+                     Value := Natural'Last;
+                  else
+                     Value := Value * 10 + Digit;
+                  end if;
+               end;
+               I := I + 1;
+            end loop;
+            return Value;
+         end Read_Number;
+
+         procedure Skip_Number is
+            Ignored : constant Natural := Read_Number;
+            pragma Unreferenced (Ignored);
+         begin
+            null;
+         end Skip_Number;
+
+         procedure Add_X (Amount : Natural) is
+         begin
+            if X > Natural'Last - Amount then
+               X := Natural'Last;
+            else
+               X := X + Amount;
+            end if;
+         end Add_X;
+      begin
+         while I <= T.Graphics_Transfer_Length
+           and then T.Graphics_Transfer (I) /= 'q'
+         loop
+            I := I + 1;
+         end loop;
+         if I > T.Graphics_Transfer_Length then
+            return (others => 0);
+         end if;
+         Q_Position := I;
+         if T.Graphics_Transfer (1) in '0' .. '9' then
+            I := 1;
+            declare
+               Aspect_Code : constant Natural := Read_Number;
+            begin
+               Vertical_Aspect :=
+                 (case Aspect_Code is
+                     when 0 | 1 | 5 | 6 => 2,
+                     when 2 => 5,
+                     when 3 | 4 => 3,
+                     when others => 1);
+            end;
+         end if;
+         I := Q_Position + 1;
+
+         while I <= T.Graphics_Transfer_Length loop
+            case T.Graphics_Transfer (I) is
+               when '!' =>
+                  I := I + 1;
+                  Repeat_Count := Natural'Max (1, Read_Number);
+               when '#' =>
+                  I := I + 1;
+                  Skip_Number;
+                  while I <= T.Graphics_Transfer_Length
+                    and then T.Graphics_Transfer (I) = ';'
+                  loop
+                     I := I + 1;
+                     Skip_Number;
+                  end loop;
+               when '"' =>
+                  I := I + 1;
+                  declare
+                     Pan : constant Natural := Read_Number;
+                     Pad : Natural := 0;
+                  begin
+                     if I <= T.Graphics_Transfer_Length
+                       and then T.Graphics_Transfer (I) = ';'
+                     then
+                        I := I + 1;
+                        Pad := Read_Number;
+                     end if;
+                     if Pan > 0 and then Pad > 0 then
+                        declare
+                           Ratio : constant Natural :=
+                             Pan / Pad
+                             + (if Pan mod Pad = 0 then 0 else 1);
+                        begin
+                           Vertical_Aspect :=
+                             Positive (Natural'Max (Ratio, 1));
+                        end;
+                     end if;
+                  end;
+                  if I <= T.Graphics_Transfer_Length
+                    and then T.Graphics_Transfer (I) = ';'
+                  then
+                     I := I + 1;
+                     Declared_Width := Read_Number;
+                  end if;
+                  if I <= T.Graphics_Transfer_Length
+                    and then T.Graphics_Transfer (I) = ';'
+                  then
+                     I := I + 1;
+                     Declared_Height := Read_Number;
+                  end if;
+               when '$' =>
+                  X := 0;
+                  I := I + 1;
+               when '-' =>
+                  X := 0;
+                  if Y > Natural'Last - 6 then
+                     Y := Natural'Last;
+                  else
+                     Y := Y + 6;
+                  end if;
+                  I := I + 1;
+               when '?' .. '~' =>
+                  Add_X (Repeat_Count);
+                  Max_X := Natural'Max (Max_X, X);
+                  Max_Y :=
+                    Natural'Max
+                      (Max_Y,
+                       (if Y > Natural'Last - 6
+                        then Natural'Last else Y + 6));
+                  Repeat_Count := 1;
+                  I := I + 1;
+               when others =>
+                  Repeat_Count := 1;
+                  I := I + 1;
+            end case;
+         end loop;
+         declare
+            Logical_Height : constant Natural :=
+              Natural'Max (Max_Y, Declared_Height);
+         begin
+            return
+              (Width  => Natural'Max (Max_X, Declared_Width),
+               Height =>
+                 (if Logical_Height > Natural'Last / Vertical_Aspect
+                  then Natural'Last
+                  else Logical_Height * Vertical_Aspect));
+         end;
+      end Measure_Sixel;
+
       function Is_Kitty_Graphics_APC return Boolean is
       begin
          return T.Ignored_String_Is_APC
-           and then T.Ignored_String_Count >= 1
-           and then T.Ignored_String_Data (1) = 'G';
+           and then T.Graphics_Transfer_Length >= 1
+           and then T.Graphics_Transfer /= null
+           and then T.Graphics_Transfer (1) = 'G';
       end Is_Kitty_Graphics_APC;
+
    begin
       if Finish_Tmux_Passthrough then
+         Clear_Graphics_Transfer (T);
          return;
-      elsif Is_Sixel_DCS then
-         Note_Graphics_Protocol
-           (T,
-            Graphics_Sixel,
-            T.Ignored_String_Count,
-            Ignored_String_Slice (T, 1, T.Ignored_String_Count));
+      end if;
+
+      if T.Kitty_Chunk_Active and then not Is_Kitty_Graphics_APC then
+         Reject_Kitty_Chunk_Interleave (T);
+      end if;
+
+      if Is_Sixel_DCS then
+         declare
+            Extent : constant Sixel_Extent := Measure_Sixel;
+            At_Row : constant Positive :=
+              (if T.Current_Modes.Sixel_Display_Mode then 1
+               else T.Cursor_Row);
+            At_Col : constant Positive :=
+              (if T.Current_Modes.Sixel_Display_Mode then 1
+               else T.Cursor_Col);
+         begin
+            Note_Graphics_Protocol
+              (T,
+               Graphics_Sixel,
+               T.Graphics_Transfer_Length,
+               T.Graphics_Transfer (1 .. T.Graphics_Transfer_Length),
+               At_Row => At_Row,
+               At_Col => At_Col);
+
+            if not T.Current_Modes.Sixel_Display_Mode then
+               if T.Current_Modes.Sixel_Scrolls_Right
+                 and then T.Cell_Pixel_Width > 0
+                 and then Extent.Width > 0
+                 and then
+                   Extent.Width <= T.Graphics_Limits.Pixel_Dimension
+               then
+                  declare
+                     Cells_Wide : constant Natural :=
+                       1 + (Extent.Width - 1) / T.Cell_Pixel_Width;
+                  begin
+                     T.Cursor_Col :=
+                       (if Cells_Wide >= T.Cols - T.Cursor_Col
+                        then T.Cols
+                        else T.Cursor_Col + Positive (Cells_Wide));
+                     Mark_Cursor_Move (T, T.Cursor_Row);
+                  end;
+               elsif T.Cell_Pixel_Height > 0
+                 and then Extent.Height > 0
+                 and then
+                   Extent.Height <= T.Graphics_Limits.Pixel_Dimension
+               then
+                  declare
+                     Cell_Rows : constant Natural :=
+                       1 + (Extent.Height - 1) / T.Cell_Pixel_Height;
+                  begin
+                     for Row in 1 .. Natural'Max (1, Cell_Rows) loop
+                        New_Line (T);
+                     end loop;
+                  end;
+               end if;
+            end if;
+         end;
       elsif Is_Kitty_Graphics_APC then
-         Note_Graphics_Protocol
-           (T,
-            Graphics_Kitty,
-            T.Ignored_String_Count,
-            Ignored_String_Slice (T, 1, T.Ignored_String_Count));
+         declare
+            Payload : String renames
+              T.Graphics_Transfer (1 .. T.Graphics_Transfer_Length);
+         begin
+            Process_Kitty_Graphics_APC (T, Payload);
+         end;
       elsif T.Ignored_String_Is_DCS
         and then T.Ignored_String_Count >= 2
         and then T.Ignored_String_Data (1) = '$'
@@ -1886,6 +3591,7 @@ package body Terminal.Core is
 
       T.Ignored_String_Is_DCS := False;
       T.Ignored_String_Is_APC := False;
+      Clear_Graphics_Transfer (T);
       T.State := Ground;
    end Finish_Ignored_String;
 
@@ -2297,6 +4003,8 @@ package body Terminal.Core is
             T.Current_Modes.Application_Keypad := Enable;
          when 67 =>
             T.Current_Modes.Backarrow_Key_Backspace := Enable;
+         when 80 =>
+            T.Current_Modes.Sixel_Display_Mode := Enable;
          when 1000 =>
             T.Current_Modes.Mouse_Button := Enable;
             if Enable then
@@ -2323,7 +4031,16 @@ package body Terminal.Core is
             T.Current_Modes.Mouse_SGR := Enable;
          when 1015 =>
             T.Current_Modes.Mouse_URXVT := Enable;
+         when 1070 =>
+            T.Current_Modes.Sixel_Private_Colors := Enable;
          when 47 | 1047 =>
+            if Enable then
+               T.Alternate_Graphics_Generation :=
+                 T.Alternate_Graphics_Generation + 1;
+               if T.Alternate_Graphics_Generation = 0 then
+                  T.Alternate_Graphics_Generation := 1;
+               end if;
+            end if;
             T.Current_Modes.Alternate_Screen := Enable;
             T.Active := (if Enable then Alternate else Primary);
             T.Cursor_Row := 1;
@@ -2344,6 +4061,11 @@ package body Terminal.Core is
          when 1049 =>
             if Enable then
                Save_Cursor_State (T);
+               T.Alternate_Graphics_Generation :=
+                 T.Alternate_Graphics_Generation + 1;
+               if T.Alternate_Graphics_Generation = 0 then
+                  T.Alternate_Graphics_Generation := 1;
+               end if;
             end if;
             T.Current_Modes.Alternate_Screen := Enable;
             T.Active := (if Enable then Alternate else Primary);
@@ -2363,6 +4085,8 @@ package body Terminal.Core is
             T.Current_Modes.Bracketed_Paste := Enable;
          when 2026 =>
             T.Current_Modes.Synchronized_Update := Enable;
+         when 8452 =>
+            T.Current_Modes.Sixel_Scrolls_Right := Enable;
          when others =>
             T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end case;
@@ -2720,11 +4444,37 @@ package body Terminal.Core is
                   for Row in 1 .. T.Rows loop
                      Clear_Row (T, Row, 1, T.Cols);
                   end loop;
+                  if T.Active = Alternate then
+                     T.Alternate_Graphics_Generation :=
+                       T.Alternate_Graphics_Generation + 1;
+                     if T.Alternate_Graphics_Generation = 0 then
+                        T.Alternate_Graphics_Generation := 1;
+                     end if;
+                  else
+                     T.Primary_Graphics_Generation :=
+                       T.Primary_Graphics_Generation + 1;
+                     if T.Primary_Graphics_Generation = 0 then
+                        T.Primary_Graphics_Generation := 1;
+                     end if;
+                  end if;
                when 3 =>
                   for Row in 1 .. T.Rows loop
                      Clear_Row (T, Row, 1, T.Cols);
                   end loop;
                   T.Scrollback_Rows := 0;
+                  if T.Active = Alternate then
+                     T.Alternate_Graphics_Generation :=
+                       T.Alternate_Graphics_Generation + 1;
+                     if T.Alternate_Graphics_Generation = 0 then
+                        T.Alternate_Graphics_Generation := 1;
+                     end if;
+                  else
+                     T.Primary_Graphics_Generation :=
+                       T.Primary_Graphics_Generation + 1;
+                     if T.Primary_Graphics_Generation = 0 then
+                        T.Primary_Graphics_Generation := 1;
+                     end if;
+                  end if;
                when others =>
                   T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end case;
@@ -3100,6 +4850,87 @@ package body Terminal.Core is
       end if;
    end Decode_Printable;
 
+   function Append_Deferred_Input
+     (T    : in out Terminal;
+      Data : Core_Byte_Array) return Boolean
+   is
+      Required     : Natural;
+      New_Capacity : Natural;
+      Replacement  : Core_Byte_Array_Access := null;
+   begin
+      if Data'Length = 0 then
+         return True;
+      end if;
+      if Data'Length > T.Graphics_Limits.Deferred_Input_Bytes
+        or else T.Deferred_Input_Length >
+          T.Graphics_Limits.Deferred_Input_Bytes - Data'Length
+      then
+         T.Diag.Queue_Overflow := T.Diag.Queue_Overflow + 1;
+         return False;
+      end if;
+
+      Required := T.Deferred_Input_Length + Data'Length;
+      if Required > T.Deferred_Input_Capacity then
+         New_Capacity := Natural'Min
+           (T.Graphics_Limits.Deferred_Input_Bytes,
+            Natural'Max (4_096, T.Deferred_Input_Capacity));
+         while New_Capacity < Required loop
+            if New_Capacity > T.Graphics_Limits.Deferred_Input_Bytes / 2 then
+               New_Capacity := T.Graphics_Limits.Deferred_Input_Bytes;
+            else
+               New_Capacity := New_Capacity * 2;
+            end if;
+         end loop;
+         Replacement := new Core_Byte_Array (1 .. New_Capacity);
+         if T.Deferred_Input_Length > 0 and then T.Deferred_Input /= null then
+            Replacement (1 .. T.Deferred_Input_Length) :=
+              T.Deferred_Input (1 .. T.Deferred_Input_Length);
+         end if;
+         if T.Deferred_Input /= null then
+            Free_Deferred_Input (T.Deferred_Input);
+         end if;
+         T.Deferred_Input := Replacement;
+         T.Deferred_Input_Capacity := New_Capacity;
+         Replacement := null;
+      end if;
+
+      for I in Data'Range loop
+         T.Deferred_Input
+           (T.Deferred_Input_Length + I - Data'First + 1) := Data (I);
+      end loop;
+      T.Deferred_Input_Length := Required;
+      return True;
+   exception
+      when Storage_Error =>
+         if Replacement /= null then
+            Free_Deferred_Input (Replacement);
+         end if;
+         T.Diag.Queue_Overflow := T.Diag.Queue_Overflow + 1;
+         return False;
+   end Append_Deferred_Input;
+
+   procedure Resume_Deferred_Input (T : in out Terminal) is
+      Saved  : Core_Byte_Array_Access := T.Deferred_Input;
+      Length : constant Natural := T.Deferred_Input_Length;
+      Status : Feed_Status;
+   begin
+      T.Deferred_Input := null;
+      T.Deferred_Input_Length := 0;
+      T.Deferred_Input_Capacity := 0;
+      if Saved = null or else Length = 0 then
+         return;
+      end if;
+
+      Feed (T, Saved (1 .. Length), Status);
+      Free_Deferred_Input (Saved);
+   exception
+      when others =>
+         if Saved /= null then
+            Free_Deferred_Input (Saved);
+         end if;
+         raise;
+   end Resume_Deferred_Input;
+
    procedure Feed
      (T      : in out Terminal;
       Data   : Core_Byte_Array;
@@ -3114,7 +4945,42 @@ package body Terminal.Core is
          return;
       end if;
 
-      for B of Data loop
+      T.Graphics_Queue_Overflowed := False;
+
+      if T.Graphics_Input_Blocked then
+         Status :=
+           (if Append_Deferred_Input (T, Data) then Ok else Parser_Overflow);
+         return;
+      end if;
+
+      for Data_Index in Data'Range loop
+         declare
+            B : constant Common.Bytes.Byte := Data (Data_Index);
+         begin
+         if T.Kitty_Chunk_Active then
+            if T.State = Ground
+              and then Natural (B) in 16#18# | 16#1A#
+            then
+               Advance_Graphics_Transaction (T);
+               Enqueue_Graphics_Event
+                 (T,
+                  Kitty_Graphics,
+                  T.Cursor_Row,
+                  T.Cursor_Col,
+                  "",
+                  Cancelled => True);
+               Clear_Kitty_Chunk (T);
+            elsif T.State = Ground
+              and then Natural (B) not in 16#1B# | 16#90# | 16#9F#
+            then
+               Reject_Kitty_Chunk_Interleave (T);
+            elsif T.State = Escape
+              and then Standard.Character'Val (Natural (B)) not in '_' | 'P'
+            then
+               Reject_Kitty_Chunk_Interleave (T);
+            end if;
+         end if;
+
          if Natural (B) = 16#9C#
            and then (In_String_Control (T.State) or else T.UTF8_Need = 0)
          then
@@ -3136,6 +5002,7 @@ package body Terminal.Core is
             then
                T.Ignored_String_Is_DCS := False;
                T.Ignored_String_Is_APC := False;
+               Clear_Graphics_Transfer (T);
                T.State := Ground;
                goto Continue;
             elsif not In_String_Control (T.State) then
@@ -3233,13 +5100,35 @@ package body Terminal.Core is
             elsif T.State = Ignored_String_Overflow and then Natural (B) = 7 then
                T.Ignored_String_Is_DCS := False;
                T.Ignored_String_Is_APC := False;
+               Clear_Graphics_Transfer (T);
                T.State := Ground;
                goto Continue;
             elsif (Natural (B) = 16#18# or else Natural (B) = 16#1A#)
               and then T.State /= Ground
             then
+               if T.Kitty_Chunk_Active
+                 and then T.Ignored_String_Is_APC
+               then
+                  --  CAN/SUB aborts the complete in-flight chunk transaction,
+                  --  not merely the APC fragment currently being parsed.
+                  --  Deliver an ordered marker so the app can release the
+                  --  encoded segments it owns without manufacturing a Kitty
+                  --  response or mutating any image placement.
+                  Advance_Graphics_Transaction (T);
+                  Enqueue_Graphics_Event
+                    (T,
+                     Kitty_Graphics,
+                     T.Cursor_Row,
+                     T.Cursor_Col,
+                     "",
+                     Cancelled => True);
+                  Clear_Kitty_Chunk (T);
+               end if;
                Recover_Incomplete_UTF8 (T);
                Clear_CSI (T);
+               Clear_Graphics_Transfer (T);
+               T.Ignored_String_Is_DCS := False;
+               T.Ignored_String_Is_APC := False;
                T.State := Ground;
                goto Continue;
             elsif T.State = Single_Shift then
@@ -3414,6 +5303,7 @@ package body Terminal.Core is
                if Ch = '\' then
                   T.Ignored_String_Is_DCS := False;
                   T.Ignored_String_Is_APC := False;
+                  Clear_Graphics_Transfer (T);
                   T.State := Ground;
                else
                   T.State := Ignored_String_Overflow;
@@ -3471,9 +5361,19 @@ package body Terminal.Core is
 
          <<Continue>>
          null;
+         if T.Graphics_Input_Blocked then
+            if Data_Index < Data'Last
+              and then not Append_Deferred_Input
+                (T, Data (Data_Index + 1 .. Data'Last))
+            then
+               Overflowed := True;
+            end if;
+            exit;
+         end if;
+         end;
       end loop;
 
-      if Overflowed then
+      if Overflowed or else T.Graphics_Queue_Overflowed then
          Status := Parser_Overflow;
       elsif Recovered then
          Status := Parser_Recovered;
@@ -3488,58 +5388,104 @@ package body Terminal.Core is
       Cols   : Positive;
       Status : out Resize_Status)
    is
-      Old_Primary : Cell_Array_Access := T.Primary_Cells;
-      Old_Alt     : Cell_Array_Access := T.Alt_Cells;
-      Old_Tabs    : Tab_Stop_Array_Access := T.Tab_Stops;
+      Old_Primary  : Cell_Array_Access := T.Primary_Cells;
+      Old_Alt      : Cell_Array_Access := T.Alt_Cells;
+      Old_Scrollback : Cell_Array_Access := T.Scrollback;
+      Old_Dirty    : Dirty_Row_Array_Access := T.Dirty;
+      Old_Tabs     : Tab_Stop_Array_Access := T.Tab_Stops;
+      New_Primary  : Cell_Array_Access := null;
+      New_Alt      : Cell_Array_Access := null;
+      New_Scrollback : Cell_Array_Access := null;
+      New_Dirty    : Dirty_Row_Array_Access := null;
+      New_Tabs     : Tab_Stop_Array_Access := null;
       Old_Rows    : constant Positive := T.Rows;
       Old_Cols    : constant Positive := T.Cols;
-      New_Count   : constant Positive := Rows * Cols;
+      New_Count   : Positive;
    begin
       if not T.Initialized then
          Status := Allocation_Failed;
          return;
       end if;
 
-      T.Primary_Cells := new Cell_Array (1 .. New_Count);
-      T.Alt_Cells := new Cell_Array (1 .. New_Count);
-      if T.Scrollback /= null then
-         Free_Cells (T.Scrollback);
+      --  A resize request is also issued to synchronize the PTY and terminal
+      --  grid.  Treat an unchanged grid as a true no-op: rebuilding the cell
+      --  and scrollback storage here is both expensive and destructive.
+      if Rows = T.Rows and then Cols = T.Cols then
+         Status := Ok;
+         return;
       end if;
+
+      if Rows > Positive'Last / Cols
+        or else
+          (T.Scrollback_Limit > 0
+           and then T.Scrollback_Limit > Natural'Last / Cols)
+      then
+         Status := Allocation_Failed;
+         return;
+      end if;
+      New_Count := Rows * Cols;
+
+      --  Allocate the complete replacement before changing terminal state.
+      --  A failed resize must leave every old buffer and all history usable.
+      New_Primary := new Cell_Array (1 .. New_Count);
+      New_Alt := new Cell_Array (1 .. New_Count);
       if T.Scrollback_Limit > 0 then
-         T.Scrollback := new Cell_Array (1 .. T.Scrollback_Limit * Cols);
-      else
-         T.Scrollback := null;
+         New_Scrollback := new Cell_Array (1 .. T.Scrollback_Limit * Cols);
       end if;
-      if T.Dirty /= null then
-         Free_Dirty (T.Dirty);
-      end if;
-      T.Dirty := new Dirty_Row_Array (1 .. Rows);
-      T.Tab_Stops := new Tab_Stop_Array (1 .. Cols);
+      New_Dirty := new Dirty_Row_Array (1 .. Rows);
+      New_Tabs := new Tab_Stop_Array (1 .. Cols);
 
-      T.Rows := Rows;
-      T.Cols := Cols;
-      T.Scrollback_Rows := 0;
-      Reset_Tab_Stops (T);
-      Reset_Buffer (T, T.Primary_Cells);
-      Reset_Buffer (T, T.Alt_Cells);
-
+      --  Populate the replacement while it is still detached from T.  This
+      --  keeps even a bounds or assignment failure transactional, rather than
+      --  exposing a partially initialized live screen.
+      for I in New_Primary'Range loop
+         New_Primary (I) := Blank_Cell (T.Current_Style);
+         New_Alt (I) := Blank_Cell (T.Current_Style);
+      end loop;
+      New_Dirty.all := (others => True);
+      for C in New_Tabs'Range loop
+         New_Tabs (C) := C > 1 and then (C - 1) mod 8 = 0;
+      end loop;
       for R in 1 .. Positive'Min (Old_Rows, Rows) loop
          for C in 1 .. Positive'Min (Old_Cols, Cols) loop
-            T.Primary_Cells (Index (T, R, C)) := Old_Primary ((R - 1) * Old_Cols + C);
-            T.Alt_Cells (Index (T, R, C)) := Old_Alt ((R - 1) * Old_Cols + C);
+            New_Primary ((R - 1) * Cols + C) :=
+              Old_Primary ((R - 1) * Old_Cols + C);
+            New_Alt ((R - 1) * Cols + C) :=
+              Old_Alt ((R - 1) * Old_Cols + C);
          end loop;
       end loop;
       if Old_Tabs /= null then
          for C in 1 .. Positive'Min (Old_Cols, Cols) loop
-            T.Tab_Stops (C) := Old_Tabs (C);
+            New_Tabs (C) := Old_Tabs (C);
          end loop;
       end if;
+
+      T.Primary_Cells := New_Primary;
+      T.Alt_Cells := New_Alt;
+      T.Scrollback := New_Scrollback;
+      T.Dirty := New_Dirty;
+      T.Tab_Stops := New_Tabs;
+      New_Primary := null;
+      New_Alt := null;
+      New_Scrollback := null;
+      New_Dirty := null;
+      New_Tabs := null;
+
+      T.Rows := Rows;
+      T.Cols := Cols;
+      T.Scrollback_Rows := 0;
 
       if Old_Primary /= null then
          Free_Cells (Old_Primary);
       end if;
       if Old_Alt /= null then
          Free_Cells (Old_Alt);
+      end if;
+      if Old_Scrollback /= null then
+         Free_Cells (Old_Scrollback);
+      end if;
+      if Old_Dirty /= null then
+         Free_Dirty (Old_Dirty);
       end if;
       if Old_Tabs /= null then
          Free_Tab_Stops (Old_Tabs);
@@ -3552,27 +5498,113 @@ package body Terminal.Core is
       Mark_All_Dirty (T);
       Status := Ok;
    exception
-      when Storage_Error =>
-         T.Primary_Cells := Old_Primary;
-         T.Alt_Cells := Old_Alt;
-         T.Tab_Stops := Old_Tabs;
-         T.Rows := Old_Rows;
-         T.Cols := Old_Cols;
-         T.Scrollback_Rows := 0;
+      when Storage_Error | Constraint_Error =>
+         if New_Primary /= null then
+            Free_Cells (New_Primary);
+         end if;
+         if New_Alt /= null then
+            Free_Cells (New_Alt);
+         end if;
+         if New_Scrollback /= null then
+            Free_Cells (New_Scrollback);
+         end if;
+         if New_Dirty /= null then
+            Free_Dirty (New_Dirty);
+         end if;
+         if New_Tabs /= null then
+            Free_Tab_Stops (New_Tabs);
+         end if;
          Status := Allocation_Failed;
    end Resize;
 
-   function Snapshot (T : Terminal) return Render_Snapshot is
+   procedure Snapshot
+     (T : Terminal;
+      S : in out Render_Snapshot)
+   is
       Count : constant Natural := T.Rows * T.Cols;
-      S     : Render_Snapshot;
       Src   : constant Cell_Array_Access := Active_Cells (T);
+      Scroll_Head : constant Natural :=
+        (if T.Active = Alternate
+         then T.Alternate_Graphics_Scroll_Head
+         else T.Primary_Graphics_Scroll_Head);
+      Scroll_Count : constant Natural :=
+        (if T.Active = Alternate
+         then T.Alternate_Graphics_Scroll_Count
+         else T.Primary_Graphics_Scroll_Count);
    begin
       S.Rows := T.Rows;
       S.Cols := T.Cols;
-      S.Cells := new Cell_Array (1 .. Count);
-      S.Dirty := new Dirty_Row_Array (1 .. T.Rows);
+      S.Graphics_Stream := T.Graphics_Stream;
+      S.Graphics_Transaction := T.Graphics_Transaction;
+      S.Alternate_Screen := T.Active = Alternate;
+      S.Screen_Generation :=
+        (if T.Active = Alternate
+         then T.Alternate_Graphics_Generation
+         else T.Primary_Graphics_Generation);
+      S.Scrollback_Offset := 0;
+      S.Scrollback_Rows :=
+        (if T.Active = Primary then T.Scrollback_Rows else 0);
+      S.Graphics_Scroll_Current :=
+        (if T.Active = Alternate
+         then T.Alternate_Graphics_Scroll_Sequence
+         else T.Primary_Graphics_Scroll_Sequence);
+      S.Graphics_Scroll_Count := Scroll_Count;
+      S.Graphics_Scroll_Oldest := 0;
+      if Scroll_Count > 0 then
+         if S.Graphics_Scroll_Events = null
+           or else S.Graphics_Scroll_Events'Length < Scroll_Count
+         then
+            declare
+               Replacement : constant Graphics_Scroll_Event_Array_Access :=
+                 new Graphics_Scroll_Event_Array (1 .. Scroll_Count);
+            begin
+               if S.Graphics_Scroll_Events /= null then
+                  Free_Graphics_Scroll_Events (S.Graphics_Scroll_Events);
+               end if;
+               S.Graphics_Scroll_Events := Replacement;
+            end;
+         end if;
+         for I in 1 .. Scroll_Count loop
+            declare
+               Slot : constant Positive :=
+                 ((Scroll_Head + I - 1) mod Max_Graphics_Scroll_Events) + 1;
+            begin
+               S.Graphics_Scroll_Events (I) :=
+                 (if T.Active = Alternate
+                  then T.Alternate_Graphics_Scroll_Events (Slot)
+                  else T.Primary_Graphics_Scroll_Events (Slot));
+            end;
+         end loop;
+         S.Graphics_Scroll_Oldest := S.Graphics_Scroll_Events (1).Sequence;
+      end if;
+      if S.Cells = null or else S.Cells'Length /= Count then
+         declare
+            Replacement : constant Cell_Array_Access :=
+              new Cell_Array (1 .. Count);
+         begin
+            if S.Cells /= null then
+               Free_Cells (S.Cells);
+            end if;
+            S.Cells := Replacement;
+         end;
+      end if;
+      if S.Dirty = null or else S.Dirty'Length /= T.Rows then
+         declare
+            Replacement : constant Dirty_Row_Array_Access :=
+              new Dirty_Row_Array (1 .. T.Rows);
+         begin
+            if S.Dirty /= null then
+               Free_Dirty (S.Dirty);
+            end if;
+            S.Dirty := Replacement;
+         end;
+      end if;
+      S.Image_Cell_Count := 0;
       for I in 1 .. Count loop
          S.Cells (I) := Src (I);
+         if Src (I).Image.Is_Placeholder then
+            S.Image_Cell_Count := S.Image_Cell_Count + 1;
+         end if;
       end loop;
       for R in 1 .. T.Rows loop
          S.Dirty (R) := T.Dirty (R);
@@ -3584,6 +5616,12 @@ package body Terminal.Core is
          Shape   => T.Current_Cursor_Shape,
          Blinking => T.Current_Cursor_Blinking);
       S.Graphics := T.Last_Graphics;
+   end Snapshot;
+
+   function Snapshot (T : Terminal) return Render_Snapshot is
+      S : Render_Snapshot;
+   begin
+      Snapshot (T, S);
       return S;
    end Snapshot;
 
@@ -3597,8 +5635,21 @@ package body Terminal.Core is
          Free_Dirty (S.Dirty);
          S.Dirty := null;
       end if;
+      if S.Graphics_Scroll_Events /= null then
+         Free_Graphics_Scroll_Events (S.Graphics_Scroll_Events);
+         S.Graphics_Scroll_Events := null;
+      end if;
       S.Rows := 0;
       S.Cols := 0;
+      S.Graphics_Stream := 0;
+      S.Alternate_Screen := False;
+      S.Screen_Generation := 0;
+      S.Scrollback_Offset := 0;
+      S.Scrollback_Rows := 0;
+      S.Graphics_Scroll_Current := 0;
+      S.Graphics_Scroll_Oldest := 0;
+      S.Graphics_Scroll_Count := 0;
+      S.Image_Cell_Count := 0;
       S.Cursor := (others => <>);
    end Release;
 
@@ -3621,6 +5672,44 @@ package body Terminal.Core is
       T.Window_Pixel_Width := Width;
       T.Window_Pixel_Height := Height;
    end Set_Window_Pixel_Size;
+
+   procedure Set_Graphics_Capabilities
+     (T       : in out Terminal;
+      Profile : Graphics_Capability_Profile) is
+   begin
+      T.Graphics_Capabilities := Profile;
+   end Set_Graphics_Capabilities;
+
+   procedure Set_Graphics_Stream_ID
+     (T  : in out Terminal;
+      ID : Graphics_Stream_ID) is
+   begin
+      T.Graphics_Stream := ID;
+      T.Last_Graphics.Stream_ID := ID;
+   end Set_Graphics_Stream_ID;
+
+   procedure Set_Graphics_Resource_Limits
+     (T      : in out Terminal;
+      Limits : Graphics_Resource_Limits)
+   is
+      Was_Blocked : constant Boolean := T.Graphics_Input_Blocked;
+   begin
+      if T.Kitty_Chunk_Active
+        and then T.Kitty_Chunk_Length > Limits.Transaction_Length
+      then
+         Advance_Graphics_Transaction (T);
+         Clear_Kitty_Chunk (T);
+      end if;
+      T.Graphics_Limits := Limits;
+      Refresh_Graphics_Input_Block (T);
+      if Was_Blocked and then not T.Graphics_Input_Blocked then
+         Resume_Deferred_Input (T);
+      end if;
+   end Set_Graphics_Resource_Limits;
+
+   function Graphics_Resource_Limit
+     (T : Terminal) return Graphics_Resource_Limits is
+     (T.Graphics_Limits);
 
    function Modes (T : Terminal) return Mode_Snapshot is
    begin
@@ -3712,6 +5801,222 @@ package body Terminal.Core is
    begin
       return T.Response_Length;
    end Pending_Response_Length;
+
+   function Pending_Graphics_Event_Count (T : Terminal) return Natural is
+   begin
+      return T.Graphics_Event_Count;
+   end Pending_Graphics_Event_Count;
+
+   function Pending_Graphics_Byte_Count (T : Terminal) return Natural is
+   begin
+      return T.Graphics_Byte_Count;
+   end Pending_Graphics_Byte_Count;
+
+   procedure Peek_Graphics_Event
+     (T     : Terminal;
+      Event : out Graphics_Event)
+   is
+      Node          : constant Graphics_Event_Node_Access := T.Graphics_Head;
+      Preview_Count : Natural;
+   begin
+      Event := (others => <>);
+      if Node = null then
+         return;
+      end if;
+
+      Event.Pending := True;
+      Event.Cancelled := Node.Cancelled;
+      Event.Protocol := Node.Protocol;
+      Event.Stream_ID := T.Graphics_Stream;
+      Event.Sequence := Node.Sequence;
+      Event.Transaction_Generation := Node.Transaction_Generation;
+      Event.Alternate_Screen := Node.Alternate_Screen;
+      Event.Screen_Generation := Node.Screen_Generation;
+      Event.Scroll_Sequence := Node.Scroll_Sequence;
+      Event.Sixel_Private_Colors := Node.Sixel_Private_Colors;
+      Event.Row := Node.Row;
+      Event.Col := Node.Col;
+      Event.Payload_Length := Node.Payload_Length;
+      Preview_Count :=
+        Natural'Min (Node.Payload_Length, Max_Graphics_Preview_Length);
+      Event.Preview_Length := Preview_Count;
+      if Preview_Count > 0 and then Node.Payload /= null then
+         Event.Preview (1 .. Preview_Count) :=
+           Node.Payload (1 .. Preview_Count);
+      end if;
+   end Peek_Graphics_Event;
+
+   function Graphics_Event_Payload
+     (T     : Terminal;
+      Event : Graphics_Event) return String
+   is
+      Node : constant Graphics_Event_Node_Access := T.Graphics_Head;
+   begin
+      if Node = null
+        or else not Event.Pending
+        or else Event.Protocol /= Node.Protocol
+        or else Event.Stream_ID /= T.Graphics_Stream
+        or else Event.Sequence /= Node.Sequence
+        or else Node.Payload = null
+      then
+         return "";
+      end if;
+      return Node.Payload.all;
+   end Graphics_Event_Payload;
+
+   procedure Discard_Graphics_Event (T : in out Terminal) is
+      Was_Blocked : constant Boolean := T.Graphics_Input_Blocked;
+   begin
+      Drop_Graphics_Head (T);
+      Refresh_Graphics_Input_Block (T);
+      if Was_Blocked and then not T.Graphics_Input_Blocked then
+         Resume_Deferred_Input (T);
+      end if;
+   end Discard_Graphics_Event;
+
+   procedure Complete_Graphics_Event
+     (T      : in out Terminal;
+      Event  : Graphics_Event;
+      Result : Kitty_Graphics_Result)
+   is
+      Node : constant Graphics_Event_Node_Access := T.Graphics_Head;
+      Was_Blocking : Boolean := False;
+      Was_Blocked : Boolean := False;
+
+      function Message return String is
+      begin
+         case Result.Code is
+            when Kitty_No_Response => return "";
+            when Kitty_OK          => return "OK";
+            when Kitty_EINVAL      => return "EINVAL:Invalid control data";
+            when Kitty_ENOENT      => return "ENOENT:Image or placement not found";
+            when Kitty_ENOMEM      => return "ENOMEM:Image resource limit exceeded";
+            when Kitty_ENOSPC      => return "ENOSPC:Insufficient animation storage";
+            when Kitty_EBADF       => return "EBADF:Failed to read image file";
+            when Kitty_ENOTSUP     => return "ENOTSUP:Unsupported graphics operation";
+            when Kitty_ENOPARENT   => return "ENOPARENT:Parent placement not found";
+            when Kitty_ECYCLE      => return "ECYCLE:Relative placement cycle";
+            when Kitty_ETOODEEP    => return "ETOODEEP:Relative placement chain too deep";
+         end case;
+      end Message;
+   begin
+      if Node = null
+        or else not Event.Pending
+        or else Event.Protocol /= Node.Protocol
+        or else Event.Stream_ID /= T.Graphics_Stream
+        or else Event.Sequence /= Node.Sequence
+      then
+         return;
+      end if;
+
+      Was_Blocking := Node.Blocks_Input;
+      Was_Blocked := T.Graphics_Input_Blocked;
+
+      if Node.Protocol = Kitty_Graphics
+        and then Result.Code /= Kitty_No_Response
+        and then Result.Respond
+        and then Result.Quiet /= 2
+        and then not (Result.Code = Kitty_OK and then Result.Quiet = 1)
+      then
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_String (T, "_Gi=");
+         Append_Response_Graphics_ID (T, Result.Image_ID);
+         if Result.Has_Image_Number then
+            Append_Response_String (T, ",I=");
+            Append_Response_Graphics_ID (T, Result.Image_Number);
+         end if;
+         if Result.Has_Placement_ID then
+            Append_Response_String (T, ",p=");
+            Append_Response_Graphics_ID (T, Result.Placement_ID);
+         end if;
+         Append_Response_Char (T, ';');
+         Append_Response_String (T, Message);
+         Append_Response_Char (T, ASCII.ESC);
+         Append_Response_Char (T, '\');
+      end if;
+
+      if Was_Blocking
+        and then Result.Code = Kitty_OK
+        and then Result.Move_Cursor
+      then
+         declare
+            Target_Row : Positive;
+            Target_Col : Positive;
+         begin
+            if Result.Placement_Rows > T.Rows - Event.Row then
+               Target_Row := T.Rows;
+            else
+               Target_Row := Event.Row + Result.Placement_Rows;
+            end if;
+            if Result.Cursor_To_Line_Start then
+               Target_Col := 1;
+            elsif Result.Placement_Columns > T.Cols - Event.Col then
+               Target_Col := T.Cols;
+            else
+               Target_Col := Event.Col + Result.Placement_Columns;
+            end if;
+            declare
+               Old_Row : constant Positive := T.Cursor_Row;
+            begin
+               T.Cursor_Row := Target_Row;
+               T.Cursor_Col := Target_Col;
+               T.Pending_Wrap := False;
+               Mark_Cursor_Move (T, Old_Row);
+            end;
+         end;
+      end if;
+
+      Drop_Graphics_Head (T);
+      Refresh_Graphics_Input_Block (T);
+      if Was_Blocked and then not T.Graphics_Input_Blocked then
+         Resume_Deferred_Input (T);
+      end if;
+   end Complete_Graphics_Event;
+
+   procedure Read_Graphics_Event
+     (T            : in out Terminal;
+      Event        : out Graphics_Event;
+      Buffer       : out Core_Byte_Array;
+      Last         : out Natural;
+      End_Of_Event : out Boolean)
+   is
+      Node          : Graphics_Event_Node_Access := T.Graphics_Head;
+      Remaining     : Natural;
+      Count         : Natural;
+   begin
+      Peek_Graphics_Event (T, Event);
+      Last := 0;
+      End_Of_Event := True;
+      if Node = null then
+         return;
+      end if;
+
+      Remaining := Node.Payload_Length - Node.Read_Offset;
+      Count := Natural'Min (Buffer'Length, Remaining);
+      if Count > 0 and then Node.Payload /= null then
+         for I in 1 .. Count loop
+            Buffer (Buffer'First + I - 1) :=
+              Common.Bytes.Byte
+                (Standard.Character'Pos
+                   (Node.Payload (Node.Read_Offset + I)));
+         end loop;
+         Node.Read_Offset := Node.Read_Offset + Count;
+         Last := Count;
+      end if;
+
+      End_Of_Event := Node.Read_Offset = Node.Payload_Length;
+      if End_Of_Event then
+         declare
+            Was_Blocked : constant Boolean := T.Graphics_Input_Blocked;
+         begin
+            Drop_Graphics_Head (T);
+            Refresh_Graphics_Input_Block (T);
+            if Was_Blocked and then not T.Graphics_Input_Blocked then
+               Resume_Deferred_Input (T);
+            end if;
+         end;
+      end if;
+   end Read_Graphics_Event;
 
    procedure Read_Response
      (T      : in out Terminal;
