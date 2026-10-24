@@ -1,4 +1,5 @@
 with Ada.Directories;
+with Ada.Environment_Variables;
 
 with AUnit.Assertions;
 
@@ -124,6 +125,32 @@ procedure Font_Discovery_Smoke is
             "installed " & Label & " fallback should be discovered");
       end if;
    end Assert_Contains_If_Installed;
+
+   procedure Check_PICT_Font_Override is
+      Name : constant String := "TERMINAL_PICT_FONT_CODEX_TEST_FAMILY";
+      Was_Set : constant Boolean := Ada.Environment_Variables.Exists (Name);
+      Previous : constant String :=
+        (if Was_Set then Ada.Environment_Variables.Value (Name) else "");
+   begin
+      Ada.Environment_Variables.Set (Name, Default_Path);
+      Assert
+        (Fonts.PICT_Font_Path ("Codex Test Family", Fonts.Sans_Serif) =
+           Default_Path,
+         "exact PICT family override should take precedence");
+      if Was_Set then
+         Ada.Environment_Variables.Set (Name, Previous);
+      else
+         Ada.Environment_Variables.Clear (Name);
+      end if;
+   exception
+      when others =>
+         if Was_Set then
+            Ada.Environment_Variables.Set (Name, Previous);
+         else
+            Ada.Environment_Variables.Clear (Name);
+         end if;
+         raise;
+   end Check_PICT_Font_Override;
 begin
    Assert
      (Fonts.Status_Label ("/tmp/MainFont.ttf", 3) =
@@ -138,6 +165,7 @@ begin
       "font status label should be bounded");
 
    Assert (Default_Path /= "", "default font path should resolve");
+   Check_PICT_Font_Override;
    Assert
      (Fonts.Font_Path_For (Fonts.Monospace) = Default_Path,
       "monospace semantic font should use the terminal primary");

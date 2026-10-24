@@ -6,7 +6,6 @@ with Jpeglib.Results;
 with Jpeglib.Streams;
 
 with Terminal.App.Graphics;
-with Terminal.App.Image_Media;
 with Terminal.App.Render_Model;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
@@ -132,6 +131,18 @@ begin
       " truncated",
       "truncated data decode suffix");
    Assert
+     (Graphics.Data_Decode_Status_Suffix (Graphics.Decode_Invalid_Data) =
+      " invalid-data",
+      "invalid-data decode suffix");
+   Assert
+     (Graphics.Data_Decode_Status_Suffix (Graphics.Decode_Too_Large) =
+      " too-large",
+      "too-large decode suffix");
+   Assert
+     (Graphics.Data_Decode_Status_Suffix (Graphics.Decode_Allocation_Failed) =
+      " allocation-failed",
+      "allocation-failed decode suffix");
+   Assert
      (Graphics.Data_Decode_Status_Suffix (Graphics.Decode_Unsupported_Format) =
       " unsupported-format",
       "unsupported-format data decode suffix");
@@ -156,9 +167,50 @@ begin
       Terminal.App.Render_Model.Image_Decode_Preview_Truncated,
       "truncated data decode maps to image decode");
    Assert
+     (Graphics.Image_Decode_Status (Graphics.Decode_Invalid_Data) =
+      Terminal.App.Render_Model.Image_Decode_Invalid_Data,
+      "invalid data maps to image decode");
+   Assert
+     (Graphics.Image_Decode_Status (Graphics.Decode_Too_Large) =
+      Terminal.App.Render_Model.Image_Decode_Too_Large,
+      "too-large data maps to image decode");
+   Assert
+     (Graphics.Image_Decode_Status (Graphics.Decode_Allocation_Failed) =
+      Terminal.App.Render_Model.Image_Decode_Allocation_Failed,
+      "allocation failure maps to image decode");
+   Assert
      (Graphics.Image_Decode_Status (Graphics.Decode_Unsupported_Format) =
       Terminal.App.Render_Model.Image_Decode_Unsupported_Format,
       "unsupported-format data decode maps to image decode");
+
+   declare
+      Shared : constant RM.Image_Data_Access :=
+        new Terminal.Common.Bytes.Byte_Array'(1 => 16#A5#);
+      Image : RM.Image_Command :=
+        (Decoded_Byte_Length => 1,
+         Decoded_Bytes => Shared,
+         Decoded_Bytes_Owned => True,
+         Encoded_Source_Bytes => Shared,
+         Encoded_Source_Bytes_Owned => True,
+         Encoded_Source_Length => 1,
+         Decoded_Preview_Length => 1,
+         Decoded_Preview_Bytes => Shared,
+         Decoded_Preview_Bytes_Owned => True,
+         others => <>);
+   begin
+      RM.Release_Owned_Buffers (Image);
+      Assert
+        (Image.Decoded_Bytes = null
+         and then Image.Encoded_Source_Bytes = null
+         and then Image.Decoded_Preview_Bytes = null
+         and then not Image.Decoded_Bytes_Owned
+         and then not Image.Encoded_Source_Bytes_Owned
+         and then not Image.Decoded_Preview_Bytes_Owned
+         and then Image.Decoded_Byte_Length = 0
+         and then Image.Encoded_Source_Length = 0
+         and then Image.Decoded_Preview_Length = 0,
+         "owned buffer release handles aliased views exactly once");
+   end;
 
    declare
       Tight_RGBA : aliased Terminal.Common.Bytes.Byte_Array :=
@@ -246,9 +298,7 @@ begin
       "kitty capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2) =
-      (if Terminal.App.Image_Media.Extended_Media_Available
-       then "iTerm2 images; PNG/JPEG/GIF/PICT plus runtime media decoding"
-       else "iTerm2 images; PNG/JPEG/GIF/PICT texture rendering"),
+      "iTerm2 images; PNG/JPEG/GIF/PICT texture rendering",
       "iTerm2 capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2)'Length <=

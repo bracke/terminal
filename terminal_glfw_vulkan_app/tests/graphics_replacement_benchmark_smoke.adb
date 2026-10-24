@@ -16,8 +16,6 @@ procedure Graphics_Replacement_Benchmark_Smoke is
    use type Terminal.Core.Initialize_Status;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
-   use type Terminal.App.Render_Model.Image_Array_Access;
-   use type Terminal.App.Render_Model.Rectangle_Array_Access;
    use type Ada.Real_Time.Time;
    use type Interfaces.Unsigned_64;
 
@@ -47,8 +45,8 @@ procedure Graphics_Replacement_Benchmark_Smoke is
    Core_Init : Terminal.Core.Initialize_Status;
    Feed_Result : Terminal.Core.Feed_Status;
    Render_Result : Terminal.App.Renderer.Render_Status;
-   First_Images : Terminal.App.Render_Model.Image_Array_Access := null;
-   First_Rectangles : Terminal.App.Render_Model.Rectangle_Array_Access := null;
+   First_Image_Capacity : Natural := 0;
+   First_Rectangle_Capacity : Natural := 0;
 
    function To_Bytes (Text : String) return Byte_Array is
       Result : Byte_Array (1 .. Text'Length);
@@ -79,16 +77,17 @@ procedure Graphics_Replacement_Benchmark_Smoke is
       Terminal.Core.Release (Snapshot);
       Assert (Render_Result = Terminal.App.Renderer.Ok, "replacement render");
       declare
-         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+         D : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
       begin
-         if First_Images = null then
-            First_Images := Frame.Images;
-            First_Rectangles := Frame.Rectangles;
+         if First_Image_Capacity = 0 then
+            First_Image_Capacity := D.Image_Command_Capacity;
+            First_Rectangle_Capacity := D.Rectangle_Command_Capacity;
          else
             Assert
-              (Frame.Images = First_Images
-               and then Frame.Rectangles = First_Rectangles,
+              (D.Image_Command_Capacity = First_Image_Capacity
+               and then
+                 D.Rectangle_Command_Capacity = First_Rectangle_Capacity,
                "equal-sized replacement frames retain command storage");
          end if;
       end;

@@ -24,6 +24,7 @@ procedure GUI_Present_Smoke is
    use type GLFW_Vulkan.Init_Status;
    use type GLFW_Vulkan.Windows.Create_Status;
    use type GLFW_Vulkan.Windows.Cursor_Status;
+   use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Vulkan_Context.Init_Status;
@@ -31,7 +32,9 @@ procedure GUI_Present_Smoke is
    use type Terminal.App.Vulkan_Presenter.Present_Status;
    use type Terminal.App.Vulkan_Presenter.Readback_Status;
    use type Terminal.Core.Feed_Status;
+   use type Terminal.Core.Ignored_Graphics_Protocol;
    use type Terminal.Core.Initialize_Status;
+   use type Terminal.Core.Kitty_Graphics_Result_Code;
 
    Ctx : GLFW_Vulkan.Context;
    W   : GLFW_Vulkan.Windows.Window;
@@ -63,6 +66,8 @@ procedure GUI_Present_Smoke is
    Saw_Stream_Image : Boolean := False;
    Presented_Stream_Image : Boolean := False;
    Pixel_Oracle_Passed : Boolean := False;
+   Kitty_Pixel_Oracle_Passed : Boolean := False;
+   PICT_Pixel_Oracle_Passed : Boolean := False;
 
    function Display_Available return Boolean is
      (Ada.Environment_Variables.Exists ("DISPLAY")
@@ -124,60 +129,102 @@ procedure GUI_Present_Smoke is
                declare
                   Frame : constant Terminal.App.Render_Model.Frame_Commands :=
                     Terminal.App.Renderer.Last_Frame (R);
-                  Image : constant Terminal.App.Render_Model.Image_Command :=
-                    Frame.Images (1);
-                  Pixel_X : constant Natural :=
-                    Natural (Float'Max (0.0, Image.X + Image.Width / 2.0));
-                  Pixel_Y : constant Natural :=
-                    Natural (Float'Max (0.0, Image.Y + Image.Height / 2.0));
-                  Red, Green, Blue, Alpha : Byte := 0;
+                  Expected_Protocol : constant
+                    Terminal.App.Render_Model.Image_Protocol :=
+                      (case Event.Protocol is
+                          when Terminal.Core.Kitty_Graphics =>
+                            Terminal.App.Render_Model.Image_Kitty,
+                          when Terminal.Core.ITerm2_Graphics =>
+                            Terminal.App.Render_Model.Image_ITerm2,
+                          when others =>
+                            Terminal.App.Render_Model.Image_Sixel);
+                  Target_Index : Natural := 0;
                begin
-                  Saw_Stream_Image := True;
-                  Terminal.App.Renderer.Present
-                    (R, Vk_Ctx, Presenter, Present_Status);
                   Assert
-                    (Present_Status = Terminal.App.Vulkan_Presenter.Ok,
-                     "image frame should reach Vulkan presentation");
-                  Presented_Stream_Image := True;
-                  Terminal.App.Vulkan_Presenter.Readback_Pixel
-                    (Presenter,
-                     Pixel_X,
-                     Pixel_Y,
-                     Red,
-                     Green,
-                     Blue,
-                     Alpha,
-                     Readback_Status);
+                    (Result.Code = Terminal.Core.Kitty_OK,
+                     "graphics event should install successfully");
+                  for Index in 1 .. Frame.Image_Count loop
+                     if Frame.Images (Index).Protocol = Expected_Protocol then
+                        Target_Index := Index;
+                     end if;
+                  end loop;
                   Assert
-                    (Readback_Status =
-                       Terminal.App.Vulkan_Presenter.Readback_Ok,
-                     "presented image pixel should be readable");
-                  Assert
-                    (Natural (Red) >= 240
-                     and then Natural (Green) <= 16
-                     and then Natural (Blue) <= 16
-                     and then Natural (Alpha) >= 240,
-                     "presented image center should match the red pixel oracle");
-                  Terminal.App.Vulkan_Presenter.Readback_Pixel
-                    (Presenter,
-                     FB_Width - 1,
-                     FB_Height - 1,
-                     Red,
-                     Green,
-                     Blue,
-                     Alpha,
-                     Readback_Status);
-                  Assert
-                    (Readback_Status =
-                       Terminal.App.Vulkan_Presenter.Readback_Ok
-                     and then Natural (Red) <= 80
-                     and then Natural (Green) <= 80
-                     and then Natural (Blue) <= 80
-                     and then abs (Integer (Red) - Integer (Green)) <= 16
-                     and then abs (Integer (Green) - Integer (Blue)) <= 16
-                     and then Natural (Alpha) >= 240,
-                     "presented framebuffer corner should match the dark background oracle");
-                  Pixel_Oracle_Passed := True;
+                    (Target_Index > 0,
+                     "current graphics event should own a frame command");
+                  if Target_Index > 0 then
+                     declare
+                        Image : constant Terminal.App.Render_Model.Image_Command :=
+                          Frame.Images (Target_Index);
+                        Pixel_X : constant Natural :=
+                          Natural
+                            (Float'Max (0.0, Image.X + Image.Width / 2.0));
+                        Pixel_Y : constant Natural :=
+                          Natural
+                            (Float'Max (0.0, Image.Y + Image.Height / 2.0));
+                        Red, Green, Blue, Alpha : Byte := 0;
+                        Expect_Green : constant Boolean :=
+                          Event.Protocol = Terminal.Core.ITerm2_Graphics;
+                     begin
+                        Saw_Stream_Image := True;
+                        Terminal.App.Renderer.Present
+                          (R, Vk_Ctx, Presenter, Present_Status);
+                        Assert
+                          (Present_Status = Terminal.App.Vulkan_Presenter.Ok,
+                           "image frame should reach Vulkan presentation");
+                        Presented_Stream_Image := True;
+                        Terminal.App.Vulkan_Presenter.Readback_Pixel
+                          (Presenter,
+                           Pixel_X,
+                           Pixel_Y,
+                           Red,
+                           Green,
+                           Blue,
+                           Alpha,
+                           Readback_Status);
+                        Assert
+                          (Readback_Status =
+                             Terminal.App.Vulkan_Presenter.Readback_Ok,
+                           "presented image pixel should be readable");
+                        Assert
+                          ((if Expect_Green
+                            then Natural (Red) <= 16
+                              and then Natural (Green) >= 240
+                              and then Natural (Blue) <= 16
+                            else Natural (Red) >= 240
+                              and then Natural (Green) <= 16
+                              and then Natural (Blue) <= 16)
+                           and then Natural (Alpha) >= 240,
+                           "presented image center should match its pixel oracle");
+                        case Event.Protocol is
+                           when Terminal.Core.Kitty_Graphics =>
+                              Kitty_Pixel_Oracle_Passed := True;
+                           when Terminal.Core.ITerm2_Graphics =>
+                              PICT_Pixel_Oracle_Passed := True;
+                           when others =>
+                              null;
+                        end case;
+                        Terminal.App.Vulkan_Presenter.Readback_Pixel
+                          (Presenter,
+                           FB_Width - 1,
+                           FB_Height - 1,
+                           Red,
+                           Green,
+                           Blue,
+                           Alpha,
+                           Readback_Status);
+                        Assert
+                          (Readback_Status =
+                             Terminal.App.Vulkan_Presenter.Readback_Ok
+                           and then Natural (Red) <= 80
+                           and then Natural (Green) <= 80
+                           and then Natural (Blue) <= 80
+                           and then abs (Integer (Red) - Integer (Green)) <= 16
+                           and then abs (Integer (Green) - Integer (Blue)) <= 16
+                           and then Natural (Alpha) >= 240,
+                           "presented framebuffer corner should match the dark background oracle");
+                        Pixel_Oracle_Passed := True;
+                     end;
+                  end if;
                end;
             end if;
          end;
@@ -325,7 +372,17 @@ begin
             & "_Gq=2,a=T,i=777,f=32,s=1,v=1,c=2,r=1,C=1;/wAA/w=="
             & ASCII.ESC & "\"),
          Feed_Status);
-      Assert (Feed_Status = Terminal.Core.Ok, "visual-oracle image feed");
+      Assert (Feed_Status = Terminal.Core.Ok, "Kitty visual-oracle image feed");
+      Process_Pending_Graphics;
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "]1337;File=name=green.pict;inline=1;width=2;"
+            & "height=1;preserveAspectRatio=0;doNotMoveCursor=1:"
+            & "AAAAAAAAAAAABAAEABEC/wwA//4AAABIAAAASAAAAAAAAAAEAAQAAAAA"
+            & "ABoAAP//AAAAMQAAAAAABAAEAP8=" & ASCII.BEL),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "PICT visual-oracle image feed");
       Process_Pending_Graphics;
    end if;
 
@@ -344,7 +401,12 @@ begin
          and then Pixel_Oracle_Passed,
          "released-tmux image should reach a real Vulkan presentation");
    else
-      Assert (Pixel_Oracle_Passed, "GPU pixel oracle should pass");
+      Assert
+        (Pixel_Oracle_Passed
+         and then Kitty_Pixel_Oracle_Passed
+         and then PICT_Pixel_Oracle_Passed
+         and then Terminal.App.Renderer.Diagnostics (R).Last_Media_Diagnostic.Present = False,
+         "Kitty and native PICT should pass live GPU pixel oracles");
    end if;
    Assert
      (Terminal.App.Renderer.Diagnostics (R).Last_Vertex_Count > 0,

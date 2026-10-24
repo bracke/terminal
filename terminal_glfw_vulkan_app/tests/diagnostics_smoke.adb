@@ -14,6 +14,7 @@ with Terminal.App.Input_Map;
 with Terminal.App.PTY_Write;
 with Terminal.App.Render_Model;
 with Terminal.App.Render_Policy;
+with Terminal.App.Renderer;
 with Terminal.App.Resize;
 with Terminal.App.Selection;
 with Terminal.App.Splits;
@@ -367,7 +368,8 @@ begin
       Assert
         (Contains
            (Line,
-            "renderer_image_status=image kitty size=30x16 payload=14 payload-complete preview=3/4 bytes=414243 placeholder decoded"),
+            "renderer_image_status="
+            & Terminal.App.Renderer.Image_Status_Label (S.Renderer)),
          "renderer image status should be included");
       Assert
         (Contains

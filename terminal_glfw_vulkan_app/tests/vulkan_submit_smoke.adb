@@ -203,6 +203,18 @@ begin
      (RM.Image_Decode_Status_Suffix (RM.Image_Decode_Preview_Truncated) =
       " truncated",
       "truncated image decode suffix");
+   Assert
+     (RM.Image_Decode_Status_Suffix (RM.Image_Decode_Invalid_Data) =
+      " invalid-data",
+      "invalid-data image decode suffix");
+   Assert
+     (RM.Image_Decode_Status_Suffix (RM.Image_Decode_Too_Large) =
+      " too-large",
+      "too-large image decode suffix");
+   Assert
+     (RM.Image_Decode_Status_Suffix (RM.Image_Decode_Allocation_Failed) =
+      " allocation-failed",
+      "allocation-failed image decode suffix");
 
    VS.Build (Frame, Batch, Status);
    Assert (Status = VS.Ok, "batch build failed");

@@ -7,6 +7,7 @@ with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Graphics_Transport;
+with Terminal.App.Image_Media;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
 with Terminal.App.Scrollback_View;
@@ -20,6 +21,7 @@ procedure Renderer_Metrics_Smoke is
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Graphics_Resource_Limits;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Image_Media.Decode_Status;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
    use type Terminal.App.Render_Model.Image_Data_Access;
@@ -63,6 +65,13 @@ procedure Renderer_Metrics_Smoke is
    begin
       return Text (Text'First + 1 .. Text'Last);
    end Trimmed_Natural;
+
+   function Bounded_Image_Label (Text : String) return String is
+     (if Text'Length <= Terminal.App.Renderer.Max_Status_Label_Length
+      then Text
+      else Text
+        (Text'First
+         .. Text'First + Terminal.App.Renderer.Max_Status_Label_Length - 1));
 
    function Repeat_Char (Ch : Character; Count : Natural) return String is
       Result : String (1 .. Count);
@@ -588,11 +597,12 @@ begin
          "graphics preview decode status");
       Assert
          (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
-            "image kitty size="
+          Bounded_Image_Label
+            ("image kitty size="
          & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R) * 6)
          & "x"
          & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R) * 3)
-         & " payload=18 payload-complete preview=3/4 bytes=000000 placeholder decoded",
+         & " payload=18 payload-complete preview=3/4 bytes=000000 placeholder decoded"),
          "graphics image diagnostic status label");
       Assert
         (Frame.Images (1).Width =
@@ -660,7 +670,8 @@ begin
             "raw graphics command should be textured");
          Assert
            (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
-            "image kitty size="
+            Bounded_Image_Label
+              ("image kitty size="
             & Trimmed_Natural
               (Natural'Min
                  (Terminal.App.Renderer.Cell_Width (R),
@@ -671,7 +682,7 @@ begin
                  (Terminal.App.Renderer.Cell_Width (R),
                   Terminal.App.Renderer.Cell_Height (R)))
             & " pixels=1x1 format=32 payload=0"
-            & " payload-complete preview=4/0 bytes=FF0000FF textured decoded",
+            & " payload-complete preview=4/0 bytes=FF0000FF textured decoded"),
             "raw graphics image diagnostic status label");
       end;
    end;
@@ -2909,11 +2920,12 @@ begin
          "sixel graphics command should be textured");
       Assert
         (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
-         "image sixel size="
+         Bounded_Image_Label
+           ("image sixel size="
          & "1"
          & "x"
          & "6"
-         & " pixels=1x6 format=32 payload=0 payload-complete preview=24/0 bytes=FFFFFFFF textured decoded",
+         & " pixels=1x6 format=32 payload=0 payload-complete preview=24/0 bytes=FFFFFFFF textured decoded"),
          "sixel graphics image diagnostic status label");
    end;
 
@@ -3119,11 +3131,12 @@ begin
          "partial graphics command decode status");
       Assert
         (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
-         "image kitty size="
+         Bounded_Image_Label
+           ("image kitty size="
          & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R) * 6)
          & "x"
          & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R) * 3)
-         & " payload=19 payload-complete preview=0/4 placeholder partial invalid-byte",
+         & " payload=19 payload-complete preview=0/4 placeholder partial invalid-byte"),
          "partial graphics image diagnostic status label");
    end;
 
@@ -4989,6 +5002,7 @@ begin
          Terminal.Core.Complete_Graphics_Event (Local_T, Event, Result);
          Terminal.App.Renderer.Commit_Graphics_Events (R);
       end Process;
+
    begin
       if Ada.Directories.Exists (Path) then
          GNAT.OS_Lib.Delete_File (Path, Deleted);
@@ -5088,6 +5102,37 @@ begin
          Terminal.Core.Complete_Graphics_Event (Animation_T, Event, Result);
          Terminal.App.Renderer.Commit_Graphics_Events (R);
       end Process;
+
+      procedure Process_ITerm2
+        (Payload : String;
+         Label_Text : String)
+      is
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+         Result : Terminal.Core.Kitty_Graphics_Result;
+      begin
+         Terminal.Core.Feed
+           (Animation_T,
+            To_Bytes
+              (ASCII.ESC & "]1337;File=inline=1;doNotMoveCursor=1:"
+               & Payload & ASCII.BEL),
+            Animation_Feed);
+         Assert (Animation_Feed = Terminal.Core.Ok, Label_Text & " feed");
+         Terminal.Core.Peek_Graphics_Event (Animation_T, Event);
+         Snaps (1) := Terminal.Core.Snapshot (Animation_T);
+         Snaps (1).Graphics := Event;
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Terminal.Core.Release (Snaps (1));
+         Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
+         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Terminal.Core.Complete_Graphics_Event (Animation_T, Event, Result);
+         Terminal.App.Renderer.Commit_Graphics_Events (R);
+      end Process_ITerm2;
 
       procedure Assert_Pixel
         (X : Natural;
@@ -5224,6 +5269,23 @@ begin
          Tight_Limits : Terminal.App.Renderer.Graphics_Resource_Limits :=
            Original;
       begin
+         Tight_Limits.Animation_Frames := 1;
+         Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight_Limits);
+         Process_ITerm2
+           ("R0lGODlhAQABAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEBAAAh+QQA"
+            & "BQAAACwAAAAAAQABAAACAkQBACH5BAAHAAAALAAAAAABAAEAgAAA/wAA"
+            & "AAICRAEAOw==",
+            "media decode after lowering animation quota below retained use");
+         Assert
+           (Terminal.App.Renderer.Diagnostics (R).
+              Kitty_Animation_Frame_Count = 2,
+            "lowered animation quota preserves retained frame accounting");
+         Assert
+           (Terminal.App.Renderer.Diagnostics (R).
+              Last_Media_Decode_Status =
+                Terminal.App.Image_Media.Decode_Too_Large,
+            "lowered animation quota reports media too large");
+
          Tight_Limits.Animation_Frames := 2;
          Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight_Limits);
          Process

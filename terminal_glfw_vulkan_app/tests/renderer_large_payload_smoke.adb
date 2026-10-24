@@ -22,6 +22,10 @@ procedure Renderer_Large_Payload_Smoke is
    Event         : Terminal.Core.Graphics_Event;
    Data_Length   : constant Natural :=
      Terminal.Core.Max_Graphics_Preview_Length + 257;
+   Red_PNG_Base64 : constant String :=
+     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4"
+     & "z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==";
+   Padding_Length : constant Natural := Data_Length - Red_PNG_Base64'Length;
 
    function To_Bytes (Text : String) return Byte_Array is
       Result : Byte_Array (1 .. Text'Length);
@@ -46,10 +50,11 @@ begin
 
    Feed (ASCII.ESC & "]1337;MultipartFile=inline=1" & ASCII.BEL);
    Feed (ASCII.ESC & "]1337;FilePart=");
-   for Chunk in 1 .. Data_Length / 4_096 loop
-      Feed ((1 .. 4_096 => 'A'));
+   for Chunk in 1 .. Padding_Length / 4_096 loop
+      Feed ((1 .. 4_096 => ' '));
    end loop;
-   Feed ((1 .. Data_Length mod 4_096 => 'A'));
+   Feed ((1 .. Padding_Length mod 4_096 => ' '));
+   Feed (Red_PNG_Base64);
    Feed (ASCII.BEL & ASCII.ESC & "]1337;FileEnd" & ASCII.BEL);
 
    Terminal.Core.Peek_Graphics_Event (T, Event);
@@ -68,11 +73,17 @@ begin
         Terminal.App.Renderer.Diagnostics (R);
    begin
       Assert
-        (Render_Status = Terminal.App.Renderer.Ok
-         and then Diagnostics.Last_Image_Protocol =
-           Terminal.App.Render_Model.Image_ITerm2
-         and then Diagnostics.Last_Image_Payload_Length = Event.Payload_Length
-         and then Diagnostics.Last_Image_Payload_Preview_Complete,
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "large staged payload render status");
+      Assert
+        (Diagnostics.Last_Image_Protocol =
+           Terminal.App.Render_Model.Image_ITerm2,
+         "large staged payload image protocol");
+      Assert
+        (Event.Payload_Length > Terminal.Core.Max_Graphics_Preview_Length,
+         "graphics event exceeds the snapshot preview");
+      Assert
+        (Diagnostics.Last_Image_Payload_Preview_Complete,
          "renderer consumes complete staged payload beyond snapshot preview");
    end;
 

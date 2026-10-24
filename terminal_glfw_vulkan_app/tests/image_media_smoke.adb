@@ -44,7 +44,7 @@ procedure Image_Media_Smoke is
      & "AAAAAAABAACAgP//AAL///////8AA///AAAAAAAAAAAACQAVAAAAAAAJABUAAALs"
      & "AgcBAgL6A/UCDAECAvoD/gL6AQECAgwBAgL6A/4C+gEBAgIMAQIC+gP+AvoBAQIC"
      & "DAECAvoD/gL6AQECAgf1AvoBAQICB/UC+gEBAgIE7QIAAAD/";
-   --  ImageMagick-authored PICT carrying a CompressedQuickTime JPEG.
+   --  Externally authored PICT carrying a CompressedQuickTime JPEG.
    QuickTime_PICT_Base64 : constant String :=
      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
      & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -97,46 +97,6 @@ procedure Image_Media_Smoke is
       & W (16#0011#) & W (16#02FF#) & W (16#0C00#) & W (-2) & W (0)
       & L (72 * 16#1_0000#) & L (72 * 16#1_0000#)
       & Rect (0, 0, Height, Width) & L (0) & Body_Bytes & W (16#00FF#));
-   PDF_Base64 : constant String :=
-     "JVBERi0xLjMgCjEgMCBvYmoKPDwKL1BhZ2VzIDIgMCBSCi9UeXBlIC9DYXRhbG9n"
-     & "Cj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9UeXBlIC9QYWdlcwovS2lkcyBbIDMgMCBS"
-     & "IF0KL0NvdW50IDEKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1Bh"
-     & "cmVudCAyIDAgUgovUmVzb3VyY2VzIDw8Ci9YT2JqZWN0IDw8IC9JbTAgOCAwIFIg"
-     & "Pj4KL1Byb2NTZXQgNiAwIFIgPj4KL01lZGlhQm94IFswIDAgMSAxXQovQ3JvcEJv"
-     & "eCBbMCAwIDEgMV0KL0NvbnRlbnRzIDQgMCBSCi9UaHVtYiAxMSAwIFIKPj4KZW5k"
-     & "b2JqCjQgMCBvYmoKPDwKL0xlbmd0aCA1IDAgUgo+PgpzdHJlYW0KcQoxIDAgMCAx"
-     & "IDAgMCBjbQovSW0wIERvClEKCmVuZHN0cmVhbQplbmRvYmoKNSAwIG9iagoyNwpl"
-     & "bmRvYmoKNiAwIG9iagpbIC9QREYgL1RleHQgL0ltYWdlQyBdCmVuZG9iago3IDAg"
-     & "b2JqCjw8Cj4+CmVuZG9iago4IDAgb2JqCjw8Ci9UeXBlIC9YT2JqZWN0Ci9TdWJ0"
-     & "eXBlIC9JbWFnZQovTmFtZSAvSW0wCi9GaWx0ZXIgWyAvUnVuTGVuZ3RoRGVjb2Rl"
-     & "IF0KL1dpZHRoIDEKL0hlaWdodCAxCi9Db2xvclNwYWNlIDEwIDAgUgovQml0c1Bl"
-     & "ckNvbXBvbmVudCA4Ci9MZW5ndGggOSAwIFIKPj4Kc3RyZWFtCgJlQyGACmVuZHN0"
-     & "cmVhbQplbmRvYmoKOSAwIG9iago1CmVuZG9iagoxMCAwIG9iagovRGV2aWNlUkdC"
-     & "CmVuZG9iagoxMSAwIG9iago8PAovRmlsdGVyIFsgL1J1bkxlbmd0aERlY29kZSBd"
-     & "Ci9XaWR0aCAxCi9IZWlnaHQgMQovQ29sb3JTcGFjZSAxMCAwIFIKL0JpdHNQZXJD"
-     & "b21wb25lbnQgOAovTGVuZ3RoIDEyIDAgUgo+PgpzdHJlYW0KAmVDIYAKZW5kc3Ry"
-     & "ZWFtCmVuZG9iagoxMiAwIG9iago1CmVuZG9iagoxMyAwIG9iago8PAo+PgplbmRv"
-     & "YmoKMTQgMCBvYmoKNQplbmRvYmoKMTUgMCBvYmoKPDwKPj4KZW5kb2JqCjE2IDAg"
-     & "b2JqCjUKZW5kb2JqCjE3IDAgb2JqCjw8Ci9UaXRsZSA8RkVGRjAwNjIwMDcyMDA2"
-     & "MTAwNjMwMDZCMDA2NTAwMkQwMDZGMDA2RTAwNjU+Ci9BdXRob3IgPEZFRkYwMDY4"
-     & "MDA3NDAwNzQwMDcwMDA3MzAwM0EwMDJGMDAyRjAwNjkwMDZEMDA2MTAwNjcwMDY1"
-     & "MDA2RDAwNjEwMDYxMDA2NzAwNjkwMDYzMDA2QjAwMkUwMDZGMDA3MjAwNjc+Ci9D"
-     & "cmVhdG9yIDxGRUZGMDA2ODAwNzQwMDc0MDA3MDAwNzMwMDNBMDAyRjAwMkYwMDY5"
-     & "MDA2RDAwNjEwMDYxMDA2NzAwNjUwMDZEMDA2MTAwNjcwMDY5MDA2MzAwNkIwMDJF"
-     & "MDA2RjAwNzIwMDY3PgovUHJvZHVjZXIgPEZFRkYwMDY4MDA3NDAwNzQwMDcwMDA3"
-     & "MzAwM0EwMDJGMDAyRjAwMkYwMDY5MDA2RDAwNjEwMDY3MDA2NTAwNkQwMDYxMDA2"
-     & "NzAwNjkwMDYzMDA2QjAwMkUwMDZGMDA3MjAwNjc+Ci9DcmVhdGlvbkRhdGUgKEQ6"
-     & "MjAyNjEwMjQwODAyNTgpCi9Nb2REYXRlIChEOjIwMjYxMDI0MDgwMjU4KQo+Pgpl"
-     & "bmRvYmoKeHJlZgowIDE4CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxMCAw"
-     & "MDAwMCBuIAowMDAwMDAwMDU5IDAwMDAwIG4gCjAwMDAwMDAxMTggMDAwMDAgbiAK"
-     & "MDAwMDAwMDI5MiAwMDAwMCBuIAowMDAwMDAwMzcyIDAwMDAwIG4gCjAwMDAwMDAz"
-     & "OTAgMDAwMDAgbiAKMDAwMDAwMDQyOCAwMDAwMCBuIAowMDAwMDAwNDQ5IDAwMDAw"
-     & "IG4gCjAwMDAwMDA2MzYgMDAwMDAgbiAKMDAwMDAwMDY1MyAwMDAwMCBuIAowMDAw"
-     & "MDAwNjgwIDAwMDAwIG4gCjAwMDAwMDA4MjcgMDAwMDAgbiAKMDAwMDAwMDg0NSAw"
-     & "MDAwMCBuIAowMDAwMDAwODY3IDAwMDAwIG4gCjAwMDAwMDA4ODUgMDAwMDAgbiAK"
-     & "MDAwMDAwMDkwNyAwMDAwMCBuIAowMDAwMDAwOTI1IDAwMDAwIG4gCnRyYWlsZXIK"
-     & "PDwKL1NpemUgMTgKL0luZm8gMTcgMCBSCi9Sb290IDEgMCBSCj4+CnN0YXJ0eHJl"
-     & "ZgoxMzg2CiUlRU9GCg==";
 
    procedure Check
      (Encoded       : String;
@@ -186,10 +146,15 @@ procedure Image_Media_Smoke is
          and then Natural (Image.Bytes (3)) = Expected_Blue
          and then Natural (Image.Bytes (4)) = 255,
          Label_Text & " first frame pixel");
+      Assert
+        (Image.Adapter_Buffer_Bytes >= Image.Total_Bytes
+         and then Image.Decoder_Configured_Bytes > 0,
+         Label_Text & " reports explicit buffers and configured decoder memory");
       if Label_Text = "PICT" or else Label_Text = "PICT QuickTime JPEG" then
          Assert
-           (Image.Peak_Working_Bytes = Image.Frame_Bytes,
-            Label_Text & " uses one adapter-owned RGBA allocation");
+           (Image.Adapter_Buffer_Bytes = Image.Frame_Bytes
+            and then Image.Decoder_Configured_Bytes = 1_048_576,
+            Label_Text & " reports adapter buffers and aggregate decoder limits");
       end if;
       if Animated then
          Assert
@@ -244,6 +209,26 @@ procedure Image_Media_Smoke is
          and then Image.Bytes = null,
          "truncated GIF must fail without publishing pixels");
    end Check_GIF_Limits;
+
+   procedure Check_Unsupported_Media is
+      PDF_Header : constant Byte_Array :=
+        [Character'Pos ('%'), Character'Pos ('P'), Character'Pos ('D'),
+         Character'Pos ('F'), Character'Pos ('-')];
+      Image : Terminal.App.Image_Media.Decoded_Image;
+      Status : Terminal.App.Image_Media.Decode_Status;
+   begin
+      Terminal.App.Image_Media.Decode
+        (PDF_Header,
+         PDF_Header'Length,
+         1_048_576,
+         4_096,
+         Image,
+         Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Unavailable
+         and then Image.Bytes = null,
+         "unsupported inline media must not use an optional runtime decoder");
+   end Check_Unsupported_Media;
 
    function GIF_Header return Byte_Array is
    begin
@@ -557,6 +542,30 @@ procedure Image_Media_Smoke is
       Terminal.App.Image_Media.Release (Image);
    end Check_PICT_Vector_And_Text;
 
+   procedure Check_PICT_Compatibility_Warning is
+      Fixture : constant Byte_Array :=
+        V2_Picture
+          (48, 24,
+           W (16#04#) & [Byte (8), Byte (0)]
+           & W (16#28#) & W (15) & W (2)
+           & [Byte (2), Byte (Character'Pos ('H')),
+              Byte (Character'Pos ('i')), Byte (0)]);
+      Image : Terminal.App.Image_Media.Decoded_Image;
+      Status : Terminal.App.Image_Media.Decode_Status;
+   begin
+      Terminal.App.Image_Media.Decode
+        (Fixture, Fixture'Length, 1_048_576, 4_096, Image, Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Ok
+         and then Image.Bytes /= null
+         and then Image.Warning_Count > 0
+         and then Image.First_Warning.Present
+         and then Terminal.App.Image_Media.Diagnostic_Identifier
+           (Image.First_Warning) = "pict.warning.approximated",
+         "unsupported PICT drawing should render compatibly with a warning");
+      Terminal.App.Image_Media.Release (Image);
+   end Check_PICT_Compatibility_Warning;
+
    procedure Check_PICT_Bounds_And_Headers is
       Blob : Terminal.App.Render_Model.Image_Data_Access := null;
       Blob_Length : Natural := 0;
@@ -616,6 +625,7 @@ begin
    Assert
      (Terminal.App.Image_Media.Available,
       "native GIF media decoder should always be available");
+   Check_Unsupported_Media;
    Check (GIF_Base64, 255, 0, 0, True, "GIF");
    Check_GIF_Limits;
    Check_GIF_Compositing;
@@ -634,6 +644,7 @@ begin
       Expected_Height => 9);
    Check_PICT_Bounds_And_Headers;
    Check_PICT_Vector_And_Text;
+   Check_PICT_Compatibility_Warning;
    Check
      (QuickTime_PICT_Base64,
       251,
@@ -643,10 +654,4 @@ begin
       "PICT QuickTime JPEG",
       Expected_Width => 21,
       Expected_Height => 9);
-   if not Terminal.App.Image_Media.Extended_Media_Available then
-      Ada.Text_IO.Put_Line
-        ("image_media_smoke: optional PDF check skipped: no MagickWand runtime");
-      return;
-   end if;
-   Check (PDF_Base64, 101, 67, 33, False, "PDF");
 end Image_Media_Smoke;
