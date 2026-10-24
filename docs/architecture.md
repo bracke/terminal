@@ -27,8 +27,16 @@ terminal emulation, text rendering, or input semantics.
 
 `terminal_pty` selects one backend with `TERMINAL_PTY_OS`: POSIX PTYs on Linux
 and macOS, or ConPTY on Windows. Native handles, file descriptors, ioctl
-values, and platform API types do not leak into common, core, or application
-interfaces.
+values, and platform API types do not leak into common, core, or
+renderer-facing interfaces.
+
+The application uses the same scenario variable to select the body of
+`Terminal.App.Platform_Media`. The POSIX body owns local-file, shared-memory,
+safe-download, and dynamic-library primitives. The Windows body reports those
+optional facilities unavailable without importing Unix symbols, so capability
+profiles never advertise a backend that cannot execute there. This internal
+package is the application layer's sole platform-media boundary and therefore
+the only app package whose interface carries native descriptors and addresses.
 
 `Terminal.App.Vulkan_Context` owns the Vulkan instance and window surface. It
 uses GLFW-provided instance extensions, `df_vulkan` handle types, and
@@ -182,6 +190,8 @@ successful placement then advances the cursor by its cell span before those
 bytes are parsed; a failed, `C=1`, virtual, or relative placement resumes input
 without movement. The core carries the first chunk's movement policy through
 `m=1` continuations while the final chunk supplies the placement anchor.
+Each FIFO node captures its stream identity when it is enqueued; changing the
+terminal's stream assignment cannot relabel already queued work.
 The same stream ID is copied into renderer snapshots and forms part of every
 Kitty image-object and placement key. Object lookup, image-number lookup,
 relative-parent resolution, placeholder resolution, rendering, replacement,

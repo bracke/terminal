@@ -71,9 +71,10 @@
   application keypad mode `?66` and backarrow-key mode `?67`, and stateless
   `?1048` save/restore cursor mode. Missing, extra, and unsupported-private
   DECRQM parameters are diagnosed.
-- Terminal-generated response bytes are held in a bounded core queue. If the
-  queue is full, newest response bytes are dropped, already-queued byte
-  ordering is preserved, and parser-overflow diagnostics are incremented.
+- Terminal-generated responses are held in a bounded core queue. Each framed
+  response is committed atomically; if it cannot fit, the complete newest
+  response is dropped, already-queued framing and byte ordering are preserved,
+  and parser-overflow diagnostics are incremented once for that response.
   Core initialization, feed outcomes, and aggregate diagnostic counters also
   expose bounded status labels for app UI and logging surfaces.
   App PTY and input queues expose bounded pressure labels with occupancy and
@@ -585,7 +586,10 @@ title includes the active/count suffix, such as `[2/3]`. New tabs allocate
 independent app-owned terminal cores, PTYs, PTY output queues, and reader tasks
 through the bounded runtime table; tab navigation switches the active visible
 runtime and routes input, clipboard replies, resize, scrollback, diagnostics,
-and rendering through that active session. The composited renderer draws a
+and rendering through that active session. Every live runtime's PTY queue is
+polled continuously, including background tabs, and terminal-generated replies
+are written back through the runtime that owns the corresponding core. The
+composited renderer draws a
 visible tab strip using bounded per-tab labels and active-tab highlighting. The active
 tab label is updated from the bounded terminal title when OSC title changes are
 processed. A public tab snapshot exposes count, active index, and bounded
@@ -613,7 +617,8 @@ for mouse/input routing. New panes allocate independent app-owned terminal
 cores, PTYs, PTY output queues, and reader tasks through the bounded runtime
 table. Pane navigation switches the active runtime for input, clipboard replies,
 scrollback, and diagnostics, while the composited renderer draws all visible
-pane snapshots with active-pane chrome in one frame. Split panes are live
+pane snapshots with active-pane chrome in one frame. Every pane PTY queue remains
+live regardless of which pane owns keyboard focus. Split panes are live
 sessions rather than placeholders. The split model exposes a bounded status
 label for the live pane count and active index.
 
