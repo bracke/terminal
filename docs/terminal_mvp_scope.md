@@ -270,14 +270,15 @@ count, total/per-image bytes, placements, animation frames, pixel dimensions,
 and the GPU atlas are configurable within compiled safety ceilings. Transient
 unplaced objects are preferred eviction candidates, and current plus cumulative
 resource behavior is exposed in diagnostics.
-General file-format image decoding supports PNG, JPEG, and GIF in the current draw
-path, and the renderer model has image commands for sixel, kitty, and iTerm2
+General file-format image decoding supports PNG, JPEG, GIF, and PICT in the
+current draw path, and the renderer model has image commands for sixel, kitty, and iTerm2
 placeholders plus a real textured path for complete bounded kitty raw RGB/RGBA
 payloads with explicit `f=24` or `f=32` format and `s`/`v` pixel dimensions,
 bounded Kitty `f=100` PNG payloads, bounded Sixel rasters decoded to RGBA
-pixels, and bounded iTerm2 PNG/JPEG/GIF payloads. The PNG path is inflated through
-the local zlib crate; JPEG is decoded through the local jpeglib crate, and GIF
-frames are decoded and composited through the local giflib crate. The PNG
+pixels, and bounded iTerm2 PNG/JPEG/GIF/PICT payloads. The PNG path is inflated through
+the local zlib crate; JPEG is decoded through the local jpeglib crate, GIF
+frames are decoded and composited through the local giflib crate, and PICT is
+rendered through the local pictlib crate. The PNG
 path supports grayscale, RGB, indexed, grayscale-alpha, and RGBA images
 across valid PNG bit depths, including palette, simple transparency chunks,
 16-bit downconversion, and Adam7 interlace.

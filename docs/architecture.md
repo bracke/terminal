@@ -237,6 +237,14 @@ The app graphics layer parses Kitty and iTerm2 headers, performs strict bounded
 Base64 and RFC 1950 decoding, rasterizes Sixel rows, expands PNG to RGBA with
 the local zlib crate, decodes iTerm2 JPEG through the local jpeglib crate, and
 decodes/composites iTerm2 GIF animations through the local giflib crate.
+QuickDraw PICT input is rendered to bounded RGBA through the local pictlib
+crate. The adapter borrows encoded bytes, renders directly into its retained
+RGBA allocation, and transfers static-image ownership into the renderer without
+a full-image copy. Classic Macintosh font IDs and family names are mapped to
+discovered mono, sans-serif, serif, and symbol fonts. Pictlib failures retain
+their stable identifier, source/opcode/row coordinates, expected and actual
+values, limit kind, and underlying-code fields in renderer diagnostics;
+MagickWand remains an optional runtime extension for PDF and other media.
 Policy-gated non-inline iTerm2 FILE transfers decode arbitrary file bytes into
 an explicitly selected Downloads directory using no-follow, exclusive creation
 and per-file quotas.

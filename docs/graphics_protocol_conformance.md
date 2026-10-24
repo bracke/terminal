@@ -34,7 +34,7 @@ Status meanings:
 | M5 — rendering | Supported | Renderer-neutral commands preserve crops, opacity, source geometry, clipping, z-index, placeholder tiles, multiple simultaneous sources, and persistent conventional/Sixel/iTerm2 placements. |
 | M6 — resource management | Supported | Configurable CPU/GPU limits, transient-first eviction, reference-aware image lifetime, content-versioned GPU atlas reuse, fence-gated replacement, allocation failure, and automatic device-loss reconstruction with bounded retry backoff are implemented. |
 | M7 — capability and tmux interoperability | Supported | Kitty queries and iTerm2 feature reports are truthful. tmux DCS passthrough, fragmentation, response ordering, placeholder cells, PTY identity, and environment propagation have automated coverage. A dedicated released-tmux stream has also reached a live GLFW/Vulkan presenter. |
-| M8 — auxiliary protocols | Supported for the advertised/runtime-available subsets | Sixel raster/palette/aspect/cursor semantics and iTerm2 inline PNG/JPEG/native GIF, optional runtime PDF/PICT media, arbitrary-file downloads, sizing, aspect ratio, cursor policy, and multipart delivery are implemented. FILE reporting is policy-gated. |
+| M8 — auxiliary protocols | Supported for the advertised/runtime-available subsets | Sixel raster/palette/aspect/cursor semantics and iTerm2 inline PNG/JPEG/native GIF/PICT, optional runtime PDF and extended media, arbitrary-file downloads, sizing, aspect ratio, cursor policy, and multipart delivery are implemented. FILE reporting is policy-gated. |
 | M9 — security, performance, diagnostics | Supported | Bounded parsing/decoding, overflow-safe arithmetic, strict PNG structure/CRC validation, heap-backed large row buffers, deterministic malformed-input tests, scheduled AFL++ edge-coverage fuzzing, transfer-media policy, counters, cache diagnostics, and a deterministic rapid-replacement benchmark are present. |
 | M10 — end-to-end validation | Automated and host-level validation complete | Chafa, libsixel, and a dedicated released-tmux server have been exercised. The released-tmux image stream is decoded, submitted through the live GLFW/Vulkan path, copied back from the swapchain, and checked against a deterministic RGBA pixel oracle. A million-input parser soak and 50,000-update replacement soak pass. |
 
@@ -122,9 +122,12 @@ The implemented and tested subset is:
 - inline images (`inline=1`) and non-inline arbitrary-file downloads
   (`inline=0`, also the default);
 - built-in PNG and JPEG decoding to RGBA;
-- native bounded animated GIF playback through the path-pinned Ada `giflib`,
-  plus PDF and PICT decoding when a compatible MagickWand runtime and its
-  format delegates/policies are available;
+- native bounded animated GIF playback through the path-pinned Ada `giflib`;
+- native bounded QuickDraw PICT rendering through the path-pinned Ada
+  `pictlib`, including vector drawing, QuickDraw text with classic font-family
+  mappings, and embedded QuickTime JPEG pictures; plus PDF and other extended
+  decoding when a compatible MagickWand runtime and its format delegates or
+  policies are available;
 - `width` and `height` in cells, pixels, percentages, or `auto`;
 - aspect-preserving fit by default and explicit stretching with
   `preserveAspectRatio=0`;
@@ -132,6 +135,9 @@ The implemented and tested subset is:
   after the rendered image height is known;
 - `size` as a non-binding progress hint, as required by the protocol;
 - bounded metadata, Base64 input, decoded bytes, and pixel dimensions;
+- borrowed native PICT input without a full encoded copy, direct rendering into
+  the retained RGBA buffer,
+  and structured Pictlib failure diagnostics;
 - persistent placement and coexistence with Kitty and Sixel images.
 
 Downloads are disabled by default and enabled with
@@ -141,10 +147,10 @@ targets, creates files with mode 0600, never overwrites an existing name, and
 enforces the per-image byte limit. The optional `size` field remains a
 non-binding progress hint as specified. Downloaded
 content is format-agnostic, so GIF, PDF, PICT, archives, and other files are
-preserved byte-for-byte. Inline PNG/JPEG decoding has no external runtime
-dependency. Other media uses a dynamically discovered MagickWand runtime,
-without adding a crate or link-time dependency, and remains bounded by the
-same byte, dimension, frame-count, memory, map, disk, and time limits. Animated
+preserved byte-for-byte. Inline PNG/JPEG/GIF/PICT decoding has no external
+runtime dependency. Other media uses a dynamically discovered MagickWand
+runtime, without adding a crate or link-time dependency, and remains bounded
+by the same byte, dimension, frame-count, memory, map, disk, and time limits. Animated
 GIF frames and delays enter the existing quota-accounted image object playback
 model. Normal FILE commands have no success reply.
 
@@ -209,7 +215,7 @@ formats as portable protocol requirements.
 - `image_media_smoke.adb` and `iterm2_media_smoke.adb`: native bounded GIF87a
   and GIF89a decoding, interlacing, transparency, sub-frame disposal and
   composition, frame-limit boundaries, finite/infinite/single-play animation,
-  resource teardown, optional PDF/PICT decoding, and animated-GIF
+  resource teardown, native PICT and optional PDF decoding, and animated-GIF
   storage/playback
   through the iTerm2 renderer.
 - `vulkan_submit_smoke.adb`, `vulkan_device_smoke.adb`, and

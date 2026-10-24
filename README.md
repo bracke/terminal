@@ -32,7 +32,7 @@ through bounded primary-screen scrollback.
 
 Graphics support includes Kitty image objects and indexed/direct formats,
 Unicode placeholders, animations, local transfer media under explicit policy,
-persistent Sixel, iTerm2 inline PNG/JPEG/native GIF plus runtime PDF/PICT decoding,
+persistent Sixel, iTerm2 inline PNG/JPEG/native GIF/PICT plus runtime PDF decoding,
 and policy-gated arbitrary-file downloads. The exact
 advertised surface, security defaults, quota
 keys, and test evidence are recorded in
