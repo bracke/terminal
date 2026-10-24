@@ -1,0 +1,29 @@
+with "../../terminal_common/terminal_common.gpr";
+
+project Core_Graphics_Fuzz is
+   for Languages use ("Ada", "C");
+   --  Compile the core sources in this project rather than linking the normal
+   --  prebuilt library: sanitizer coverage must see parser branches too.
+   for Source_Dirs use (".", "../src");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Main use
+     ("core_graphics_fuzz_target.adb",
+      "afl_coverage_smoke.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-gnat2022",
+         "-gnata",
+         "-fno-omit-frame-pointer",
+         "-fno-pie",
+         "-fsanitize-coverage=trace-pc");
+      for Default_Switches ("C") use
+        ("-O2", "-fno-omit-frame-pointer", "-fno-pie");
+   end Compiler;
+
+   package Linker is
+      for Switches ("Ada") use ("-no-pie");
+      for Switches ("C") use ("-no-pie");
+   end Linker;
+end Core_Graphics_Fuzz;

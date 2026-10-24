@@ -1,0 +1,57 @@
+name: graphics pipeline fuzz
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  afl-coverage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out terminal
+        uses: actions/checkout@v7
+        with: { path: terminal }
+      - name: Check out sibling crates
+        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@main
+        with:
+          root: terminal
+      - name: Set up Alire
+        uses: alire-project/setup-alire@v6
+        with:
+          toolchain: gnat_native=15.2.1 gprbuild
+      - name: Configure Alire solver
+        run: alr settings --global --set solver.timeout 600
+      - name: Install AFL++ and graphics build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            afl++ \
+            libvulkan-dev \
+            libharfbuzz-dev \
+            libglfw3-dev \
+            libxcursor-dev \
+            libxxf86vm-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev
+      - name: Build Ada graphics tooling
+        working-directory: terminal
+        run: alr --non-interactive exec -- gprbuild -p -P tools/graphics_tools.gpr
+      - name: Run bounded core parser campaign
+        working-directory: terminal
+        run: tools/bin/graphics_fuzz_runner 420 fuzz/findings core
+      - name: Run bounded decode/store/render campaign
+        working-directory: terminal
+        run: tools/bin/graphics_fuzz_runner 420 fuzz/findings pipeline
+      - name: Upload corpus and findings
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: graphics-fuzz-findings
+          path: |
+            terminal/terminal_core/fuzz/findings
+            terminal/terminal_glfw_vulkan_app/fuzz/findings
+          if-no-files-found: warn
+          retention-days: 14
