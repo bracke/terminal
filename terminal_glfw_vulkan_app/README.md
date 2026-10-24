@@ -1,7 +1,9 @@
 # terminal_glfw_vulkan_app
 
-Linux application crate that wires `terminal_core`, `terminal_pty_posix`,
-`glfw_vulkan`, and the Vulkan text-rendering adaptation point together.
+Application crate that wires `terminal_core`, the platform-selected
+`terminal_pty` backend, `glfw_vulkan`, and the Vulkan text-rendering adaptation
+point together. `TERMINAL_PTY_OS=windows` selects ConPTY; the default selects
+the POSIX backend used on Linux and macOS.
 
 This crate links against system HarfBuzz (`libharfbuzz.so`) for shaped text-run
 metadata. The current visible glyph path still uses `textrender` rasterization.

@@ -20,7 +20,9 @@ alr exec -- gprbuild -P tests/app_tests.gpr
 tests/bin/gui_present_smoke
 ```
 
-`gui_present_smoke` skips cleanly when no display or Vulkan path is available.
+`gui_present_smoke` skips cleanly when no display or Vulkan path is available
+unless `TERMINAL_REQUIRE_GUI_PRESENT=1` is set. Linux CI sets that variable and
+runs the smoke under Xvfb with Mesa Vulkan, so a presentation skip is a failure.
 
 ## Current Recorded Status
 

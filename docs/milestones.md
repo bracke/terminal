@@ -3,7 +3,8 @@
 ## M1 Visible Shell
 
 - Open a GLFW Vulkan window through `glfw_vulkan`.
-- Create a Vulkan instance and a window surface through the shim-backed
+- Create a Vulkan instance and a window surface through the direct Ada
+  `glfwCreateWindowSurface` binding in the
   `glfw_vulkan` surface API, with bounded context init status labels.
 - Initialize `textrender`, build terminal frame commands, and prepare
   Vulkan-style vertex batches, with bounded submit-build status labels.
@@ -31,8 +32,8 @@
 - Spawn `$SHELL` in a Linux PTY.
 - Validate child PTY terminal identity with `TERM=xterm-256color` and
   `COLORTERM=truecolor`.
-- Expose POSIX PTY backend capabilities, including explicit unsupported
-  Windows ConPTY status for this backend.
+- Expose selected PTY backend capabilities: the POSIX build reports ConPTY as
+  unavailable, while the Windows build reports and exercises ConPTY support.
 - Expose the app terminal profile used for xterm-compatible multiplexer-facing
   behavior.
 - Tie the app terminal profile smoke to real bracketed paste, focus, mouse,
@@ -51,9 +52,10 @@
 - Validate PTY output can be fed into `Terminal.Core` in a non-GUI integration
   smoke and converted into renderer glyph vertices plus atlas metadata.
 - Validate real GLFW/Vulkan presentation in `gui_present_smoke` when a display
-  and Vulkan device are available; the smoke skips cleanly in headless runs,
-  and Vulkan context/shader/submit/device/presenter status labels are covered
-  in non-GUI smoke.
+  and Vulkan device are available. Local headless runs may skip; Linux CI sets
+  `TERMINAL_REQUIRE_GUI_PRESENT=1` under Xvfb so a missing presentation path is
+  fatal. Vulkan context/shader/submit/device/presenter status labels are
+  covered in non-GUI smoke.
 - Validate real shell `echo`, `cat`, `ls --color`, SGR color, and
   clear-sequence behavior through a non-GUI PTY/core command smoke.
 - Validate broader program progression through a non-GUI PTY/core smoke:

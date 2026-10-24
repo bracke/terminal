@@ -175,9 +175,51 @@ Sixel DCS payloads, kitty graphics APC payloads, and iTerm2 `OSC 1337;File=`
 payloads are recognized as graphics protocols, consumed without leaking payload
 bytes into the screen, and counted in aggregate, per-protocol, and
 last-protocol graphics diagnostics, including the last consumed payload length.
-Core snapshots expose the last recognized graphics event with protocol, cursor
-cell, payload length, and a 128 KiB bounded payload preview for protocol header
-parsing and inline image rendering.
+Core graphics commands are retained in arrival order by a configurable FIFO
+with compiled ceilings of 4096 events and 16 MiB. Kitty APC accumulation has a
+separately configurable 8 MiB ceiling and is independent of the compatibility
+preview bound. The core validates and joins complete Kitty chunk transactions;
+consumers can copy a stable payload or drain it incrementally.
+Core snapshots continue to expose the last recognized graphics event with
+protocol, cursor cell, payload length, and a 128 KiB bounded payload preview for
+the existing diagnostics path. Queued commands carry a stable runtime stream ID and a
+monotonic event sequence. The renderer guards state mutations with that pair
+until successful presentation commits the frame and discards the corresponding
+core event, so a swapchain retry cannot apply the same Kitty command twice.
+The same commit carries the renderer's Kitty result back to the core. The core
+verifies event identity, applies `q=1`/`q=2`, emits resolved image-number and
+placement identities, and releases the FIFO head as one operation.
+The embedding app supplies an explicit Kitty capability profile to the core;
+the core never infers renderer support. Kitty `a=q` commands are handled
+immediately and do not enter the graphics FIFO. Direct RGB, RGBA, PNG, zlib,
+and policy-enabled regular-file, temporary-file, or shared-memory queries are
+validated accurately, while unsupported combinations fail without changing
+state. `q=1`/`q=2` suppress the corresponding success/error response class.
+Query replies also work when the APC arrives through tmux DCS passthrough.
+Kitty `U+10EEEE` image placeholders are stored as ordinary movable cells plus
+renderer-neutral image metadata. The core decodes the low image-ID bytes from
+foreground color, placement ID from underline color, and row, column, and
+optional high image-ID byte from Kitty's official 297 combining diacritics.
+Compatible preceding cells provide the protocol-defined omitted-coordinate
+inheritance. This metadata survives the same scrollback, resize, edit, erase,
+and alternate-screen operations as its cell. The renderer suppresses the
+placeholder from glyph output. The app retains decoded `U=1` prototypes by
+image and placement ID, matches visible cells to them after the graphics event
+has been consumed, and emits cropped per-cell UV regions. The placement store
+also retains conventional `a=p`/`a=T` placements with cursor anchors, explicit
+placement IDs, crop rectangles, cell spans, pixel offsets, and z-index.
+Explicit-ID `a=t` transmissions install data without creating a visible
+placement. Both kinds persist after their APC events are consumed. The renderer
+store is keyed by runtime stream and screen generation. Conventional placements
+may be chained relative to conventional or virtual parents with signed cell
+offsets. The renderer validates parent existence, cycles, and depth; derives a
+virtual parent's origin from matching placeholder cells; and cascades parent
+deletion through descendants. Core scroll events keep conventional anchors
+aligned with full-screen, margin, and scrollback movement. Submission implements
+the extreme-negative background tier, ordinary negative/text/non-negative
+layers, deterministic equal-z ordering, and full-width signed z-index values.
+Deletion selectors, relative-placement result codes, screen isolation, and
+fence-gated GPU resource replacement are implemented.
 The app graphics layer parses bounded kitty and iTerm2 preview headers,
 including kitty format and `c`/`r` cell-span fields plus iTerm2 inline/name and
 numeric width/height metadata, and uses that metadata to choose clamped
@@ -190,54 +232,55 @@ for decoded kitty/iTerm2 data plus bounded partial-decode reason labels for
 invalid bytes, trailing data after padding, and preview truncation through a
 public parser status suffix helper. The graphics layer also exposes a tested
 mapping from parser decode status to render-model image decode status for
-renderer-owned image commands. The renderer accumulates bounded kitty `m=1`
-raw or PNG continuation chunks as app-owned encoded segments beyond the core
-128 KiB preview cap, decodes raw `f=24`/`f=32` chunks directly across those
-segments, and decodes chunked kitty PNG Base64 directly across those segments
-into an exact upper-bound PNG byte staging buffer used by the current PNG
-decoder API. Raw kitty, PNG/JPEG, and sixel decoded output buffers are sized to the
-actual decoded byte count rather than the maximum cap. It renders the combined
-payload when the final chunk arrives. It
-also retains a heap-backed kitty `i=` image object table for subsequent
-placement-only kitty commands that reuse decoded pixels without resending image
-data. Initial `i=` transmissions transfer decoded pixels into that table
-without a second pixel copy, placements borrow stored pixels without copying
-them into each frame, kitty delete actions can release individual IDs or the
-full table, and the existing per-image decode/upload caps remain in place.
-General file-format image decoding supports PNG and JPEG in the current draw
+renderer-owned image commands. The core assembles Kitty continuations beyond
+the 128 KiB preview cap and emits one complete bounded transaction. Raw
+`f=24`/`f=32`, strict PNG `f=100`, and zlib paths decode through prevalidated
+row/byte bounds. Raw, PNG, JPEG, and Sixel decoded buffers use exact decoded
+lengths rather than maximum-cap allocations.
+
+The unified object store retains Kitty IDs, image numbers, reusable pixels,
+placements, usage hints, animation frames, composition, and playback state.
+Placements borrow stored pixels; replacement, deletion, eviction, screen reset,
+and session release update references deterministically. Limits for object
+count, total/per-image bytes, placements, animation frames, pixel dimensions,
+and the GPU atlas are configurable within compiled safety ceilings. Transient
+unplaced objects are preferred eviction candidates, and current plus cumulative
+resource behavior is exposed in diagnostics.
+General file-format image decoding supports PNG, JPEG, and GIF in the current draw
 path, and the renderer model has image commands for sixel, kitty, and iTerm2
 placeholders plus a real textured path for complete bounded kitty raw RGB/RGBA
 payloads with explicit `f=24` or `f=32` format and `s`/`v` pixel dimensions,
-bounded kitty `f=100` PNG/JPEG payloads, bounded sixel rasters decoded to RGBA
-pixels, and bounded iTerm2 PNG/JPEG payloads. The PNG path is inflated through
-the local zlib crate; JPEG is decoded through the local jpeglib crate. The PNG
+bounded Kitty `f=100` PNG payloads, bounded Sixel rasters decoded to RGBA
+pixels, and bounded iTerm2 PNG/JPEG/GIF payloads. The PNG path is inflated through
+the local zlib crate; JPEG is decoded through the local jpeglib crate, and GIF
+frames are decoded and composited through the local giflib crate. The PNG
 path supports grayscale, RGB, indexed, grayscale-alpha, and RGBA images
 across valid PNG bit depths, including palette, simple transparency chunks,
 16-bit downconversion, and Adam7 interlace.
+Non-inline iTerm2 FILE commands can save arbitrary byte content under an
+explicit, disabled-by-default Downloads policy; exclusive no-follow creation,
+safe filename validation, declared-size checks, and quotas bound that path.
 Image commands include total payload length, raw pixel format/dimensions,
-2 MiB bounded encoded/app-accumulated payload metadata, an explicit payload-completeness
-marker for complete bounded payload previews versus preview-only samples,
-1 MiB capped decoded/upload data, plus a separate 4 KiB decoded diagnostics
-preview byte buffer. The app renderer maps the snapshot
+explicit payload-completeness, content serial, borrowed decoded pixels, and a
+separate bounded diagnostics preview. The app renderer maps the snapshot
 graphics event into either a protocol-tinted placeholder image command or a
 texture-backed decoded image command, and the Vulkan submit path turns those
 image commands into quads, so the draw pipeline can carry visible image
-placeholders and real kitty/sixel/iTerm2 PNG/JPEG image textures while retaining the last image
+placeholders and real kitty/sixel/iTerm2 PNG/JPEG/GIF image textures while retaining the last image
 command's payload, preview counts, decoded diagnostics preview bytes, computed placeholder
 dimensions, pixel dimensions, and image vertex counts in renderer diagnostics,
 the submit batch, presenter diagnostics, and Vulkan device upload diagnostics.
-The same
-path carries an explicit placeholder flag so diagnostics distinguish current
-placeholder quads from
-texture-backed image commands. The submit/presenter/device boundary also marks
-texture-requested image commands as downgraded when they are emitted through the
-current placeholder-only path. The submit vertex model reserves a distinct
-image texture source, retains the last image texture source through
-submit/presenter/device diagnostics, tracks how many image vertices are
-texture-backed, and the Vulkan device maps image texture vertices to a
-shader-facing texture id for the raw kitty texture-upload path. Device upload
-uses decoded RGBA buffers directly and only allocates exact RGBA staging when
-raw RGB input needs alpha expansion. Current image
+The same path carries an explicit placeholder flag so diagnostics distinguish
+fallback quads from texture-backed image commands. The submit vertex model
+reserves a distinct image texture source, retains the last source through
+submit/presenter/device diagnostics, and tracks texture-backed image vertices.
+Submission deduplicates shared image storage and packs distinct visible sources
+into a configurable, padded RGBA atlas; per-command crop UVs are remapped to the
+correct atlas slot before the Vulkan device uploads binding 1.
+This prevents separate image objects from aliasing the final source uploaded in
+a frame while allowing repeated placements to share one atlas entry. Content
+serials form a deterministic atlas signature, so an unchanged visible set
+reuses the resident GPU image instead of uploading it again. Fallback
 placeholders continue to use untextured `texture=none` vertices.
 Submit, presenter, and device helpers expose compact image texture readiness
 labels for unavailable, downgraded, and ready states with texture-backed vertex
@@ -468,8 +511,10 @@ surfaces.
 
 ## TERM and Environment
 
-The POSIX backend inherits the parent environment, sets `TERM=xterm-256color`,
-and sets `COLORTERM=truecolor`. `$SHELL` is used when present and executable,
+The POSIX backend inherits the parent environment, sets `TERM=xterm-256color`
+and `COLORTERM=truecolor`, and publishes the truthful
+`TERM_PROGRAM=bracke-terminal` plus `TERM_PROGRAM_VERSION=0.1.0-dev` identity.
+`$SHELL` is used when present and executable,
 otherwise `/bin/sh`. The child creates a new session, opens the PTY slave as
 the controlling terminal, duplicates it to standard input/output/error, and
 execs the shell with `execv`. The PTY backend exposes these identity strings as
@@ -488,7 +533,8 @@ pipe peeking.
 The app PTY write-all helper exposes bounded labels for complete, incomplete,
 failed, and closed-session write outcomes. The app
 package exposes the terminal profile advertised by the frontend:
-`TERM=xterm-256color`, `COLORTERM=truecolor`,
+`TERM=xterm-256color`, `COLORTERM=truecolor`, the `bracke-terminal` program
+identity, direct Kitty RGB/RGBA/PNG queries, Kitty Unicode placeholders,
 bracketed paste, focus reporting, xterm mouse reporting with UTF-8, SGR, and
 urxvt coordinate encodings, DEC synchronized update, OSC 52 clipboard, OSC 8
 hyperlinks, and truecolor support. The profile also records tmux DCS passthrough and that OSC 52
@@ -500,10 +546,15 @@ bounded profile status label summarizing the advertised terminal identity.
 The GLFW app reads app-owned configuration at startup. It first reads
 `ADA_TERMINAL_CONFIG` when set, otherwise
 `$XDG_CONFIG_HOME/ada-terminal/config`, otherwise
-`$HOME/.config/ada-terminal/config`. The supported file keys are `theme`,
-`color-theme`, `scrollback-limit`, `scrollback-rows`, `wheel-scroll-lines`, and
-`scroll-lines`, `window-width`, `window-height`, `startup-rows`, and
-`startup-cols`.
+`$HOME/.config/ada-terminal/config`. The supported file keys include `theme`,
+`color-theme`, `scrollback-limit`, `scrollback-rows`, `wheel-scroll-lines`,
+`scroll-lines`, `window-width`, `window-height`, `startup-rows`,
+`startup-cols`, the Kitty local-media policy keys (`kitty-file-transfer`,
+`kitty-temporary-transfer`, and `kitty-shared-memory`), the disabled-by-default
+`iterm2-file-downloads` policy, and the validated
+`graphics-*` transaction, queue, deferred-input, object, byte, placement,
+animation-frame, pixel-dimension, and GPU-atlas limits documented in
+`graphics_protocol_conformance.md`.
 `ADA_TERMINAL_THEME` can override the file-selected theme.
 Supported theme values are `default`, `dark`, `default-dark`, `light`,
 `high-contrast`, and `high_contrast`; unknown values fall back to the default
