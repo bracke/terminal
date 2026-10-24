@@ -162,9 +162,6 @@ package body Terminal.App.Graphics_Transport is
          return Under (Ada.Environment_Variables.Value ("TMPDIR"));
       end if;
       return False;
-   exception
-      when others =>
-         return False;
    end Safe_Temporary_Path;
 
    procedure Read_Descriptor
@@ -235,7 +232,7 @@ package body Terminal.App.Graphics_Transport is
          Status := Load_Allocation_Failed;
       when others =>
          Release (Bytes);
-         Status := Load_Access_Failed;
+         raise;
    end Read_Descriptor;
 
    procedure Load
@@ -369,14 +366,6 @@ package body Terminal.App.Graphics_Transport is
                Status := Load_Access_Failed;
             end if;
             pragma Unreferenced (Unlinked);
-         exception
-            when others =>
-               if FD /= OS.Invalid_FD then
-                  OS.Close (FD);
-               end if;
-               Release (Bytes);
-               Length := 0;
-               Status := Load_Access_Failed;
          end;
       end if;
    exception
@@ -391,7 +380,7 @@ package body Terminal.App.Graphics_Transport is
             OS.Close (FD);
          end if;
          Release (Bytes);
-         Status := Load_Access_Failed;
+         raise;
    end Load;
 
    procedure Load

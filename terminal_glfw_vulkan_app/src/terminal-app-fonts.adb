@@ -255,9 +255,6 @@ package body Terminal.App.Fonts is
          return Ada.Environment_Variables.Value (Name);
       end if;
       return "";
-   exception
-      when others =>
-         return "";
    end Safe_Environment_Value;
 
    function Natural_Image (Value : Natural) return String is
@@ -307,7 +304,7 @@ package body Terminal.App.Fonts is
         and then Ada.Directories.Exists (Path)
         and then Ada.Directories.Kind (Path) = Ada.Directories.Ordinary_File;
    exception
-      when others =>
+      when Ada.Directories.Name_Error | Ada.Directories.Use_Error =>
          return False;
    end Is_Ordinary_File;
 
@@ -317,7 +314,7 @@ package body Terminal.App.Fonts is
       return Lower = "unifont.ttf"
         or else Lower = "droidsansfallbackfull.ttf";
    exception
-      when others =>
+      when Ada.Directories.Name_Error | Ada.Directories.Use_Error =>
          return False;
    end Is_Known_Unsupported_Renderer_Font;
 
@@ -341,7 +338,7 @@ package body Terminal.App.Fonts is
    exception
       when others =>
          Textrender.Fonts.Reset (Font);
-         return False;
+         raise;
    end Is_Loadable_Font;
 
    function Make_Path (Text : String) return Font_Path is
@@ -403,7 +400,7 @@ package body Terminal.App.Fonts is
          end;
       end if;
    exception
-      when others =>
+      when Ada.Directories.Name_Error | Ada.Directories.Use_Error =>
          return Bounded
            ("Fonts ready; fallbacks="
             & Natural_Image (Fallback_Count)
