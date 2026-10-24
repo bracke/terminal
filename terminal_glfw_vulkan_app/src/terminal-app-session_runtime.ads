@@ -33,6 +33,12 @@ package Terminal.App.Session_Runtime is
      (R      : in out Runtime;
       Status : out Terminal.Core.Feed_Status);
 
+   procedure Poll_Output
+     (R            : in out Runtime;
+      Status       : out Terminal.Core.Feed_Status;
+      Write_Status : out Terminal.App.PTY_Write.Write_All_Status;
+      Had_Output   : out Boolean);
+
    procedure Write
      (R      : in out Runtime;
       Chunk  : Terminal.App.Queues.Byte_Chunk;

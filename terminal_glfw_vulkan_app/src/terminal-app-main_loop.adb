@@ -765,10 +765,8 @@ package body Terminal.App.Main_Loop is
       while not GLFW_Vulkan.Windows.Should_Close (W) loop
             declare
                Chunk      : Terminal.App.Queues.Byte_Chunk;
-               Has_Chunk  : Boolean;
                Event      : Terminal.App.Queues.Input_Event;
                Has_Event  : Boolean;
-               Feed       : Terminal.Core.Feed_Status;
                Write_Stat : Terminal.App.PTY_Write.Write_All_Status;
                Dirty      : Boolean := Need_Redraw;
                Local_Redraw : Boolean := False;
@@ -802,19 +800,35 @@ package body Terminal.App.Main_Loop is
                end if;
                Last_Blink_Tick := Current_Blink_Tick;
 
-               loop
-                  Active_PTY_Queue.all.Pop (Chunk, Has_Chunk);
-                  exit when not Has_Chunk;
-                  if Chunk.Length > 0 then
-                     Terminal.Core.Feed
-                       (Active_Core.all, Chunk.Data (1 .. Chunk.Length), Feed);
-                     Last_Feed_Status := Feed;
-                     Scroll_Offset :=
-                       Terminal.App.Scrollback_View.Clamp_Offset
-                         (Active_Core.all, Scroll_Offset);
-                     Dirty := True;
+               declare
+                  Output : Terminal.App.Session_Table.Runtime_Output_Set;
+                  Runtime_Feed : Terminal.Core.Feed_Status;
+                  Runtime_Write : Terminal.App.PTY_Write.Write_All_Status;
+               begin
+                  Terminal.App.Session_Table.Poll_Output
+                    (Sessions, Output, Runtime_Feed, Runtime_Write);
+                  for I in 1 .. Terminal.App.Session_Table.Count (Sessions) loop
+                     if Output (I) then
+                        Last_Feed_Status := Runtime_Feed;
+                        if (Terminal.App.Splits.Count (Splits) <= 1
+                            and then I = Terminal.App.Session_Table.Active
+                              (Sessions))
+                          or else
+                            (Terminal.App.Splits.Count (Splits) > 1
+                             and then I <= Terminal.App.Splits.Count (Splits))
+                        then
+                           Dirty := True;
+                        end if;
+                     end if;
+                  end loop;
+                  if Runtime_Write /= Terminal.App.PTY_Write.Ok then
+                     Last_Write_Status := Runtime_Write;
+                     GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                   end if;
-               end loop;
+               end;
+               Scroll_Offset :=
+                 Terminal.App.Scrollback_View.Clamp_Offset
+                   (Active_Core.all, Scroll_Offset);
                Apply_Title
                  (W,
                   Terminal.Core.Title (Active_Core.all),
@@ -838,23 +852,6 @@ package body Terminal.App.Main_Loop is
                      GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                   end if;
                end;
-
-               while
-                 Terminal.Core.Pending_Response_Length (Active_Core.all) > 0
-               loop
-                  Chunk := (others => <>);
-                  Terminal.Core.Read_Response
-                    (Active_Core.all, Chunk.Data, Chunk.Length);
-                  if Chunk.Length > 0 then
-                     Terminal.App.Session_Runtime.Write
-                       (Active_Runtime.all, Chunk, Write_Stat);
-                     Last_Write_Status := Write_Stat;
-                     if Write_Stat /= Terminal.App.PTY_Write.Ok then
-                        GLFW_Vulkan.Windows.Set_Should_Close (W, True);
-                        exit;
-                     end if;
-                  end if;
-               end loop;
 
                loop
                   In_Q.Pop (Event, Has_Event);

@@ -93,6 +93,9 @@ procedure Session_Hardening_Smoke is
       Split_State : Splits.Split_State;
       Status : Tables.Table_Status;
       Write_Status : Terminal.App.PTY_Write.Write_All_Status;
+      Feed_Status : Terminal.Core.Feed_Status;
+      Output : Tables.Runtime_Output_Set;
+      Seen_Output : Tables.Runtime_Output_Set := (others => False);
    begin
       Tabs.Initialize (Tab_State);
       Splits.Initialize (Split_State);
@@ -122,8 +125,33 @@ procedure Session_Hardening_Smoke is
             Assert
               (Write_Status = Terminal.App.PTY_Write.Ok,
                "churn runtime write" & Natural'Image (I));
-            Drain_For (R.all, 30);
          end;
+      end loop;
+      declare
+         Deadline : constant Ada.Real_Time.Time :=
+           Ada.Real_Time.Clock + Ada.Real_Time.Milliseconds (300);
+      begin
+         while Ada.Real_Time.Clock < Deadline loop
+            Tables.Poll_Output
+              (Table, Output, Feed_Status, Write_Status);
+            for I in 1 .. Tables.Count (Table) loop
+               Seen_Output (I) := Seen_Output (I) or else Output (I);
+            end loop;
+            exit when
+              (for all I in 1 .. Tables.Count (Table) => Seen_Output (I));
+            delay 0.01;
+         end loop;
+      end;
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "all runtime output feeds remain valid");
+      Assert
+        (Write_Status = Terminal.App.PTY_Write.Ok,
+         "all runtime responses use their owning PTY");
+      for I in 1 .. Tables.Count (Table) loop
+         Assert
+           (Seen_Output (I),
+            "table polling consumes background runtime" & Natural'Image (I));
       end loop;
 
       while Tables.Count (Table) > 1 loop

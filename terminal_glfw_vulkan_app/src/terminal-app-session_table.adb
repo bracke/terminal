@@ -1,6 +1,8 @@
 with Ada.Unchecked_Deallocation;
+with Terminal.App.PTY_Write;
 
 package body Terminal.App.Session_Table is
+   use type Terminal.App.PTY_Write.Write_All_Status;
    use type Terminal.App.Session_Runtime.Runtime_Status;
    use type Terminal.App.Session_Runtime.Start_Status;
    use type Terminal.App.Sessions.Session_Status;
@@ -289,6 +291,37 @@ package body Terminal.App.Session_Table is
    begin
       return Table.Runtimes (Index);
    end Runtime_At;
+
+   procedure Poll_Output
+     (Table        : in out Runtime_Table;
+      Had_Output   : out Runtime_Output_Set;
+      Feed_Status  : out Terminal.Core.Feed_Status;
+      Write_Status : out Terminal.App.PTY_Write.Write_All_Status)
+   is
+      Runtime_Feed   : Terminal.Core.Feed_Status;
+      Runtime_Write  : Terminal.App.PTY_Write.Write_All_Status;
+      Runtime_Output : Boolean;
+   begin
+      Had_Output := (others => False);
+      Feed_Status := Terminal.Core.Ok;
+      Write_Status := Terminal.App.PTY_Write.Ok;
+      for I in 1 .. Count (Table) loop
+         if Table.Runtimes (I) /= null then
+            Terminal.App.Session_Runtime.Poll_Output
+              (Table.Runtimes (I).all,
+               Runtime_Feed,
+               Runtime_Write,
+               Runtime_Output);
+            Had_Output (I) := Runtime_Output;
+            if Runtime_Output then
+               Feed_Status := Runtime_Feed;
+            end if;
+            if Runtime_Write /= Terminal.App.PTY_Write.Ok then
+               Write_Status := Runtime_Write;
+            end if;
+         end if;
+      end loop;
+   end Poll_Output;
 
    function Status_Label (Table : Runtime_Table) return String is
    begin

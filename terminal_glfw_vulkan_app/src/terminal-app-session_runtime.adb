@@ -143,11 +143,25 @@ package body Terminal.App.Session_Runtime is
      (R      : in out Runtime;
       Status : out Terminal.Core.Feed_Status)
    is
+      Write_Status : Terminal.App.PTY_Write.Write_All_Status;
+      Had_Output   : Boolean;
+   begin
+      Poll_Output (R, Status, Write_Status, Had_Output);
+   end Poll_Output;
+
+   procedure Poll_Output
+     (R            : in out Runtime;
+      Status       : out Terminal.Core.Feed_Status;
+      Write_Status : out Terminal.App.PTY_Write.Write_All_Status;
+      Had_Output   : out Boolean)
+   is
       Chunk : Terminal.App.Queues.Byte_Chunk;
       Has_Chunk : Boolean;
       Feed : Terminal.Core.Feed_Status := Terminal.Core.Ok;
    begin
       Status := Terminal.Core.Ok;
+      Write_Status := Terminal.App.PTY_Write.Ok;
+      Had_Output := False;
       if R.Current_State /= Active or else R.T = null or else R.Q = null then
          Status := Terminal.Core.Invalid_State;
          return;
@@ -157,9 +171,18 @@ package body Terminal.App.Session_Runtime is
          R.Q.Pop (Chunk, Has_Chunk);
          exit when not Has_Chunk;
          if Chunk.Length > 0 then
+            Had_Output := True;
             Terminal.Core.Feed (R.T.all, Chunk.Data (1 .. Chunk.Length), Feed);
             Status := Feed;
          end if;
+      end loop;
+
+      while Terminal.Core.Pending_Response_Length (R.T.all) > 0 loop
+         Chunk := (others => <>);
+         Terminal.Core.Read_Response (R.T.all, Chunk.Data, Chunk.Length);
+         exit when Chunk.Length = 0;
+         Write (R, Chunk, Write_Status);
+         exit when Write_Status /= Terminal.App.PTY_Write.Ok;
       end loop;
    end Poll_Output;
 

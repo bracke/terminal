@@ -1,3 +1,4 @@
+with Terminal.App.PTY_Write;
 with Terminal.App.Session_Runtime;
 with Terminal.App.Sessions;
 with Terminal.App.Splits;
@@ -15,6 +16,8 @@ package Terminal.App.Session_Table is
       Invalid_Index);
 
    type Runtime_Table is limited private;
+   type Runtime_Output_Set is
+     array (Terminal.App.Sessions.Session_Index) of Boolean;
 
    procedure Initialize
      (Table            : in out Runtime_Table;
@@ -66,6 +69,11 @@ package Terminal.App.Session_Table is
      (Table : Runtime_Table;
       Index : Terminal.App.Sessions.Session_Index)
       return access Terminal.App.Session_Runtime.Runtime;
+   procedure Poll_Output
+     (Table        : in out Runtime_Table;
+      Had_Output   : out Runtime_Output_Set;
+      Feed_Status  : out Terminal.Core.Feed_Status;
+      Write_Status : out Terminal.App.PTY_Write.Write_All_Status);
    function Status_Label (Table : Runtime_Table) return String;
 
    procedure Close_All (Table : in out Runtime_Table);
