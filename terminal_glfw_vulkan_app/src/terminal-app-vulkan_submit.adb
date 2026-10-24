@@ -9,14 +9,18 @@ package body Terminal.App.Vulkan_Submit is
    package RM renames Terminal.App.Render_Model;
 
    use type RM.Glyph_Array_Access;
+   use type RM.Glyph_Array_View;
    use type RM.Image_Array_Access;
+   use type RM.Image_Array_View;
    use type RM.Image_Data_Access;
    use type RM.Image_Decode_Status;
    use type RM.Image_Decoded_Source_Kind;
    use type RM.Image_Protocol;
    use type RM.Rectangle_Array_Access;
+   use type RM.Rectangle_Array_View;
    use type RM.Rectangle_Layer;
    use type RM.Text_Run_Array_Access;
+   use type RM.Text_Run_Array_View;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
    use type Vertex_Array_Access;
@@ -76,6 +80,7 @@ package body Terminal.App.Vulkan_Submit is
 
    use type System.Address;
    use type RM.Colour_Glyph_Array_Access;
+   use type RM.Colour_Glyph_Array_View;
 
    procedure Free_Vertices is new Ada.Unchecked_Deallocation
      (Vertex_Array, Vertex_Array_Access);

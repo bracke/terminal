@@ -9,7 +9,11 @@ with Terminal.Common.Status;
 with Terminal.App.Fonts;
 with Terminal.App.Graphics;
 with Terminal.App.Graphics_Transport;
+with Terminal.App.Image_Ingestion;
 with Terminal.App.Image_Media;
+with Terminal.App.Image_Store;
+with Terminal.App.Image_Placements;
+with Terminal.App.Image_Rendering;
 with Terminal.App.ITerm2_Files;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Render_Model;
@@ -24,6 +28,12 @@ package body Terminal.App.Renderer is
    use type Terminal.Core.Cell_Kind;
    use type Terminal.App.ITerm2_Files.Save_Status;
    use type Terminal.App.Image_Media.Decode_Status;
+   use type Terminal.App.Image_Store.Animation_Playback_State;
+   use type Terminal.App.Image_Store.Image_Frame_Access;
+   use type Terminal.App.Image_Store.Image_Object_Access;
+   use type Terminal.App.Image_Store.Theme_Operation_Access;
+   use type Terminal.App.Image_Placements.Virtual_Placement_Access;
+   use type Terminal.App.Image_Placements.Conventional_Placement_Access;
    use type Terminal.Core.Cell_Width;
    use type Terminal.Core.Color_Kind;
    use type Terminal.Core.Cursor_Shape;
@@ -79,6 +89,16 @@ package body Terminal.App.Renderer is
    begin
       return Text (Text'First + 1 .. Text'Last);
    end Trimmed_Natural;
+
+   function Bounded_Status_Label (Text : String) return String is
+     (if Text'Length <= Max_Status_Label_Length
+      then Text
+      else Text (Text'First .. Text'First + Max_Status_Label_Length - 1));
+
+   procedure Clear_Last_Media_Diagnostics (R : in out Renderer) is
+   begin
+      Terminal.App.Image_Rendering.Clear (R.Last_Media);
+   end Clear_Last_Media_Diagnostics;
 
    procedure Free_Rectangles is new Ada.Unchecked_Deallocation
      (RM.Rectangle_Array, RM.Rectangle_Array_Access);
@@ -282,11 +302,14 @@ package body Terminal.App.Renderer is
 
       return Width > 0 and then Height > 0;
    exception
-      when others =>
+      when Storage_Error | Constraint_Error =>
          Width := 0;
          Height := 0;
          Terminal.App.Graphics.Release (Result);
          return False;
+      when others =>
+         Terminal.App.Graphics.Release (Result);
+         raise;
    end Colour_PNG_Extent;
 
    function Decode_Colour_PNG
@@ -340,9 +363,12 @@ package body Terminal.App.Renderer is
       Terminal.App.Graphics.Release (Result);
       return True;
    exception
-      when others =>
+      when Storage_Error | Constraint_Error =>
          Terminal.App.Graphics.Release (Result);
          return False;
+      when others =>
+         Terminal.App.Graphics.Release (Result);
+         raise;
    end Decode_Colour_PNG;
 
    function XTerm_Cube_Component (Value : Natural) return Float is
@@ -614,28 +640,7 @@ package body Terminal.App.Renderer is
    begin
       if R.Images /= null then
          for I in 1 .. R.Image_Count loop
-            if R.Images (I).Decoded_Preview_Bytes /= null
-              and then R.Images (I).Decoded_Preview_Bytes_Owned
-            then
-               Free_Image_Data (R.Images (I).Decoded_Preview_Bytes);
-            end if;
-            R.Images (I).Decoded_Preview_Bytes := null;
-            R.Images (I).Decoded_Preview_Bytes_Owned := False;
-            if R.Images (I).Decoded_Bytes /= null
-              and then R.Images (I).Decoded_Bytes_Owned
-            then
-               Free_Image_Data (R.Images (I).Decoded_Bytes);
-            end if;
-            R.Images (I).Decoded_Bytes := null;
-            R.Images (I).Decoded_Bytes_Owned := False;
-            if R.Images (I).Encoded_Source_Bytes /= null
-              and then R.Images (I).Encoded_Source_Bytes_Owned
-            then
-               Free_Image_Data (R.Images (I).Encoded_Source_Bytes);
-            end if;
-            R.Images (I).Encoded_Source_Bytes := null;
-            R.Images (I).Encoded_Source_Bytes_Owned := False;
-            R.Images (I).Encoded_Source_Length := 0;
+            RM.Release_Owned_Buffers (R.Images (I));
          end loop;
       end if;
       R.Rectangle_Count := 0;
@@ -1008,15 +1013,7 @@ package body Terminal.App.Renderer is
       Alternate_Screen  : Boolean;
       Screen_Generation : Terminal.Core.Graphics_Screen_Generation);
 
-   type Placement_Geometry is record
-      Valid         : Boolean := False;
-      Columns       : Positive := 1;
-      Rows          : Positive := 1;
-      Draw_Offset_X : Natural := 0;
-      Draw_Offset_Y : Natural := 0;
-      Draw_Width    : Positive := 1;
-      Draw_Height   : Positive := 1;
-   end record;
+   subtype Placement_Geometry is Terminal.App.Image_Placements.Geometry;
 
    function Resolve_Placement_Geometry
      (R      : Renderer;
@@ -1024,137 +1021,8 @@ package body Terminal.App.Renderer is
       Pixel_Height : Natural;
       Header : Terminal.App.Graphics.Graphics_Header)
       return Placement_Geometry
-   is
-      use type Long_Long_Integer;
-      Result : Placement_Geometry;
-      Source_Width  : Natural;
-      Source_Height : Natural;
-      Source_W : Long_Long_Integer;
-      Source_H : Long_Long_Integer;
-      Cell_W   : constant Long_Long_Integer := Long_Long_Integer (R.CW);
-      Cell_H   : constant Long_Long_Integer := Long_Long_Integer (R.CH);
-      Cols     : Long_Long_Integer := 1;
-      Rows     : Long_Long_Integer := 1;
-      Box_W    : Long_Long_Integer := 1;
-      Box_H    : Long_Long_Integer := 1;
-      Draw_W   : Long_Long_Integer := 1;
-      Draw_H   : Long_Long_Integer := 1;
-
-      function Ceiling_Divide
-        (Dividend : Long_Long_Integer;
-         Divisor  : Long_Long_Integer) return Long_Long_Integer is
-        ((Dividend + Divisor - 1) / Divisor);
-
-      function Fits_Natural (Value : Long_Long_Integer) return Boolean is
-        (Value >= 0
-         and then Value <= Long_Long_Integer (Natural'Last));
-
-      function Fits_Positive (Value : Long_Long_Integer) return Boolean is
-        (Value >= 1
-         and then Value <= Long_Long_Integer (Positive'Last));
-   begin
-      if Pixel_Width = 0
-        or else Pixel_Height = 0
-        or else R.CW = 0
-        or else R.CH = 0
-        or else not Header.Kitty_Columns_Valid
-        or else not Header.Kitty_Rows_Valid
-        or else not Header.Kitty_Geometry_Controls_Valid
-        or else Header.Kitty_Cell_X >= R.CW
-        or else Header.Kitty_Cell_Y >= R.CH
-        or else Header.Kitty_Source_X >= Pixel_Width
-        or else Header.Kitty_Source_Y >= Pixel_Height
-      then
-         return Result;
-      end if;
-
-      Source_Width := Pixel_Width - Header.Kitty_Source_X;
-      Source_Height := Pixel_Height - Header.Kitty_Source_Y;
-      if Header.Kitty_Source_Width > 0 then
-         Source_Width := Natural'Min
-           (Source_Width, Header.Kitty_Source_Width);
-      end if;
-      if Header.Kitty_Source_Height > 0 then
-         Source_Height := Natural'Min
-           (Source_Height, Header.Kitty_Source_Height);
-      end if;
-      if Source_Width = 0 or else Source_Height = 0 then
-         return Result;
-      end if;
-
-      Source_W := Long_Long_Integer (Source_Width);
-      Source_H := Long_Long_Integer (Source_Height);
-      if Header.Kitty_Columns_Specified then
-         Cols := Long_Long_Integer (Header.Placeholder_Cols);
-      end if;
-      if Header.Kitty_Rows_Specified then
-         Rows := Long_Long_Integer (Header.Placeholder_Rows);
-      end if;
-
-      if not Header.Kitty_Columns_Specified
-        and then not Header.Kitty_Rows_Specified
-      then
-         Draw_W := Source_W;
-         Draw_H := Source_H;
-         Cols := Ceiling_Divide (Draw_W, Cell_W);
-         Rows := Ceiling_Divide (Draw_H, Cell_H);
-         Box_W := Cols * Cell_W;
-         Box_H := Rows * Cell_H;
-      elsif Header.Kitty_Columns_Specified
-        and then not Header.Kitty_Rows_Specified
-      then
-         Box_W := Cols * Cell_W;
-         Draw_W := Box_W;
-         Draw_H := Long_Long_Integer'Max
-           (1, (Box_W * Source_H) / Source_W);
-         Rows := Ceiling_Divide (Draw_H, Cell_H);
-         Box_H := Rows * Cell_H;
-      elsif not Header.Kitty_Columns_Specified
-        and then Header.Kitty_Rows_Specified
-      then
-         Box_H := Rows * Cell_H;
-         Draw_H := Box_H;
-         Draw_W := Long_Long_Integer'Max
-           (1, (Box_H * Source_W) / Source_H);
-         Cols := Ceiling_Divide (Draw_W, Cell_W);
-         Box_W := Cols * Cell_W;
-      else
-         Box_W := Cols * Cell_W;
-         Box_H := Rows * Cell_H;
-         if Source_W * Box_H >= Source_H * Box_W then
-            Draw_W := Box_W;
-            Draw_H := Long_Long_Integer'Max
-              (1, (Box_W * Source_H) / Source_W);
-         else
-            Draw_H := Box_H;
-            Draw_W := Long_Long_Integer'Max
-              (1, (Box_H * Source_W) / Source_H);
-         end if;
-      end if;
-
-      if not Fits_Positive (Cols)
-        or else not Fits_Positive (Rows)
-        or else not Fits_Positive (Draw_W)
-        or else not Fits_Positive (Draw_H)
-        or else not Fits_Natural (Box_W)
-        or else not Fits_Natural (Box_H)
-      then
-         return Result;
-      end if;
-
-      Result :=
-        (Valid         => True,
-         Columns       => Positive (Cols),
-         Rows          => Positive (Rows),
-         Draw_Offset_X => Natural ((Box_W - Draw_W) / 2),
-         Draw_Offset_Y => Natural ((Box_H - Draw_H) / 2),
-         Draw_Width    => Positive (Draw_W),
-         Draw_Height   => Positive (Draw_H));
-      return Result;
-   exception
-      when Constraint_Error =>
-         return (others => <>);
-   end Resolve_Placement_Geometry;
+      is (Terminal.App.Image_Placements.Resolve
+            (R.CW, R.CH, Pixel_Width, Pixel_Height, Header));
 
    function Resolve_Placement_Geometry
      (R      : Renderer;
@@ -1782,6 +1650,11 @@ package body Terminal.App.Renderer is
       end if;
       Columns := Positive'Max (1, 1 + (Draw_Width - 1) / R.CW);
       Rows := Positive'Max (1, 1 + (Draw_Height - 1) / R.CH);
+      if not Terminal.App.Image_Store.Allocation_Allowed
+        (R.Image_Allocation_Control)
+      then
+         return False;
+      end if;
       Placement := new Conventional_Placement'
         (Stream_ID      => Event.Stream_ID,
          Alternate_Screen => Event.Alternate_Screen,
@@ -4410,12 +4283,18 @@ package body Terminal.App.Renderer is
          end if;
          Release_Local;
          R.Last_Animation_Result := Terminal.Core.Kitty_ENOMEM;
-      when others =>
+      when Constraint_Error =>
          if Compressed_Bytes /= null and then Compressed_Bytes_Owned then
             Free_Image_Data (Compressed_Bytes);
          end if;
          Release_Local;
          R.Last_Animation_Result := Terminal.Core.Kitty_EINVAL;
+      when others =>
+         if Compressed_Bytes /= null and then Compressed_Bytes_Owned then
+            Free_Image_Data (Compressed_Bytes);
+         end if;
+         Release_Local;
+         raise;
    end Apply_Animation_Frame;
 
    procedure Delete_Animation_Frames
@@ -4521,7 +4400,7 @@ package body Terminal.App.Renderer is
       Touch_Image_Object (R, Object);
       R.Last_Animation_Result := Terminal.Core.Kitty_OK;
    exception
-      when others =>
+      when Constraint_Error =>
          R.Last_Animation_Result := Terminal.Core.Kitty_EINVAL;
    end Apply_Animation_Control;
 
@@ -4726,9 +4605,12 @@ package body Terminal.App.Renderer is
       when Storage_Error =>
          Release_Local;
          R.Last_Animation_Result := Terminal.Core.Kitty_ENOSPC;
-      when others =>
+      when Constraint_Error =>
          Release_Local;
          R.Last_Animation_Result := Terminal.Core.Kitty_EINVAL;
+      when others =>
+         Release_Local;
+         raise;
    end Apply_Animation_Composition;
 
    function Display_Frame_Bytes
@@ -5009,9 +4891,12 @@ package body Terminal.App.Renderer is
       when Storage_Error =>
          Terminal.App.Graphics.Release (Data);
          return Terminal.Core.Kitty_ENOMEM;
-      when others =>
+      when Constraint_Error =>
          Terminal.App.Graphics.Release (Data);
          return Terminal.Core.Kitty_EINVAL;
+      when others =>
+         Terminal.App.Graphics.Release (Data);
+         raise;
    end Validate_Kitty_Query_Data;
 
    function Image_Buffer_Extent
@@ -5120,24 +5005,6 @@ package body Terminal.App.Renderer is
         (Preview_Bytes'First .. Preview_Bytes'First + Preview_Length - 1);
       return Result;
    end Image_Preview_Source;
-
-   function Copy_Text_Bytes (Text : String) return RM.Image_Data_Access is
-      Result : RM.Image_Data_Access;
-   begin
-      if Text'Length = 0 then
-         return null;
-      end if;
-
-      Result := new Terminal.Common.Bytes.Byte_Array (1 .. Text'Length);
-      for I in Text'Range loop
-         Result (I - Text'First + 1) :=
-           Terminal.Common.Bytes.Byte (Character'Pos (Text (I)));
-      end loop;
-      return Result;
-   exception
-      when Storage_Error =>
-         return null;
-   end Copy_Text_Bytes;
 
    procedure Capture_Image_Preview_Row
      (Preview_Length : in out Natural;
@@ -5296,16 +5163,6 @@ package body Terminal.App.Renderer is
          return Complete_Event_Text (R, Item);
       end Event_Text;
 
-      function Kitty_Data_Start (Text : String) return Natural is
-      begin
-         for I in Text'Range loop
-            if Text (I) = ';' then
-               return (if I < Text'Last then I + 1 else 0);
-            end if;
-         end loop;
-         return 0;
-      end Kitty_Data_Start;
-
       function Emit_Raw_Kitty
         (Item       : Terminal.Core.Graphics_Event;
          Header     : Terminal.App.Graphics.Graphics_Header;
@@ -5329,7 +5186,9 @@ package body Terminal.App.Renderer is
                  Header.Pixel_Width,
                  Header.Pixel_Height,
                  Row_Stride);
-         First_Data : constant Natural := Kitty_Data_Start (Image_Text);
+         First_Data : constant Natural :=
+           Terminal.App.Image_Ingestion.Payload_Start
+             (Terminal.App.Image_Ingestion.Kitty, Image_Text);
          X : constant Float :=
            Float (Origin_X (R) + (Item.Col - 1) * R.CW);
          Y : constant Float :=
@@ -5346,6 +5205,7 @@ package body Terminal.App.Renderer is
          Encoded_Source : RM.Image_Data_Access := null;
          Encoded_Source_Owned : Boolean := False;
          Borrowed_From_Object : Boolean := False;
+         Install : Terminal.App.Image_Store.Install_Transaction;
          Store_Decoded : constant Boolean :=
            Header.Kitty_ID > 0
            or else Header.Kitty_Action = 'T'
@@ -5381,7 +5241,14 @@ package body Terminal.App.Renderer is
          end Capture_Raw_Row;
 
          procedure Release_Local is
+            Installed_Order : Interfaces.Unsigned_64;
          begin
+            Terminal.App.Image_Store.Take_Rollback_Order
+              (Install, Installed_Order);
+            if Installed_Order /= 0 then
+               Delete_Image_Object_By_Storage_Order
+                 (R, Item.Stream_ID, Installed_Order);
+            end if;
             Terminal.App.Graphics.Release (Data);
             if Image_Bytes /= null and then Image_Bytes_Owned then
                Free_Image_Data (Image_Bytes);
@@ -5483,6 +5350,14 @@ package body Terminal.App.Renderer is
             Render_Stride := Header.Pixel_Width * 4;
          end if;
 
+         if Header.Kitty_Action = 'T'
+           and then not Resolve_Placement_Geometry
+             (R, Header.Pixel_Width, Header.Pixel_Height, Header).Valid
+         then
+            Release_Local;
+            return False;
+         end if;
+
          if Header.Kitty_ID > 0 or else Header.Kitty_Action = 'T' then
             declare
                Stored_Bytes : RM.Image_Data_Access;
@@ -5505,6 +5380,8 @@ package body Terminal.App.Renderer is
                   Additional_Bytes =>
                     (if Raw_Format in 8 | 16 then Data.Decoded_Length else 0));
                if Stored_Bytes /= null then
+                  Terminal.App.Image_Store.Record_Install
+                    (Install, R.Last_Stored_Image_Order);
                   Image_Bytes := Stored_Bytes;
                   Image_Bytes_Owned := False;
                   Borrowed_From_Object := True;
@@ -5537,9 +5414,12 @@ package body Terminal.App.Renderer is
            and then not Borrowed_From_Object
          then
             Encoded_Source :=
-              Copy_Text_Bytes (Image_Text (First_Data .. Image_Text'Last));
+              Terminal.App.Image_Ingestion.Copy_Text
+                (Image_Text (First_Data .. Image_Text'Last),
+                 R.Image_Allocation_Control);
             Encoded_Source_Owned := Encoded_Source /= null;
             if Encoded_Source = null then
+               R.Image_Store_Allocation_Failed := True;
                Release_Local;
                return False;
             end if;
@@ -5644,6 +5524,7 @@ package body Terminal.App.Renderer is
                Tint           => Graphics_Tint (Terminal.Core.Kitty_Graphics));
          end;
          Encoded_Source_Owned := False;
+         Terminal.App.Image_Store.Commit (Install);
          if Indexed_Bytes /= null and then Indexed_Bytes_Owned then
             Free_Image_Data (Indexed_Bytes);
             Indexed_Bytes := null;
@@ -5728,11 +5609,15 @@ package body Terminal.App.Renderer is
          return True;
       end Emit_Image_Object;
 
+      type Image_Emit_Result is
+        (Emit_Not_Applicable, Emit_Succeeded, Emit_Rejected);
+
       function Emit_PNG_Rows
         (Item       : Terminal.Core.Graphics_Event;
          Header     : Terminal.App.Graphics.Graphics_Header;
          Image_Text : String;
-         Allow_Unknown_Compressed_Size : Boolean := False) return Boolean
+         Allow_Unknown_Compressed_Size : Boolean := False)
+          return Image_Emit_Result
       is
          From : Natural := 0;
          X : constant Float :=
@@ -5755,6 +5640,7 @@ package body Terminal.App.Renderer is
          Encoded_Source : RM.Image_Data_Access := null;
          Encoded_Source_Owned : Boolean := False;
          Borrowed_From_Object : Boolean := False;
+         Install : Terminal.App.Image_Store.Install_Transaction;
          Store_Decoded : constant Boolean :=
            Item.Protocol = Terminal.Core.ITerm2_Graphics
            or else
@@ -5778,7 +5664,14 @@ package body Terminal.App.Renderer is
          end PNG_Text;
 
          procedure Release_Local is
+            Installed_Order : Interfaces.Unsigned_64;
          begin
+            Terminal.App.Image_Store.Take_Rollback_Order
+              (Install, Installed_Order);
+            if Installed_Order /= 0 then
+               Delete_Image_Object_By_Storage_Order
+                 (R, Item.Stream_ID, Installed_Order);
+            end if;
             if Image_Bytes /= null and then Image_Bytes_Owned then
                Free_Image_Data (Image_Bytes);
                Image_Bytes := null;
@@ -5824,7 +5717,7 @@ package body Terminal.App.Renderer is
            or else Item.Payload_Length = 0
            or else Image_Text'Length /= Item.Payload_Length
          then
-            return False;
+            return Emit_Rejected;
          elsif Item.Protocol = Terminal.Core.Kitty_Graphics then
             if Header.Kitty_Format /= 100
               or else Header.Kitty_Compression not in ASCII.NUL | 'z'
@@ -5833,27 +5726,24 @@ package body Terminal.App.Renderer is
                  and then Header.Kitty_Data_Size = 0
                  and then not Allow_Unknown_Compressed_Size)
             then
-               return False;
+               return Emit_Not_Applicable;
             end if;
-            From := Kitty_Data_Start (Image_Text);
+            From := Terminal.App.Image_Ingestion.Payload_Start
+              (Terminal.App.Image_Ingestion.Kitty, Image_Text);
          elsif Item.Protocol = Terminal.Core.ITerm2_Graphics then
-            for I in Image_Text'Range loop
-               if Image_Text (I) = ':' then
-                  From := (if I < Image_Text'Last then I + 1 else 0);
-                  exit;
-               end if;
-            end loop;
+            From := Terminal.App.Image_Ingestion.Payload_Start
+              (Terminal.App.Image_Ingestion.ITerm2, Image_Text);
          else
-            return False;
+            return Emit_Not_Applicable;
          end if;
 
          if From = 0 then
-            return False;
+            return Emit_Rejected;
          end if;
 
          Encoded_Length := Image_Text'Last - From + 1;
          if Encoded_Length = 0 then
-            return False;
+            return Emit_Rejected;
          end if;
 
          if Item.Protocol = Terminal.Core.ITerm2_Graphics then
@@ -5912,16 +5802,19 @@ package body Terminal.App.Renderer is
                         R.Graphics_Limits.Pixel_Dimension,
                         Media,
                         Media_Status);
-                     R.Last_Media_Diagnostic := Media.Diagnostic;
-                     R.Last_Media_Peak_Working_Bytes :=
-                       Media.Peak_Working_Bytes;
+                     Terminal.App.Image_Rendering.Capture
+                       (R.Last_Media, Media, Media_Status);
                      Free_Image_Data (Blob);
+                     Data.Decode_Status := Media_Status;
                      if Media_Status = Terminal.App.Image_Media.Decode_Ok
                        and then Media.Bytes /= null
                        and then Media.Frame_Count > 0
-                       and then Media.Frame_Count - 1 <=
-                         R.Graphics_Limits.Animation_Frames
-                            - R.Animation_Frame_Count
+                       and then
+                         Terminal.App.Image_Rendering.
+                           Animation_Capacity_Available
+                             (R.Animation_Frame_Count,
+                              Media.Frame_Count,
+                              R.Graphics_Limits.Animation_Frames)
                      then
                         Terminal.App.Graphics.Release (Data);
                         Data :=
@@ -5959,9 +5852,31 @@ package body Terminal.App.Renderer is
                            Media.Frame_Bytes,
                            Preview_Length,
                            Preview_Bytes);
+                     elsif Media_Status =
+                       Terminal.App.Image_Media.Decode_Ok
+                     then
+                        if Media.Bytes = null
+                          or else Media.Frame_Count = 0
+                        then
+                           Data.Decode_Status :=
+                             Terminal.App.Graphics.Decode_Invalid_Data;
+                           Terminal.App.Image_Rendering.Set_Status
+                             (R.Last_Media,
+                              Terminal.App.Image_Media.Decode_Invalid);
+                        else
+                           Data.Decode_Status :=
+                             Terminal.App.Graphics.Decode_Too_Large;
+                           Terminal.App.Image_Rendering.Set_Status
+                             (R.Last_Media,
+                              Terminal.App.Image_Media.Decode_Too_Large);
+                        end if;
                      end if;
-                  elsif Blob /= null then
-                     Free_Image_Data (Blob);
+                  else
+                     Data.Decode_Status := Base64_Status;
+                     Data.Decode_Complete := False;
+                     if Blob /= null then
+                        Free_Image_Data (Blob);
+                     end if;
                   end if;
                end;
             end if;
@@ -5984,6 +5899,13 @@ package body Terminal.App.Renderer is
                Data);
          end if;
 
+         if Item.Protocol = Terminal.Core.ITerm2_Graphics
+           and then not R.Last_Media.Attempted
+         then
+            Terminal.App.Image_Rendering.Set_Status
+              (R.Last_Media, Data.Decode_Status);
+         end if;
+
          if Row_Copy_Failed
            or else not Data.Decode_Complete
            or else Data.Decoded_Length = 0
@@ -5995,8 +5917,43 @@ package body Terminal.App.Renderer is
              (Store_Decoded
               and then not Image_Buffer_Ready (Data, Image_Bytes))
          then
+            if Data.Decode_Status =
+              Terminal.App.Graphics.Decode_Allocation_Failed
+            then
+               R.Image_Store_Allocation_Failed := True;
+            end if;
             Release_Local;
-            return False;
+            return Emit_Rejected;
+         end if;
+
+         --  Validate every fallible or rejectable input property before the
+         --  decoded image is installed.  Replacement of an explicit Kitty ID
+         --  is destructive, so there must be no rejection path after it.
+         if Item.Protocol = Terminal.Core.Kitty_Graphics
+           and then Header.Kitty_Action = 'T'
+           and then not Resolve_Placement_Geometry
+             (R, Data.Pixel_Width, Data.Pixel_Height, Header).Valid
+         then
+            Release_Local;
+            return Emit_Rejected;
+         end if;
+
+         if Item.Protocol = Terminal.Core.ITerm2_Graphics then
+            Encoded_Source := Terminal.App.Image_Ingestion.Copy_Text
+              (Image_Text (From .. Image_Text'Last),
+               R.Image_Allocation_Control);
+            Encoded_Source_Owned := Encoded_Source /= null;
+            if Encoded_Source = null then
+               R.Image_Store_Allocation_Failed := True;
+               Terminal.App.Image_Rendering.Set_Status
+                 (R.Last_Media,
+                  Terminal.App.Image_Media.Decode_Allocation_Failed);
+               Release_Local;
+               return Emit_Rejected;
+            end if;
+            if PNG_Length = 0 and then Data.Decode_Complete then
+               PNG_Length := Data.Decoded_Length;
+            end if;
          end if;
 
          if Item.Protocol = Terminal.Core.Kitty_Graphics
@@ -6021,6 +5978,8 @@ package body Terminal.App.Renderer is
                   Bytes          => Image_Bytes,
                   Stored_Bytes   => Stored_Bytes);
                if Stored_Bytes /= null then
+                  Terminal.App.Image_Store.Record_Install
+                    (Install, R.Last_Stored_Image_Order);
                   Image_Bytes := Stored_Bytes;
                   Image_Bytes_Owned := False;
                   Borrowed_From_Object := True;
@@ -6051,8 +6010,10 @@ package body Terminal.App.Renderer is
                      else 0));
                if Stored_Bytes = null then
                   Release_Local;
-                  return False;
+                  return Emit_Rejected;
                end if;
+               Terminal.App.Image_Store.Record_Install
+                 (Install, R.Last_Stored_Image_Order);
                Image_Bytes := Stored_Bytes;
                Image_Bytes_Owned := False;
                Borrowed_From_Object := True;
@@ -6065,7 +6026,7 @@ package body Terminal.App.Renderer is
                   begin
                      if Object = null then
                         Release_Local;
-                        return False;
+                        return Emit_Rejected;
                      end if;
                      Object.Frame_Count := Positive (Media.Frame_Count);
                      Object.Frame_Bytes := Media.Total_Bytes - Media.Frame_Bytes;
@@ -6091,11 +6052,21 @@ package body Terminal.App.Renderer is
                              + (Number - 1) * Media.Frame_Bytes;
                            Frame : Image_Frame_Access;
                         begin
+                           if not Terminal.App.Image_Store.Allocation_Allowed
+                             (R.Image_Allocation_Control)
+                           then
+                              raise Storage_Error;
+                           end if;
                            Frame_Data :=
                              new Terminal.Common.Bytes.Byte_Array
                                (1 .. Media.Frame_Bytes);
                            Frame_Data.all :=
                              Media.Bytes (First .. First + Media.Frame_Bytes - 1);
+                           if not Terminal.App.Image_Store.Allocation_Allowed
+                             (R.Image_Allocation_Control)
+                           then
+                              raise Storage_Error;
+                           end if;
                            Frame := new Image_Frame'
                              (Number => Number,
                               Gap_MS => Integer (Media.Delays_MS (Number)),
@@ -6121,26 +6092,27 @@ package body Terminal.App.Renderer is
                      Touch_Image_Object (R, Object);
                   exception
                      when Storage_Error =>
-                        Delete_Image_Object_By_Storage_Order
-                          (R, Item.Stream_ID, R.Last_Stored_Image_Order);
                         Release_Local;
-                        return False;
+                        return Emit_Rejected;
                   end;
                end if;
             end;
          end if;
 
-         if Item.Protocol /= Terminal.Core.Kitty_Graphics
-           or else
+         if Item.Protocol = Terminal.Core.Kitty_Graphics
+           and then
              (Header.Kitty_ID = 0
               and then Header.Kitty_Compression = ASCII.NUL
               and then not Borrowed_From_Object)
          then
-            Encoded_Source := Copy_Text_Bytes (Image_Text (From .. Image_Text'Last));
+            Encoded_Source := Terminal.App.Image_Ingestion.Copy_Text
+              (Image_Text (From .. Image_Text'Last),
+               R.Image_Allocation_Control);
             Encoded_Source_Owned := Encoded_Source /= null;
             if Encoded_Source = null then
+               R.Image_Store_Allocation_Failed := True;
                Release_Local;
-               return False;
+               return Emit_Rejected;
             end if;
 
             if PNG_Length = 0 and then Data.Decode_Complete then
@@ -6254,7 +6226,7 @@ package body Terminal.App.Renderer is
               and then not Geometry.Valid
             then
                Release_Local;
-               return False;
+               return Emit_Rejected;
             end if;
             if Store_Decoded then
                Copy_Image_Preview
@@ -6269,10 +6241,8 @@ package body Terminal.App.Renderer is
                  Positive (Float'Ceiling (ITerm2_Draw_Width)),
                  Positive (Float'Ceiling (ITerm2_Draw_Height)))
             then
-               Delete_Image_Object_By_Storage_Order
-                 (R, Item.Stream_ID, R.Last_Stored_Image_Order);
                Release_Local;
-               return False;
+               return Emit_Rejected;
             end if;
 
             R.Image_Count := R.Image_Count + 1;
@@ -6360,14 +6330,21 @@ package body Terminal.App.Renderer is
                Tint           => Graphics_Tint (Item.Protocol));
          end;
          Encoded_Source_Owned := False;
+         Terminal.App.Image_Store.Commit (Install);
 
          Terminal.App.Image_Media.Release (Media);
          Terminal.App.Graphics.Release (Data);
-         return True;
+         return Emit_Succeeded;
       exception
          when Storage_Error =>
+            R.Image_Store_Allocation_Failed := True;
+            if Item.Protocol = Terminal.Core.ITerm2_Graphics then
+               Terminal.App.Image_Rendering.Set_Status
+                 (R.Last_Media,
+                  Terminal.App.Image_Media.Decode_Allocation_Failed);
+            end if;
             Release_Local;
-            return False;
+            return Emit_Rejected;
       end Emit_PNG_Rows;
 
       function Encode_Base64
@@ -6409,7 +6386,9 @@ package body Terminal.App.Renderer is
          Header     : Terminal.App.Graphics.Graphics_Header;
          Image_Text : String) return Boolean
       is
-         Data_First : constant Natural := Kitty_Data_Start (Image_Text);
+         Data_First : constant Natural :=
+           Terminal.App.Image_Ingestion.Payload_Start
+             (Terminal.App.Image_Ingestion.Kitty, Image_Text);
          Loaded : Terminal.App.Graphics_Transport.Byte_Array_Access := null;
          Loaded_Length : Natural := 0;
          Load_Status : Terminal.App.Graphics_Transport.Load_Status;
@@ -6483,7 +6462,7 @@ package body Terminal.App.Renderer is
                    (Synthetic_Event,
                     Synthetic_Header,
                     Synthetic,
-                    Allow_Unknown_Compressed_Size => True);
+                    Allow_Unknown_Compressed_Size => True) = Emit_Succeeded;
             end if;
             return Emitted;
          end;
@@ -6494,8 +6473,7 @@ package body Terminal.App.Renderer is
             return False;
          when others =>
             Terminal.App.Graphics_Transport.Release (Loaded);
-            R.Image_Transport_Failed := True;
-            return False;
+            raise;
       end Emit_Local_Kitty;
 
       function Emit_Sixel_Rows
@@ -6518,6 +6496,7 @@ package body Terminal.App.Renderer is
          Image_Bytes_Owned : Boolean := False;
          Encoded_Source : RM.Image_Data_Access := null;
          Encoded_Source_Owned : Boolean := False;
+         Install : Terminal.App.Image_Store.Install_Transaction;
          Row_Copy_Failed : Boolean := False;
          Preview_Length : Natural := 0;
          Preview_Bytes : Terminal.Common.Bytes.Byte_Array
@@ -6537,7 +6516,14 @@ package body Terminal.App.Renderer is
          end Sixel_Encoded_Length;
 
          procedure Release_Local is
+            Installed_Order : Interfaces.Unsigned_64;
          begin
+            Terminal.App.Image_Store.Take_Rollback_Order
+              (Install, Installed_Order);
+            if Installed_Order /= 0 then
+               Delete_Image_Object_By_Storage_Order
+                 (R, Item.Stream_ID, Installed_Order);
+            end if;
             if Image_Bytes /= null and then Image_Bytes_Owned then
                Free_Image_Data (Image_Bytes);
                Image_Bytes := null;
@@ -6620,6 +6606,18 @@ package body Terminal.App.Renderer is
             return False;
          end if;
 
+         --  Keep the retained store unchanged when the diagnostic copy cannot
+         --  be allocated.  No image object or placement exists before this
+         --  final staging allocation succeeds.
+         Encoded_Source := Terminal.App.Image_Ingestion.Copy_Text
+           (Image_Text, R.Image_Allocation_Control);
+         Encoded_Source_Owned := Encoded_Source /= null;
+         if Encoded_Source = null then
+            R.Image_Store_Allocation_Failed := True;
+            Release_Local;
+            return False;
+         end if;
+
          declare
             Stored_Bytes : RM.Image_Data_Access := null;
             Stored_Order : Interfaces.Unsigned_64;
@@ -6639,6 +6637,7 @@ package body Terminal.App.Renderer is
                Bytes          => Image_Bytes,
                Stored_Bytes   => Stored_Bytes);
             Stored_Order := R.Last_Stored_Image_Order;
+            Terminal.App.Image_Store.Record_Install (Install, Stored_Order);
             if Stored_Bytes = null
               or else not Store_Auxiliary_Placement
                 (R,
@@ -6650,6 +6649,7 @@ package body Terminal.App.Renderer is
                if Stored_Order /= 0 then
                   Delete_Image_Object_By_Storage_Order
                     (R, Item.Stream_ID, Stored_Order);
+                  Terminal.App.Image_Store.Commit (Install);
                end if;
                Release_Local;
                return False;
@@ -6657,13 +6657,6 @@ package body Terminal.App.Renderer is
             Image_Bytes := Stored_Bytes;
             Image_Bytes_Owned := False;
          end;
-
-         Encoded_Source := Copy_Text_Bytes (Image_Text);
-         Encoded_Source_Owned := Encoded_Source /= null;
-         if Encoded_Source = null then
-            Release_Local;
-            return False;
-         end if;
 
          declare
          begin
@@ -6708,6 +6701,7 @@ package body Terminal.App.Renderer is
          end;
          Image_Bytes_Owned := False;
          Encoded_Source_Owned := False;
+         Terminal.App.Image_Store.Commit (Install);
 
          Terminal.App.Graphics.Release (Data);
          return True;
@@ -6973,9 +6967,19 @@ package body Terminal.App.Renderer is
            or else
              (Event.Protocol = Terminal.Core.Kitty_Graphics
               and then Header.Kitty_Format = 100))
-        and then Emit_PNG_Rows (Event, Header, Text)
       then
-         return;
+         case Emit_PNG_Rows (Event, Header, Text) is
+            when Emit_Succeeded =>
+               return;
+            when Emit_Rejected =>
+               --  iTerm2's full decoder is authoritative. Kitty retains its
+               --  diagnostic placeholder fallback for rejected f=100 data.
+               if Event.Protocol = Terminal.Core.ITerm2_Graphics then
+                  return;
+               end if;
+            when Emit_Not_Applicable =>
+               null;
+         end case;
       end if;
 
       if Header.Recognized
@@ -7525,6 +7529,9 @@ package body Terminal.App.Renderer is
       end Placement_Exists;
    begin
       if Event.Cancelled and then not Validation_Error then
+         if Event.Protocol = Terminal.Core.ITerm2_Graphics then
+            Clear_Last_Media_Diagnostics (R);
+         end if;
          R.Graphics_Event_Count := R.Graphics_Event_Count + 1;
          R.Kitty_Command_Count := R.Kitty_Command_Count + 1;
          R.Chunk_Cancel_Count := R.Chunk_Cancel_Count + 1;
@@ -7545,6 +7552,13 @@ package body Terminal.App.Renderer is
       then
          R.Graphics_Event_Tracking_Failed := True;
          return;
+      end if;
+
+      if Event.Protocol = Terminal.Core.ITerm2_Graphics then
+         --  Diagnostics describe the current event, including malformed and
+         --  non-inline commands that never enter a decoder. Do this only after
+         --  replay detection so a presentation retry retains its result.
+         Clear_Last_Media_Diagnostics (R);
       end if;
 
       R.Graphics_Event_Count := R.Graphics_Event_Count + 1;
@@ -10472,6 +10486,10 @@ package body Terminal.App.Renderer is
          Last_Rectangle_Count => R.Rectangle_Count,
          Last_Glyph_Count     => R.Glyph_Count,
          Last_Image_Count     => R.Image_Count,
+         Rectangle_Command_Capacity =>
+           (if R.Rectangles = null then 0 else R.Rectangles'Length),
+         Image_Command_Capacity =>
+           (if R.Images = null then 0 else R.Images'Length),
          Last_Image_Protocol  =>
            (if Has_Image then R.Images (R.Image_Count).Protocol
             else Terminal.App.Render_Model.Image_Sixel),
@@ -10507,8 +10525,15 @@ package body Terminal.App.Renderer is
          Last_Image_Decode_Status =>
            (if Has_Image then R.Images (R.Image_Count).Decode_Status
             else RM.Image_Decode_Not_Attempted),
-         Last_Media_Diagnostic => R.Last_Media_Diagnostic,
-         Last_Media_Peak_Working_Bytes => R.Last_Media_Peak_Working_Bytes,
+         Last_Media_Decode_Attempted => R.Last_Media.Attempted,
+         Last_Media_Decode_Status => R.Last_Media.Status,
+         Last_Media_Diagnostic => R.Last_Media.Error,
+         Last_Media_Adapter_Buffer_Bytes =>
+           R.Last_Media.Adapter_Buffer_Bytes,
+         Last_Media_Decoder_Configured_Bytes =>
+           R.Last_Media.Decoder_Configured_Bytes,
+         Last_Media_Warning_Count => R.Last_Media.Warning_Count,
+         Last_Media_First_Warning => R.Last_Media.First_Warning,
          Last_Image_Placeholder =>
            Has_Image and then R.Images (R.Image_Count).Placeholder,
          Image_Object_Count => R.Image_Object_Count,
@@ -10591,8 +10616,8 @@ package body Terminal.App.Renderer is
          return "";
       end if;
 
-      return
-        "image " & Protocol_Name
+      return Bounded_Status_Label
+        ("image " & Protocol_Name
         & " size=" & Trimmed_Natural (Diagnostics.Last_Image_Width)
         & "x" & Trimmed_Natural (Diagnostics.Last_Image_Height)
         & (if Diagnostics.Last_Image_Pixel_Width > 0
@@ -10618,9 +10643,26 @@ package body Terminal.App.Renderer is
         & (if Diagnostics.Last_Image_Preview_Decode_Complete
            then " decoded"
            else " partial")
-        & RM.Image_Decode_Status_Suffix
-            (Diagnostics.Last_Image_Decode_Status);
+         & RM.Image_Decode_Status_Suffix
+             (Diagnostics.Last_Image_Decode_Status));
    end Image_Status_Label;
+
+   function Media_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String
+   is
+      Media : constant Terminal.App.Image_Rendering.Media_Diagnostics :=
+        (Attempted => Diagnostics.Last_Media_Decode_Attempted,
+         Status => Diagnostics.Last_Media_Decode_Status,
+         Error => Diagnostics.Last_Media_Diagnostic,
+         Adapter_Buffer_Bytes =>
+           Diagnostics.Last_Media_Adapter_Buffer_Bytes,
+         Decoder_Configured_Bytes =>
+           Diagnostics.Last_Media_Decoder_Configured_Bytes,
+         Warning_Count => Diagnostics.Last_Media_Warning_Count,
+         First_Warning => Diagnostics.Last_Media_First_Warning);
+   begin
+      return Terminal.App.Image_Rendering.Status_Label (Media);
+   end Media_Status_Label;
 
    function Last_Frame (R : Renderer) return RM.Frame_Commands is
       Pixels : constant access constant Textrender.Alpha_Buffer :=
@@ -10635,11 +10677,11 @@ package body Terminal.App.Renderer is
       return
         (Width           => R.Last_Frame_Width,
          Height          => R.Last_Frame_Height,
-         Rectangles      => R.Rectangles,
+         Rectangles      => RM.Rectangle_Array_View (R.Rectangles),
          Rectangle_Count => R.Rectangle_Count,
-         Glyphs          => R.Glyphs,
+         Glyphs          => RM.Glyph_Array_View (R.Glyphs),
          Glyph_Count     => R.Glyph_Count,
-         Colour_Glyphs   => R.Colour_Glyphs,
+         Colour_Glyphs   => RM.Colour_Glyph_Array_View (R.Colour_Glyphs),
          Colour_Glyph_Count => R.Colour_Glyph_Count,
          Colour_Sheet_Width => Textrender.Colour_Sheet_Width (R.Text),
          Colour_Sheet_Height => Textrender.Colour_Sheet_Height (R.Text),
@@ -10648,9 +10690,9 @@ package body Terminal.App.Renderer is
             then System.Null_Address
             else Textrender.Colour_Sheet_Pixels (R.Text).all'Address),
          Colour_Sheet_Dirty => R.Colour_Sheet_Dirty,
-         Images          => R.Images,
+         Images          => RM.Image_Array_View (R.Images),
          Image_Count     => R.Image_Count,
-         Text_Runs       => R.Text_Runs,
+         Text_Runs       => RM.Text_Run_Array_View (R.Text_Runs),
          Text_Run_Count  => R.Text_Run_Count,
          Atlas_Width     => Width,
          Atlas_Height    => Height,

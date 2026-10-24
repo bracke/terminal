@@ -239,6 +239,15 @@ package body Terminal.App.Fonts is
 
    Cached_Default_Path  : Font_Path;
    Cached_Default_Ready : Boolean := False;
+   type Style_Path_Array is array (Font_Style) of Font_Path;
+   type Style_Ready_Array is array (Font_Style) of Boolean;
+   Cached_Style_Paths : Style_Path_Array;
+   Cached_Style_Ready : Style_Ready_Array := (others => False);
+   Max_Validated_Override_Paths : constant := 32;
+   Validated_Override_Paths : Font_Path_Array
+     (1 .. Max_Validated_Override_Paths);
+   Validated_Override_Count : Natural range
+     0 .. Max_Validated_Override_Paths := 0;
 
    function Safe_Environment_Value (Name : String) return String is
    begin
@@ -345,6 +354,26 @@ package body Terminal.App.Fonts is
       end if;
       return Result;
    end Make_Path;
+
+   function Is_Loadable_Override (Path : String) return Boolean is
+   begin
+      if Path = "" then
+         return False;
+      end if;
+      for Index in 1 .. Validated_Override_Count loop
+         if To_String (Validated_Override_Paths (Index)) = Path then
+            return True;
+         end if;
+      end loop;
+      if not Is_Loadable_Font (Path) then
+         return False;
+      end if;
+      if Validated_Override_Count < Max_Validated_Override_Paths then
+         Validated_Override_Count := Validated_Override_Count + 1;
+         Validated_Override_Paths (Validated_Override_Count) := Make_Path (Path);
+      end if;
+      return True;
+   end Is_Loadable_Override;
 
    function To_String (Path : Font_Path) return String is
    begin
@@ -460,6 +489,8 @@ package body Terminal.App.Fonts is
    begin
       if Style = Monospace then
          return Default_Font_Path;
+      elsif Cached_Style_Ready (Style) then
+         return To_String (Cached_Style_Paths (Style));
       end if;
       declare
          Candidates : constant Style_Candidate_Array :=
@@ -471,10 +502,53 @@ package body Terminal.App.Fonts is
       begin
          for Candidate of Candidates loop
             if Is_Loadable_Font (Candidate.all) then
+               Cached_Style_Paths (Style) := Make_Path (Candidate.all);
+               Cached_Style_Ready (Style) := True;
                return Candidate.all;
             end if;
          end loop;
       end;
-      return Default_Font_Path;
+      declare
+         Fallback : constant String := Default_Font_Path;
+      begin
+         Cached_Style_Paths (Style) := Make_Path (Fallback);
+         Cached_Style_Ready (Style) := True;
+         return Fallback;
+      end;
    end Font_Path_For;
+
+   function PICT_Font_Path (Family : String; Style : Font_Style) return String is
+      Family_Key : String (1 .. Family'Length);
+      Style_Key : constant String :=
+        (case Style is
+            when Monospace => "MONOSPACE",
+            when Sans_Serif => "SANS_SERIF",
+            when Serif => "SERIF",
+            when Symbol => "SYMBOL");
+   begin
+      for I in Family'Range loop
+         declare
+            Ch : constant Character :=
+              Ada.Characters.Handling.To_Upper (Family (I));
+         begin
+            Family_Key (I - Family'First + 1) :=
+              (if Ch in 'A' .. 'Z' or else Ch in '0' .. '9'
+               then Ch else '_');
+         end;
+      end loop;
+      declare
+         Exact : constant String :=
+           Safe_Environment_Value ("TERMINAL_PICT_FONT_" & Family_Key);
+         Semantic : constant String :=
+           Safe_Environment_Value ("TERMINAL_PICT_FONT_" & Style_Key);
+      begin
+         if Is_Loadable_Override (Exact) then
+            return Exact;
+         elsif Is_Loadable_Override (Semantic) then
+            return Semantic;
+         else
+            return Font_Path_For (Style);
+         end if;
+      end;
+   end PICT_Font_Path;
 end Terminal.App.Fonts;

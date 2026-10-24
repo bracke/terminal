@@ -1,6 +1,7 @@
 with Interfaces;
 with System;
 with Terminal.Common.Bytes;
+with Terminal.App.Image_Decode;
 
 --  Renderer-neutral terminal draw commands.
 --
@@ -67,13 +68,25 @@ package Terminal.App.Render_Model is
       Image_Kitty,
       Image_ITerm2);
 
-   type Image_Decode_Status is
-     (Image_Decode_Not_Attempted,
-      Image_Decode_Ok,
-      Image_Decode_Invalid_Byte,
-      Image_Decode_Trailing_Data,
-      Image_Decode_Preview_Truncated,
-      Image_Decode_Unsupported_Format);
+   subtype Image_Decode_Status is Terminal.App.Image_Decode.Status;
+   Image_Decode_Not_Attempted : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Not_Attempted;
+   Image_Decode_Ok : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Ok;
+   Image_Decode_Invalid_Byte : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Invalid_Byte;
+   Image_Decode_Trailing_Data : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Trailing_Data;
+   Image_Decode_Preview_Truncated : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Preview_Truncated;
+   Image_Decode_Invalid_Data : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Invalid_Data;
+   Image_Decode_Too_Large : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Too_Large;
+   Image_Decode_Allocation_Failed : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Allocation_Failed;
+   Image_Decode_Unsupported_Format : constant Image_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Unsupported_Format;
 
    function Image_Decode_Status_Suffix
      (Status : Image_Decode_Status) return String;
@@ -132,6 +145,10 @@ package Terminal.App.Render_Model is
       Z_Index        : Integer := 0;
       Tint           : Pixel_Color;
    end record;
+
+   --  Release each distinct owned buffer exactly once and reset every view.
+   --  Preview storage may alias the decoded or encoded source.
+   procedure Release_Owned_Buffers (Image : in out Image_Command);
 
    function Image_Decoded_Source_Bytes
      (Image : Image_Command) return Natural;
@@ -355,18 +372,27 @@ package Terminal.App.Render_Model is
    type Image_Array_Access is access all Image_Array;
    type Text_Run_Array_Access is access all Text_Run_Array;
 
+   --  Frame views never transfer ownership and cannot mutate renderer-owned
+   --  command arrays.  A view is valid only until the producing renderer is
+   --  rendered again, releases its graphics stream, or is finalized.
+   type Rectangle_Array_View is access constant Rectangle_Array;
+   type Glyph_Array_View is access constant Glyph_Array;
+   type Colour_Glyph_Array_View is access constant Colour_Glyph_Array;
+   type Image_Array_View is access constant Image_Array;
+   type Text_Run_Array_View is access constant Text_Run_Array;
+
    type Frame_Commands is record
       Width           : Natural := 0;
       Height          : Natural := 0;
-      Rectangles      : Rectangle_Array_Access := null;
+      Rectangles      : Rectangle_Array_View := null;
       Rectangle_Count : Natural := 0;
-      Glyphs          : Glyph_Array_Access := null;
+      Glyphs          : Glyph_Array_View := null;
       Glyph_Count     : Natural := 0;
-      Colour_Glyphs   : Colour_Glyph_Array_Access := null;
+      Colour_Glyphs   : Colour_Glyph_Array_View := null;
       Colour_Glyph_Count : Natural := 0;
-      Images          : Image_Array_Access := null;
+      Images          : Image_Array_View := null;
       Image_Count     : Natural := 0;
-      Text_Runs       : Text_Run_Array_Access := null;
+      Text_Runs       : Text_Run_Array_View := null;
       Text_Run_Count  : Natural := 0;
       Atlas_Width     : Natural := 0;
       Atlas_Height    : Natural := 0;

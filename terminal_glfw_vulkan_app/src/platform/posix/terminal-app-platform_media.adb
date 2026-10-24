@@ -54,16 +54,6 @@ package body Terminal.App.Platform_Media is
    with Import, Convention => C,
         External_Name => "terminal_media_delete_file_at";
 
-   function Dlopen (Name : CS.chars_ptr) return System.Address
-   with Import, Convention => C,
-        External_Name => "terminal_media_open_dynamic_library";
-
-   function Dlsym
-     (Handle : System.Address;
-      Name   : CS.chars_ptr) return System.Address
-   with Import, Convention => C,
-        External_Name => "terminal_media_dynamic_symbol";
-
    function Local_File_Transfers_Available return Boolean is
      (C_Local_Available /= 0);
    function Shared_Memory_Transfers_Available return Boolean is (True);
@@ -177,32 +167,4 @@ package body Terminal.App.Platform_Media is
          return False;
    end Delete_File_At;
 
-   function Open_Dynamic_Library (Name : String) return System.Address is
-      C_Name : CS.chars_ptr := CS.New_String (Name);
-      Result : System.Address;
-   begin
-      Result := Dlopen (C_Name);
-      CS.Free (C_Name);
-      return Result;
-   exception
-      when others =>
-         CS.Free (C_Name);
-         return System.Null_Address;
-   end Open_Dynamic_Library;
-
-   function Dynamic_Symbol
-     (Handle : System.Address;
-      Name   : String) return System.Address
-   is
-      C_Name : CS.chars_ptr := CS.New_String (Name);
-      Result : System.Address;
-   begin
-      Result := Dlsym (Handle, C_Name);
-      CS.Free (C_Name);
-      return Result;
-   exception
-      when others =>
-         CS.Free (C_Name);
-         return System.Null_Address;
-   end Dynamic_Symbol;
 end Terminal.App.Platform_Media;

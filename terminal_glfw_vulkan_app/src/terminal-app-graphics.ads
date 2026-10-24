@@ -1,4 +1,5 @@
 with Terminal.Common.Bytes;
+with Terminal.App.Image_Decode;
 with Terminal.App.Render_Model;
 with Terminal.Core;
 
@@ -125,13 +126,25 @@ package Terminal.App.Graphics is
 
    subtype Data_Preview_Length_Range is Natural range 0 .. Max_Data_Preview_Length;
 
-   type Data_Decode_Status is
-     (Decode_Not_Attempted,
-      Decode_Ok,
-      Decode_Invalid_Byte,
-      Decode_Trailing_Data,
-      Decode_Preview_Truncated,
-      Decode_Unsupported_Format);
+   subtype Data_Decode_Status is Terminal.App.Image_Decode.Status;
+   Decode_Not_Attempted : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Not_Attempted;
+   Decode_Ok : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Ok;
+   Decode_Invalid_Byte : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Invalid_Byte;
+   Decode_Trailing_Data : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Trailing_Data;
+   Decode_Preview_Truncated : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Preview_Truncated;
+   Decode_Invalid_Data : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Invalid_Data;
+   Decode_Too_Large : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Too_Large;
+   Decode_Allocation_Failed : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Allocation_Failed;
+   Decode_Unsupported_Format : constant Data_Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Unsupported_Format;
 
    type Graphics_Data_Preview is record
       Header_Recognized : Boolean := False;

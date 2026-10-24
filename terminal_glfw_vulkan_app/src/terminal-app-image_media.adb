@@ -1,8 +1,6 @@
 with Ada.Unchecked_Conversion;
 with Ada.Unchecked_Deallocation;
 with Interfaces;
-with Interfaces.C;
-with Interfaces.C.Strings;
 with System;
 with System.Address_To_Access_Conversions;
 with System.Storage_Elements;
@@ -25,18 +23,10 @@ with Pictlib.Pictures;
 with Pictlib.Results;
 with Pictlib.Streams;
 with Terminal.App.Fonts;
-with Terminal.App.Platform_Media;
 
 package body Terminal.App.Image_Media is
-   package C renames Interfaces.C;
-   package CS renames Interfaces.C.Strings;
    package RM renames Terminal.App.Render_Model;
-   package Platform renames Terminal.App.Platform_Media;
 
-   use type C.int;
-   use type C.size_t;
-   use type C.unsigned;
-   use type CS.chars_ptr;
    use type Interfaces.Unsigned_64;
    use type Terminal.Common.Bytes.Byte;
    use type RM.Image_Data_Access;
@@ -51,76 +41,6 @@ package body Terminal.App.Image_Media is
    use type Pictlib.Errors.Error_Code;
    use type Pictlib.Streams.Byte_Array_Access;
 
-   Library_Handle : System.Address := System.Null_Address;
-   Load_Attempted : Boolean := False;
-
-   type String_Access is access all String;
-   Libraries : constant array (Positive range <>) of String_Access :=
-     [new String'("libMagickWand-7.Q16.so.10"),
-      new String'("libMagickWand-7.Q16HDRI.so.10"),
-      new String'("libMagickWand-7.Q16.so"),
-      new String'("libMagickWand-6.Q16.so.7"),
-      new String'("libMagickWand-6.Q16.so")];
-
-   type Genesis_Access is access procedure
-   with Convention => C;
-   type New_Wand_Access is access function return System.Address
-   with Convention => C;
-   type Destroy_Wand_Access is access function
-     (Wand : System.Address) return System.Address
-   with Convention => C;
-   type Read_Blob_Access is access function
-     (Wand : System.Address;
-      Blob : System.Address;
-      Length : C.size_t) return C.unsigned
-   with Convention => C;
-   type Get_Size_Access is access function
-     (Wand : System.Address) return C.size_t
-   with Convention => C;
-   type Set_Index_Access is access function
-     (Wand : System.Address;
-      Index : C.long) return C.unsigned
-   with Convention => C;
-   type Set_Format_Access is access function
-     (Wand : System.Address;
-      Format : CS.chars_ptr) return C.unsigned
-   with Convention => C;
-   type Export_Access is access function
-     (Wand : System.Address;
-      X, Y : C.long;
-      Width, Height : C.size_t;
-      Map : CS.chars_ptr;
-      Storage : C.int;
-      Pixels : System.Address) return C.unsigned
-   with Convention => C;
-   type Coalesce_Access is access function
-     (Wand : System.Address) return System.Address
-   with Convention => C;
-   type Set_Limit_Access is access function
-     (Resource : C.int;
-      Limit : Interfaces.Unsigned_64) return C.unsigned
-   with Convention => C;
-
-   function To_Genesis is new Ada.Unchecked_Conversion
-     (System.Address, Genesis_Access);
-   function To_New_Wand is new Ada.Unchecked_Conversion
-     (System.Address, New_Wand_Access);
-   function To_Destroy is new Ada.Unchecked_Conversion
-     (System.Address, Destroy_Wand_Access);
-   function To_Read is new Ada.Unchecked_Conversion
-     (System.Address, Read_Blob_Access);
-   function To_Get_Size is new Ada.Unchecked_Conversion
-     (System.Address, Get_Size_Access);
-   function To_Set_Index is new Ada.Unchecked_Conversion
-     (System.Address, Set_Index_Access);
-   function To_Set_Format is new Ada.Unchecked_Conversion
-     (System.Address, Set_Format_Access);
-   function To_Export is new Ada.Unchecked_Conversion
-     (System.Address, Export_Access);
-   function To_Coalesce is new Ada.Unchecked_Conversion
-     (System.Address, Coalesce_Access);
-   function To_Set_Limit is new Ada.Unchecked_Conversion
-     (System.Address, Set_Limit_Access);
    function To_PICT_Data is new Ada.Unchecked_Conversion
      (RM.Image_Data_Access, Pictlib.Streams.Byte_Array_Access);
    pragma Compile_Time_Error
@@ -208,6 +128,32 @@ package body Terminal.App.Image_Media is
       return Item.Identifier (1 .. Item.Identifier_Length);
    end Diagnostic_Identifier;
 
+   function To_Decode_Limit
+     (Item : Pictlib.Limit_Kind) return Decode_Limit_Kind is
+     (case Item is
+         when Pictlib.No_Limit                      => No_Limit,
+         when Pictlib.Frame_Width_Limit             => Frame_Width_Limit,
+         when Pictlib.Frame_Height_Limit            => Frame_Height_Limit,
+         when Pictlib.Canvas_Pixel_Limit            => Canvas_Pixel_Limit,
+         when Pictlib.Picture_Byte_Limit            => Picture_Byte_Limit,
+         when Pictlib.Opcode_Count_Limit            => Opcode_Count_Limit,
+         when Pictlib.Opcode_Byte_Limit             => Opcode_Byte_Limit,
+         when Pictlib.Region_Byte_Limit             => Region_Byte_Limit,
+         when Pictlib.Polygon_Point_Limit           => Polygon_Point_Limit,
+         when Pictlib.Drawing_Work_Limit            => Drawing_Work_Limit,
+         when Pictlib.Retained_Metadata_Byte_Limit  =>
+           Retained_Metadata_Byte_Limit,
+         when Pictlib.Metadata_Item_Limit           => Metadata_Item_Limit,
+         when Pictlib.Allocation_Byte_Limit         => Allocation_Byte_Limit,
+         when Pictlib.Total_Allocation_Byte_Limit   =>
+           Total_Allocation_Byte_Limit,
+         when Pictlib.Output_Byte_Limit             => Output_Byte_Limit,
+         when Pictlib.Embedded_Image_Byte_Limit     =>
+           Embedded_Image_Byte_Limit,
+         when Pictlib.Embedded_Image_Pixel_Limit    =>
+           Embedded_Image_Pixel_Limit,
+         when Pictlib.Warning_Record_Limit          => Warning_Record_Limit);
+
    procedure Set_PICT_Diagnostic
      (Result : in out Decoded_Image;
       Failure : Pictlib.Results.Result)
@@ -237,44 +183,55 @@ package body Terminal.App.Image_Media is
       Result.Diagnostic.Expected :=
         Interfaces.Unsigned_64 (Error.Context.Expected);
       Result.Diagnostic.Actual := Interfaces.Unsigned_64 (Error.Context.Actual);
-      Result.Diagnostic.Limit :=
-        Decode_Limit_Kind'Val (Pictlib.Limit_Kind'Pos (Error.Context.Limit));
+      Result.Diagnostic.Limit := To_Decode_Limit (Error.Context.Limit);
       Result.Diagnostic.Has_Underlying_Code := Error.Context.Has_Underlying_Code;
       Result.Diagnostic.Underlying_Code := Error.Context.Underlying_Code;
    end Set_PICT_Diagnostic;
 
+   procedure Set_PICT_Warning
+     (Result : in out Decoded_Image;
+      Warning : Pictlib.Errors.Warning)
+   is
+      Name : constant String :=
+        Pictlib.Errors.Identifiers.To_String (Warning.Identifier);
+      Used : constant Natural :=
+        Natural'Min (Name'Length, Max_Diagnostic_Identifier_Length);
+   begin
+      Result.First_Warning := (others => <>);
+      Result.First_Warning.Present := True;
+      Result.First_Warning.Identifier_Length := Used;
+      if Used > 0 then
+         Result.First_Warning.Identifier (1 .. Used) :=
+           Name (Name'First .. Name'First + Used - 1);
+      end if;
+      Result.First_Warning.Source_Offset :=
+        Interfaces.Unsigned_64 (Warning.Context.Source);
+      Result.First_Warning.Destination_Offset :=
+        Interfaces.Unsigned_64 (Warning.Context.Destination);
+      Result.First_Warning.Has_Opcode := Warning.Context.Has_Opcode;
+      Result.First_Warning.Opcode := Natural (Warning.Context.Op);
+      Result.First_Warning.Opcode_Ordinal :=
+        Interfaces.Unsigned_64 (Warning.Context.Ordinal);
+      Result.First_Warning.Row :=
+        Interfaces.Unsigned_64 (Warning.Context.Row);
+      Result.First_Warning.Expected :=
+        Interfaces.Unsigned_64 (Warning.Context.Expected);
+      Result.First_Warning.Actual :=
+        Interfaces.Unsigned_64 (Warning.Context.Actual);
+      Result.First_Warning.Limit := To_Decode_Limit (Warning.Context.Limit);
+      Result.First_Warning.Has_Underlying_Code :=
+        Warning.Context.Has_Underlying_Code;
+      Result.First_Warning.Underlying_Code :=
+        Warning.Context.Underlying_Code;
+   end Set_PICT_Warning;
+
    function Saturating_Add (Left, Right : Natural) return Natural is
      (if Left > Natural'Last - Right then Natural'Last else Left + Right);
 
-   procedure Ensure_Loaded is
-   begin
-      if Load_Attempted then
-         return;
-      end if;
-      Load_Attempted := True;
-      for Name of Libraries loop
-         Library_Handle := Platform.Open_Dynamic_Library (Name.all);
-         exit when Library_Handle /= System.Null_Address;
-      end loop;
-   end Ensure_Loaded;
-
-   function Symbol (Name : String) return System.Address is
-   begin
-      Ensure_Loaded;
-      if Library_Handle = System.Null_Address then
-         return System.Null_Address;
-      end if;
-      return Platform.Dynamic_Symbol (Library_Handle, Name);
-   end Symbol;
-
-   function Extended_Media_Available return Boolean is
-   begin
-      Ensure_Loaded;
-      return Library_Handle /= System.Null_Address
-        and then Symbol ("NewMagickWand") /= System.Null_Address
-        and then Symbol ("MagickReadImageBlob") /= System.Null_Address
-        and then Symbol ("MagickExportImagePixels") /= System.Null_Address;
-   end Extended_Media_Available;
+   function Saturating_Multiply (Left, Right : Natural) return Natural is
+     (if Left = 0 or else Right = 0 then 0
+      elsif Left > Natural'Last / Right then Natural'Last
+      else Left * Right);
 
    function Available return Boolean is (True);
 
@@ -292,25 +249,6 @@ package body Terminal.App.Image_Media is
       end loop;
       return Signature in "GIF87a" | "GIF89a";
    end Is_GIF;
-
-   function Is_PDF
-     (Data : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural) return Boolean
-   is
-      Signature : constant String := "%PDF-";
-   begin
-      if Length < Signature'Length or else Length > Data'Length then
-         return False;
-      end if;
-      for I in Signature'Range loop
-         if Data (Data'First + I - Signature'First) /=
-           Terminal.Common.Bytes.Byte (Character'Pos (Signature (I)))
-         then
-            return False;
-         end if;
-      end loop;
-      return True;
-   end Is_PDF;
 
    function Is_Headered_PICT
      (Data : Terminal.Common.Bytes.Byte_Array;
@@ -375,49 +313,6 @@ package body Terminal.App.Image_Media is
       --  the PICT parser merely to identify its format.
       return Has_Version_At (10) or else Has_Version_At (522);
    end Is_PICT;
-
-   function GIF_Loop_Count
-     (Data : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural) return Natural
-   is
-      Marker : constant String := "NETSCAPE2.0";
-   begin
-      if Length < Marker'Length + 5 or else Length > Data'Length then
-         --  No looping extension means play the animation exactly once.
-         return 0;
-      end if;
-      for Offset in 0 .. Length - Marker'Length - 5 loop
-         declare
-            Matches : Boolean := True;
-            First : constant Positive := Data'First + Offset;
-         begin
-            for I in Marker'Range loop
-               if Data (First + I - Marker'First) /=
-                 Terminal.Common.Bytes.Byte (Character'Pos (Marker (I)))
-               then
-                  Matches := False;
-                  exit;
-               end if;
-            end loop;
-            if Matches
-              and then Data (First + Marker'Length) = 3
-              and then Data (First + Marker'Length + 1) = 1
-            then
-               declare
-                  Loops : constant Natural :=
-                    Natural (Data (First + Marker'Length + 2))
-                    + 256 * Natural (Data (First + Marker'Length + 3));
-               begin
-                  --  The GIF extension counts repeats after the initial play.
-                  --  The renderer uses one as its infinite-loop sentinel and
-                  --  values above one as a total number of plays.
-                  return (if Loops = 0 then 1 else Loops + 1);
-               end;
-            end if;
-         end;
-      end loop;
-      return 0;
-   end GIF_Loop_Count;
 
    procedure Release (Result : in out Decoded_Image) is
    begin
@@ -684,8 +579,10 @@ package body Terminal.App.Image_Media is
               Looping.Raw_Count + 1);
       Result.Frame_Bytes := Frame_Bytes;
       Result.Total_Bytes := Total_Bytes;
-      Result.Peak_Working_Bytes :=
+      Result.Adapter_Buffer_Bytes :=
         Saturating_Add (Length, Saturating_Add (Frame_Bytes, Total_Bytes));
+      Result.Decoder_Configured_Bytes :=
+        Saturating_Multiply (Maximum_Decoded_Bytes, 3);
       Status := Decode_Ok;
       Clean_Up;
    exception
@@ -696,7 +593,7 @@ package body Terminal.App.Image_Media is
       when others =>
          Release (Result);
          Clean_Up;
-         Status := Decode_Invalid;
+         raise;
    end Decode_GIF;
 
    procedure Decode_PICT
@@ -771,28 +668,27 @@ package body Terminal.App.Image_Media is
       Constraints.Max_Metadata_Items := 0;
       Constraints.Max_Allocation_Bytes :=
         Pictlib.Byte_Count (Maximum_Decoded_Bytes);
+      Constraints.Max_Total_Allocation_Bytes :=
+        Pictlib.Byte_Count (Maximum_Decoded_Bytes);
       Constraints.Max_Output_Bytes :=
         Pictlib.Byte_Count (Maximum_Decoded_Bytes);
       Constraints.Max_Embedded_Image_Bytes :=
         Pictlib.Byte_Count (Natural'Min (Length, Maximum_Decoded_Bytes));
       Constraints.Max_Embedded_Image_Pixels :=
         Pictlib.Pixel_Count (Maximum_Decoded_Bytes / 4);
+      Constraints.Max_Warning_Records := 16;
+      Options.Strictness := Pictlib.Compatible;
 
       declare
          Default_Path : constant String :=
            Terminal.App.Fonts.Default_Font_Path;
-         Sans_Path : constant String :=
-           Terminal.App.Fonts.Font_Path_For (Terminal.App.Fonts.Sans_Serif);
-         Serif_Path : constant String :=
-           Terminal.App.Fonts.Font_Path_For (Terminal.App.Fonts.Serif);
-         Mono_Path : constant String :=
-           Terminal.App.Fonts.Font_Path_For (Terminal.App.Fonts.Monospace);
-         Symbol_Path : constant String :=
-           Terminal.App.Fonts.Font_Path_For (Terminal.App.Fonts.Symbol);
-
          procedure Map
            (ID : Pictlib.Fonts.Font_ID;
-            Family, Path : String) is
+            Family : String;
+            Style : Terminal.App.Fonts.Font_Style)
+         is
+            Path : constant String :=
+              Terminal.App.Fonts.PICT_Font_Path (Family, Style);
          begin
             if Path /= "" then
                Pictlib.Fonts.Add (Options.Fonts, ID, Path);
@@ -803,23 +699,23 @@ package body Terminal.App.Image_Media is
          if Default_Path /= "" then
             Pictlib.Fonts.Set_Default (Options.Fonts, Default_Path);
          end if;
-         Map (0, "Chicago", Sans_Path);
-         Map (1, "Geneva", Sans_Path);
-         Map (3, "Geneva", Sans_Path);
-         Map (2, "New York", Serif_Path);
-         Map (4, "Monaco", Mono_Path);
-         Map (5, "Venice", Serif_Path);
-         Map (6, "London", Serif_Path);
-         Map (7, "Athens", Sans_Path);
-         Map (8, "San Francisco", Sans_Path);
-         Map (9, "Toronto", Sans_Path);
-         Map (11, "Cairo", Sans_Path);
-         Map (12, "Los Angeles", Sans_Path);
-         Map (20, "Times", Serif_Path);
-         Map (21, "Helvetica", Sans_Path);
-         Map (22, "Courier", Mono_Path);
-         Map (23, "Symbol", Symbol_Path);
-         Map (24, "Mobile", Sans_Path);
+         Map (0, "Chicago", Terminal.App.Fonts.Sans_Serif);
+         Map (1, "Geneva", Terminal.App.Fonts.Sans_Serif);
+         Map (3, "Geneva", Terminal.App.Fonts.Sans_Serif);
+         Map (2, "New York", Terminal.App.Fonts.Serif);
+         Map (4, "Monaco", Terminal.App.Fonts.Monospace);
+         Map (5, "Venice", Terminal.App.Fonts.Serif);
+         Map (6, "London", Terminal.App.Fonts.Serif);
+         Map (7, "Athens", Terminal.App.Fonts.Sans_Serif);
+         Map (8, "San Francisco", Terminal.App.Fonts.Sans_Serif);
+         Map (9, "Toronto", Terminal.App.Fonts.Sans_Serif);
+         Map (11, "Cairo", Terminal.App.Fonts.Sans_Serif);
+         Map (12, "Los Angeles", Terminal.App.Fonts.Sans_Serif);
+         Map (20, "Times", Terminal.App.Fonts.Serif);
+         Map (21, "Helvetica", Terminal.App.Fonts.Sans_Serif);
+         Map (22, "Courier", Terminal.App.Fonts.Monospace);
+         Map (23, "Symbol", Terminal.App.Fonts.Symbol);
+         Map (24, "Mobile", Terminal.App.Fonts.Sans_Serif);
       end;
 
       Source.Storage := Data (Data'First)'Address;
@@ -889,7 +785,15 @@ package body Terminal.App.Image_Media is
       Result.Loop_Count := 1;
       Result.Frame_Bytes := Frame_Bytes;
       Result.Total_Bytes := Frame_Bytes;
-      Result.Peak_Working_Bytes := Frame_Bytes;
+      Result.Adapter_Buffer_Bytes := Frame_Bytes;
+      --  Pictlib admits all decoder-owned allocations against one monotonic
+      --  session quota; released/replaced buffers do not replenish it.
+      Result.Decoder_Configured_Bytes := Maximum_Decoded_Bytes;
+      Result.Warning_Count := Pictlib.Decoding.Warning_Count (Decoder);
+      if Result.Warning_Count > 0 then
+         Set_PICT_Warning
+           (Result, Pictlib.Decoding.Warning_At (Decoder, 1));
+      end if;
       Status := Decode_Ok;
       Clean_Up;
    exception
@@ -900,7 +804,7 @@ package body Terminal.App.Image_Media is
       when others =>
          Release (Result);
          Clean_Up;
-         Status := Decode_Invalid;
+         raise;
    end Decode_PICT;
 
    procedure Decode
@@ -911,52 +815,6 @@ package body Terminal.App.Image_Media is
       Result                  : in out Decoded_Image;
       Status                  : out Decode_Status)
    is
-      Genesis : Genesis_Access;
-      New_Wand : New_Wand_Access;
-      Destroy : Destroy_Wand_Access;
-      Read_Blob : Read_Blob_Access;
-      Get_Count : Get_Size_Access;
-      Get_Width : Get_Size_Access;
-      Get_Height : Get_Size_Access;
-      Get_Delay : Get_Size_Access;
-      Set_Index : Set_Index_Access;
-      Set_Format : Set_Format_Access;
-      Export_Pixels : Export_Access;
-      Coalesce : Coalesce_Access;
-      Set_Limit : Set_Limit_Access;
-      Wand : System.Address := System.Null_Address;
-      Frames_Wand : System.Address := System.Null_Address;
-      Is_Animation : constant Boolean := Is_GIF (Data, Length);
-      Frame_Count : Natural := 1;
-      Width : Natural := 0;
-      Height : Natural := 0;
-      Frame_Bytes : Natural := 0;
-      Total_Bytes : Natural := 0;
-      Map : CS.chars_ptr := CS.Null_Ptr;
-
-      procedure Destroy_All is
-         Ignored : System.Address;
-      begin
-         if Map /= CS.Null_Ptr then
-            CS.Free (Map);
-            Map := CS.Null_Ptr;
-         end if;
-         if Destroy /= null then
-            if Frames_Wand /= System.Null_Address and then Frames_Wand /= Wand then
-               Ignored := Destroy (Frames_Wand);
-               Frames_Wand := System.Null_Address;
-            end if;
-            if Wand /= System.Null_Address then
-               Ignored := Destroy (Wand);
-               Wand := System.Null_Address;
-            end if;
-         end if;
-      end Destroy_All;
-
-      function Required (Name : String) return System.Address is
-      begin
-         return Symbol (Name);
-      end Required;
    begin
       Release (Result);
       Status := Decode_Unavailable;
@@ -970,7 +828,6 @@ package body Terminal.App.Image_Media is
             Maximum_Pixel_Dimension,
             Result,
             Status);
-         return;
       elsif Is_PICT (Data, Length) or else Is_Headered_PICT (Data, Length) then
          Decode_PICT
            (Data,
@@ -979,173 +836,6 @@ package body Terminal.App.Image_Media is
             Maximum_Pixel_Dimension,
             Result,
             Status);
-         return;
-      elsif not Extended_Media_Available then
-         return;
       end if;
-
-      Genesis := To_Genesis (Required ("MagickWandGenesis"));
-      New_Wand := To_New_Wand (Required ("NewMagickWand"));
-      Destroy := To_Destroy (Required ("DestroyMagickWand"));
-      Read_Blob := To_Read (Required ("MagickReadImageBlob"));
-      Get_Count := To_Get_Size (Required ("MagickGetNumberImages"));
-      Get_Width := To_Get_Size (Required ("MagickGetImageWidth"));
-      Get_Height := To_Get_Size (Required ("MagickGetImageHeight"));
-      Get_Delay := To_Get_Size (Required ("MagickGetImageDelay"));
-      Set_Index := To_Set_Index (Required ("MagickSetIteratorIndex"));
-      Set_Format := To_Set_Format (Symbol ("MagickSetFormat"));
-      Export_Pixels := To_Export (Required ("MagickExportImagePixels"));
-      Coalesce := To_Coalesce (Required ("MagickCoalesceImages"));
-      Set_Limit := To_Set_Limit (Symbol ("MagickSetResourceLimit"));
-      if Genesis = null or else New_Wand = null or else Destroy = null
-        or else Read_Blob = null or else Get_Count = null
-        or else Get_Width = null or else Get_Height = null
-        or else Get_Delay = null or else Set_Index = null
-        or else Export_Pixels = null or else Coalesce = null
-      then
-         return;
-      end if;
-
-      Genesis.all;
-      if Set_Limit /= null then
-         declare
-            Ignored : C.unsigned;
-            Byte_Limit : constant Interfaces.Unsigned_64 :=
-              Interfaces.Unsigned_64 (Maximum_Decoded_Bytes);
-            Dimension_Limit : constant Interfaces.Unsigned_64 :=
-              Interfaces.Unsigned_64 (Maximum_Pixel_Dimension);
-         begin
-            Ignored := Set_Limit (1, Byte_Limit / 4); -- area
-            Ignored := Set_Limit (2, 0);              -- disk
-            Ignored := Set_Limit (4, Byte_Limit);     -- map
-            Ignored := Set_Limit (5, Byte_Limit);     -- memory
-            Ignored := Set_Limit (7, 5);              -- seconds
-            Ignored := Set_Limit (9, Dimension_Limit);
-            Ignored := Set_Limit (10, Dimension_Limit);
-            Ignored := Set_Limit (11, Max_Frames);
-            pragma Unreferenced (Ignored);
-         end;
-      end if;
-
-      Wand := New_Wand.all;
-      if Wand = System.Null_Address then
-         Status := Decode_Invalid;
-         Destroy_All;
-         return;
-      end if;
-      if Is_PDF (Data, Length) then
-         if Set_Format = null then
-            Status := Decode_Unavailable;
-            Destroy_All;
-            return;
-         end if;
-         declare
-            Hint : CS.chars_ptr :=
-              CS.New_String
-                ("PDF");
-            Accepted : constant C.unsigned := Set_Format (Wand, Hint);
-         begin
-            CS.Free (Hint);
-            if Accepted = 0 then
-               Status := Decode_Invalid;
-               Destroy_All;
-               return;
-            end if;
-         end;
-      end if;
-      if Read_Blob (Wand, Data (Data'First)'Address, C.size_t (Length)) = 0 then
-         Status := Decode_Invalid;
-         Destroy_All;
-         return;
-      end if;
-
-      Frames_Wand := Wand;
-      if Is_Animation then
-         Frames_Wand := Coalesce (Wand);
-         if Frames_Wand = System.Null_Address then
-            Status := Decode_Invalid;
-            Destroy_All;
-            return;
-         end if;
-         declare
-            Actual_Frame_Count : constant Natural :=
-              Natural (Get_Count (Frames_Wand));
-         begin
-            if Actual_Frame_Count > Max_Frames then
-               Status := Decode_Too_Large;
-               Destroy_All;
-               return;
-            end if;
-            Frame_Count := Actual_Frame_Count;
-         end;
-      end if;
-      if Frame_Count = 0 or else Set_Index (Frames_Wand, 0) = 0 then
-         Status := Decode_Invalid;
-         Destroy_All;
-         return;
-      end if;
-      Width := Natural (Get_Width (Frames_Wand));
-      Height := Natural (Get_Height (Frames_Wand));
-      if Width = 0 or else Height = 0
-        or else Width > Maximum_Pixel_Dimension
-        or else Height > Maximum_Pixel_Dimension
-        or else Width > Natural'Last / Height
-        or else Width * Height > Natural'Last / 4
-      then
-         Status := Decode_Too_Large;
-         Destroy_All;
-         return;
-      end if;
-      Frame_Bytes := Width * Height * 4;
-      if Frame_Count > Maximum_Decoded_Bytes / Frame_Bytes then
-         Status := Decode_Too_Large;
-         Destroy_All;
-         return;
-      end if;
-      Total_Bytes := Frame_Count * Frame_Bytes;
-      Result.Bytes := new Terminal.Common.Bytes.Byte_Array (1 .. Total_Bytes);
-      Map := CS.New_String ("RGBA");
-      for Frame in 1 .. Frame_Count loop
-         if Set_Index (Frames_Wand, C.long (Frame - 1)) = 0
-           or else Natural (Get_Width (Frames_Wand)) /= Width
-           or else Natural (Get_Height (Frames_Wand)) /= Height
-           or else Export_Pixels
-             (Frames_Wand,
-              0,
-              0,
-              C.size_t (Width),
-              C.size_t (Height),
-              Map,
-              1,
-              Result.Bytes (Result.Bytes'First + (Frame - 1) * Frame_Bytes)'Address) = 0
-         then
-            Release (Result);
-            Status := Decode_Invalid;
-            Destroy_All;
-            return;
-         end if;
-         Result.Delays_MS (Frame) :=
-           Natural'Max (10, Natural (Get_Delay (Frames_Wand)) * 10);
-      end loop;
-
-      Result.Pixel_Width := Width;
-      Result.Pixel_Height := Height;
-      Result.Frame_Count := Frame_Count;
-      Result.Loop_Count :=
-        (if Is_Animation then GIF_Loop_Count (Data, Length) else 1);
-      Result.Frame_Bytes := Frame_Bytes;
-      Result.Total_Bytes := Total_Bytes;
-      Result.Peak_Working_Bytes := Total_Bytes;
-      Status := Decode_Ok;
-      Destroy_All;
-   exception
-      when Storage_Error =>
-         Release (Result);
-         Destroy_All;
-         Status := Decode_Allocation_Failed;
-      when others =>
-         Release (Result);
-         Destroy_All;
-         Status := Decode_Invalid;
    end Decode;
 end Terminal.App.Image_Media;

@@ -1,6 +1,5 @@
 /* Resolve POSIX constants and descriptor paths through host headers. */
 
-#include <dlfcn.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
@@ -91,14 +90,4 @@ int terminal_media_close (int fd)
 int terminal_media_delete_file_at (int directory, const char *name)
 {
    return unlinkat (directory, name, 0);
-}
-
-void *terminal_media_open_dynamic_library (const char *name)
-{
-   return dlopen (name, RTLD_LAZY);
-}
-
-void *terminal_media_dynamic_symbol (void *handle, const char *name)
-{
-   return dlsym (handle, name);
 }

@@ -25,6 +25,7 @@ package body Terminal.App.Diagnostics is
    use type Terminal.App.PTY_Write.Write_All_Status;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Protocol;
+   use type Terminal.App.Renderer.Renderer_Diagnostics;
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
@@ -130,53 +131,7 @@ package body Terminal.App.Diagnostics is
        (others => ' ');
    Last_PTY_Overflows : Natural := 0;
    Last_Input_Overflows : Natural := 0;
-   Last_Missing_Glyphs : Natural := 0;
-   Last_Shaped_Glyphs : Natural := 0;
-   Last_Shaping_Fallbacks : Natural := 0;
-   Last_Text_Fallbacks : Natural := 0;
-   Last_Color_Glyphs : Natural := 0;
-   Last_Color_Emoji_Fallbacks : Natural := 0;
-   Last_Paragraph_Bidi_Fallbacks : Natural := 0;
-   Last_Image_Count : Natural := 0;
-   Last_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
-     Terminal.App.Render_Model.Image_Sixel;
-   Last_Image_Width : Natural := 0;
-   Last_Image_Height : Natural := 0;
-   Last_Image_Raw_Format : Natural := 0;
-   Last_Image_Pixel_Width : Natural := 0;
-   Last_Image_Pixel_Height : Natural := 0;
-   Last_Image_Payload_Length : Natural := 0;
-   Last_Image_Payload_Preview_Complete : Boolean := False;
-   Last_Image_Encoded_Preview_Length : Natural := 0;
-   Last_Image_Decoded_Preview_Length : Natural := 0;
-   Last_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
-     (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
-       (others => 0);
-   Last_Image_Preview_Decode_Complete : Boolean := False;
-   Last_Image_Decode_Status :
-     Terminal.App.Render_Model.Image_Decode_Status :=
-       Terminal.App.Render_Model.Image_Decode_Not_Attempted;
-   Last_Image_Placeholder : Boolean := False;
-   Last_Image_Object_Count : Natural := 0;
-   Last_Image_Object_Bytes : Natural := 0;
-   Last_Placement_Count : Natural := 0;
-   Last_Animation_Frame_Count : Natural := 0;
-   Last_Graphics_Event_Count : Interfaces.Unsigned_64 := 0;
-   Last_Kitty_Command_Count : Interfaces.Unsigned_64 := 0;
-   Last_Kitty_Success_Count : Interfaces.Unsigned_64 := 0;
-   Last_Kitty_Error_Count : Interfaces.Unsigned_64 := 0;
-   Last_Image_Install_Count : Interfaces.Unsigned_64 := 0;
-   Last_Image_Installed_Bytes : Interfaces.Unsigned_64 := 0;
-   Last_Image_Eviction_Count : Interfaces.Unsigned_64 := 0;
-   Last_Placement_Create_Count : Interfaces.Unsigned_64 := 0;
-   Last_Placement_Delete_Count : Interfaces.Unsigned_64 := 0;
-   Last_Transport_Failure_Count : Interfaces.Unsigned_64 := 0;
-   Last_Decode_Failure_Count : Interfaces.Unsigned_64 := 0;
-   Last_Allocation_Failure_Count : Interfaces.Unsigned_64 := 0;
-   Last_Animation_Advance_Count : Interfaces.Unsigned_64 := 0;
-   Last_Chunk_Cancel_Count : Interfaces.Unsigned_64 := 0;
-   Last_Render_Status : Terminal.App.Renderer.Render_Status :=
-     Terminal.App.Renderer.Not_Initialized;
+   Last_Renderer : Terminal.App.Renderer.Renderer_Diagnostics;
    Last_Presenter_Status : Terminal.App.Vulkan_Presenter.Present_Status :=
      Terminal.App.Vulkan_Presenter.Not_Initialized;
    Last_Accepted_Frames : Natural := 0;
@@ -912,80 +867,7 @@ package body Terminal.App.Diagnostics is
 
    function Renderer_Changed (S : Snapshot) return Boolean is
    begin
-      return S.Renderer.Missing_Glyph_Count /= Last_Missing_Glyphs
-        or else S.Renderer.Last_Image_Count /= Last_Image_Count
-        or else S.Renderer.Last_Image_Protocol /= Last_Image_Protocol
-        or else S.Renderer.Last_Image_Width /= Last_Image_Width
-        or else S.Renderer.Last_Image_Height /= Last_Image_Height
-        or else S.Renderer.Last_Image_Raw_Format /= Last_Image_Raw_Format
-        or else S.Renderer.Last_Image_Pixel_Width /= Last_Image_Pixel_Width
-        or else S.Renderer.Last_Image_Pixel_Height /= Last_Image_Pixel_Height
-        or else
-          S.Renderer.Last_Image_Payload_Length /=
-            Last_Image_Payload_Length
-        or else
-          S.Renderer.Last_Image_Payload_Preview_Complete /=
-            Last_Image_Payload_Preview_Complete
-        or else
-          S.Renderer.Last_Image_Encoded_Preview_Length /=
-            Last_Image_Encoded_Preview_Length
-        or else
-          S.Renderer.Last_Image_Decoded_Preview_Length /=
-            Last_Image_Decoded_Preview_Length
-        or else
-          S.Renderer.Last_Image_Decoded_Preview_Bytes /=
-            Last_Image_Decoded_Preview_Bytes
-        or else
-          S.Renderer.Last_Image_Preview_Decode_Complete /=
-            Last_Image_Preview_Decode_Complete
-        or else
-          S.Renderer.Last_Image_Decode_Status /= Last_Image_Decode_Status
-        or else
-          S.Renderer.Last_Image_Placeholder /= Last_Image_Placeholder
-        or else S.Renderer.Image_Object_Count /= Last_Image_Object_Count
-        or else S.Renderer.Image_Object_Bytes /= Last_Image_Object_Bytes
-        or else S.Renderer.Placement_Count /= Last_Placement_Count
-        or else
-          S.Renderer.Kitty_Animation_Frame_Count /=
-            Last_Animation_Frame_Count
-        or else
-          S.Renderer.Graphics_Event_Count /= Last_Graphics_Event_Count
-        or else S.Renderer.Kitty_Command_Count /= Last_Kitty_Command_Count
-        or else S.Renderer.Kitty_Success_Count /= Last_Kitty_Success_Count
-        or else S.Renderer.Kitty_Error_Count /= Last_Kitty_Error_Count
-        or else S.Renderer.Image_Install_Count /= Last_Image_Install_Count
-        or else
-          S.Renderer.Image_Installed_Bytes /= Last_Image_Installed_Bytes
-        or else S.Renderer.Image_Eviction_Count /= Last_Image_Eviction_Count
-        or else
-          S.Renderer.Placement_Create_Count /= Last_Placement_Create_Count
-        or else
-          S.Renderer.Placement_Delete_Count /= Last_Placement_Delete_Count
-        or else
-          S.Renderer.Transport_Failure_Count /= Last_Transport_Failure_Count
-        or else S.Renderer.Decode_Failure_Count /= Last_Decode_Failure_Count
-        or else
-          S.Renderer.Allocation_Failure_Count /= Last_Allocation_Failure_Count
-        or else
-          S.Renderer.Animation_Advance_Count /= Last_Animation_Advance_Count
-        or else S.Renderer.Chunk_Cancel_Count /= Last_Chunk_Cancel_Count
-        or else S.Renderer.Last_Shaped_Glyph_Count /= Last_Shaped_Glyphs
-        or else
-          S.Renderer.Last_Shaping_Fallback_Count /=
-            Last_Shaping_Fallbacks
-        or else
-          S.Renderer.Last_Text_Fallback_Run_Count /=
-            Last_Text_Fallbacks
-        or else
-          S.Renderer.Last_Color_Glyph_Count /=
-            Last_Color_Glyphs
-        or else
-          S.Renderer.Last_Color_Emoji_Fallback_Count /=
-            Last_Color_Emoji_Fallbacks
-        or else
-          S.Renderer.Last_Paragraph_Bidi_Fallback_Count /=
-            Last_Paragraph_Bidi_Fallbacks
-        or else S.Renderer.Last_Render_Status /= Last_Render_Status;
+      return S.Renderer /= Last_Renderer;
    end Renderer_Changed;
 
    function Presenter_Changed (S : Snapshot) return Boolean is
@@ -1168,54 +1050,7 @@ package body Terminal.App.Diagnostics is
       Last_Graphics_Data_Status := S.Graphics_Data_Status;
       Last_PTY_Overflows := S.PTY_Overflows;
       Last_Input_Overflows := S.Input_Overflows;
-      Last_Missing_Glyphs := S.Renderer.Missing_Glyph_Count;
-      Last_Shaped_Glyphs := S.Renderer.Last_Shaped_Glyph_Count;
-      Last_Shaping_Fallbacks := S.Renderer.Last_Shaping_Fallback_Count;
-      Last_Text_Fallbacks := S.Renderer.Last_Text_Fallback_Run_Count;
-      Last_Color_Glyphs := S.Renderer.Last_Color_Glyph_Count;
-      Last_Color_Emoji_Fallbacks :=
-        S.Renderer.Last_Color_Emoji_Fallback_Count;
-      Last_Paragraph_Bidi_Fallbacks :=
-        S.Renderer.Last_Paragraph_Bidi_Fallback_Count;
-      Last_Image_Count := S.Renderer.Last_Image_Count;
-      Last_Image_Protocol := S.Renderer.Last_Image_Protocol;
-      Last_Image_Width := S.Renderer.Last_Image_Width;
-      Last_Image_Height := S.Renderer.Last_Image_Height;
-      Last_Image_Raw_Format := S.Renderer.Last_Image_Raw_Format;
-      Last_Image_Pixel_Width := S.Renderer.Last_Image_Pixel_Width;
-      Last_Image_Pixel_Height := S.Renderer.Last_Image_Pixel_Height;
-      Last_Image_Payload_Length := S.Renderer.Last_Image_Payload_Length;
-      Last_Image_Payload_Preview_Complete :=
-        S.Renderer.Last_Image_Payload_Preview_Complete;
-      Last_Image_Encoded_Preview_Length :=
-        S.Renderer.Last_Image_Encoded_Preview_Length;
-      Last_Image_Decoded_Preview_Length :=
-        S.Renderer.Last_Image_Decoded_Preview_Length;
-      Last_Image_Decoded_Preview_Bytes :=
-        S.Renderer.Last_Image_Decoded_Preview_Bytes;
-      Last_Image_Preview_Decode_Complete :=
-        S.Renderer.Last_Image_Preview_Decode_Complete;
-      Last_Image_Decode_Status := S.Renderer.Last_Image_Decode_Status;
-      Last_Image_Placeholder := S.Renderer.Last_Image_Placeholder;
-      Last_Image_Object_Count := S.Renderer.Image_Object_Count;
-      Last_Image_Object_Bytes := S.Renderer.Image_Object_Bytes;
-      Last_Placement_Count := S.Renderer.Placement_Count;
-      Last_Animation_Frame_Count := S.Renderer.Kitty_Animation_Frame_Count;
-      Last_Graphics_Event_Count := S.Renderer.Graphics_Event_Count;
-      Last_Kitty_Command_Count := S.Renderer.Kitty_Command_Count;
-      Last_Kitty_Success_Count := S.Renderer.Kitty_Success_Count;
-      Last_Kitty_Error_Count := S.Renderer.Kitty_Error_Count;
-      Last_Image_Install_Count := S.Renderer.Image_Install_Count;
-      Last_Image_Installed_Bytes := S.Renderer.Image_Installed_Bytes;
-      Last_Image_Eviction_Count := S.Renderer.Image_Eviction_Count;
-      Last_Placement_Create_Count := S.Renderer.Placement_Create_Count;
-      Last_Placement_Delete_Count := S.Renderer.Placement_Delete_Count;
-      Last_Transport_Failure_Count := S.Renderer.Transport_Failure_Count;
-      Last_Decode_Failure_Count := S.Renderer.Decode_Failure_Count;
-      Last_Allocation_Failure_Count := S.Renderer.Allocation_Failure_Count;
-      Last_Animation_Advance_Count := S.Renderer.Animation_Advance_Count;
-      Last_Chunk_Cancel_Count := S.Renderer.Chunk_Cancel_Count;
-      Last_Render_Status := S.Renderer.Last_Render_Status;
+      Last_Renderer := S.Renderer;
       Last_Presenter_Status := S.Presenter.Last_Status;
       Last_Accepted_Frames := S.Presenter.Accepted_Frames;
       Last_Rejected_Frames := S.Presenter.Rejected_Frames;
@@ -1407,6 +1242,8 @@ package body Terminal.App.Diagnostics is
         Terminal.App.Renderer.Paragraph_Bidi_Status_Label (S.Renderer);
       Image_Status : constant String :=
         Terminal.App.Renderer.Image_Status_Label (S.Renderer);
+      Media_Status : constant String :=
+        Terminal.App.Renderer.Media_Status_Label (S.Renderer);
       Presenter_Image_Status : constant String :=
         Terminal.App.Vulkan_Presenter.Image_Status_Label (S.Presenter);
       Presenter_Image_Texture_Status : constant String :=
@@ -1651,6 +1488,9 @@ package body Terminal.App.Diagnostics is
          & (if Image_Status = ""
             then ""
             else " renderer_image_status=" & Image_Status)
+         & (if Media_Status = ""
+            then ""
+            else " media_status=" & Media_Status)
          & (if Presenter_Image_Status = ""
             then ""
             else " presenter_image_status=" & Presenter_Image_Status)

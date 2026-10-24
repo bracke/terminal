@@ -1,5 +1,9 @@
+with Ada.Unchecked_Deallocation;
+with Terminal.App.Image_Decode;
+
 package body Terminal.App.Render_Model is
    use type Terminal.Common.Bytes.Byte;
+   use type Image_Data_Access;
 
    function Base64_Value (Value : Terminal.Common.Bytes.Byte) return Integer is
    begin
@@ -135,21 +139,7 @@ package body Terminal.App.Render_Model is
 
    function Image_Decode_Status_Suffix
      (Status : Image_Decode_Status) return String
-   is
-   begin
-      case Status is
-         when Image_Decode_Not_Attempted | Image_Decode_Ok =>
-            return "";
-         when Image_Decode_Invalid_Byte =>
-            return " invalid-byte";
-         when Image_Decode_Trailing_Data =>
-            return " trailing-data";
-         when Image_Decode_Preview_Truncated =>
-            return " truncated";
-         when Image_Decode_Unsupported_Format =>
-            return " unsupported-format";
-      end case;
-   end Image_Decode_Status_Suffix;
+      is (Terminal.App.Image_Decode.Suffix (Status));
 
    function Image_Payload_Status_Suffix
      (Preview_Complete : Boolean) return String
@@ -161,6 +151,52 @@ package body Terminal.App.Render_Model is
          return " payload-preview";
       end if;
    end Image_Payload_Status_Suffix;
+
+   procedure Release_Owned_Buffers (Image : in out Image_Command) is
+      procedure Free is new Ada.Unchecked_Deallocation
+        (Terminal.Common.Bytes.Byte_Array, Image_Data_Access);
+      Decoded : constant Image_Data_Access := Image.Decoded_Bytes;
+      Encoded : constant Image_Data_Access := Image.Encoded_Source_Bytes;
+      Preview : constant Image_Data_Access := Image.Decoded_Preview_Bytes;
+      Decoded_Owned : constant Boolean := Image.Decoded_Bytes_Owned;
+      Encoded_Owned : constant Boolean := Image.Encoded_Source_Bytes_Owned;
+      Preview_Owned : constant Boolean := Image.Decoded_Preview_Bytes_Owned;
+      Item : Image_Data_Access;
+   begin
+      --  Prefer decoded ownership for aliases, followed by encoded and then
+      --  preview ownership. Contradictory flags cannot cause a double free.
+      if Decoded /= null and then Decoded_Owned then
+         Item := Decoded;
+         Free (Item);
+      end if;
+      if Encoded /= null
+        and then Encoded_Owned
+        and then (Encoded /= Decoded or else not Decoded_Owned)
+      then
+         Item := Encoded;
+         Free (Item);
+      end if;
+      if Preview /= null
+        and then Preview_Owned
+        and then (Preview /= Decoded or else not Decoded_Owned)
+        and then (Preview /= Encoded or else not Encoded_Owned)
+      then
+         Item := Preview;
+         Free (Item);
+      end if;
+
+      Image.Decoded_Bytes := null;
+      Image.Decoded_Bytes_Owned := False;
+      Image.Decoded_Byte_Length := 0;
+      Image.Decoded_Row_Stride_Bytes := 0;
+      Image.Decoded_Source := Image_Decoded_Source_None;
+      Image.Encoded_Source_Bytes := null;
+      Image.Encoded_Source_Bytes_Owned := False;
+      Image.Encoded_Source_Length := 0;
+      Image.Decoded_Preview_Bytes := null;
+      Image.Decoded_Preview_Bytes_Owned := False;
+      Image.Decoded_Preview_Length := 0;
+   end Release_Owned_Buffers;
 
    function Image_Decoded_Source_Bytes
      (Image : Image_Command) return Natural

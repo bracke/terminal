@@ -71,18 +71,4 @@ package body Terminal.App.Platform_Media is
       return False;
    end Delete_File_At;
 
-   function Open_Dynamic_Library (Name : String) return System.Address is
-      pragma Unreferenced (Name);
-   begin
-      return System.Null_Address;
-   end Open_Dynamic_Library;
-
-   function Dynamic_Symbol
-     (Handle : System.Address;
-      Name   : String) return System.Address
-   is
-      pragma Unreferenced (Handle, Name);
-   begin
-      return System.Null_Address;
-   end Dynamic_Symbol;
 end Terminal.App.Platform_Media;

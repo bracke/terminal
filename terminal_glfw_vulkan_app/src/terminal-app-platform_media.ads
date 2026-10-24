@@ -29,8 +29,4 @@ package Terminal.App.Platform_Media is
      (Directory : C.int;
       Name      : String) return Boolean;
 
-   function Open_Dynamic_Library (Name : String) return System.Address;
-   function Dynamic_Symbol
-     (Handle : System.Address;
-      Name   : String) return System.Address;
 end Terminal.App.Platform_Media;

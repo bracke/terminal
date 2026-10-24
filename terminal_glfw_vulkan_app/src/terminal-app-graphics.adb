@@ -1,6 +1,7 @@
 with Ada.Streams;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
+with Terminal.App.Image_Decode;
 with Terminal.App.Image_Media;
 with Ada.Finalization;
 with Ada.Unchecked_Deallocation;
@@ -1066,7 +1067,7 @@ package body Terminal.App.Graphics is
       Result.Decode_Status := Decode_Ok;
    exception
       when Storage_Error =>
-         Result.Decode_Status := Decode_Preview_Truncated;
+         Result.Decode_Status := Decode_Allocation_Failed;
          Result.Decode_Complete := False;
    end Decode_Sixel_Rows;
 
@@ -1986,7 +1987,7 @@ package body Terminal.App.Graphics is
          Result.Decode_Status := Decode_Ok;
       exception
          when Storage_Error =>
-            Result.Decode_Status := Decode_Preview_Truncated;
+            Result.Decode_Status := Decode_Allocation_Failed;
             Result.Decode_Complete := False;
       end;
    end Decode_PNG_RGBA_Source_Rows;
@@ -2184,6 +2185,15 @@ package body Terminal.App.Graphics is
          Decoder_Initialized := False;
          Free_JPEG_Data (Input);
       exception
+         when Storage_Error =>
+            Result.Decode_Status := Decode_Allocation_Failed;
+            Result.Decode_Complete := False;
+            if Decoder_Initialized then
+               Jpeglib.Decoding.Finalize (Decoder);
+            end if;
+            if Input /= null then
+               Free_JPEG_Data (Input);
+            end if;
          when Constraint_Error =>
             Result.Decode_Status := Decode_Preview_Truncated;
             Result.Decode_Complete := False;
@@ -2195,14 +2205,13 @@ package body Terminal.App.Graphics is
                Free_JPEG_Data (Input);
             end if;
          when others =>
-            Result.Decode_Status := Decode_Invalid_Byte;
-            Result.Decode_Complete := False;
             if Decoder_Initialized then
                Jpeglib.Decoding.Finalize (Decoder);
             end if;
             if Input /= null then
                Free_JPEG_Data (Input);
             end if;
+            raise;
       end;
    end Decode_JPEG_RGBA_Data;
 
@@ -2258,6 +2267,11 @@ package body Terminal.App.Graphics is
                  Media.Bytes
                    (Media.Bytes'First
                     .. Media.Bytes'First + Media.Frame_Bytes - 1);
+            else
+               Result.Decode_Status :=
+                 (if Media_Status = Terminal.App.Image_Media.Decode_Ok
+                  then Decode_Invalid_Data
+                  else Media_Status);
             end if;
             Terminal.App.Image_Media.Release (Media);
          end;
@@ -2522,7 +2536,7 @@ package body Terminal.App.Graphics is
          Release (Result);
          Data := null;
          Length := 0;
-         Status := Decode_Preview_Truncated;
+         Status := Decode_Allocation_Failed;
    end Decode_Base64_Data;
 
    function JPEG_Data_Preview_Text
@@ -2598,16 +2612,19 @@ package body Terminal.App.Graphics is
 
       return Result;
    exception
-      when Constraint_Error | Storage_Error =>
+      when Storage_Error =>
+         Release (Result);
+         Result.Decode_Status := Decode_Allocation_Failed;
+         Result.Decode_Complete := False;
+         return Result;
+      when Constraint_Error =>
          Release (Result);
          Result.Decode_Status := Decode_Preview_Truncated;
          Result.Decode_Complete := False;
          return Result;
       when others =>
          Release (Result);
-         Result.Decode_Status := Decode_Invalid_Byte;
-         Result.Decode_Complete := False;
-         return Result;
+         raise;
    end JPEG_Data_Preview_Text;
 
    procedure Decode_Base64_Chunk_Bytes
@@ -2959,12 +2976,17 @@ package body Terminal.App.Graphics is
          if Output /= null then
             Free_Image_Data (Output);
          end if;
-         Status := Decode_Preview_Truncated;
-      when others =>
+         Status := Decode_Allocation_Failed;
+      when Zlib.Zlib_Error =>
          if Output /= null then
             Free_Image_Data (Output);
          end if;
          Status := Decode_Invalid_Byte;
+      when others =>
+         if Output /= null then
+            Free_Image_Data (Output);
+         end if;
+         raise;
    end Decode_Base64_Zlib_Chunks;
 
    procedure Decode_Base64_Zlib_Raw_Chunk_Rows
@@ -3073,12 +3095,17 @@ package body Terminal.App.Graphics is
       Result.Has_Data := Encoded_Length > 0;
       Free_Image_Data (PNG);
    exception
+      when Storage_Error =>
+         if PNG /= null then
+            Free_Image_Data (PNG);
+         end if;
+         Result.Decode_Status := Decode_Allocation_Failed;
+         Result.Decode_Complete := False;
       when others =>
          if PNG /= null then
             Free_Image_Data (PNG);
          end if;
-         Result.Decode_Status := Decode_Invalid_Byte;
-         Result.Decode_Complete := False;
+         raise;
    end Decode_Base64_Zlib_PNG_Chunk_Rows;
 
    procedure Decode_Base64_PNG_Chunk_Rows
@@ -3626,7 +3653,7 @@ package body Terminal.App.Graphics is
          end if;
       exception
          when Storage_Error =>
-            Result.Decode_Status := Decode_Preview_Truncated;
+            Result.Decode_Status := Decode_Allocation_Failed;
             Result.Decode_Complete := False;
             return;
       end;
@@ -3667,43 +3694,12 @@ package body Terminal.App.Graphics is
 
    function Data_Decode_Status_Suffix
      (Status : Data_Decode_Status) return String
-   is
-   begin
-      case Status is
-         when Decode_Not_Attempted | Decode_Ok =>
-            return "";
-         when Decode_Invalid_Byte =>
-            return " invalid-byte";
-         when Decode_Trailing_Data =>
-            return " trailing-data";
-         when Decode_Preview_Truncated =>
-            return " truncated";
-         when Decode_Unsupported_Format =>
-            return " unsupported-format";
-      end case;
-   end Data_Decode_Status_Suffix;
+      is (Terminal.App.Image_Decode.Suffix (Status));
 
    function Image_Decode_Status
      (Status : Data_Decode_Status)
       return Terminal.App.Render_Model.Image_Decode_Status
-   is
-      package RM renames Terminal.App.Render_Model;
-   begin
-      case Status is
-         when Decode_Not_Attempted =>
-            return RM.Image_Decode_Not_Attempted;
-         when Decode_Ok =>
-            return RM.Image_Decode_Ok;
-         when Decode_Invalid_Byte =>
-            return RM.Image_Decode_Invalid_Byte;
-         when Decode_Trailing_Data =>
-            return RM.Image_Decode_Trailing_Data;
-         when Decode_Preview_Truncated =>
-            return RM.Image_Decode_Preview_Truncated;
-         when Decode_Unsupported_Format =>
-            return RM.Image_Decode_Unsupported_Format;
-      end case;
-   end Image_Decode_Status;
+      is (Status);
 
    function Capability
      (Protocol : Graphics_Protocol) return Protocol_Capability
@@ -3767,11 +3763,7 @@ package body Terminal.App.Graphics is
          when Kitty =>
             return "kitty graphics; RGB/RGBA/indexed/PNG texture rendering";
          when ITerm2 =>
-            if Terminal.App.Image_Media.Extended_Media_Available then
-               return "iTerm2 images; PNG/JPEG/GIF/PICT plus runtime media decoding";
-            else
-               return "iTerm2 images; PNG/JPEG/GIF/PICT texture rendering";
-            end if;
+            return "iTerm2 images; PNG/JPEG/GIF/PICT texture rendering";
       end case;
    end Capability_Status_Label;
 

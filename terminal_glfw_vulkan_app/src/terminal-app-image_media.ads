@@ -1,16 +1,22 @@
 with Terminal.Common.Bytes;
+with Terminal.App.Image_Decode;
 with Terminal.App.Render_Model;
 with Interfaces;
 
 package Terminal.App.Image_Media is
    Max_Frames : constant := 256;
 
-   type Decode_Status is
-     (Decode_Ok,
-      Decode_Unavailable,
-      Decode_Invalid,
-      Decode_Too_Large,
-      Decode_Allocation_Failed);
+   subtype Decode_Status is Terminal.App.Image_Decode.Status;
+   Decode_Ok : constant Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Ok;
+   Decode_Unavailable : constant Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Unsupported_Format;
+   Decode_Invalid : constant Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Invalid_Data;
+   Decode_Too_Large : constant Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Too_Large;
+   Decode_Allocation_Failed : constant Decode_Status :=
+     Terminal.App.Image_Decode.Decode_Allocation_Failed;
 
    type Frame_Delay_Array is array (Positive range 1 .. Max_Frames) of Natural;
 
@@ -30,6 +36,7 @@ package Terminal.App.Image_Media is
       Retained_Metadata_Byte_Limit,
       Metadata_Item_Limit,
       Allocation_Byte_Limit,
+      Total_Allocation_Byte_Limit,
       Output_Byte_Limit,
       Embedded_Image_Byte_Limit,
       Embedded_Image_Pixel_Limit,
@@ -62,19 +69,23 @@ package Terminal.App.Image_Media is
       Loop_Count   : Natural := 1;
       Frame_Bytes  : Natural := 0;
       Total_Bytes  : Natural := 0;
-      --  Peak bytes simultaneously owned by this adapter while decoding;
-      --  decoder-internal workspaces have their own configured limits. Native
-      --  PICT input is borrowed and its renderer writes directly into Bytes.
-      Peak_Working_Bytes : Natural := 0;
+      --  Adapter_Buffer_Bytes counts explicit encoded, canvas, and result
+      --  buffers owned by this adapter at its widest point.
+      --  Decoder_Configured_Bytes is the format-specific decoder allocation
+      --  budget. Container nodes, allocator/runtime bookkeeping, font-library
+      --  state, and GPU storage are excluded. Native PICT input is borrowed
+      --  and renders directly into Bytes.
+      Adapter_Buffer_Bytes : Natural := 0;
+      Decoder_Configured_Bytes : Natural := 0;
       Delays_MS    : Frame_Delay_Array := (others => 100);
       Bytes        : Terminal.App.Render_Model.Image_Data_Access := null;
       Diagnostic   : Decode_Diagnostic;
+      Warning_Count : Natural := 0;
+      First_Warning : Decode_Diagnostic;
    end record;
 
-   --  Native GIF and PICT decoding is always available. Other media formats
-   --  remain an optional runtime extension supplied by MagickWand.
+   --  Native GIF and PICT decoding is always available.
    function Available return Boolean;
-   function Extended_Media_Available return Boolean;
 
    procedure Decode
      (Data                    : Terminal.Common.Bytes.Byte_Array;

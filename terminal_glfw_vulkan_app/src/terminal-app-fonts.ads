@@ -15,6 +15,10 @@ package Terminal.App.Fonts is
    function Default_Font_Path return String;
    function Fallback_Font_Paths return Font_Path_Array;
    function Font_Path_For (Style : Font_Style) return String;
+   --  Resolve an optional exact QuickDraw family override first, then the
+   --  semantic fallback. For example, Chicago consults
+   --  TERMINAL_PICT_FONT_CHICAGO and TERMINAL_PICT_FONT_SANS_SERIF.
+   function PICT_Font_Path (Family : String; Style : Font_Style) return String;
    function To_String (Path : Font_Path) return String;
    function Status_Label
      (Default_Path   : String;

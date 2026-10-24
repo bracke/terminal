@@ -1,11 +1,15 @@
-with Ada.Real_Time;
 with Terminal.Common.Bytes;
 with Interfaces;
 with Terminal.Core;
 with Terminal.App.Graphics;
 with Terminal.App.Graphics_Transport;
 with Terminal.App.ITerm2_Files;
+with Terminal.App.Image_Decode;
 with Terminal.App.Image_Media;
+with Terminal.App.Image_Ingestion;
+with Terminal.App.Image_Placements;
+with Terminal.App.Image_Store;
+with Terminal.App.Image_Rendering;
 with Terminal.App.Render_Model;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
@@ -17,7 +21,8 @@ with Textrender;
 
 package Terminal.App.Renderer is
    Content_Margin : constant Natural := 6;
-   Max_Status_Label_Length : constant := 64;
+   Max_Status_Label_Length : constant :=
+     Terminal.App.Image_Rendering.Max_Status_Label_Length;
    Max_Kitty_Image_Objects : constant :=
      Terminal.App.Vulkan_Submit.Max_Image_Atlas_Sources;
    Max_Kitty_Image_Bytes   : constant := 64 * 1024 * 1024;
@@ -74,6 +79,8 @@ package Terminal.App.Renderer is
       Last_Rectangle_Count : Natural := 0;
       Last_Glyph_Count    : Natural := 0;
       Last_Image_Count    : Natural := 0;
+      Rectangle_Command_Capacity : Natural := 0;
+      Image_Command_Capacity : Natural := 0;
       Last_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
         Terminal.App.Render_Model.Image_Sixel;
       Last_Image_Width : Natural := 0;
@@ -93,8 +100,14 @@ package Terminal.App.Renderer is
       Last_Image_Decode_Status :
         Terminal.App.Render_Model.Image_Decode_Status :=
           Terminal.App.Render_Model.Image_Decode_Not_Attempted;
+      Last_Media_Decode_Attempted : Boolean := False;
+      Last_Media_Decode_Status : Terminal.App.Image_Media.Decode_Status :=
+        Terminal.App.Image_Decode.Decode_Not_Attempted;
       Last_Media_Diagnostic : Terminal.App.Image_Media.Decode_Diagnostic;
-      Last_Media_Peak_Working_Bytes : Natural := 0;
+      Last_Media_Adapter_Buffer_Bytes : Natural := 0;
+      Last_Media_Decoder_Configured_Bytes : Natural := 0;
+      Last_Media_Warning_Count : Natural := 0;
+      Last_Media_First_Warning : Terminal.App.Image_Media.Decode_Diagnostic;
       Last_Image_Placeholder : Boolean := False;
       Image_Object_Count : Natural := 0;
       Image_Object_Bytes : Natural := 0;
@@ -216,154 +229,40 @@ package Terminal.App.Renderer is
      (Diagnostics : Renderer_Diagnostics) return String;
    function Image_Status_Label
      (Diagnostics : Renderer_Diagnostics) return String;
+   function Media_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String;
+   --  The returned read-only view borrows renderer and atlas storage.  It is
+   --  valid only until the next Render/Render_App, Release_Graphics_Stream, or
+   --  Finalize call for R.
    function Last_Frame (R : Renderer) return Terminal.App.Render_Model.Frame_Commands;
 
 private
    type String_Access is access all String;
 
-   type Image_Object;
-   type Image_Object_Access is access Image_Object;
+   subtype Image_Object is Terminal.App.Image_Store.Image_Object;
+   subtype Image_Object_Access is Terminal.App.Image_Store.Image_Object_Access;
+   subtype Image_Frame is Terminal.App.Image_Store.Image_Frame;
+   subtype Image_Frame_Access is Terminal.App.Image_Store.Image_Frame_Access;
+   subtype Theme_Operation is Terminal.App.Image_Store.Theme_Operation;
+   subtype Theme_Operation_Access is
+     Terminal.App.Image_Store.Theme_Operation_Access;
+   subtype Animation_Playback_State is
+     Terminal.App.Image_Store.Animation_Playback_State;
+   Animation_Stopped : constant Animation_Playback_State :=
+     Terminal.App.Image_Store.Animation_Stopped;
+   Animation_Loading : constant Animation_Playback_State :=
+     Terminal.App.Image_Store.Animation_Loading;
+   Animation_Running : constant Animation_Playback_State :=
+     Terminal.App.Image_Store.Animation_Running;
 
-   type Animation_Playback_State is
-     (Animation_Stopped, Animation_Loading, Animation_Running);
-   type Image_Frame;
-   type Image_Frame_Access is access Image_Frame;
-   type Image_Frame is record
-      Number     : Positive := 2;
-      Gap_MS     : Integer := 40;
-      Usage_Hint : Natural := 0;
-      Bytes      : Terminal.App.Render_Model.Image_Data_Access := null;
-      Length     : Natural := 0;
-      Next       : Image_Frame_Access := null;
-   end record;
-
-   type Theme_Operation;
-   type Theme_Operation_Access is access Theme_Operation;
-   type Theme_Operation is record
-      Is_Composition : Boolean := False;
-      Archived_Frames : Boolean := False;
-      New_Frame      : Boolean := False;
-      Target_Frame   : Positive := 1;
-      Base_Frame     : Natural := 0;
-      Source_Frame   : Natural := 0;
-      Raw_Format     : Natural := 32;
-      Data_Width     : Natural := 0;
-      Data_Height    : Natural := 0;
-      Data_Row_Stride_Bytes : Natural := 0;
-      Target_X       : Natural := 0;
-      Target_Y       : Natural := 0;
-      Source_X       : Natural := 0;
-      Source_Y       : Natural := 0;
-      Region_Width   : Natural := 0;
-      Region_Height  : Natural := 0;
-      Composition_Mode : Natural := 0;
-      Background_Color : Terminal.Core.Graphics_ID := 0;
-      Bytes          : Terminal.App.Render_Model.Image_Data_Access := null;
-      Length         : Natural := 0;
-      Next           : Theme_Operation_Access := null;
-   end record;
-
-   type Image_Object is record
-      Stream_ID      : Terminal.Core.Graphics_Stream_ID := 0;
-      ID             : Terminal.Core.Graphics_ID := 0;
-      Number         : Terminal.Core.Graphics_ID := 0;
-      Protocol       : Terminal.App.Render_Model.Image_Protocol :=
-        Terminal.App.Render_Model.Image_Kitty;
-      Raw_Format     : Natural := 0;
-      Pixel_Width    : Natural := 0;
-      Pixel_Height   : Natural := 0;
-      Decoded_Length : Natural := 0;
-      Decoded_Row_Stride_Bytes : Natural := 0;
-      Usage_Hint     : Natural := 0;
-      Storage_Order  : Interfaces.Unsigned_64 := 0;
-      Content_Serial : Interfaces.Unsigned_64 := 0;
-      Bytes          : Terminal.App.Render_Model.Image_Data_Access := null;
-      Indexed_Format : Natural := 0;
-      Indexed_Length : Natural := 0;
-      Indexed_Row_Stride_Bytes : Natural := 0;
-      Indexed_Bytes  : Terminal.App.Render_Model.Image_Data_Access := null;
-      Frames         : Image_Frame_Access := null;
-      Frame_Count    : Positive := 1;
-      Frame_Bytes    : Natural := 0;
-      Theme_Operations : Theme_Operation_Access := null;
-      Theme_Operations_Tail : Theme_Operation_Access := null;
-      Theme_Operation_Count : Natural := 0;
-      Theme_Operation_Bytes : Natural := 0;
-      Root_Gap_MS    : Integer := 0;
-      Current_Frame  : Positive := 1;
-      Playback       : Animation_Playback_State := Animation_Stopped;
-      Loop_Count     : Positive := 1;
-      Loops_Completed : Natural := 0;
-      Next_Frame_At  : Ada.Real_Time.Time := Ada.Real_Time.Time_First;
-      Deadline_Set   : Boolean := False;
-      Next           : Image_Object_Access := null;
-   end record;
-
-   type Virtual_Placement;
-   type Virtual_Placement_Access is access Virtual_Placement;
-
-   type Virtual_Placement is record
-      Stream_ID      : Terminal.Core.Graphics_Stream_ID := 0;
-      Alternate_Screen : Boolean := False;
-      Screen_Generation : Terminal.Core.Graphics_Screen_Generation := 0;
-      Image_ID       : Terminal.Core.Graphics_ID := 0;
-      Image_Storage_Order : Interfaces.Unsigned_64 := 0;
-      Placement_ID   : Terminal.Core.Graphics_ID := 0;
-      Columns        : Positive := 1;
-      Rows           : Positive := 1;
-      Source_X       : Natural := 0;
-      Source_Y       : Natural := 0;
-      Source_Width   : Natural := 0;
-      Source_Height  : Natural := 0;
-      Cell_X         : Natural := 0;
-      Cell_Y         : Natural := 0;
-      Draw_Offset_X  : Natural := 0;
-      Draw_Offset_Y  : Natural := 0;
-      Draw_Width     : Positive := 1;
-      Draw_Height    : Positive := 1;
-      Z_Index        : Integer := 0;
-      Parent_Offset_X : Integer := 0;
-      Parent_Offset_Y : Integer := 0;
-      Next           : Virtual_Placement_Access := null;
-   end record;
-
-   type Conventional_Placement;
-   type Conventional_Placement_Access is access Conventional_Placement;
-
-   type Conventional_Placement is record
-      Stream_ID      : Terminal.Core.Graphics_Stream_ID := 0;
-      Alternate_Screen : Boolean := False;
-      Screen_Generation : Terminal.Core.Graphics_Screen_Generation := 0;
-      Image_ID       : Terminal.Core.Graphics_ID := 0;
-      Image_Storage_Order : Interfaces.Unsigned_64 := 0;
-      Protocol       : Terminal.App.Render_Model.Image_Protocol :=
-        Terminal.App.Render_Model.Image_Kitty;
-      Placement_ID   : Terminal.Core.Graphics_ID := 0;
-      Row            : Integer := 1;
-      Col            : Positive := 1;
-      Columns        : Positive := 1;
-      Rows           : Positive := 1;
-      Source_X       : Natural := 0;
-      Source_Y       : Natural := 0;
-      Source_Width   : Natural := 0;
-      Source_Height  : Natural := 0;
-      Cell_X         : Natural := 0;
-      Cell_Y         : Natural := 0;
-      Draw_Offset_X  : Natural := 0;
-      Draw_Offset_Y  : Natural := 0;
-      Draw_Width     : Positive := 1;
-      Draw_Height    : Positive := 1;
-      Z_Index        : Integer := 0;
-      Parent_Image_ID : Terminal.Core.Graphics_ID := 0;
-      Parent_Placement_ID : Terminal.Core.Graphics_ID := 0;
-      Parent_Offset_X : Integer := 0;
-      Parent_Offset_Y : Integer := 0;
-      Scroll_Sequence : Terminal.Core.Graphics_Scroll_Sequence := 0;
-      Clip_Top        : Natural := 0;
-      Clip_Bottom     : Natural := 0;
-      History_Attached : Boolean := False;
-      Next           : Conventional_Placement_Access := null;
-   end record;
+   subtype Virtual_Placement is
+     Terminal.App.Image_Placements.Virtual_Placement;
+   subtype Virtual_Placement_Access is
+     Terminal.App.Image_Placements.Virtual_Placement_Access;
+   subtype Conventional_Placement is
+     Terminal.App.Image_Placements.Conventional_Placement;
+   subtype Conventional_Placement_Access is
+     Terminal.App.Image_Placements.Conventional_Placement_Access;
 
    --  A frame can consume at most one pending event from each pane.  Results
    --  are committed before the next application frame, so reserving the pane
@@ -477,8 +376,9 @@ private
       Allocation_Failure_Count : Interfaces.Unsigned_64 := 0;
       Animation_Advance_Count : Interfaces.Unsigned_64 := 0;
       Chunk_Cancel_Count : Interfaces.Unsigned_64 := 0;
-      Last_Media_Diagnostic : Terminal.App.Image_Media.Decode_Diagnostic;
-      Last_Media_Peak_Working_Bytes : Natural := 0;
+      Last_Media : Terminal.App.Image_Rendering.Media_Diagnostics;
+      Image_Allocation_Control :
+        Terminal.App.Image_Store.Allocation_Control;
       Virtual_Placements : Virtual_Placement_Access := null;
       Conventional_Placements : Conventional_Placement_Access := null;
       Kitty_Placement_Count : Natural range 0 .. Max_Kitty_Placements := 0;
