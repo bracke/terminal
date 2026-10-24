@@ -24,7 +24,7 @@ The repository's Alire-selected compiler was used unchanged.
 
 | Check | Result | Evidence |
 | --- | --- | --- |
-| Alire application build | Pass | `alr build` completes with the pinned toolchain. |
+| Alire application build | Pass | The application builds successfully through the repository's pinned Alire toolchain. |
 | Core graphics suites | Pass | Streaming, responses, placeholders, screen lifetime, limits, and deterministic malformed-input suites complete without failure. |
 | Renderer/application suites | Pass | Image objects, placement identity, animation, resource quotas, atlas generation, recovery logic, and auxiliary protocols complete without failure. |
 | POSIX PTY suites | Pass | Environment, resize, close, and status tests complete without failure. |
@@ -34,12 +34,12 @@ The repository's Alire-selected compiler was used unchanged.
 | Released tmux passthrough | Pass | The Ada `tools/bin/tmux_graphics_passthrough_probe` uses a dedicated tmux 3.4 socket, enables passthrough, verifies `TERM`/`TERM_PROGRAM` updating, and observes the unwrapped Kitty APC at the outer pseudo-terminal. No persistent tmux server is touched. |
 | Released tmux to Vulkan presentation | Pass | `tools/bin/tmux_graphics_passthrough_probe --present` incrementally feeds the actual outer tmux capture and requires its decoded image frame to reach the live GLFW/Vulkan presenter before tmux exit cleanup. |
 | Kitty indexed formats | Pass | `renderer_kitty_object_smoke` covers `f=8`, `f=16`, special palette entries, alpha, byte quotas, and theme-change texture regeneration. |
-| iTerm2 media | Pass | `image_media_smoke` covers native GIF87a stills, interlacing, transparency, sub-frame composition, disposal, frame limits, animated GIF, PICT raster/vector/text/QuickTime-JPEG decoding, structured failures, and optional runtime PDF. `pict_renderer_smoke` checks exact retained RGBA pixels used by Vulkan submission; `iterm2_media_smoke` verifies finite/infinite/single-play GIF timing, frame storage, playback, and stream teardown through the renderer. |
+| iTerm2 media | Pending live rerun | Deterministic tests cover native GIF87a/GIF89a behavior, PICT raster/vector/text/QuickTime-JPEG decoding, compatibility warnings, structured failures, explicit adapter buffers, configured decoder limits, unsupported-format rejection, and stale-diagnostic clearing. The updated live test now requires both Kitty raw and native PICT pixels to pass Vulkan framebuffer readback; that changed path still requires an enforced graphical run. |
 | Deterministic graphics parser soak | Pass | 1,000,000 randomized inputs across four seeds completed without invalid parser state, crash, or failed recovery. |
 | Replacement/resource soak | Pass | 50,000 same-ID decoded-image replacements completed in 2.787659586 seconds (17,936 updates/s), ending with exactly one four-byte object and one placement. This is an observation, not a timing gate. |
 | Vulkan loader/device enumeration | Pass | `vulkaninfo --summary` enumerates llvmpipe through the selected Vulkan ICD without surface creation. |
-| GLFW/Vulkan surface presentation | Pass | `gui_present_smoke` created the window/surface/swapchain, submitted and presented a frame, rebuilt the presenter, and presented retained state again. |
-| Vulkan framebuffer pixel comparison | Pass | `gui_present_smoke` enables transfer-source swapchain usage, copies the completed image to bounded host-visible memory, converts BGRA/RGBA ordering, and compares the center of a known image against its expected opaque-red pixel. The `--present` tmux path uses the same oracle. |
+| GLFW/Vulkan surface presentation | Pending rerun | The previously validated path changed to present both Kitty and native PICT fixtures. Run `gui_present_smoke` with `TERMINAL_REQUIRE_GUI_PRESENT=1` before recording a new pass. |
+| Vulkan framebuffer pixel comparison | Pending rerun | The updated oracle independently requires opaque-red pixels from Kitty raw input and an iTerm2 PICT decode/upload. The `--present` tmux path continues to use the same readback mechanism. |
 
 ## Reproduction
 
@@ -80,10 +80,9 @@ from retained CPU state.
 ## Runtime boundary
 
 - Inline GIF and PICT support is built in through the path-pinned Ada `giflib`
-  and `pictlib` crates, alongside built-in PNG and JPEG decoding. PDF and other
-  extended formats are available only when a compatible MagickWand runtime and
-  the required coder/delegate policy are present. Diagnostics report that
-  optional runtime-media surface only when the library can be loaded.
+  and `pictlib` crates, alongside built-in PNG and JPEG decoding. Other inline
+  media is rejected as unsupported rather than delegated to an optional
+  runtime decoder.
 - Framebuffer readback is enabled only by the validation API; normal terminal
   presentation does not allocate or copy the readback buffer.
 

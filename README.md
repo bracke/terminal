@@ -32,8 +32,9 @@ through bounded primary-screen scrollback.
 
 Graphics support includes Kitty image objects and indexed/direct formats,
 Unicode placeholders, animations, local transfer media under explicit policy,
-persistent Sixel, iTerm2 inline PNG/JPEG/native GIF/PICT plus runtime PDF decoding,
-and policy-gated arbitrary-file downloads. The exact
+persistent Sixel, iTerm2 inline PNG/JPEG/native GIF/PICT, and policy-gated
+arbitrary-file downloads. Native PICT rendering reports compatibility
+approximations instead of silently claiming exact QuickDraw output. The exact
 advertised surface, security defaults, quota
 keys, and test evidence are recorded in
 [`docs/graphics_protocol_conformance.md`](docs/graphics_protocol_conformance.md).
@@ -104,6 +105,7 @@ tests/bin/shader_loader_smoke
 tests/bin/font_discovery_smoke
 tests/bin/text_shaper_smoke
 tests/bin/renderer_metrics_smoke
+tests/bin/renderer_transaction_smoke
 tests/bin/renderer_kitty_object_smoke
 tests/bin/renderer_large_payload_smoke
 tests/bin/kitty_control_matrix_smoke
@@ -125,6 +127,8 @@ tests/bin/scrollback_view_smoke
 tests/bin/render_policy_smoke
 tests/bin/theme_config_smoke
 tests/bin/graphics_capabilities_smoke
+tests/bin/image_pipeline_units_smoke
+tests/bin/image_placements_smoke
 tests/bin/tabs_smoke
 tests/bin/splits_smoke
 tests/bin/sessions_smoke

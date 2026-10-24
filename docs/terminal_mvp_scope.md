@@ -261,8 +261,10 @@ labels, with short hex preview-byte fingerprints and decoded/partial markers
 for decoded kitty/iTerm2 data plus bounded partial-decode reason labels for
 invalid bytes, trailing data after padding, and preview truncation through a
 public parser status suffix helper. The graphics layer also exposes a tested
-mapping from parser decode status to render-model image decode status for
-renderer-owned image commands. The core assembles Kitty continuations beyond
+shared decode status used by protocol parsing, general media decoding,
+render-model image commands, and diagnostics. Allocation failures remain
+distinguishable from malformed and oversized input without parallel enum
+conversion tables. The core assembles Kitty continuations beyond
 the 128 KiB preview cap and emits one complete bounded transaction. Raw
 `f=24`/`f=32`, strict PNG `f=100`, and zlib paths decode through prevalidated
 row/byte bounds. Raw, PNG, JPEG, and Sixel decoded buffers use exact decoded
@@ -284,7 +286,19 @@ bounded Kitty `f=100` PNG payloads, bounded Sixel rasters decoded to RGBA
 pixels, and bounded iTerm2 PNG/JPEG/GIF/PICT payloads. The PNG path is inflated through
 the local zlib crate; JPEG is decoded through the local jpeglib crate, GIF
 frames are decoded and composited through the local giflib crate, and PICT is
-rendered through the local pictlib crate. The PNG
+rendered through the local pictlib crate. PICT operations outside pictlib's
+exact drawing surface use deterministic compatible output with structured
+warnings; exact installed classic fonts can be selected through normalized
+family or semantic `TERMINAL_PICT_FONT_*` environment overrides. Explicit
+adapter buffer bytes and format-specific decoder configuration limits are
+retained separately in renderer diagnostics. Container and font-library
+allocations are outside the buffer metric. Pictlib decoder allocations share a
+monotonic aggregate admission quota; allocator/runtime bookkeeping and GPU
+storage remain separate. iTerm2 inline content enters the full media decoder at
+most once; rejection does not invoke the preview decoder or emit a fallback
+image. Media diagnostics are reset for every iTerm2 command before validation,
+so non-inline or malformed commands cannot retain an earlier decoder result.
+The PNG
 path supports grayscale, RGB, indexed, grayscale-alpha, and RGBA images
 across valid PNG bit depths, including palette, simple transparency chunks,
 16-bit downconversion, and Adam7 interlace.
@@ -301,6 +315,8 @@ placeholders and real kitty/sixel/iTerm2 PNG/JPEG/GIF image textures while retai
 command's payload, preview counts, decoded diagnostics preview bytes, computed placeholder
 dimensions, pixel dimensions, and image vertex counts in renderer diagnostics,
 the submit batch, presenter diagnostics, and Vulkan device upload diagnostics.
+Render-model cleanup releases aliased decoded, encoded, and preview buffer views
+exactly once and resets all ownership metadata before command reuse.
 The same path carries an explicit placeholder flag so diagnostics distinguish
 fallback quads from texture-backed image commands. The submit vertex model
 reserves a distinct image texture source, retains the last source through

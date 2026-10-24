@@ -34,9 +34,9 @@ Status meanings:
 | M5 — rendering | Supported | Renderer-neutral commands preserve crops, opacity, source geometry, clipping, z-index, placeholder tiles, multiple simultaneous sources, and persistent conventional/Sixel/iTerm2 placements. |
 | M6 — resource management | Supported | Configurable CPU/GPU limits, transient-first eviction, reference-aware image lifetime, content-versioned GPU atlas reuse, fence-gated replacement, allocation failure, and automatic device-loss reconstruction with bounded retry backoff are implemented. |
 | M7 — capability and tmux interoperability | Supported | Kitty queries and iTerm2 feature reports are truthful. tmux DCS passthrough, fragmentation, response ordering, placeholder cells, PTY identity, and environment propagation have automated coverage. A dedicated released-tmux stream has also reached a live GLFW/Vulkan presenter. |
-| M8 — auxiliary protocols | Supported for the advertised/runtime-available subsets | Sixel raster/palette/aspect/cursor semantics and iTerm2 inline PNG/JPEG/native GIF/PICT, optional runtime PDF and extended media, arbitrary-file downloads, sizing, aspect ratio, cursor policy, and multipart delivery are implemented. FILE reporting is policy-gated. |
+| M8 — auxiliary protocols | Supported for the advertised subsets | Sixel raster/palette/aspect/cursor semantics and iTerm2 inline PNG/JPEG/native GIF/PICT, arbitrary-file downloads, sizing, aspect ratio, cursor policy, and multipart delivery are implemented. FILE reporting is policy-gated. |
 | M9 — security, performance, diagnostics | Supported | Bounded parsing/decoding, overflow-safe arithmetic, strict PNG structure/CRC validation, heap-backed large row buffers, deterministic malformed-input tests, scheduled AFL++ edge-coverage fuzzing, transfer-media policy, counters, cache diagnostics, and a deterministic rapid-replacement benchmark are present. |
-| M10 — end-to-end validation | Automated and host-level validation complete | Chafa, libsixel, and a dedicated released-tmux server have been exercised. The released-tmux image stream is decoded, submitted through the live GLFW/Vulkan path, copied back from the swapchain, and checked against a deterministic RGBA pixel oracle. A million-input parser soak and 50,000-update replacement soak pass. |
+| M10 — end-to-end validation | Pending final host validation | Chafa, libsixel, and a dedicated released-tmux server have been exercised, including live Vulkan readback for the Kitty stream. The updated independent PICT framebuffer oracle still needs the host rerun recorded in `graphics_release_validation.md`; completion is not claimed until it succeeds. |
 
 ## Kitty graphics protocol
 
@@ -125,9 +125,10 @@ The implemented and tested subset is:
 - native bounded animated GIF playback through the path-pinned Ada `giflib`;
 - native bounded QuickDraw PICT rendering through the path-pinned Ada
   `pictlib`, including vector drawing, QuickDraw text with classic font-family
-  mappings, and embedded QuickTime JPEG pictures; plus PDF and other extended
-  decoding when a compatible MagickWand runtime and its format delegates or
-  policies are available;
+  mappings, and embedded QuickTime JPEG pictures;
+- compatible rendering for valid PICT constructs that the native backend
+  cannot reproduce exactly. Each approximation or skipped drawing operation is
+  retained as a structured warning rather than being silently accepted;
 - `width` and `height` in cells, pixels, percentages, or `auto`;
 - aspect-preserving fit by default and explicit stretching with
   `preserveAspectRatio=0`;
@@ -135,9 +136,14 @@ The implemented and tested subset is:
   after the rendered image height is known;
 - `size` as a non-binding progress hint, as required by the protocol;
 - bounded metadata, Base64 input, decoded bytes, and pixel dimensions;
+- one authoritative decode pass per inline payload; malformed or unsupported
+  input is rejected without a second preview decode or fallback image;
 - borrowed native PICT input without a full encoded copy, direct rendering into
   the retained RGBA buffer,
-  and structured Pictlib failure diagnostics;
+  structured Pictlib failure/warning diagnostics, explicit adapter buffer
+  bytes, and separately reported decoder configuration limits. Pictlib applies
+  a monotonic aggregate allocation-admission quota in addition to its
+  per-allocation limit;
 - persistent placement and coexistence with Kitty and Sixel images.
 
 Downloads are disabled by default and enabled with
@@ -148,11 +154,23 @@ enforces the per-image byte limit. The optional `size` field remains a
 non-binding progress hint as specified. Downloaded
 content is format-agnostic, so GIF, PDF, PICT, archives, and other files are
 preserved byte-for-byte. Inline PNG/JPEG/GIF/PICT decoding has no external
-runtime dependency. Other media uses a dynamically discovered MagickWand
-runtime, without adding a crate or link-time dependency, and remains bounded
-by the same byte, dimension, frame-count, memory, map, disk, and time limits. Animated
+runtime dependency. Other inline media is rejected as unsupported. Animated
 GIF frames and delays enter the existing quota-accounted image object playback
 model. Normal FILE commands have no success reply.
+
+PICT fidelity is intentionally explicit. QuickDraw raster, vector, region,
+pattern, transfer-mode, text, and embedded JPEG operations implemented by
+`pictlib` render natively. QuickDraw GX/3D, PostScript comments, non-JPEG
+QuickTime codecs, skewed/matted QuickTime pictures, and text effects not
+implemented by the backend use deterministic compatible output (usually a
+plain-text rendering or a skipped drawing operation) and emit
+`pict.warning.approximated`. This is not advertised as exact emulation.
+Classic font families use discovered semantic fonts by default. Exact installed
+fonts can be selected with `TERMINAL_PICT_FONT_<NORMALIZED_FAMILY>` (for
+example `TERMINAL_PICT_FONT_CHICAGO`) or the semantic
+`TERMINAL_PICT_FONT_MONOSPACE`, `TERMINAL_PICT_FONT_SANS_SERIF`,
+`TERMINAL_PICT_FONT_SERIF`, and `TERMINAL_PICT_FONT_SYMBOL` overrides.
+Non-alphanumeric family-name characters become underscores.
 
 The feature report includes `F` only when both inline FILE display and the
 policy-gated download path are enabled. This follows the feature definition's
@@ -166,6 +184,8 @@ formats as portable protocol requirements.
 - `OSC 1337;Capabilities` responds with `Sx` when Sixel is available and adds
   `F` only when FILE downloads are explicitly enabled; byte-exact regressions
   prevent accidental over-advertising.
+- The status label advertises only the built-in PNG/JPEG/GIF/PICT decoders.
+  Format acceptance is reported by the actual decode result.
 - Each spawned PTY receives the same launch-time `TERM_FEATURES` value (`Sx` or
   `FSx`) as that configured profile, including newly created tabs and panes.
 - Graphics commands in non-visible tabs continue through protocol validation,
@@ -201,6 +221,10 @@ formats as portable protocol requirements.
   Sixel modes, capability reporting, tmux passthrough, scrolling, and scrollback.
 - `terminal_glfw_vulkan_app/tests/graphics_capabilities_smoke.adb`: raw, PNG,
   JPEG, zlib, Sixel, iTerm2, malformed-data, and pre-allocation limit coverage.
+- `image_pipeline_units_smoke.adb`, `image_placements_smoke.adb`, and
+  `renderer_transaction_smoke.adb`: focused ingestion/store transactions,
+  bounded diagnostics, placement geometry, exception propagation, and
+  deterministic post-install allocation rollback.
 - `graphics_transport_smoke.adb`: regular/temp/shared-memory policy, offsets,
   limits, cleanup, and indistinguishable access failures.
 - `renderer_metrics_smoke.adb` and `renderer_kitty_object_smoke.adb`: IDs,
@@ -215,8 +239,8 @@ formats as portable protocol requirements.
 - `image_media_smoke.adb` and `iterm2_media_smoke.adb`: native bounded GIF87a
   and GIF89a decoding, interlacing, transparency, sub-frame disposal and
   composition, frame-limit boundaries, finite/infinite/single-play animation,
-  resource teardown, native PICT and optional PDF decoding, and animated-GIF
-  storage/playback
+  resource teardown, native PICT compatibility warnings, font/memory
+  accounting and animated-GIF storage/playback
   through the iTerm2 renderer.
 - `vulkan_submit_smoke.adb`, `vulkan_device_smoke.adb`, and
   `diagnostics_smoke.adb`: atlas packing, content cache signatures, GPU resource

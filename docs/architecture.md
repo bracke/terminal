@@ -14,7 +14,7 @@ flags, and errno values; its Windows backend uses direct Ada ConPTY imports.
 
 `terminal_glfw_vulkan_app` depends on `terminal_common`, `terminal_core`,
 `terminal_pty`, `glfw_vulkan`, `textrender`, `df_vulkan`, `zlib`, `jpeglib`,
-and `giflib`.
+`giflib`, and `pictlib`.
 
 ## Dependency Rules
 
@@ -75,7 +75,14 @@ between frames and grow geometrically when the grid requires more space. Image
 commands borrow a bounded diagnostic-preview source rather than embedding a
 4 KiB copy in every command; placeholder tiles for the same image therefore
 share the decoded source. Ownership remains with the renderer frame or retained
-image object through presentation.
+image object through presentation. `Terminal.App.Render_Model` is the ownership
+boundary for command buffers: its release operation recognizes aliased decoded,
+encoded, and preview views, frees each distinct owned allocation exactly once,
+and clears every view before a command can be reused.
+`Frame_Commands` exposes command arrays through access-to-constant views. These
+views borrow renderer and text-atlas storage and are valid only until the next
+render, graphics-stream release, or renderer finalization; submission consumes
+them synchronously and does not retain the CPU pointers for presentation.
 
 The presenter also exposes an opt-in validation-only framebuffer readback. If
 the surface supports transfer-source swapchain images, enabling it allocates a
@@ -159,6 +166,16 @@ margin scroll operations. Conventional anchors consume that stream before each
 frame, move with their originating rows, and remain associated with the correct
 scrollback offset. Falling behind retained scroll history causes a
 generation-safe resynchronization rather than ambiguous movement.
+Pure crop, aspect-ratio, cell-span, and pixel-offset calculation lives in
+`Terminal.App.Image_Placements`; renderer-owned lists remain responsible only
+for placement identity, lifetime, references, and screen association.
+`Terminal.App.Image_Ingestion` owns protocol payload-boundary discovery and
+encoded-source copies. `Terminal.App.Image_Store` owns allocation controls and
+the install transaction state. Every fallible staging allocation is completed
+before a new image becomes visible where possible. Operations that must install
+an object before allocating animation frames or placements use an explicit
+rollback path keyed by storage order, so a rejected event cannot consume image
+or placement quota.
 
 Graphics protocol payloads are first consumed by `Terminal.Core`. Its limits
 are configured from the app, up to compiled safety ceilings of 8 MiB per
@@ -233,6 +250,13 @@ independent capability bits; regular files are disabled by default. Unsupported
 media, formats, and compression methods return protocol errors with quiet mode
 applied.
 
+`Terminal.App.Image_Decode` defines the single decode outcome vocabulary used
+by protocol parsing, general media decoding, render commands, and diagnostics.
+Compatibility constants in those packages name the canonical values; there is
+no conversion table whose ordering can drift. Allocation exhaustion remains
+distinct from malformed, oversized, and unsupported input throughout the
+pipeline.
+
 The app graphics layer parses Kitty and iTerm2 headers, performs strict bounded
 Base64 and RFC 1950 decoding, rasterizes Sixel rows, expands PNG to RGBA with
 the local zlib crate, decodes iTerm2 JPEG through the local jpeglib crate, and
@@ -241,10 +265,24 @@ QuickDraw PICT input is rendered to bounded RGBA through the local pictlib
 crate. The adapter borrows encoded bytes, renders directly into its retained
 RGBA allocation, and transfers static-image ownership into the renderer without
 a full-image copy. Classic Macintosh font IDs and family names are mapped to
-discovered mono, sans-serif, serif, and symbol fonts. Pictlib failures retain
-their stable identifier, source/opcode/row coordinates, expected and actual
-values, limit kind, and underlying-code fields in renderer diagnostics;
-MagickWand remains an optional runtime extension for PDF and other media.
+discovered mono, sans-serif, serif, and symbol fonts, with exact-family and
+semantic environment overrides for installed classic fonts. Pictlib runs in
+compatible mode: drawing constructs it cannot reproduce exactly yield bounded,
+deterministic output plus a retained warning. Pictlib failures and warnings
+retain their stable identifier, source/opcode/row coordinates, expected and
+actual values, limit kind, and underlying-code fields in renderer diagnostics.
+`Terminal.App.Image_Rendering` owns decoder admission checks and the structured
+media-diagnostic snapshot. An iTerm2 payload is offered to the full decoder
+once; a rejected payload cannot fall through into the bounded preview decoder
+or create a generic fallback image. Every iTerm2 command clears the previous
+media snapshot before validation, including commands rejected before decode.
+Media diagnostics separately expose explicit adapter buffer bytes and the
+format-specific configured decoder storage limits. Container allocations and
+font-library state are deliberately excluded from that buffer metric. Pictlib
+enforces both a per-allocation limit and a monotonic aggregate admission quota
+for every decode session; releasing or replacing a decoder buffer does not
+replenish that quota.
+The figures intentionally exclude allocator/runtime bookkeeping and GPU storage;
 Policy-gated non-inline iTerm2 FILE transfers decode arbitrary file bytes into
 an explicitly selected Downloads directory using no-follow, exclusive creation
 and per-file quotas.
@@ -357,7 +395,9 @@ Diagnostics remain app-owned. The core exposes counters and bounded labels for
 initialization, feed outcomes, and diagnostic summaries without taking a
 logging dependency; the app collects core, queue, renderer, and presenter
 snapshots and writes compact stderr diagnostics only when status or counters
-change. The main loop retains the last core feed outcome and PTY write outcome
+change. Change detection retains and compares the complete renderer diagnostic
+snapshot, so adding a renderer field cannot silently omit it from refresh
+decisions. The main loop retains the last core feed outcome and PTY write outcome
 for those diagnostics. The composed runtime diagnostic line is exposed as a
 testable helper so status UI/logging formatting stays deterministic. Queue
 snapshots include bounded occupancy/overflow labels for PTY output and app
@@ -378,7 +418,9 @@ logical-device creation, device rendering, and presenter statuses expose
 bounded labels for status/help UI and diagnostics. The same line reports live
 graphics objects/bytes/placements/frames, cumulative protocol and failure
 counters, image texture uploads, and content-cache hits, so replacement and
-resource pressure are observable without instrumenting the renderer.
+resource pressure are observable without instrumenting the renderer. Media
+decode errors and compatibility warnings are rendered as human-readable status
+text while preserving their structured fields for programmatic inspection.
 
 Mouse selection is also app-owned. `glfw_vulkan` exposes generic mouse events,
 the main loop converts event coordinates to visible grid cells, and
