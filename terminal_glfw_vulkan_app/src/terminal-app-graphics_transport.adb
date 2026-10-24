@@ -2,54 +2,18 @@ with Ada.Environment_Variables;
 with Ada.Strings.Fixed;
 with Ada.Unchecked_Deallocation;
 with GNAT.OS_Lib;
-with Interfaces.C;
-with Interfaces.C.Strings;
+
+with Terminal.App.Platform_Media;
 
 package body Terminal.App.Graphics_Transport is
    package OS renames GNAT.OS_Lib;
-   package C renames Interfaces.C;
-   package C_Strings renames Interfaces.C.Strings;
+   package Platform renames Terminal.App.Platform_Media;
 
    use type OS.File_Descriptor;
    use type OS.Large_File_Size;
-   use type C.int;
 
    procedure Free_Bytes is new Ada.Unchecked_Deallocation
      (Terminal.Common.Bytes.Byte_Array, Byte_Array_Access);
-
-   function C_Shm_Open
-     (Name  : C_Strings.chars_ptr;
-      Flags : C.int;
-      Mode  : C.unsigned) return C.int
-   with Import, Convention => C, External_Name => "shm_open";
-
-   function C_Shm_Unlink (Name : C_Strings.chars_ptr) return C.int
-   with Import, Convention => C, External_Name => "shm_unlink";
-
-   function C_Open
-     (Path  : C_Strings.chars_ptr;
-      Flags : C.int) return C.int
-   with Import, Convention => C, External_Name => "open";
-
-   O_RDONLY : constant C.int := 0;
-   O_NOFOLLOW : constant C.int := 131_072;
-   O_CLOEXEC  : constant C.int := 524_288;
-
-   function Open_No_Follow (Path : String) return OS.File_Descriptor is
-      Name : C_Strings.chars_ptr := C_Strings.New_String (Path);
-      Raw  : C.int;
-   begin
-      Raw := C_Open (Name, O_RDONLY + O_NOFOLLOW + O_CLOEXEC);
-      C_Strings.Free (Name);
-      if Raw < 0 then
-         return OS.Invalid_FD;
-      end if;
-      return OS.File_Descriptor (Raw);
-   exception
-      when others =>
-         C_Strings.Free (Name);
-         return OS.Invalid_FD;
-   end Open_No_Follow;
 
    procedure Release (Bytes : in out Byte_Array_Access) is
    begin
@@ -177,12 +141,6 @@ package body Terminal.App.Graphics_Transport is
         or else Has_Path_Prefix (Path, "/run");
    end Sensitive_Path;
 
-   function Descriptor_Path (FD : OS.File_Descriptor) return String is
-      Image : constant String := OS.File_Descriptor'Image (FD);
-   begin
-      return "/proc/self/fd/" & Image (Image'First + 1 .. Image'Last);
-   end Descriptor_Path;
-
    function Safe_Temporary_Path (Path : String) return Boolean is
       Marker : constant String := "tty-graphics-protocol";
       function Under (Directory : String) return Boolean is
@@ -302,7 +260,12 @@ package body Terminal.App.Graphics_Transport is
          return;
       end if;
 
-      if (Medium = 'f' and then not Policy.Allow_Regular_Files)
+      if (Medium in 'f' | 't'
+          and then not Platform.Local_File_Transfers_Available)
+        or else
+          (Medium = 's'
+           and then not Platform.Shared_Memory_Transfers_Available)
+        or else (Medium = 'f' and then not Policy.Allow_Regular_Files)
         or else (Medium = 't' and then not Policy.Allow_Temporary_Files)
         or else (Medium = 's' and then not Policy.Allow_Shared_Memory)
       then
@@ -326,7 +289,7 @@ package body Terminal.App.Graphics_Transport is
                return;
             end if;
 
-            FD := Open_No_Follow (Location);
+            FD := Platform.Open_Read_No_Follow (Location);
             if FD = OS.Invalid_FD then
                Status := Load_Access_Failed;
                return;
@@ -338,13 +301,13 @@ package body Terminal.App.Graphics_Transport is
             declare
                Opened_Path : constant String :=
                  OS.Normalize_Pathname
-                   (Descriptor_Path (FD),
+                   (Platform.Descriptor_Path (FD),
                     Resolve_Links => True,
                     Case_Sensitive => True);
             begin
                if Opened_Path'Length = 0
                  or else not OS.Is_Absolute_Path (Opened_Path)
-                 or else not OS.Is_Regular_File (Descriptor_Path (FD))
+                 or else not OS.Is_Regular_File (Platform.Descriptor_Path (FD))
                  or else
                    (if Temporary
                     then not Safe_Temporary_Path (Opened_Path)
@@ -386,13 +349,10 @@ package body Terminal.App.Graphics_Transport is
             return;
          end if;
          declare
-            Name : C_Strings.chars_ptr := C_Strings.New_String (Location);
-            Raw_FD : C.int;
-            Ignored : C.int := 0;
+            Unlinked : Boolean := False;
          begin
-            Raw_FD := C_Shm_Open (Name, O_RDONLY, 0);
-            if Raw_FD >= 0 then
-               FD := OS.File_Descriptor (Raw_FD);
+            FD := Platform.Shared_Memory_Open (Location);
+            if FD /= OS.Invalid_FD then
                Read_Descriptor
                  (FD,
                   Offset,
@@ -402,17 +362,15 @@ package body Terminal.App.Graphics_Transport is
                   Bytes,
                   Length,
                   Status);
-               Ignored := C_Shm_Unlink (Name);
+               Unlinked := Platform.Shared_Memory_Unlink (Location);
                OS.Close (FD);
                FD := OS.Invalid_FD;
             else
                Status := Load_Access_Failed;
             end if;
-            C_Strings.Free (Name);
-            pragma Unreferenced (Ignored);
+            pragma Unreferenced (Unlinked);
          exception
             when others =>
-               C_Strings.Free (Name);
                if FD /= OS.Invalid_FD then
                   OS.Close (FD);
                end if;

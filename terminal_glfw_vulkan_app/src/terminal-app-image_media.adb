@@ -12,11 +12,13 @@ with Giflib.Errors;
 with Giflib.Limits;
 with Giflib.Results;
 with Giflib.Streams;
+with Terminal.App.Platform_Media;
 
 package body Terminal.App.Image_Media is
    package C renames Interfaces.C;
    package CS renames Interfaces.C.Strings;
    package RM renames Terminal.App.Render_Model;
+   package Platform renames Terminal.App.Platform_Media;
 
    use type C.int;
    use type C.size_t;
@@ -32,16 +34,8 @@ package body Terminal.App.Image_Media is
    use type Giflib.Errors.Error_Code;
    use type Giflib.Streams.Byte_Array_Access;
 
-   RTLD_Lazy : constant C.int := 1;
    Library_Handle : System.Address := System.Null_Address;
    Load_Attempted : Boolean := False;
-
-   function Dlopen (Name : CS.chars_ptr; Flags : C.int) return System.Address
-   with Import, Convention => C, External_Name => "dlopen";
-   function Dlsym
-     (Handle : System.Address;
-      Name   : CS.chars_ptr) return System.Address
-   with Import, Convention => C, External_Name => "dlsym";
 
    type String_Access is access all String;
    Libraries : constant array (Positive range <>) of String_Access :=
@@ -123,28 +117,18 @@ package body Terminal.App.Image_Media is
       end if;
       Load_Attempted := True;
       for Name of Libraries loop
-         declare
-            C_Name : CS.chars_ptr := CS.New_String (Name.all);
-         begin
-            Library_Handle := Dlopen (C_Name, RTLD_Lazy);
-            CS.Free (C_Name);
-            exit when Library_Handle /= System.Null_Address;
-         end;
+         Library_Handle := Platform.Open_Dynamic_Library (Name.all);
+         exit when Library_Handle /= System.Null_Address;
       end loop;
    end Ensure_Loaded;
 
    function Symbol (Name : String) return System.Address is
-      C_Name : CS.chars_ptr;
-      Result : System.Address;
    begin
       Ensure_Loaded;
       if Library_Handle = System.Null_Address then
          return System.Null_Address;
       end if;
-      C_Name := CS.New_String (Name);
-      Result := Dlsym (Library_Handle, C_Name);
-      CS.Free (C_Name);
-      return Result;
+      return Platform.Dynamic_Symbol (Library_Handle, Name);
    end Symbol;
 
    function Extended_Media_Available return Boolean is

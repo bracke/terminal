@@ -1,48 +1,15 @@
 with Ada.Environment_Variables;
 with Interfaces.C;
-with Interfaces.C.Strings;
 with System;
+
+with Terminal.App.Platform_Media;
 
 package body Terminal.App.ITerm2_Files is
    package C renames Interfaces.C;
-   package CS renames Interfaces.C.Strings;
+   package Platform renames Terminal.App.Platform_Media;
 
    use type C.int;
    use type C.long;
-
-   function C_Open
-     (Path : CS.chars_ptr;
-      Flags : C.int) return C.int
-   with Import, Convention => C, External_Name => "open";
-
-   function C_Openat
-     (Directory : C.int;
-      Path      : CS.chars_ptr;
-      Flags     : C.int;
-      Mode      : C.unsigned) return C.int
-   with Import, Convention => C, External_Name => "openat";
-
-   function C_Write
-     (FD     : C.int;
-      Buffer : System.Address;
-      Count  : C.size_t) return C.long
-   with Import, Convention => C, External_Name => "write";
-
-   function C_Close (FD : C.int) return C.int
-   with Import, Convention => C, External_Name => "close";
-
-   function C_Unlinkat
-     (Directory : C.int;
-      Path      : CS.chars_ptr;
-      Flags     : C.int) return C.int
-   with Import, Convention => C, External_Name => "unlinkat";
-
-   O_WRONLY   : constant C.int := 1;
-   O_CREAT    : constant C.int := 64;
-   O_EXCL     : constant C.int := 128;
-   O_DIRECTORY : constant C.int := 65_536;
-   O_NOFOLLOW : constant C.int := 131_072;
-   O_CLOEXEC  : constant C.int := 524_288;
 
    function Base64_Value (Ch : Character) return Integer is
    begin
@@ -109,7 +76,7 @@ package body Terminal.App.ITerm2_Files is
          while Written_Total < Output_Length loop
             declare
                Written : constant C.long :=
-                 C_Write
+                 Platform.Write_File
                    (FD,
                     Output (Output'First + Written_Total)'Address,
                     C.size_t (Output_Length - Written_Total));
@@ -380,14 +347,12 @@ package body Terminal.App.ITerm2_Files is
             Status := Save_Invalid_Name;
             return;
          end if;
-         declare
-            Directory_C : CS.chars_ptr := CS.New_String
-              (Policy.Directory (1 .. Policy.Directory_Length));
-         begin
-            Directory_FD := C_Open
-              (Directory_C, O_DIRECTORY + O_NOFOLLOW + O_CLOEXEC);
-            CS.Free (Directory_C);
-         end;
+         if not Platform.File_Downloads_Available then
+            Status := Save_Disabled;
+            return;
+         end if;
+         Directory_FD := Platform.Open_Directory_No_Follow
+           (Policy.Directory (1 .. Policy.Directory_Length));
          if Directory_FD < 0 then
             Status := Save_Directory_Unavailable;
             return;
@@ -400,16 +365,11 @@ package body Terminal.App.ITerm2_Files is
                   else Name & "." & Integer'Image (Attempt)
                     (Integer'Image (Attempt)'First + 1 ..
                      Integer'Image (Attempt)'Last));
-               Candidate_C : CS.chars_ptr := CS.New_String (Candidate);
             begin
                if Candidate'Length <= Saved_Name'Length then
-                  File_FD := C_Openat
-                    (Directory_FD,
-                     Candidate_C,
-                     O_WRONLY + O_CREAT + O_EXCL + O_NOFOLLOW + O_CLOEXEC,
-                     8#600#);
+                  File_FD := Platform.Create_File_At
+                    (Directory_FD, Candidate, 8#600#);
                end if;
-               CS.Free (Candidate_C);
                if File_FD >= 0 then
                   Saved_Length := Candidate'Length;
                   Saved_Name
@@ -421,7 +381,7 @@ package body Terminal.App.ITerm2_Files is
          end loop;
          if File_FD < 0 then
             declare
-               Ignored : constant C.int := C_Close (Directory_FD);
+               Ignored : constant C.int := Platform.Close_File (Directory_FD);
                pragma Unreferenced (Ignored);
             begin
                null;
@@ -439,23 +399,22 @@ package body Terminal.App.ITerm2_Files is
             Too_Large,
             Write_Failed);
          declare
-            File_Close : constant C.int := C_Close (File_FD);
+            File_Close : constant C.int := Platform.Close_File (File_FD);
             pragma Unreferenced (File_Close);
          begin
             File_FD := -1;
          end;
          if not Valid then
             declare
-               Candidate_C : CS.chars_ptr :=
-                 CS.New_String
-                   (Saved_Name
+               Ignored : constant Boolean :=
+                 Platform.Delete_File_At
+                   (Directory_FD,
+                    Saved_Name
                       (Saved_Name'First ..
                        Saved_Name'First + Saved_Length - 1));
-               Ignored : constant C.int :=
-                 C_Unlinkat (Directory_FD, Candidate_C, 0);
                pragma Unreferenced (Ignored);
             begin
-               CS.Free (Candidate_C);
+               null;
             end;
             Saved_Name := (others => ' ');
             Saved_Length := 0;
@@ -470,7 +429,7 @@ package body Terminal.App.ITerm2_Files is
             Status := Save_Ok;
          end if;
          declare
-            Ignored : constant C.int := C_Close (Directory_FD);
+            Ignored : constant C.int := Platform.Close_File (Directory_FD);
             pragma Unreferenced (Ignored);
          begin
             null;
@@ -480,7 +439,7 @@ package body Terminal.App.ITerm2_Files is
       when others =>
          if File_FD >= 0 then
             declare
-               Ignored : constant C.int := C_Close (File_FD);
+               Ignored : constant C.int := Platform.Close_File (File_FD);
                pragma Unreferenced (Ignored);
             begin
                null;
@@ -489,20 +448,19 @@ package body Terminal.App.ITerm2_Files is
          if Directory_FD >= 0 then
             if Saved_Length > 0 then
                declare
-                  Candidate_C : CS.chars_ptr :=
-                    CS.New_String
-                      (Saved_Name
+                  Ignored : constant Boolean :=
+                    Platform.Delete_File_At
+                      (Directory_FD,
+                       Saved_Name
                          (Saved_Name'First ..
                           Saved_Name'First + Saved_Length - 1));
-                  Ignored : constant C.int :=
-                    C_Unlinkat (Directory_FD, Candidate_C, 0);
                   pragma Unreferenced (Ignored);
                begin
-                  CS.Free (Candidate_C);
+                  null;
                end;
             end if;
             declare
-               Ignored : constant C.int := C_Close (Directory_FD);
+               Ignored : constant C.int := Platform.Close_File (Directory_FD);
                pragma Unreferenced (Ignored);
             begin
                null;

@@ -1,3 +1,5 @@
+with Terminal.App.Platform_Media;
+
 package body Terminal.App is
    function Trim_Image (Value : Natural) return String is
       Text : constant String := Natural'Image (Value);
@@ -23,8 +25,10 @@ package body Terminal.App is
          Kitty_Direct_Graphics => True,
          Kitty_Unicode_Placeholders => True,
          Kitty_File_Transfer   => False,
-         Kitty_Temporary_Transfer => True,
-         Kitty_Shared_Memory   => True,
+         Kitty_Temporary_Transfer =>
+           Terminal.App.Platform_Media.Local_File_Transfers_Available,
+         Kitty_Shared_Memory   =>
+           Terminal.App.Platform_Media.Shared_Memory_Transfers_Available,
          ITerm2_File_Downloads => False);
    end Profile;
 
@@ -52,12 +56,21 @@ package body Terminal.App is
        Kitty_Indexed_RGBA       => True,
        Kitty_Direct_PNG         => True,
        Kitty_Zlib_Compression   => True,
-       Kitty_File_Transfer      => Kitty_File_Transfer,
-       Kitty_Temporary_Transfer => Kitty_Temporary_Transfer,
-       Kitty_Shared_Memory      => Kitty_Shared_Memory,
+       Kitty_File_Transfer      =>
+         Kitty_File_Transfer
+           and then Terminal.App.Platform_Media.Local_File_Transfers_Available,
+       Kitty_Temporary_Transfer =>
+         Kitty_Temporary_Transfer
+           and then Terminal.App.Platform_Media.Local_File_Transfers_Available,
+       Kitty_Shared_Memory      =>
+         Kitty_Shared_Memory
+           and then
+             Terminal.App.Platform_Media.Shared_Memory_Transfers_Available,
        Sixel                    => True,
        ITerm2_Inline_Images     => True,
-       ITerm2_File_Downloads    => ITerm2_File_Downloads));
+       ITerm2_File_Downloads    =>
+         ITerm2_File_Downloads
+           and then Terminal.App.Platform_Media.File_Downloads_Available));
    end Core_Graphics_Profile;
 
    function Graphics_Feature_Report

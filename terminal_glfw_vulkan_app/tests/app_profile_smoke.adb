@@ -4,6 +4,7 @@ with GLFW_Vulkan.Input;
 with Terminal.App;
 with Terminal.App.Clipboard_OSC52;
 with Terminal.App.Input_Map;
+with Terminal.App.Platform_Media;
 with Terminal.App.Queues;
 with Terminal.App.Render_Policy;
 with Terminal.Common.Bytes;
@@ -83,8 +84,10 @@ begin
      (Profile.Kitty_Direct_Graphics
       and then Profile.Kitty_Unicode_Placeholders
       and then not Profile.Kitty_File_Transfer
-      and then Profile.Kitty_Temporary_Transfer
-      and then Profile.Kitty_Shared_Memory
+      and then Profile.Kitty_Temporary_Transfer =
+        Terminal.App.Platform_Media.Local_File_Transfers_Available
+      and then Profile.Kitty_Shared_Memory =
+        Terminal.App.Platform_Media.Shared_Memory_Transfers_Available
       and then not Profile.ITerm2_File_Downloads,
       "truthful Kitty graphics profile");
    declare
@@ -99,8 +102,10 @@ begin
          and then Graphics.Kitty_Direct_PNG
          and then Graphics.Kitty_Zlib_Compression
          and then not Graphics.Kitty_File_Transfer
-         and then Graphics.Kitty_Temporary_Transfer
-         and then Graphics.Kitty_Shared_Memory
+         and then Graphics.Kitty_Temporary_Transfer =
+           Terminal.App.Platform_Media.Local_File_Transfers_Available
+         and then Graphics.Kitty_Shared_Memory =
+           Terminal.App.Platform_Media.Shared_Memory_Transfers_Available
          and then not Graphics.ITerm2_File_Downloads,
          "core Kitty query capabilities");
       declare
@@ -113,7 +118,8 @@ begin
       begin
          Assert
            (Downloads_Enabled.ITerm2_Inline_Images
-            and then Downloads_Enabled.ITerm2_File_Downloads,
+            and then Downloads_Enabled.ITerm2_File_Downloads =
+              Terminal.App.Platform_Media.File_Downloads_Available,
             "explicit iTerm2 FILE capability profile");
       end;
    end;
@@ -142,7 +148,10 @@ begin
            (Kitty_File_Transfer      => False,
             Kitty_Temporary_Transfer => True,
             Kitty_Shared_Memory      => True,
-            ITerm2_File_Downloads    => True)) = "FSx",
+            ITerm2_File_Downloads    => True)) =
+              (if Terminal.App.Platform_Media.File_Downloads_Available
+               then "FSx"
+               else "Sx"),
       "TERM_FEATURES follows the configured graphics profile");
 
    if Profile.Bracketed_Paste then
