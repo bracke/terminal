@@ -5444,6 +5444,8 @@ package body Terminal.Core is
       New_Tabs     : Tab_Stop_Array_Access := null;
       Old_Rows    : constant Positive := T.Rows;
       Old_Cols    : constant Positive := T.Cols;
+      Old_Scrollback_Rows : constant Natural := T.Scrollback_Rows;
+      Old_Scrollback_Head : constant Natural := T.Scrollback_Head;
       New_Count   : Positive;
    begin
       if not T.Initialized then
@@ -5475,6 +5477,9 @@ package body Terminal.Core is
       New_Alt := new Cell_Array (1 .. New_Count);
       if T.Scrollback_Limit > 0 then
          New_Scrollback := new Cell_Array (1 .. T.Scrollback_Limit * Cols);
+         for I in New_Scrollback'Range loop
+            New_Scrollback (I) := Blank_Cell (T.Current_Style);
+         end loop;
       end if;
       New_Dirty := new Dirty_Row_Array (1 .. Rows);
       New_Tabs := new Tab_Stop_Array (1 .. Cols);
@@ -5503,6 +5508,19 @@ package body Terminal.Core is
             New_Tabs (C) := Old_Tabs (C);
          end loop;
       end if;
+      if Old_Scrollback /= null and then New_Scrollback /= null then
+         for R in 1 .. Old_Scrollback_Rows loop
+            declare
+               Old_Physical_Row : constant Natural :=
+                 (Old_Scrollback_Head + R - 1) mod T.Scrollback_Limit;
+            begin
+               for C in 1 .. Positive'Min (Old_Cols, Cols) loop
+                  New_Scrollback ((R - 1) * Cols + C) :=
+                    Old_Scrollback (Old_Physical_Row * Old_Cols + C);
+               end loop;
+            end;
+         end loop;
+      end if;
 
       T.Primary_Cells := New_Primary;
       T.Alt_Cells := New_Alt;
@@ -5517,7 +5535,8 @@ package body Terminal.Core is
 
       T.Rows := Rows;
       T.Cols := Cols;
-      T.Scrollback_Rows := 0;
+      T.Scrollback_Rows := Old_Scrollback_Rows;
+      T.Scrollback_Head := 0;
 
       if Old_Primary /= null then
          Free_Cells (Old_Primary);

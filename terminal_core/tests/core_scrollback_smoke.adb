@@ -46,6 +46,17 @@ begin
       and then
         Terminal.Core.Scrollback_Cell_At (T, 2, 1).Text.Code_Point = 16#63#,
       "unchanged resize must preserve scrollback");
+   Terminal.Core.Resize (T, 3, 5, Resize_Status);
+   Assert (Resize_Status = Terminal.Core.Ok, "changed resize status");
+   Assert
+     (Terminal.Core.Scrollback_Row_Count (T) = 2
+      and then
+        Terminal.Core.Scrollback_Cell_At (T, 1, 1).Text.Code_Point = 16#62#
+      and then
+        Terminal.Core.Scrollback_Cell_At (T, 2, 1).Text.Code_Point = 16#63#
+      and then
+        Terminal.Core.Scrollback_Cell_At (T, 2, 5).Text.Code_Point = 0,
+      "changed resize preserves and pads scrollback rows");
    Terminal.Core.Resize (T, Positive'Last, 2, Resize_Status);
    Assert
      (Resize_Status = Terminal.Core.Allocation_Failed,
