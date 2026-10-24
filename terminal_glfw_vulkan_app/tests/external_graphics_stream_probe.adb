@@ -6,6 +6,7 @@ with AUnit.Assertions;
 with Interfaces;
 
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.Common.Bytes;
 with Terminal.Core;
 
@@ -66,7 +67,7 @@ procedure External_Graphics_Stream_Probe is
                & Terminal.Core.Kitty_Graphics_Result_Code'Image (Result.Code)
                & " images="
                & Natural'Image
-                   (Terminal.App.Renderer.Last_Frame (R).Image_Count));
+                   (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count));
             Terminal.Core.Complete_Graphics_Event (T, Event, Result);
             Terminal.App.Renderer.Commit_Graphics_Events (R);
          end;
@@ -170,7 +171,7 @@ begin
       & Interfaces.Unsigned_64'Image
           (Terminal.App.Renderer.Diagnostics (R).Graphics_Event_Count)
       & " retained_images="
-      & Natural'Image (Terminal.App.Renderer.Last_Frame (R).Image_Count)
+      & Natural'Image (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count)
       & " objects="
       & Natural'Image
           (Terminal.App.Renderer.Diagnostics (R).Image_Object_Count)
@@ -194,7 +195,7 @@ begin
          "tmux capture installed a decoded image and placement");
    else
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count > 0,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count > 0,
          "external client produced a retained decoded image");
    end if;
 

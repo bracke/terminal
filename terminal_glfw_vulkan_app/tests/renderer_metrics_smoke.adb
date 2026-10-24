@@ -10,6 +10,7 @@ with Terminal.App.Graphics_Transport;
 with Terminal.App.Image_Media;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.App.Scrollback_View;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
@@ -185,7 +186,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Rectangle_Count >= 3, "expected background, cell, cursor");
       Assert
@@ -247,7 +248,7 @@ begin
       "image placeholder renderer render failed");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Glyph_Count = 0 and then Frame.Text_Run_Count = 0,
@@ -298,7 +299,7 @@ begin
       "virtual kitty placeholder renderer render failed");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Image_Count = 2,
@@ -331,7 +332,7 @@ begin
       "retained virtual kitty placement render failed");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Image_Count = 2,
@@ -372,7 +373,7 @@ begin
          "shared sixel palette reuse");
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 2
@@ -388,7 +389,7 @@ begin
          "private sixel palette reset");
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count >= 1
@@ -407,7 +408,7 @@ begin
       Feed_Status);
    Render_And_Complete_Graphics (T);
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 2,
       "screen-wide deletion must preserve virtual placement prototypes");
 
    Terminal.Core.Feed
@@ -416,7 +417,7 @@ begin
       Feed_Status);
    Render_And_Complete_Graphics (T);
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 2,
       "z-index deletion must preserve virtual placement prototypes");
 
    Terminal.Core.Feed
@@ -429,7 +430,7 @@ begin
       "soft virtual placement delete feed failed");
    Render_And_Complete_Graphics (T);
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
       "lowercase delete should remove the virtual placement");
 
    Terminal.Core.Feed
@@ -439,7 +440,7 @@ begin
       Feed_Status);
    Render_And_Complete_Graphics (T);
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 2,
       "lowercase delete should retain reusable image data");
 
    Terminal.Core.Feed
@@ -449,7 +450,7 @@ begin
       Feed_Status);
    Render_And_Complete_Graphics (T);
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
       "uppercase delete should remove the placement and image data");
 
    Terminal.Core.Feed
@@ -459,7 +460,7 @@ begin
       Feed_Status);
    Render_And_Complete_Graphics (T);
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
       "uppercase delete should prevent image-data reuse");
 
    Terminal.Core.Initialize (T, 1, 32, 100, Core_Status);
@@ -486,7 +487,7 @@ begin
 
       declare
          Plain_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Terminal.App.Renderer.Set_Hovered_Link (R, Link);
          Terminal.App.Renderer.Render (R, Snap, Render_Status);
@@ -496,7 +497,7 @@ begin
 
          declare
             Hover_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-              Terminal.App.Renderer.Last_Frame (R);
+              Terminal.App.Renderer.Testing.Last_Frame (R);
          begin
             Assert (Link.Active, "hovered link should be active");
             Assert
@@ -528,7 +529,7 @@ begin
       Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Diagnostics.Last_Image_Count = 1, "graphics image diagnostic count");
       Assert
@@ -632,7 +633,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Raw_Format = 32
@@ -737,7 +738,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Raw_Format = 32
@@ -834,7 +835,7 @@ begin
 
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Images (1).Width = Float
@@ -950,7 +951,7 @@ begin
       "multiple conventional Kitty placements should coexist");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert_Close (Frame.Images (1).U0, 0.5, "second placement crop U0");
       Assert_Close (Frame.Images (1).U1, 1.0, "second placement crop U1");
@@ -1111,7 +1112,7 @@ begin
       Consume_Frame;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert (Frame.Image_Count = 1, "first numbered image placement");
          First_ID := Natural (Frame.Images (1).Image_ID);
@@ -1128,7 +1129,7 @@ begin
       Consume_Frame;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 2,
@@ -1155,7 +1156,7 @@ begin
       Consume_Frame;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
          Newest_Count : Natural := 0;
       begin
          for I in 1 .. Frame.Image_Count loop
@@ -1178,7 +1179,7 @@ begin
          Feed_Status);
       Consume_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 2,
          "number delete with placement ID should preserve sibling placement");
 
       Terminal.Core.Feed
@@ -1189,7 +1190,7 @@ begin
       Consume_Frame;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 1
@@ -1205,7 +1206,7 @@ begin
       Consume_Frame;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 2
@@ -1229,7 +1230,7 @@ begin
          Assert
            (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
               Objects_Before
-            and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+            and then Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 2,
             "mixed image ID and number must not mutate graphics state");
       end;
 
@@ -1250,7 +1251,7 @@ begin
          Feed_Status);
       Consume_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
          "first numbered chunk must not allocate or display early");
 
       Terminal.Core.Feed
@@ -1260,7 +1261,7 @@ begin
       Consume_Frame;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 1,
@@ -1277,7 +1278,7 @@ begin
       Consume_Frame;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 2
@@ -1293,7 +1294,7 @@ begin
          Feed_Status);
       Consume_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
          "numbered chunk cleanup should remove placements and data");
    end;
 
@@ -1357,7 +1358,7 @@ begin
 
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 3,
@@ -1389,7 +1390,7 @@ begin
          Feed_Status);
       Consume_Relative_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 3,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 3,
          "cycle-forming placement replacement must be rejected");
 
       Terminal.Core.Feed
@@ -1401,7 +1402,7 @@ begin
          Feed_Status);
       Consume_Relative_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 3,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 3,
          "placement with a missing parent must be rejected");
 
       Terminal.Core.Feed
@@ -1411,7 +1412,7 @@ begin
          Feed_Status);
       Consume_Relative_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0
          and then
            Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
              Objects_Before + 3,
@@ -1425,7 +1426,7 @@ begin
          Feed_Status);
       Consume_Relative_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
          "cascaded child image data remains reusable after soft deletion");
 
       Terminal.Core.Feed
@@ -1463,7 +1464,7 @@ begin
          Consume_Relative_Frame;
       end loop;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 9,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 9,
          "relative placement depth eight must be accepted");
 
       Terminal.Core.Feed
@@ -1473,7 +1474,7 @@ begin
          Feed_Status);
       Consume_Relative_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0
          and then
            Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
              Objects_Before + 3,
@@ -1542,7 +1543,7 @@ begin
       Consume_Virtual_Parent_Frame;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
          Child_X : Float := 0.0;
       begin
          Assert
@@ -1568,7 +1569,7 @@ begin
          Feed_Status);
       Consume_Virtual_Parent_Frame;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0
          and then
            Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
              Objects_Before + 2,
@@ -1676,7 +1677,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Raw_Format = 24
@@ -1766,7 +1767,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Raw_Format = 32
@@ -2042,7 +2043,7 @@ begin
          "malformed crop rejection");
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
          Natural_Count : Natural := 0;
          Scaled_Count : Natural := 0;
          Scaled_Min_Y : Float := Float'Last;
@@ -2082,7 +2083,7 @@ begin
          "anonymous natural geometry display");
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
          Found : Boolean := False;
       begin
          for I in 1 .. Frame.Image_Count loop
@@ -2263,7 +2264,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Raw_Format = 32
@@ -2359,7 +2360,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Raw_Format = 32
@@ -2416,7 +2417,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Raw_Format = 32
@@ -2473,7 +2474,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Raw_Format = 32
@@ -2532,7 +2533,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 0
@@ -2562,7 +2563,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Protocol =
@@ -2617,7 +2618,7 @@ begin
    Render_And_Complete_Graphics (T);
    Assert
      (Render_Status = Terminal.App.Renderer.Ok
-      and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+      and then Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 2,
       "iTerm2 declared size remains a non-binding progress hint");
 
    declare
@@ -2707,7 +2708,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Protocol =
@@ -2809,7 +2810,7 @@ begin
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Diagnostics.Last_Image_Protocol =
@@ -2879,7 +2880,7 @@ begin
       Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Diagnostics.Last_Image_Protocol =
@@ -2941,7 +2942,7 @@ begin
       "retained sixel render failed");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Image_Count = 1
@@ -3000,7 +3001,7 @@ begin
          "coexisting auxiliary retained render");
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
          Aux_Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
          Saw_Sixel : Boolean := False;
@@ -3110,7 +3111,7 @@ begin
       Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Diagnostics.Last_Image_Decoded_Preview_Length = 0,
@@ -3153,7 +3154,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Rectangle_Count >= 3, "expected underline cursor rectangle");
       Assert
@@ -3178,7 +3179,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Rectangle_Count >= 3, "expected bar cursor rectangle");
       Assert
@@ -3202,7 +3203,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Width = 100,
@@ -3233,7 +3234,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Glyph_Count = 2, "bold glyph should be drawn twice");
       Assert
@@ -3259,7 +3260,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Glyph_Count = 2, "bold indexed glyph should be drawn twice");
       Assert_Close (Frame.Glyphs (1).Color.R, 1.0, "bold red bright red");
@@ -3289,7 +3290,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Glyph_Count = 2, "inverse bold glyph should be drawn twice");
       Assert_Close
@@ -3321,7 +3322,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Glyph_Count >= 1, "faint glyph count");
       Assert
@@ -3353,7 +3354,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Glyph_Count = 0, "concealed glyph should not be drawn");
       Assert
@@ -3379,7 +3380,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Rectangle_Count >= 5, "expected overline rectangle");
       Assert
@@ -3413,7 +3414,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Rectangle_Count >= 7, "expected decoration rectangles");
       Assert
@@ -3470,7 +3471,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Found_Double_Line : Boolean := False;
       Found_Segment     : Boolean := False;
    begin
@@ -3532,7 +3533,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Rectangle_Count >= 6, "expected hover link underlines");
       Assert
@@ -3573,7 +3574,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Glyph_Count >= 2, "indexed color glyph count");
       Assert_Close (Frame.Glyphs (1).Color.R, 1.0, "xterm 196 red");
@@ -3617,7 +3618,7 @@ begin
 
    declare
       Frame      : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Saw_Base   : Boolean := False;
       Saw_ZWJ    : Boolean := False;
    begin
@@ -3668,7 +3669,7 @@ begin
 
    declare
       Frame       : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Saw_A       : Boolean := False;
       Saw_ZWJ     : Boolean := False;
       Saw_B       : Boolean := False;
@@ -3794,7 +3795,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Text_Run_Count = 1, "simple text should coalesce");
       Assert
@@ -3864,7 +3865,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Text_Run_Count = 1,
@@ -3907,7 +3908,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Text_Run_Count = 2,
@@ -3954,7 +3955,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
    begin
@@ -4011,7 +4012,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Diag  : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
    begin
@@ -4068,7 +4069,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Diag  : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
    begin
@@ -4116,7 +4117,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Text_Run_Count = 3,
@@ -4167,7 +4168,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Frame.Text_Run_Count = 1, "RTL text should coalesce");
       Assert
@@ -4259,141 +4260,6 @@ begin
    Terminal.App.Renderer.Initialize_Headless (R, Status);
    Assert (Status = Terminal.App.Renderer.Ok, "renderer reinitialize failed");
 
-   declare
-      Retry_Core : Terminal.Core.Terminal;
-      Retry_Init : Terminal.Core.Initialize_Status;
-      Retry_Feed : Terminal.Core.Feed_Status;
-      Tabs : Terminal.App.Tabs.Tab_State;
-      Splits : Terminal.App.Splits.Split_State;
-      Allocated_ID : Terminal.Core.Graphics_ID := 0;
-
-      procedure Process_Relative_Result
-        (Command  : String;
-         Expected : Terminal.Core.Kitty_Graphics_Result_Code;
-         Label_Text : String)
-      is
-         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
-      begin
-         Terminal.Core.Feed (Retry_Core, To_Bytes (Command), Retry_Feed);
-         Assert (Retry_Feed = Terminal.Core.Ok, Label_Text & " feed");
-         Snaps (1) := Terminal.Core.Snapshot (Retry_Core);
-         Terminal.App.Renderer.Render_App
-           (R,
-            Snaps,
-            1,
-            Terminal.App.Tabs.Snapshot (Tabs),
-            Terminal.App.Splits.Snapshot (Splits),
-            Render_Status);
-         Assert
-           (Render_Status = Terminal.App.Renderer.Ok,
-            Label_Text & " render");
-         declare
-            Outcome : constant Terminal.Core.Kitty_Graphics_Result :=
-              Terminal.App.Renderer.Graphics_Result
-                (R, Snaps (1).Graphics);
-         begin
-            Assert (Outcome.Code = Expected, Label_Text & " result code");
-            Assert
-              (not Outcome.Move_Cursor,
-               Label_Text & " relative placement must not move cursor");
-            Terminal.Core.Complete_Graphics_Event
-              (Retry_Core, Snaps (1).Graphics, Outcome);
-         end;
-         Terminal.App.Renderer.Commit_Graphics_Events (R);
-         Terminal.Core.Release (Snaps (1));
-      end Process_Relative_Result;
-   begin
-      Terminal.Core.Initialize (Retry_Core, 1, 4, 10, Retry_Init);
-      Assert (Retry_Init = Terminal.Core.Ok, "retry core initialize failed");
-      Terminal.Core.Set_Graphics_Stream_ID (Retry_Core, 999);
-      Terminal.Core.Feed
-        (Retry_Core,
-         To_Bytes
-           (ASCII.ESC
-            & "_Gq=0,a=T,I=700,p=1,f=32,s=1,v=1,c=1,r=1;"
-            & "/wAA/w==" & ASCII.ESC & "\"),
-         Retry_Feed);
-      Assert (Retry_Feed = Terminal.Core.Ok, "retry graphics feed failed");
-      Terminal.App.Tabs.Initialize (Tabs);
-      Terminal.App.Splits.Initialize (Splits);
-
-      declare
-         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1) :=
-           (1 => Terminal.Core.Snapshot (Retry_Core));
-      begin
-         Terminal.App.Renderer.Render_App
-           (R,
-            Snaps,
-            1,
-            Terminal.App.Tabs.Snapshot (Tabs),
-            Terminal.App.Splits.Snapshot (Splits),
-            Render_Status);
-         Assert
-           (Render_Status = Terminal.App.Renderer.Ok,
-            "initial retry-sensitive render failed");
-         Terminal.App.Renderer.Render_App
-           (R,
-            Snaps,
-            1,
-            Terminal.App.Tabs.Snapshot (Tabs),
-            Terminal.App.Splits.Snapshot (Splits),
-            Render_Status);
-         Assert
-           (Render_Status = Terminal.App.Renderer.Ok,
-            "repeated retry-sensitive render failed");
-         declare
-            Outcome : constant Terminal.Core.Kitty_Graphics_Result :=
-              Terminal.App.Renderer.Graphics_Result
-                (R, Snaps (1).Graphics);
-         begin
-            Assert
-              (Outcome.Code = Terminal.Core.Kitty_OK
-               and then Outcome.Image_ID /= 0
-               and then Outcome.Has_Image_Number
-               and then Outcome.Image_Number = 700
-               and then Outcome.Has_Placement_ID
-               and then Outcome.Placement_ID = 1
-               and then Outcome.Move_Cursor
-               and then Outcome.Placement_Columns = 1
-               and then Outcome.Placement_Rows = 1,
-               "numbered transmission should retain its committed response");
-            Allocated_ID := Outcome.Image_ID;
-            Terminal.Core.Complete_Graphics_Event
-              (Retry_Core, Snaps (1).Graphics, Outcome);
-         end;
-         Terminal.Core.Release (Snaps (1));
-      end;
-      Assert
-        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count = 1
-         and then
-           Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count = 1
-         and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
-         "re-rendering one event before commit must not repeat mutations");
-      Assert
-        (Terminal.Core.Pending_Response_Length (Retry_Core) > 0,
-         "committed numbered transmission should queue an acknowledgement");
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
-
-      Process_Relative_Result
-        (ASCII.ESC
-         & "_Gq=2,a=p,I=700,p=2,P=999,Q=1,H=1,V=0,c=1,r=1;"
-         & ASCII.ESC & "\",
-         Terminal.Core.Kitty_ENOPARENT,
-         "missing relative parent");
-      Process_Relative_Result
-        (ASCII.ESC & "_Gq=1,a=p,I=700,p=2,P="
-         & Trimmed_Natural (Natural (Allocated_ID))
-         & ",Q=1,H=1,V=0,c=1,r=1;" & ASCII.ESC & "\",
-         Terminal.Core.Kitty_OK,
-         "valid relative child");
-      Process_Relative_Result
-        (ASCII.ESC & "_Gq=2,a=p,I=700,p=1,P="
-         & Trimmed_Natural (Natural (Allocated_ID))
-         & ",Q=2,H=1,V=0,c=1,r=1;" & ASCII.ESC & "\",
-         Terminal.Core.Kitty_ECYCLE,
-         "relative placement cycle");
-      Terminal.Core.Finalize (Retry_Core);
-   end;
 
    Terminal.App.Renderer.Finalize (R);
    Terminal.App.Renderer.Initialize_Headless (R, Status);
@@ -4454,7 +4320,7 @@ begin
 
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Height >=
@@ -4547,7 +4413,7 @@ begin
          "isolated first chunks feed");
       Render_Pair;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
          "independent first chunks remain incomplete");
       Terminal.Core.Complete_Graphics_Event
         (T1, E1, Terminal.App.Renderer.Graphics_Result (R, E1));
@@ -4569,7 +4435,7 @@ begin
       Render_Pair;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count > 0,
@@ -4626,7 +4492,7 @@ begin
       end;
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Render_Status = Terminal.App.Renderer.Ok
@@ -4696,14 +4562,14 @@ begin
       Assert (Screen_Feed = Terminal.Core.Ok, "primary placement feed");
       Render_Current;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
          "primary placement visible on primary screen");
 
       Terminal.Core.Feed
         (Screen_T, To_Bytes (ASCII.ESC & "[?1049h"), Screen_Feed);
       Render_Current;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
          "primary placement hidden on alternate screen");
 
       Terminal.Core.Feed
@@ -4716,25 +4582,25 @@ begin
       Assert (Screen_Feed = Terminal.Core.Ok, "alternate placement feed");
       Render_Current;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1
          and then Natural
-           (Terminal.App.Renderer.Last_Frame (R).Images (1).Image_ID) = 71,
+           (Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Image_ID) = 71,
          "alternate placement visible only on alternate screen");
 
       Terminal.Core.Feed
         (Screen_T, To_Bytes (ASCII.ESC & "[?1049l"), Screen_Feed);
       Render_Current;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1
          and then Natural
-           (Terminal.App.Renderer.Last_Frame (R).Images (1).Image_ID) = 70,
+           (Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Image_ID) = 70,
          "leaving alternate restores primary placement");
 
       Terminal.Core.Feed
         (Screen_T, To_Bytes (ASCII.ESC & "[?1049h"), Screen_Feed);
       Render_Current;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
          "alternate re-entry clears its old placements");
 
       Terminal.Core.Feed
@@ -4743,7 +4609,7 @@ begin
          Screen_Feed);
       Render_Current;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
          "full-screen erase clears primary placements");
       Assert
         (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
@@ -4827,9 +4693,9 @@ begin
       Assert (Scroll_Feed = Terminal.Core.Ok, "scroll graphics placement feed");
       Render_Event;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
          "scrolling placement initially visible");
-      Initial_Y := Terminal.App.Renderer.Last_Frame (R).Images (1).Y;
+      Initial_Y := Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Y;
 
       Terminal.Core.Feed
         (Scroll_T,
@@ -4837,8 +4703,8 @@ begin
          Scroll_Feed);
       Render_Live;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
-         and then Terminal.App.Renderer.Last_Frame (R).Images (1).Y =
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1
+         and then Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Y =
            Initial_Y - Float (Terminal.App.Renderer.Cell_Height (R)),
          "full-screen scroll moves conventional placement with text");
 
@@ -4847,10 +4713,10 @@ begin
         (Scroll_T, To_Bytes ("" & ASCII.LF), Scroll_Feed);
       Render_Live;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
-         and then Terminal.App.Renderer.Last_Frame (R).Images (1).Y =
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1
+         and then Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Y =
            Float (Terminal.App.Renderer.Content_Margin)
-         and then Terminal.App.Renderer.Last_Frame (R).Images (1).Height <
+         and then Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Height <
            Float (Terminal.App.Renderer.Cell_Width (R) * 2),
          "placement crossing the viewport edge is clipped");
 
@@ -4864,8 +4730,8 @@ begin
       end;
       Assert
         (Render_Status = Terminal.App.Renderer.Ok
-         and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
-         and then Terminal.App.Renderer.Last_Frame (R).Images (1).Height =
+         and then Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1
+         and then Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Height =
            Float (Terminal.App.Renderer.Cell_Width (R) * 2),
          "scrollback navigation restores the full retained placement");
 
@@ -4873,7 +4739,7 @@ begin
         (Scroll_T, To_Bytes ("" & ASCII.LF), Scroll_Feed);
       Render_Live;
       Assert
-        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
          "fully scrolled placement leaves the live viewport");
 
       Terminal.Core.Feed
@@ -4889,7 +4755,7 @@ begin
       end;
       Assert
         (Render_Status = Terminal.App.Renderer.Ok
-         and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+         and then Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
          "viewport erase preserves a placement retained in scrollback");
 
       Terminal.Core.Feed
@@ -4907,7 +4773,7 @@ begin
       end;
       Assert
         (Render_Status = Terminal.App.Renderer.Ok
-         and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+         and then Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
          "d=a preserves placements that are visible only in scrollback");
 
       declare
@@ -5027,7 +4893,7 @@ begin
          "regular-file graphics");
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 1
@@ -5141,7 +5007,7 @@ begin
          Label_Text : String)
       is
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
          Actual : Terminal.Common.Bytes.Byte := 0;
       begin
          Assert (Frame.Image_Count = 1, Label_Text & " image count");

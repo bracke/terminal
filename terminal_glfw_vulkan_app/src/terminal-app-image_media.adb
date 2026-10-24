@@ -1,4 +1,3 @@
-with Ada.Unchecked_Conversion;
 with Ada.Unchecked_Deallocation;
 with Interfaces;
 with System;
@@ -40,28 +39,55 @@ package body Terminal.App.Image_Media is
    use type Pictlib.Errors.Error_Code;
    use type Pictlib.Streams.Byte_Array_Access;
 
-   function To_PICT_Data is new Ada.Unchecked_Conversion
-     (RM.Image_Data_Access, Pictlib.Streams.Byte_Array_Access);
    pragma Compile_Time_Error
      (Terminal.Common.Bytes.Byte'Size /= Pictlib.Byte'Size,
       "terminal and pictlib byte representations must match");
-   pragma Compile_Time_Error
-     (RM.Image_Data_Access'Size /= Pictlib.Streams.Byte_Array_Access'Size,
-      "terminal and pictlib array descriptors must match");
 
    procedure Free_Image_Data is new Ada.Unchecked_Deallocation
      (Terminal.Common.Bytes.Byte_Array, RM.Image_Data_Access);
    type GIF_Byte_Array_Access is access Giflib.Streams.Byte_Array;
    procedure Free_GIF_Data is new Ada.Unchecked_Deallocation
      (Giflib.Streams.Byte_Array, GIF_Byte_Array_Access);
+   procedure Free_PICT_Data is new Ada.Unchecked_Deallocation
+     (Pictlib.Streams.Byte_Array, Pictlib.Streams.Byte_Array_Access);
    package Byte_Addresses is new System.Address_To_Access_Conversions
      (Terminal.Common.Bytes.Byte);
    use type System.Storage_Elements.Storage_Offset;
 
-   type Terminal_GIF_Source is limited new Giflib.Streams.Source with record
+   type Borrowed_Source_State is record
       Storage  : System.Address := System.Null_Address;
       Length   : Natural := 0;
       Position : Natural := 0;
+   end record;
+
+   function Remaining (State : Borrowed_Source_State) return Natural is
+     (State.Length - State.Position);
+
+   function Next_Byte
+     (State : in out Borrowed_Source_State)
+      return Terminal.Common.Bytes.Byte
+   is
+      Result : constant Terminal.Common.Bytes.Byte :=
+        Byte_Addresses.To_Pointer
+          (State.Storage
+           + System.Storage_Elements.Storage_Offset (State.Position)).all;
+   begin
+      State.Position := State.Position + 1;
+      return Result;
+   end Next_Byte;
+
+   function Advance
+     (State : in out Borrowed_Source_State;
+      Count : Natural) return Natural
+   is
+      Amount : constant Natural := Natural'Min (Remaining (State), Count);
+   begin
+      State.Position := State.Position + Amount;
+      return Amount;
+   end Advance;
+
+   type Terminal_GIF_Source is limited new Giflib.Streams.Source with record
+      State : Borrowed_Source_State;
    end record;
 
    overriding function Read
@@ -75,9 +101,7 @@ package body Terminal.App.Image_Media is
       Count  : Giflib.Byte_Count) return Giflib.Streams.Source_Result;
 
    type Terminal_PICT_Source is limited new Pictlib.Streams.Source with record
-      Storage : System.Address := System.Null_Address;
-      Length  : Natural := 0;
-      Position : Natural := 0;
+      State : Borrowed_Source_State;
    end record;
 
    overriding function Read
@@ -95,45 +119,38 @@ package body Terminal.App.Image_Media is
       Buffer : out Giflib.Streams.Byte_Array)
       return Giflib.Streams.Source_Result
    is
-      Available : constant Natural := Object.Length - Object.Position;
-      Amount : constant Natural := Natural'Min (Available, Buffer'Length);
+      Amount : constant Natural :=
+        Natural'Min (Remaining (Object.State), Buffer'Length);
    begin
       if Amount > 0 then
          for I in 0 .. Amount - 1 loop
             Buffer (Buffer'First + I) :=
-              Giflib.Byte
-                (Byte_Addresses.To_Pointer
-                   (Object.Storage
-                    + System.Storage_Elements.Storage_Offset
-                        (Object.Position + I)).all);
+              Giflib.Byte (Next_Byte (Object.State));
          end loop;
       end if;
-      Object.Position := Object.Position + Amount;
       return
         (Error => Giflib.Errors.Make (Giflib.Errors.No_Error),
          Count => Giflib.Byte_Count (Amount),
-         End_Of_Input => Object.Position = Object.Length);
+         End_Of_Input => Remaining (Object.State) = 0);
    end Read;
 
    overriding function Offset
      (Object : Terminal_GIF_Source) return Giflib.Source_Offset is
-     (Giflib.Source_Offset (Object.Position));
+     (Giflib.Source_Offset (Object.State.Position));
 
    overriding function Skip
      (Object : in out Terminal_GIF_Source;
       Count  : Giflib.Byte_Count) return Giflib.Streams.Source_Result
    is
-      Available : constant Natural := Object.Length - Object.Position;
       Requested : constant Natural :=
         (if Count > Giflib.Byte_Count (Natural'Last)
          then Natural'Last else Natural (Count));
-      Amount : constant Natural := Natural'Min (Available, Requested);
+      Amount : constant Natural := Advance (Object.State, Requested);
    begin
-      Object.Position := Object.Position + Amount;
       return
         (Error => Giflib.Errors.Make (Giflib.Errors.No_Error),
          Count => Giflib.Byte_Count (Amount),
-         End_Of_Input => Object.Position = Object.Length);
+         End_Of_Input => Remaining (Object.State) = 0);
    end Skip;
 
    overriding function Read
@@ -141,45 +158,38 @@ package body Terminal.App.Image_Media is
       Buffer : out Pictlib.Streams.Byte_Array)
       return Pictlib.Streams.Source_Result
    is
-      Available : constant Natural := Object.Length - Object.Position;
-      Amount : constant Natural := Natural'Min (Available, Buffer'Length);
+      Amount : constant Natural :=
+        Natural'Min (Remaining (Object.State), Buffer'Length);
    begin
       if Amount > 0 then
          for I in 0 .. Amount - 1 loop
             Buffer (Buffer'First + I) :=
-              Pictlib.Byte
-                (Byte_Addresses.To_Pointer
-                   (Object.Storage
-                    + System.Storage_Elements.Storage_Offset
-                        (Object.Position + I)).all);
+              Pictlib.Byte (Next_Byte (Object.State));
          end loop;
       end if;
-      Object.Position := Object.Position + Amount;
       return
         (Error => Pictlib.Errors.Make (Pictlib.Errors.No_Error),
          Count => Pictlib.Byte_Count (Amount),
-         End_Of_Input => Object.Position = Object.Length);
+         End_Of_Input => Remaining (Object.State) = 0);
    end Read;
 
    overriding function Offset
      (Object : Terminal_PICT_Source) return Pictlib.Source_Offset is
-     (Pictlib.Source_Offset (Object.Position));
+     (Pictlib.Source_Offset (Object.State.Position));
 
    overriding function Skip
      (Object : in out Terminal_PICT_Source;
       Count : Pictlib.Byte_Count) return Pictlib.Streams.Source_Result
    is
-      Available : constant Natural := Object.Length - Object.Position;
       Requested : constant Natural :=
         (if Count > Pictlib.Byte_Count (Natural'Last)
          then Natural'Last else Natural (Count));
-      Amount : constant Natural := Natural'Min (Available, Requested);
+      Amount : constant Natural := Advance (Object.State, Requested);
    begin
-      Object.Position := Object.Position + Amount;
       return
         (Error => Pictlib.Errors.Make (Pictlib.Errors.No_Error),
          Count => Pictlib.Byte_Count (Amount),
-         End_Of_Input => Object.Position = Object.Length);
+         End_Of_Input => Remaining (Object.State) = 0);
    end Skip;
 
    function Diagnostic_Identifier (Item : Decode_Diagnostic) return String is
@@ -394,7 +404,7 @@ package body Terminal.App.Image_Media is
    is
       Canvas : GIF_Byte_Array_Access := null;
       Source : aliased Terminal_GIF_Source;
-      Decoder : Giflib.Decoding.Decoder (Source'Unchecked_Access);
+      Decoder : Giflib.Decoding.Decoder (Source'Access);
       Options : Giflib.Decoding.Decode_Options :=
         Giflib.Decoding.Default_Options;
       Constraints : Giflib.Limits.Limit_Set := Giflib.Limits.Default_Limits;
@@ -453,9 +463,10 @@ package body Terminal.App.Image_Media is
          return;
       end if;
 
-      Source.Storage := Data (Data'First)'Address;
-      Source.Length := Length;
-      Source.Position := 0;
+      Source.State :=
+        (Storage  => Data (Data'First)'Address,
+         Length   => Length,
+         Position => 0);
 
       Constraints.Max_Logical_Width :=
         Giflib.Image_Width
@@ -562,7 +573,7 @@ package body Terminal.App.Image_Media is
       --  Decode composited logical canvases so disposal and transparency are
       --  already resolved for the renderer's frame playback model.
       Options.Mode := Giflib.Decoding.Composited_RGBA;
-      Source.Position := 0;
+      Source.State.Position := 0;
       Outcome :=
         Giflib.Decoding.Reset
           (Decoder, Options, Constraints);
@@ -671,12 +682,16 @@ package body Terminal.App.Image_Media is
       Pixel_Count : Natural := 0;
       Frame_Bytes : Natural := 0;
       Decoder_Initialized : Boolean := False;
+      Output : Pictlib.Streams.Byte_Array_Access := null;
 
       procedure Clean_Up is
       begin
          if Decoder_Initialized then
             Pictlib.Decoding.Finalize (Decoder);
             Decoder_Initialized := False;
+         end if;
+         if Output /= null then
+            Free_PICT_Data (Output);
          end if;
       end Clean_Up;
 
@@ -774,11 +789,12 @@ package body Terminal.App.Image_Media is
          Map (24, "Mobile", Terminal.App.Fonts.Sans_Serif);
       end;
 
-      Source.Storage := Data (Data'First)'Address;
-      Source.Length := Length;
-      Source.Position := 0;
+      Source.State :=
+        (Storage  => Data (Data'First)'Address,
+         Length   => Length,
+         Position => 0);
       Pictlib.Decoding.Initialize
-        (Decoder, Source'Unchecked_Access, Options, Constraints);
+        (Decoder, Source'Access, Options, Constraints);
       Decoder_Initialized := True;
       Outcome := Pictlib.Decoding.Read_Header (Decoder);
       if not Pictlib.Results.Succeeded (Outcome) then
@@ -809,31 +825,29 @@ package body Terminal.App.Image_Media is
          return;
       end if;
       Frame_Bytes := Pixel_Count * 4;
-      Result.Bytes :=
-        new Terminal.Common.Bytes.Byte_Array (1 .. Frame_Bytes);
-      declare
-         Output : constant Pictlib.Streams.Byte_Array_Access :=
-           To_PICT_Data (Result.Bytes);
-      begin
-         Outcome :=
-           Pictlib.Decoding.Render
-             (Decoder,
-              (Descriptor =>
-                 (Width => Pictlib.Image_Width (Width),
-                  Height => Pictlib.Image_Height (Height),
-                  Format => Pictlib.RGBA_32,
-                  Stride => Pictlib.Row_Stride (Width * 4),
-                  Accessible_Bytes => Pictlib.Byte_Count (Frame_Bytes)),
-               Storage => Output));
-      end;
+      Output := new Pictlib.Streams.Byte_Array (1 .. Frame_Bytes);
+      Outcome :=
+        Pictlib.Decoding.Render
+          (Decoder,
+           (Descriptor =>
+              (Width => Pictlib.Image_Width (Width),
+               Height => Pictlib.Image_Height (Height),
+               Format => Pictlib.RGBA_32,
+               Stride => Pictlib.Row_Stride (Width * 4),
+               Accessible_Bytes => Pictlib.Byte_Count (Frame_Bytes)),
+            Storage => Output));
       if not Pictlib.Results.Succeeded (Outcome) then
-         Free_Image_Data (Result.Bytes);
-         Result.Bytes := null;
          Set_PICT_Diagnostic (Result, Outcome);
          Status := Failure_Status (Outcome);
          Clean_Up;
          return;
       end if;
+      Result.Bytes :=
+        new Terminal.Common.Bytes.Byte_Array (1 .. Frame_Bytes);
+      for Index in 1 .. Frame_Bytes loop
+         Result.Bytes (Index) := Terminal.Common.Bytes.Byte (Output (Index));
+      end loop;
+      Free_PICT_Data (Output);
 
       Result.Pixel_Width := Width;
       Result.Pixel_Height := Height;
@@ -841,7 +855,7 @@ package body Terminal.App.Image_Media is
       Result.Loop_Count := 1;
       Result.Frame_Bytes := Frame_Bytes;
       Result.Total_Bytes := Frame_Bytes;
-      Result.Adapter_Buffer_Bytes := Frame_Bytes;
+      Result.Adapter_Buffer_Bytes := Saturating_Multiply (Frame_Bytes, 2);
       --  Pictlib admits all decoder-owned allocations against one monotonic
       --  session quota; released/replaced buffers do not replenish it.
       Result.Decoder_Configured_Bytes := Maximum_Decoded_Bytes;

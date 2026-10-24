@@ -8,6 +8,7 @@ with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 
 procedure Graphics_Replacement_Benchmark_Smoke is
    use AUnit.Assertions;
@@ -116,7 +117,7 @@ begin
       D : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Elapsed : constant Duration := Ada.Real_Time.To_Duration
         (Finished - Started);
       Rate : constant Natural :=

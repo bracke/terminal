@@ -2,6 +2,7 @@ with AUnit.Assertions;
 
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.Common.Bytes;
 with Terminal.Core;
 
@@ -64,7 +65,7 @@ procedure ITerm2_Media_Smoke is
          Phase : String)
       is
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Frame.Image_Count = 1

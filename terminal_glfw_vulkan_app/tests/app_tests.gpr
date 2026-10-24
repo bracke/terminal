@@ -18,6 +18,7 @@ project App_Tests is
       "text_shaper_smoke.adb",
       "renderer_metrics_smoke.adb",
       "renderer_transaction_smoke.adb",
+      "renderer_relative_placement_smoke.adb",
       "renderer_large_payload_smoke.adb",
       "renderer_kitty_object_smoke.adb",
       "kitty_control_matrix_smoke.adb",

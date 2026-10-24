@@ -4,6 +4,7 @@ with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
 with Terminal.App.Theme;
@@ -109,7 +110,7 @@ begin
    Render_Retained ("indexed opaque retained render");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Image_Count = 1
@@ -129,7 +130,7 @@ begin
    Render_Retained ("indexed image theme refresh");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Images (1).Decoded_Bytes (1) = 16#BF#
@@ -149,7 +150,7 @@ begin
    Render_Retained ("indexed animation light theme");
    declare
       Light_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Light_Red : constant Byte := Light_Frame.Images (1).Decoded_Bytes (1);
       Light_Green : constant Byte := Light_Frame.Images (1).Decoded_Bytes (2);
       Light_Blue : constant Byte := Light_Frame.Images (1).Decoded_Bytes (3);
@@ -159,7 +160,7 @@ begin
       Render_Retained ("indexed animation dark theme refresh");
       declare
          Dark_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Dark_Frame.Images (1).Decoded_Bytes (1) /= Light_Red
@@ -184,7 +185,7 @@ begin
    Render_Retained ("indexed root retained after frame deletion");
    declare
       Dark_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Dark_Red : constant Byte := Dark_Frame.Images (1).Decoded_Bytes (1);
       Dark_Green : constant Byte := Dark_Frame.Images (1).Decoded_Bytes (2);
       Dark_Blue : constant Byte := Dark_Frame.Images (1).Decoded_Bytes (3);
@@ -194,7 +195,7 @@ begin
       Render_Retained ("deleted-frame indexed root theme refresh");
       declare
          Light_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert
            (Light_Frame.Images (1).Decoded_Bytes (1) /= Dark_Red
@@ -231,7 +232,7 @@ begin
    Render_Retained ("indexed alpha retained render");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Frame.Image_Count = 1
@@ -256,7 +257,7 @@ begin
       Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Diagnostics.Kitty_Placement_Count = 2 and then Frame.Image_Count = 2,
@@ -345,7 +346,7 @@ begin
       Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
         (Diagnostics.Kitty_Image_Object_Count = 2
@@ -392,7 +393,7 @@ begin
    end;
    Render_Retained ("zero placement-id placeholder render");
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
       "zero placeholder placement id selects the image virtual placement");
 
    Reset;
@@ -418,7 +419,7 @@ begin
    Assert (Feed_Status = Terminal.Core.Ok, "leave alternate screen");
    Render_Retained ("primary after cross-screen placement replacement");
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 0,
       "cross-screen replacement moves rather than duplicates placement");
 
    Reset;
@@ -439,7 +440,7 @@ begin
       "alternate relative parent replacement");
    Assert
      (Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count = 2
-      and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+      and then Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 2,
       "relative descendants follow an addressed parent across screens");
 
    Reset;
@@ -477,7 +478,7 @@ begin
      ("Ga=p,i=300,p=2,C=1,c=1,r=1;",
       "unrelated reusable image survives capital selector");
    Assert
-     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
       "preserved transmit-only image remains displayable");
 
    Reset;
@@ -528,7 +529,7 @@ begin
            (Diagnostics.Kitty_Image_Object_Count = 1
             and then Diagnostics.Kitty_Image_Object_Bytes = 4
             and then Diagnostics.Kitty_Placement_Count = 1
-            and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+            and then Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
             "rapid replacements remain bounded and leave no stale previews");
          Assert
            (Diagnostics.Image_Install_Count - Installs_Before = 128,

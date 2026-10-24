@@ -152,7 +152,7 @@ procedure Image_Media_Smoke is
          Label_Text & " reports explicit buffers and configured decoder memory");
       if Label_Text = "PICT" or else Label_Text = "PICT QuickTime JPEG" then
          Assert
-           (Image.Adapter_Buffer_Bytes = Image.Frame_Bytes
+           (Image.Adapter_Buffer_Bytes = Image.Frame_Bytes * 2
             and then Image.Decoder_Configured_Bytes = 1_048_576,
             Label_Text & " reports adapter buffers and aggregate decoder limits");
       end if;

@@ -11,6 +11,7 @@ with GLFW_Vulkan.Events;
 with GLFW_Vulkan.Windows;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
 with Terminal.Common.Bytes;
@@ -125,10 +126,10 @@ procedure GUI_Present_Smoke is
             Assert
               (Render_Status = Terminal.App.Renderer.Ok,
                "committed tmux image should render");
-            if Terminal.App.Renderer.Last_Frame (R).Image_Count > 0 then
+            if Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count > 0 then
                declare
                   Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-                    Terminal.App.Renderer.Last_Frame (R);
+                    Terminal.App.Renderer.Testing.Last_Frame (R);
                   Expected_Protocol : constant
                     Terminal.App.Render_Model.Image_Protocol :=
                       (case Event.Protocol is

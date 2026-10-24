@@ -4,6 +4,7 @@ with AUnit.Assertions;
 with Terminal.App.Image_Media;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.App.Vulkan_Submit;
 with Terminal.Common.Bytes;
 with Terminal.Core;
@@ -111,7 +112,7 @@ begin
       Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Batch : Terminal.App.Vulkan_Submit.Submission_Batch;
       Batch_Status : Terminal.App.Vulkan_Submit.Build_Status;
    begin
@@ -123,7 +124,7 @@ begin
          and then Diagnostics.Last_Image_Pixel_Width = 21
          and then Diagnostics.Last_Image_Pixel_Height = 9
          and then Diagnostics.Last_Image_Decoded_Preview_Length = 756
-         and then Diagnostics.Last_Media_Adapter_Buffer_Bytes = 756
+         and then Diagnostics.Last_Media_Adapter_Buffer_Bytes = 1_512
          and then Diagnostics.Last_Media_Decoder_Configured_Bytes > 0
          and then Diagnostics.Last_Media_Warning_Count = 0
          and then not Diagnostics.Last_Media_Diagnostic.Present,
@@ -131,7 +132,7 @@ begin
       Assert
         (Ada.Strings.Fixed.Index
            (Terminal.App.Renderer.Media_Status_Label (Diagnostics),
-            "media memory adapter_buffers=756 decoder_configured=") > 0,
+            "media memory adapter_buffers=1512 decoder_configured=") > 0,
          "PICT memory accounting should be human-readable");
       Assert
         (Diagnostics.Last_Image_Decoded_Preview_Bytes (93) = 255

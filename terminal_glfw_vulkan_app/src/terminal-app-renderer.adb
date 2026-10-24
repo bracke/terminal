@@ -814,68 +814,8 @@ package body Terminal.App.Renderer is
 
 
    procedure Clear_Image_Object (Object : in out Image_Object) is
-      Frame : Image_Frame_Access := Object.Frames;
-      Next  : Image_Frame_Access;
-      Operation : Theme_Operation_Access := Object.Theme_Operations;
-      Next_Operation : Theme_Operation_Access;
    begin
-      while Frame /= null loop
-         Next := Frame.Next;
-         if Frame.Bytes /= null then
-            Free_Image_Data (Frame.Bytes);
-         end if;
-         Free_Image_Frame (Frame);
-         Frame := Next;
-      end loop;
-      while Operation /= null loop
-         Next_Operation := Operation.Next;
-         if Operation.Bytes /= null then
-            Free_Image_Data (Operation.Bytes);
-         end if;
-         Free_Theme_Operation (Operation);
-         Operation := Next_Operation;
-      end loop;
-      if Object.Bytes /= null then
-         Free_Image_Data (Object.Bytes);
-         Object.Bytes := null;
-      end if;
-      if Object.Indexed_Bytes /= null then
-         Free_Image_Data (Object.Indexed_Bytes);
-         Object.Indexed_Bytes := null;
-      end if;
-      Object :=
-        (Stream_ID      => 0,
-         ID             => 0,
-         Number         => 0,
-         Protocol       => RM.Image_Kitty,
-         Raw_Format     => 0,
-         Pixel_Width    => 0,
-         Pixel_Height   => 0,
-         Decoded_Length => 0,
-         Decoded_Row_Stride_Bytes => 0,
-         Usage_Hint     => 0,
-         Storage_Order  => 0,
-         Content_Serial => 0,
-         Bytes          => null,
-         Indexed_Format => 0,
-         Indexed_Length => 0,
-         Indexed_Row_Stride_Bytes => 0,
-         Indexed_Bytes  => null,
-         Frames         => null,
-         Frame_Count    => 1,
-         Frame_Bytes    => 0,
-         Theme_Operations => null,
-         Theme_Operations_Tail => null,
-         Theme_Operation_Count => 0,
-         Theme_Operation_Bytes => 0,
-         Root_Gap_MS    => 0,
-         Current_Frame  => 1,
-         Playback       => Animation_Stopped,
-         Loop_Count     => 1,
-         Loops_Completed => 0,
-         Next_Frame_At  => Ada.Real_Time.Time_First,
-         Deadline_Set   => False,
-         Next           => null);
+      Terminal.App.Image_Store.Release_Contents (Object);
    end Clear_Image_Object;
 
    function Find_Virtual_Placement
@@ -1034,10 +974,21 @@ package body Terminal.App.Renderer is
       else Resolve_Placement_Geometry
         (R, Object.Pixel_Width, Object.Pixel_Height, Header));
 
-   procedure Store_Virtual_Placement
+   type Placement_Store_Status is
+     (Placement_Not_Requested,
+      Placement_Stored,
+      Placement_Rejected,
+      Placement_Parent_Missing,
+      Placement_Cycle,
+      Placement_Too_Deep,
+      Placement_No_Space);
+
+   function Store_Virtual_Placement
      (R         : in out Renderer;
       Event     : Terminal.Core.Graphics_Event;
-      Header    : Terminal.App.Graphics.Graphics_Header)
+      Header    : Terminal.App.Graphics.Graphics_Header;
+      Prepared  : in out Virtual_Placement_Access)
+      return Placement_Store_Status
    is
       Placement : Virtual_Placement_Access :=
         Find_Addressed_Virtual_Placement
@@ -1057,17 +1008,31 @@ package body Terminal.App.Renderer is
       then
          --  Kitty virtual placements are prototypes, not positioned objects,
          --  and therefore cannot themselves be relative placements.
-         return;
+         return Placement_Rejected;
       end if;
 
       if Placement = null then
          if R.Kitty_Placement_Count >= R.Graphics_Limits.Placements then
-            return;
+            R.Image_Store_Allocation_Failed := True;
+            return Placement_No_Space;
          end if;
-         Placement := new Virtual_Placement;
+         if Prepared /= null then
+            Placement := Prepared;
+            Prepared := null;
+         else
+            if not Terminal.App.Image_Store.Allocation_Allowed
+              (R.Image_Allocation_Control)
+            then
+               R.Image_Store_Allocation_Failed := True;
+               return Placement_No_Space;
+            end if;
+            Placement := new Virtual_Placement;
+         end if;
          Placement.Next := R.Virtual_Placements;
          R.Virtual_Placements := Placement;
          R.Kitty_Placement_Count := R.Kitty_Placement_Count + 1;
+      elsif Prepared /= null then
+         Free_Virtual_Placement (Prepared);
       end if;
 
       declare
@@ -1104,9 +1069,11 @@ package body Terminal.App.Renderer is
          Header.Kitty_Placement_ID,
          Event.Alternate_Screen,
          Event.Screen_Generation);
+      return Placement_Stored;
    exception
       when Storage_Error =>
-         null;
+         R.Image_Store_Allocation_Failed := True;
+         return Placement_No_Space;
    end Store_Virtual_Placement;
 
    procedure Delete_Virtual_Placements
@@ -1323,6 +1290,14 @@ package body Terminal.App.Renderer is
       Relative_Cycle,
       Relative_Too_Deep);
 
+   function To_Placement_Status
+     (Status : Relative_Placement_Status) return Placement_Store_Status is
+     (case Status is
+         when Relative_Valid          => Placement_Stored,
+         when Relative_Parent_Missing => Placement_Parent_Missing,
+         when Relative_Cycle          => Placement_Cycle,
+         when Relative_Too_Deep       => Placement_Too_Deep);
+
    function Validate_Relative_Placement
      (R                   : Renderer;
       Stream_ID           : Terminal.Core.Graphics_Stream_ID;
@@ -1523,10 +1498,12 @@ package body Terminal.App.Renderer is
       return True;
    end Resolve_Conventional_Placement_Origin;
 
-   procedure Store_Conventional_Placement
+   function Store_Conventional_Placement
      (R      : in out Renderer;
       Event  : Terminal.Core.Graphics_Event;
-      Header : Terminal.App.Graphics.Graphics_Header)
+      Header : Terminal.App.Graphics.Graphics_Header;
+      Prepared : in out Conventional_Placement_Access)
+      return Placement_Store_Status
    is
       Placement : Conventional_Placement_Access :=
         Find_Addressed_Conventional_Placement
@@ -1546,36 +1523,54 @@ package body Terminal.App.Renderer is
         or else not Geometry.Valid
         or else Object = null
       then
-         return;
+         return Placement_Rejected;
       end if;
 
       --  Anonymous transmissions cannot subsequently be addressed, so a
       --  supplied placement identifier has no protocol meaning.
       if Header.Kitty_ID = 0 and then Header.Kitty_Parent_ID /= 0 then
-         return;
+         return Placement_Rejected;
       end if;
 
-      if Validate_Relative_Placement
-        (R,
-         Event.Stream_ID,
-         Event.Alternate_Screen,
-         Event.Screen_Generation,
-         Header.Kitty_ID,
-         Header.Kitty_Placement_ID,
-         Header.Kitty_Parent_ID,
-         Header.Kitty_Parent_Placement_ID) /= Relative_Valid
-      then
-         return;
-      end if;
+      declare
+         Relative_Status : constant Relative_Placement_Status :=
+           Validate_Relative_Placement
+             (R,
+              Event.Stream_ID,
+              Event.Alternate_Screen,
+              Event.Screen_Generation,
+              Header.Kitty_ID,
+              Header.Kitty_Placement_ID,
+              Header.Kitty_Parent_ID,
+              Header.Kitty_Parent_Placement_ID);
+      begin
+         if Relative_Status /= Relative_Valid then
+            return To_Placement_Status (Relative_Status);
+         end if;
+      end;
 
       if Placement = null then
          if R.Kitty_Placement_Count >= R.Graphics_Limits.Placements then
-            return;
+            R.Image_Store_Allocation_Failed := True;
+            return Placement_No_Space;
          end if;
-         Placement := new Conventional_Placement;
+         if Prepared /= null then
+            Placement := Prepared;
+            Prepared := null;
+         else
+            if not Terminal.App.Image_Store.Allocation_Allowed
+              (R.Image_Allocation_Control)
+            then
+               R.Image_Store_Allocation_Failed := True;
+               return Placement_No_Space;
+            end if;
+            Placement := new Conventional_Placement;
+         end if;
          Placement.Next := R.Conventional_Placements;
          R.Conventional_Placements := Placement;
          R.Kitty_Placement_Count := R.Kitty_Placement_Count + 1;
+      elsif Prepared /= null then
+         Free_Conventional_Placement (Prepared);
       end if;
 
       declare
@@ -1624,9 +1619,11 @@ package body Terminal.App.Renderer is
          Header.Kitty_Placement_ID,
          Event.Alternate_Screen,
          Event.Screen_Generation);
+      return Placement_Stored;
    exception
       when Storage_Error =>
-         null;
+         R.Image_Store_Allocation_Failed := True;
+         return Placement_No_Space;
    end Store_Conventional_Placement;
 
    function Store_Auxiliary_Placement
@@ -2153,66 +2150,22 @@ package body Terminal.App.Renderer is
      (R         : Renderer;
       Stream_ID : Terminal.Core.Graphics_Stream_ID;
       ID        : Terminal.Core.Graphics_ID) return Image_Object_Access
-   is
-      Current : Image_Object_Access := R.Image_Objects;
-   begin
-      if ID = 0 then
-         return null;
-      end if;
-
-      while Current /= null loop
-         if Current.Stream_ID = Stream_ID and then Current.ID = ID then
-            return Current;
-         end if;
-         Current := Current.Next;
-      end loop;
-      return null;
-   end Find_Image_Object;
+   is (Terminal.App.Image_Store.Find_By_ID
+         (R.Image_Objects, Stream_ID, ID));
 
    function Find_Image_Object_By_Storage_Order
      (R             : Renderer;
       Stream_ID     : Terminal.Core.Graphics_Stream_ID;
       Storage_Order : Interfaces.Unsigned_64) return Image_Object_Access
-   is
-      Current : Image_Object_Access := R.Image_Objects;
-   begin
-      if Storage_Order = 0 then
-         return null;
-      end if;
-      while Current /= null loop
-         if Current.Stream_ID = Stream_ID
-           and then Current.Storage_Order = Storage_Order
-         then
-            return Current;
-         end if;
-         Current := Current.Next;
-      end loop;
-      return null;
-   end Find_Image_Object_By_Storage_Order;
+   is (Terminal.App.Image_Store.Find_By_Storage_Order
+         (R.Image_Objects, Stream_ID, Storage_Order));
 
    function Find_Image_Object_By_Number
      (R      : Renderer;
       Stream_ID : Terminal.Core.Graphics_Stream_ID;
       Number : Terminal.Core.Graphics_ID) return Image_Object_Access
-   is
-      Current : Image_Object_Access := R.Image_Objects;
-   begin
-      if Number = 0 then
-         return null;
-      end if;
-
-      --  New objects are inserted at the head, so the first match is the
-      --  protocol-defined newest image carrying this non-unique number.
-      while Current /= null loop
-         if Current.Stream_ID = Stream_ID
-           and then Current.Number = Number
-         then
-            return Current;
-         end if;
-         Current := Current.Next;
-      end loop;
-      return null;
-   end Find_Image_Object_By_Number;
+   is (Terminal.App.Image_Store.Find_By_Number
+         (R.Image_Objects, Stream_ID, Number));
 
    function Allocate_Image_ID
      (R         : in out Renderer;
@@ -2253,10 +2206,7 @@ package body Terminal.App.Renderer is
            R.Animation_Frame_Count - (Current.Frame_Count - 1);
          R.Image_Object_Bytes :=
            R.Image_Object_Bytes
-           - Current.Decoded_Length
-           - Current.Indexed_Length
-           - Current.Frame_Bytes
-           - Current.Theme_Operation_Bytes;
+           - Terminal.App.Image_Store.Owned_Bytes (Current.all);
          R.Image_Object_Count := R.Image_Object_Count - 1;
          Clear_Image_Object (Current.all);
          Free_Image_Object (Current);
@@ -2301,10 +2251,7 @@ package body Terminal.App.Renderer is
       end if;
       R.Image_Object_Bytes :=
         R.Image_Object_Bytes
-        - Current.Decoded_Length
-        - Current.Indexed_Length
-        - Current.Frame_Bytes
-        - Current.Theme_Operation_Bytes;
+        - Terminal.App.Image_Store.Owned_Bytes (Current.all);
       R.Animation_Frame_Count :=
         R.Animation_Frame_Count - (Current.Frame_Count - 1);
       R.Image_Object_Count := R.Image_Object_Count - 1;
@@ -2694,11 +2641,7 @@ package body Terminal.App.Renderer is
       Previous_Length : constant Natural :=
         (if Object = null
          then 0
-         else
-           Object.Decoded_Length
-             + Object.Indexed_Length
-             + Object.Frame_Bytes
-             + Object.Theme_Operation_Bytes);
+         else Terminal.App.Image_Store.Owned_Bytes (Object.all));
       Stored_Length : Natural := 0;
    begin
       Stored_Bytes := null;
@@ -2750,6 +2693,20 @@ package body Terminal.App.Renderer is
          Object.Next := R.Image_Objects;
          R.Image_Objects := Object;
          R.Image_Object_Count := R.Image_Object_Count + 1;
+      elsif R.Transactional_Image_Install then
+         --  Keep the previous object and its placements intact until the
+         --  combined transmit-and-display operation has installed its new
+         --  placement.  Apply_Image_Event commits or rolls this object back.
+         declare
+            Previous_Order : constant Interfaces.Unsigned_64 :=
+              Object.Storage_Order;
+            Replacement : constant Image_Object_Access := new Image_Object;
+         begin
+            Object := Replacement;
+            Object.Next := R.Image_Objects;
+            R.Image_Objects := Object;
+            R.Replaced_Image_Order := Previous_Order;
+         end;
       else
          --  Retransmitting an explicit ID replaces both its data and every
          --  placement made from the previous object.
@@ -2760,10 +2717,14 @@ package body Terminal.App.Renderer is
       declare
          Next : constant Image_Object_Access := Object.Next;
       begin
-         R.Image_Object_Bytes :=
-           R.Image_Object_Bytes - Previous_Length;
-         R.Animation_Frame_Count :=
-           R.Animation_Frame_Count - (Object.Frame_Count - 1);
+         if not R.Transactional_Image_Install
+           or else R.Replaced_Image_Order = 0
+         then
+            R.Image_Object_Bytes :=
+              R.Image_Object_Bytes - Previous_Length;
+            R.Animation_Frame_Count :=
+              R.Animation_Frame_Count - (Object.Frame_Count - 1);
+         end if;
          Clear_Image_Object (Object.all);
          Object.all :=
            (Stream_ID      => Stream_ID,
@@ -6996,14 +6957,61 @@ package body Terminal.App.Renderer is
    procedure Apply_Image_Event
      (R      : in out Renderer;
       Event  : Terminal.Core.Graphics_Event;
-      Snapshot : Terminal.Core.Render_Snapshot)
+      Snapshot : Terminal.Core.Render_Snapshot;
+      Placement_Status : out Placement_Store_Status)
    is
       Event_Header : constant Terminal.App.Graphics.Graphics_Header :=
         Terminal.App.Graphics.Header (Event);
       Header : Terminal.App.Graphics.Graphics_Header :=
         Event_Header;
       Image_Count_Before : constant Natural := R.Image_Count;
+      Prepared_Virtual : Virtual_Placement_Access := null;
+      Prepared_Conventional : Conventional_Placement_Access := null;
+
+      procedure Release_Prepared_Placement is
+      begin
+         if Prepared_Virtual /= null then
+            Free_Virtual_Placement (Prepared_Virtual);
+         end if;
+         if Prepared_Conventional /= null then
+            Free_Conventional_Placement (Prepared_Conventional);
+         end if;
+      end Release_Prepared_Placement;
+
+      procedure Roll_Back_Combined_Install is
+         Object : constant Image_Object_Access :=
+           Find_Image_Object_By_Storage_Order
+             (R, Event.Stream_ID, R.Last_Stored_Image_Order);
+         Released_Bytes : constant Natural :=
+           (if Object = null
+            then 0
+            else Terminal.App.Image_Store.Owned_Bytes (Object.all));
+      begin
+         if R.Last_Stored_Image_Order = 0 then
+            return;
+         end if;
+         Delete_Image_Object_By_Storage_Order
+           (R, Event.Stream_ID, R.Last_Stored_Image_Order);
+         if R.Replaced_Image_Order /= 0 then
+            R.Image_Object_Count := R.Image_Object_Count + 1;
+         end if;
+         if R.Image_Install_Count > 0 then
+            R.Image_Install_Count := R.Image_Install_Count - 1;
+         end if;
+         R.Image_Installed_Bytes :=
+           R.Image_Installed_Bytes - Interfaces.Unsigned_64 (Released_Bytes);
+         R.Last_Stored_Image_Order := 0;
+         R.Last_Stored_Image_Content_Serial := 0;
+      end Roll_Back_Combined_Install;
    begin
+      Placement_Status := Placement_Not_Requested;
+      --  These fields describe only the event currently being applied.  Clear
+      --  them before any validation so exception cleanup can never roll back
+      --  an object installed by an earlier command.
+      R.Last_Stored_Image_Order := 0;
+      R.Last_Stored_Image_Content_Serial := 0;
+      R.Replaced_Image_Order := 0;
+      R.Transactional_Image_Install := False;
       if Event.Protocol = Terminal.Core.Kitty_Graphics
         and then Header.Recognized
         and then Header.Kitty_ID > 0
@@ -7213,6 +7221,82 @@ package body Terminal.App.Renderer is
 
       if Event.Protocol = Terminal.Core.Kitty_Graphics
         and then Header.Recognized
+        and then Header.Kitty_Action = 'T'
+        and then Header.Has_Data
+      then
+         --  Allocate the placement before replacing an image object.  Once
+         --  image installation begins, combined transmit-and-display commands
+         --  have no remaining fallible placement allocation.
+         if Header.Kitty_Virtual_Placement
+           and then Header.Kitty_Parent_ID /= 0
+         then
+            Placement_Status := Placement_Rejected;
+            return;
+         elsif Header.Kitty_Parent_ID /= 0 then
+            Placement_Status :=
+              To_Placement_Status
+                (Validate_Relative_Placement
+                   (R,
+                    Event.Stream_ID,
+                    Event.Alternate_Screen,
+                    Event.Screen_Generation,
+                    Header.Kitty_ID,
+                    Header.Kitty_Placement_ID,
+                    Header.Kitty_Parent_ID,
+                    Header.Kitty_Parent_Placement_ID));
+            if Placement_Status /= Placement_Stored then
+               return;
+            end if;
+         end if;
+
+         declare
+            Needs_Allocation : constant Boolean :=
+              (if Header.Kitty_Virtual_Placement
+               then Find_Addressed_Virtual_Placement
+                 (R,
+                  Event.Stream_ID,
+                  Header.Kitty_ID,
+                  Header.Kitty_Placement_ID) = null
+               else Find_Addressed_Conventional_Placement
+                 (R,
+                  Event.Stream_ID,
+                  Header.Kitty_ID,
+                  Header.Kitty_Placement_ID) = null);
+         begin
+            if Needs_Allocation
+              and then R.Kitty_Placement_Count >=
+                R.Graphics_Limits.Placements
+            then
+               R.Image_Store_Allocation_Failed := True;
+               Placement_Status := Placement_No_Space;
+               return;
+            elsif Needs_Allocation
+              and then not Terminal.App.Image_Store.Allocation_Allowed
+                (R.Image_Allocation_Control)
+            then
+               R.Image_Store_Allocation_Failed := True;
+               Placement_Status := Placement_No_Space;
+               return;
+            end if;
+            if Needs_Allocation then
+               begin
+                  if Header.Kitty_Virtual_Placement then
+                     Prepared_Virtual := new Virtual_Placement;
+                  else
+                     Prepared_Conventional := new Conventional_Placement;
+                  end if;
+               exception
+                  when Storage_Error =>
+                     R.Image_Store_Allocation_Failed := True;
+                     Placement_Status := Placement_No_Space;
+                     return;
+               end;
+            end if;
+         end;
+      end if;
+
+      if Event.Protocol = Terminal.Core.Kitty_Graphics
+        and then Header.Recognized
         and then Header.Kitty_Action = 'a'
         and then not Header.Has_Data
       then
@@ -7247,12 +7331,17 @@ package body Terminal.App.Renderer is
          return;
       end if;
 
-      R.Last_Stored_Image_Order := 0;
+      R.Transactional_Image_Install :=
+        Event.Protocol = Terminal.Core.Kitty_Graphics
+        and then Header.Recognized
+        and then Header.Kitty_Action = 'T'
+        and then Header.Has_Data;
       Add_Image_Event
         (R,
          Event,
          Resolved_Image_ID     => Header.Kitty_ID,
          Resolved_Image_Number => Header.Kitty_Image_Number);
+      R.Transactional_Image_Install := False;
 
       if Event.Protocol in
         Terminal.Core.Sixel_Graphics | Terminal.Core.ITerm2_Graphics
@@ -7285,9 +7374,11 @@ package body Terminal.App.Renderer is
          then
             R.Image_Count := Image_Count_Before;
             if Header.Kitty_Virtual_Placement then
-               Store_Virtual_Placement (R, Event, Header);
+               Placement_Status := Store_Virtual_Placement
+                 (R, Event, Header, Prepared_Virtual);
             else
-               Store_Conventional_Placement (R, Event, Header);
+               Placement_Status := Store_Conventional_Placement
+                 (R, Event, Header, Prepared_Conventional);
             end if;
          elsif Header.Kitty_ID > 0 then
             --  An addressed combined command must not leave a transient
@@ -7302,6 +7393,41 @@ package body Terminal.App.Renderer is
          --  creating a visible placement.
          R.Image_Count := Image_Count_Before;
       end if;
+
+      if Event.Protocol = Terminal.Core.Kitty_Graphics
+        and then Header.Recognized
+        and then Header.Kitty_Action = 'T'
+        and then Header.Has_Data
+      then
+         if Placement_Status = Placement_Stored then
+            if R.Replaced_Image_Order /= 0 then
+               Delete_Image_Object_By_Storage_Order
+                 (R, Event.Stream_ID, R.Replaced_Image_Order);
+               --  The replacement node was deliberately omitted from the
+               --  logical count while both versions coexisted.
+               R.Image_Object_Count := R.Image_Object_Count + 1;
+            end if;
+         elsif R.Last_Stored_Image_Order /= 0 then
+            --  A combined operation is atomic: a rejected or resource-bound
+            --  placement must not publish the newly transmitted image.
+            Roll_Back_Combined_Install;
+         end if;
+         R.Replaced_Image_Order := 0;
+      end if;
+      Release_Prepared_Placement;
+   exception
+      when others =>
+         R.Transactional_Image_Install := False;
+         if Event.Protocol = Terminal.Core.Kitty_Graphics
+           and then Header.Recognized
+           and then Header.Kitty_Action = 'T'
+           and then Header.Has_Data
+         then
+            Roll_Back_Combined_Install;
+            R.Replaced_Image_Order := 0;
+         end if;
+         Release_Prepared_Placement;
+         raise;
    end Apply_Image_Event;
 
    function Graphics_Event_Already_Processed
@@ -7395,6 +7521,7 @@ package body Terminal.App.Renderer is
       Placement_Image_ID : Terminal.Core.Graphics_ID := 0;
       Resolved_Geometry : Placement_Geometry := (others => <>);
       Geometry_Checked : Boolean := False;
+      Placement_Status : Placement_Store_Status := Placement_Not_Requested;
       Image_Count_Before : constant Natural := R.Image_Count;
       Placement_Count_Before : constant Natural := R.Kitty_Placement_Count;
       Validation_Error : constant Boolean :=
@@ -7721,7 +7848,7 @@ package body Terminal.App.Renderer is
       R.Image_Store_Allocation_Failed := False;
       R.Image_Transport_Failed := False;
       R.Last_Animation_Result := Terminal.Core.Kitty_No_Response;
-      Apply_Image_Event (R, Event, Snapshot);
+      Apply_Image_Event (R, Event, Snapshot, Placement_Status);
       if R.Kitty_Placement_Count > Placement_Count_Before then
          R.Placement_Create_Count :=
            R.Placement_Create_Count
@@ -7857,7 +7984,15 @@ package body Terminal.App.Renderer is
                   else R.Last_Animation_Result);
             elsif Header.Kitty_Action = 'p' then
                Result.Image_ID := Resolved_ID;
-               if Resolved_ID = 0
+               if Placement_Status = Placement_Parent_Missing then
+                  Result.Code := Terminal.Core.Kitty_ENOPARENT;
+               elsif Placement_Status = Placement_Cycle then
+                  Result.Code := Terminal.Core.Kitty_ECYCLE;
+               elsif Placement_Status = Placement_Too_Deep then
+                  Result.Code := Terminal.Core.Kitty_ETOODEEP;
+               elsif Placement_Status = Placement_No_Space then
+                  Result.Code := Terminal.Core.Kitty_ENOMEM;
+               elsif Resolved_ID = 0
                  or else Find_Image_Object
                    (R, Event.Stream_ID, Resolved_ID) = null
                then
@@ -7888,11 +8023,23 @@ package body Terminal.App.Renderer is
                            when Relative_Too_Deep =>
                              Terminal.Core.Kitty_ETOODEEP);
                   end;
+               elsif Placement_Status = Placement_Rejected then
+                  Result.Code := Terminal.Core.Kitty_EINVAL;
                else
                   Result.Code := Terminal.Core.Kitty_OK;
                end if;
             elsif Header.Kitty_Action in 't' | 'T' then
-               if Header.Kitty_Image_Number /= 0 then
+               if Placement_Status = Placement_Parent_Missing then
+                  Result.Code := Terminal.Core.Kitty_ENOPARENT;
+               elsif Placement_Status = Placement_Cycle then
+                  Result.Code := Terminal.Core.Kitty_ECYCLE;
+               elsif Placement_Status = Placement_Too_Deep then
+                  Result.Code := Terminal.Core.Kitty_ETOODEEP;
+               elsif Placement_Status = Placement_No_Space then
+                  Result.Code := Terminal.Core.Kitty_ENOMEM;
+               elsif Placement_Status = Placement_Rejected then
+                  Result.Code := Terminal.Core.Kitty_EINVAL;
+               elsif Header.Kitty_Image_Number /= 0 then
                   declare
                      Stored : constant Image_Object_Access :=
                        Find_Image_Object_By_Number
@@ -7941,7 +8088,13 @@ package body Terminal.App.Renderer is
             end if;
 
             if Header.Kitty_Action in 'T' | 'p'
-              and then Result.Code = Terminal.Core.Kitty_OK
+              and then
+                (Result.Code = Terminal.Core.Kitty_OK
+                 or else
+                   (Placement_Status in
+                      Placement_Rejected | Placement_Parent_Missing
+                        | Placement_Cycle | Placement_Too_Deep
+                    and then Header.Kitty_Parent_ID /= 0))
             then
                if Result.Image_ID = 0
                  and then Header.Kitty_Image_Number /= 0
@@ -7984,7 +8137,10 @@ package body Terminal.App.Renderer is
                if Result.Code = Terminal.Core.Kitty_OK
                  and then not Placement_Exists (Result.Image_ID)
                then
-                  Result.Code := Terminal.Core.Kitty_ENOMEM;
+                  Result.Code :=
+                    (if Placement_Status = Placement_Rejected
+                     then Terminal.Core.Kitty_EINVAL
+                     else Terminal.Core.Kitty_ENOMEM);
                elsif Result.Code = Terminal.Core.Kitty_OK
                  and then not Header.Kitty_No_Cursor_Move
                  and then not Header.Kitty_Virtual_Placement

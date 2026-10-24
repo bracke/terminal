@@ -231,12 +231,13 @@ package Terminal.App.Renderer is
      (Diagnostics : Renderer_Diagnostics) return String;
    function Media_Status_Label
      (Diagnostics : Renderer_Diagnostics) return String;
-   --  The returned read-only view borrows renderer and atlas storage.  It is
-   --  valid only until the next Render/Render_App, Release_Graphics_Stream, or
-   --  Finalize call for R.
-   function Last_Frame (R : Renderer) return Terminal.App.Render_Model.Frame_Commands;
-
 private
+   --  Borrowed frame storage is intentionally private.  The Testing child
+   --  exposes it to white-box tests, while production callers receive frame
+   --  commands only through the presentation path that owns their lifetime.
+   function Last_Frame
+     (R : Renderer) return Terminal.App.Render_Model.Frame_Commands;
+
    type String_Access is access all String;
 
    subtype Image_Object is Terminal.App.Image_Store.Image_Object;
@@ -355,12 +356,18 @@ private
       Next_Content_Serial : Interfaces.Unsigned_64 := 1;
       Last_Stored_Image_Order : Interfaces.Unsigned_64 := 0;
       Last_Stored_Image_Content_Serial : Interfaces.Unsigned_64 := 0;
+      Transactional_Image_Install : Boolean := False;
+      Replaced_Image_Order : Interfaces.Unsigned_64 := 0;
       Image_Store_Allocation_Failed : Boolean := False;
       Image_Transport_Failed : Boolean := False;
       Last_Animation_Result : Terminal.Core.Kitty_Graphics_Result_Code :=
         Terminal.Core.Kitty_No_Response;
       Image_Object_Count : Natural range 0 .. Max_Kitty_Image_Objects := 0;
-      Image_Object_Bytes : Natural range 0 .. Max_Kitty_Image_Bytes := 0;
+      --  A combined replacement may retain the old and new payloads until
+      --  placement commit.  Public quota checks still use Max_Kitty_Image_Bytes;
+      --  this wider private range exists only for that bounded transaction.
+      Image_Object_Bytes : Natural range
+        0 .. 2 * Max_Kitty_Image_Bytes := 0;
       Animation_Frame_Count : Natural range 0 .. Max_Kitty_Animation_Frames := 0;
       Graphics_Event_Count : Interfaces.Unsigned_64 := 0;
       Kitty_Command_Count : Interfaces.Unsigned_64 := 0;

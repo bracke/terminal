@@ -4,6 +4,7 @@ with AUnit.Assertions;
 with Terminal.App.PTY_Write;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.App.Session_Graphics;
 with Terminal.App.Session_Runtime;
 with Terminal.App.Session_Table;
@@ -270,7 +271,7 @@ procedure Session_Hardening_Smoke is
 
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+           Terminal.App.Renderer.Testing.Last_Frame (R);
       begin
          Assert (Frame.Rectangle_Count > 18, "composition chrome rectangles");
          Assert (Frame.Glyph_Count >= 16, "composition draws all visible labels");

@@ -3,6 +3,7 @@ with AUnit.Assertions;
 with Terminal.App.Config;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.App.Theme;
 with Terminal.Core;
 
@@ -450,7 +451,7 @@ begin
 
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
       Light : constant Terminal.App.Theme.Theme :=
         Terminal.App.Theme.Built_In (Terminal.App.Theme.Light);
    begin

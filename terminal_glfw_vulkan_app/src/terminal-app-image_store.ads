@@ -82,6 +82,26 @@ package Terminal.App.Image_Store is
       Next           : Image_Object_Access := null;
    end record;
 
+   function Find_By_ID
+     (Head      : Image_Object_Access;
+      Stream_ID : Terminal.Core.Graphics_Stream_ID;
+      ID        : Terminal.Core.Graphics_ID) return Image_Object_Access;
+
+   function Find_By_Number
+     (Head      : Image_Object_Access;
+      Stream_ID : Terminal.Core.Graphics_Stream_ID;
+      Number    : Terminal.Core.Graphics_ID) return Image_Object_Access;
+
+   function Find_By_Storage_Order
+     (Head          : Image_Object_Access;
+      Stream_ID     : Terminal.Core.Graphics_Stream_ID;
+      Storage_Order : Interfaces.Unsigned_64) return Image_Object_Access;
+
+   function Owned_Bytes (Object : Image_Object) return Natural;
+
+   --  Release every allocation owned by Object and restore its defaults.
+   procedure Release_Contents (Object : in out Image_Object);
+
    type Allocation_Control is limited private;
 
    --  Test seam used to exercise store rollback deterministically.  Zero

@@ -6,6 +6,7 @@ with Terminal.Common.Bytes;
 with Terminal.App.Queues;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Testing;
 with Terminal.App.PTY_Write;
 with Terminal.Core;
 with Terminal.PTY.Backend;
@@ -174,7 +175,7 @@ begin
       Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
         Terminal.App.Renderer.Diagnostics (R);
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-        Terminal.App.Renderer.Last_Frame (R);
+        Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert (Diag.Last_Glyph_Count >= Marker'Length, "glyph command count");
       Assert (Diag.Last_Vertex_Count >= Marker'Length * 6, "vertex count");

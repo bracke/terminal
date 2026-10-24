@@ -1,6 +1,10 @@
 with Terminal.App.Image_Store;
 
 package body Terminal.App.Renderer.Testing is
+   function Last_Frame
+     (R : Renderer) return Terminal.App.Render_Model.Frame_Commands is
+     (Terminal.App.Renderer.Last_Frame (R));
+
    procedure Fail_Image_Allocation_After
      (R      : in out Renderer;
       Attempts : Natural) is
