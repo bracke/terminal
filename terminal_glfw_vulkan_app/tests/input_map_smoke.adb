@@ -646,6 +646,23 @@ begin
       Assert_Bytes (Chunk, (1 => 16#0D#), "a plain enter stays legacy");
       IM.Encode_Key (Key_Event (GI.Up), Kitty, Chunk);
       Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[A"), "cursor keys stay legacy");
+      IM.Encode_Key (Key_Event (GI.Up, Super => True), Kitty, Chunk);
+      Assert_Bytes
+        (Chunk, To_Bytes (ASCII.ESC & "[1;9A"), "super+cursor carries modifier");
+      IM.Encode_Key (Key_Event (GI.F5, Super => True), Kitty, Chunk);
+      Assert_Bytes
+        (Chunk, To_Bytes (ASCII.ESC & "[15;9~"), "super+function carries modifier");
+      IM.Encode_Key (Key_Event (GI.Kp_1), Kitty, Chunk);
+      Assert_Bytes
+        (Chunk, To_Bytes (ASCII.ESC & "[57400u"), "keypad key is distinct");
+      Assert
+        (IM.Suppressed_Character (Key_Event (GI.Kp_1), Kitty) = '1',
+         "kitty keypad encoding suppresses its character callback");
+      IM.Encode_Key (Key_Event (GI.Kp_Enter, Super => True), Kitty, Chunk);
+      Assert_Bytes
+        (Chunk,
+         To_Bytes (ASCII.ESC & "[57414;9u"),
+         "modified keypad enter is distinct");
       IM.Encode_Key (Key_Event (GI.A), Kitty, Chunk);
       Assert (Chunk.Length = 0, "a plain letter is left to its character event");
       Assert

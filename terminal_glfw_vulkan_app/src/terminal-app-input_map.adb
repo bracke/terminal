@@ -33,6 +33,9 @@ package body Terminal.App.Input_Map is
       if Modifiers.Control then
          Code := Code + 4;
       end if;
+      if Modifiers.Super then
+         Code := Code + 8;
+      end if;
       return Code;
    end Modifier_Code;
 
@@ -381,9 +384,8 @@ package body Terminal.App.Input_Map is
      (Modes.Keyboard_Flags mod 2 = 1);
 
    --  A key's code in that encoding: the character it types without Shift,
-   --  or the C0 code kitty gives Enter, Tab, Backspace, and Escape. Zero for
-   --  the keys that keep their legacy encoding -- the keypad, the cursor and
-   --  function keys, and keys that type nothing.
+   --  or the C0/functional code assigned by kitty. Zero for cursor and
+   --  function keys, which keep their legacy CSI encoding.
    function Kitty_Key_Code (Event : GLFW_Vulkan.Input.Key_Event) return Natural is
       Unshifted : GLFW_Vulkan.Input.Key_Event := Event;
    begin
@@ -396,10 +398,23 @@ package body Terminal.App.Input_Map is
             return 9;
          when Backspace =>
             return 127;
-         when Kp_0 | Kp_1 | Kp_2 | Kp_3 | Kp_4 | Kp_5 | Kp_6 | Kp_7 | Kp_8 | Kp_9
-            | Kp_Decimal | Kp_Divide | Kp_Multiply | Kp_Subtract | Kp_Add | Kp_Equal | Kp_Enter
-         =>
-            return 0;
+         when Kp_0        => return 57_399;
+         when Kp_1        => return 57_400;
+         when Kp_2        => return 57_401;
+         when Kp_3        => return 57_402;
+         when Kp_4        => return 57_403;
+         when Kp_5        => return 57_404;
+         when Kp_6        => return 57_405;
+         when Kp_7        => return 57_406;
+         when Kp_8        => return 57_407;
+         when Kp_9        => return 57_408;
+         when Kp_Decimal  => return 57_409;
+         when Kp_Divide   => return 57_410;
+         when Kp_Multiply => return 57_411;
+         when Kp_Subtract => return 57_412;
+         when Kp_Add      => return 57_413;
+         when Kp_Enter    => return 57_414;
+         when Kp_Equal    => return 57_415;
          when others =>
             Unshifted.Modifiers.Shift := False;
             return Character'Pos (Alt_Printable (Unshifted));
@@ -414,7 +429,10 @@ package body Terminal.App.Input_Map is
    begin
       return Code /= 0
         and then
-          (Event.Key = Escape
+          (Event.Key in Kp_0 | Kp_1 | Kp_2 | Kp_3 | Kp_4 | Kp_5 | Kp_6
+             | Kp_7 | Kp_8 | Kp_9 | Kp_Decimal | Kp_Divide | Kp_Multiply
+             | Kp_Subtract | Kp_Add | Kp_Equal | Kp_Enter
+           or else Event.Key = Escape
            or else Held
            or else (Event.Modifiers.Shift and then Event.Key in Enter | Tab | Backspace));
    end Kitty_Encoded;
@@ -423,8 +441,7 @@ package body Terminal.App.Input_Map is
      (Chunk : in out Terminal.App.Queues.Byte_Chunk;
       Event : GLFW_Vulkan.Input.Key_Event)
    is
-      Modifier : constant Natural :=
-        Modifier_Code (Event.Modifiers) + (if Event.Modifiers.Super then 8 else 0);
+      Modifier : constant Natural := Modifier_Code (Event.Modifiers);
    begin
       Append_String (Chunk, ASCII.ESC & "[");
       Append_Natural (Chunk, Kitty_Key_Code (Event));
@@ -556,11 +573,17 @@ package body Terminal.App.Input_Map is
       if Event.Action /= Release
         and then Disambiguating (Modes)
         and then Kitty_Encoded (Event)
-        and then Alt_Printable (Event) /= ASCII.NUL
       then
          --  The key went out whole as CSI u; the character it typed with
          --  it must not follow.
-         return Wide_Wide_Character'Val (Character'Pos (Alt_Printable (Event)));
+         if Keypad_Printable (Event.Key) /= Wide_Wide_Character'Val (0) then
+            return Keypad_Printable (Event.Key);
+         elsif Alt_Printable (Event) /= ASCII.NUL then
+            return Wide_Wide_Character'Val
+              (Character'Pos (Alt_Printable (Event)));
+         else
+            return Wide_Wide_Character'Val (0);
+         end if;
       elsif Event.Action /= Release
         and then Modes.Application_Keypad
         and then not Event.Modifiers.Control
