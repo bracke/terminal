@@ -638,7 +638,7 @@ package body Terminal.PTY.Backend is
       Status := Ok;
    end Resize;
 
-   function Is_Alive (S : Session) return Boolean is
+   function Is_Alive (S : in out Session) return Boolean is
       Code : aliased DWORD := 0;
    begin
       if S.Closed or else S.Process = System.Null_Address then
@@ -649,10 +649,15 @@ package body Terminal.PTY.Backend is
          return False;
       end if;
 
-      return Code = Still_Active;
+      if Code = Still_Active then
+         return True;
+      end if;
+      S.Last_Status := Integer (Code);
+      S.Last_State := Exited;
+      return False;
    end Is_Alive;
 
-   function Child_State (S : Session) return Exit_State is
+   function Child_State (S : in out Session) return Exit_State is
       Code : aliased DWORD := 0;
    begin
       if S.Process = System.Null_Address then
@@ -668,6 +673,8 @@ package body Terminal.PTY.Backend is
       if Code = Still_Active then
          return Still_Running;
       else
+         S.Last_Status := Integer (Code);
+         S.Last_State := Exited;
          return Exited;
       end if;
    end Child_State;

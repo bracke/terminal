@@ -89,6 +89,31 @@ begin
    Assert (Core_Resize = Terminal.Core.Ok, "unchanged runtime core resize");
    Assert (PTY_Resize = Terminal.PTY.Backend.Ok, "unchanged runtime pty resize");
 
+   Runtime.Write (B, Chunk_From_String ("exit" & ASCII.LF), Write_Status);
+   Assert (Write_Status = Terminal.App.PTY_Write.Ok, "write runtime exit");
+   declare
+      Deadline : constant Ada.Real_Time.Time :=
+        Ada.Real_Time.Clock + Ada.Real_Time.Seconds (2);
+   begin
+      while Runtime.State (B) = Runtime.Active
+        and then Ada.Real_Time.Clock < Deadline
+      loop
+         Runtime.Poll_Output (B, Feed_Status);
+         delay 0.01;
+      end loop;
+   end;
+   Assert
+     (Runtime.State (B) = Runtime.Exited,
+      "reader termination marks a naturally exited runtime");
+   Runtime.Poll_Output (B, Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "polling an exited runtime is a harmless no-op");
+   Runtime.Start (B, 24, 80, 100, Start_Status);
+   Assert
+     (Start_Status = Runtime.Ok and then Runtime.State (B) = Runtime.Active,
+      "an exited runtime can restart without retaining old resources");
+
    Runtime.Close (A);
    Runtime.Close (B);
    Assert (Runtime.State (A) = Runtime.Closed, "first runtime closed");

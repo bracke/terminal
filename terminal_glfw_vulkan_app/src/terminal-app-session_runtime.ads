@@ -16,6 +16,7 @@ package Terminal.App.Session_Runtime is
    type Runtime_Status is
      (Inactive,
       Active,
+      Exited,
       Closed);
 
    type Runtime is limited private;
@@ -63,7 +64,7 @@ package Terminal.App.Session_Runtime is
    function Core (R : Runtime) return access Terminal.Core.Terminal;
    function PTY_Queue
      (R : Runtime) return access Terminal.App.Queues.PTY_Output_Queue;
-   function Is_Alive (R : Runtime) return Boolean;
+   function Is_Alive (R : in out Runtime) return Boolean;
    function Status_Label (R : Runtime) return String;
 
 private

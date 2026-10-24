@@ -32,8 +32,12 @@ package body Terminal.App.PTY_Reader is
                GLFW_Vulkan.Events.Post_Empty_Event;
             when Terminal.PTY.Backend.End_Of_File | Terminal.PTY.Backend.Session_Closed =>
                exit;
-            when others =>
+            when Terminal.PTY.Backend.Interrupted | Terminal.PTY.Backend.Would_Block =>
                delay 0.01;
+            when Terminal.PTY.Backend.Failed =>
+               --  A permanent backend error cannot become readable by polling
+               --  it again.  Termination is observed by the owning runtime.
+               exit;
          end case;
       end loop;
    end Reader;

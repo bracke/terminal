@@ -55,6 +55,7 @@ package body Terminal.App.Main_Loop is
    use type Terminal.App.Tabs.Tab_Command;
    use type Terminal.App.Tabs.Tab_Status;
    use type Terminal.App.Session_Table.Table_Status;
+   use type Terminal.App.Session_Runtime.Runtime_Status;
    use type Terminal.Core.Clipboard_Operation;
    use type Terminal.Core.Clipboard_Target;
    use type GLFW_Vulkan.Input.Key;
@@ -833,9 +834,17 @@ package body Terminal.App.Main_Loop is
                   end loop;
                   if Fatal_Write (Runtime_Write) then
                      Last_Write_Status := Runtime_Write;
-                     GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                     if Terminal.App.Session_Table.Count (Sessions) = 1 then
+                        GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                     end if;
                   elsif Runtime_Write = Terminal.App.PTY_Write.Incomplete then
                      Last_Write_Status := Runtime_Write;
+                  end if;
+                  if Terminal.App.Session_Table.Count (Sessions) = 1
+                    and then Terminal.App.Session_Runtime.State
+                      (Active_Runtime.all) = Terminal.App.Session_Runtime.Exited
+                  then
+                     GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                   end if;
                end;
                declare
@@ -858,7 +867,6 @@ package body Terminal.App.Main_Loop is
                   end if;
                   if Fatal_Write (Graphics_Write) then
                      Last_Write_Status := Graphics_Write;
-                     GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                   elsif Graphics_Write = Terminal.App.PTY_Write.Incomplete then
                      Last_Write_Status := Graphics_Write;
                   end if;
@@ -889,11 +897,15 @@ package body Terminal.App.Main_Loop is
                      Last_Write_Status,
                      Last_Clipboard_Target);
                   if not Clipboard_Ok then
-                     GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                     if Terminal.App.Session_Table.Count (Sessions) = 1 then
+                        GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                     end if;
                   end if;
                end;
 
                loop
+                  exit when Terminal.App.Session_Runtime.State
+                    (Active_Runtime.all) /= Terminal.App.Session_Runtime.Active;
                   exit when Terminal.App.Session_Runtime.Has_Pending_Write
                     (Active_Runtime.all);
                   In_Q.Pop (Event, Has_Event);
@@ -1412,7 +1424,9 @@ package body Terminal.App.Main_Loop is
                        (Active_Runtime.all, Chunk, Write_Stat);
                      Last_Write_Status := Write_Stat;
                      if Fatal_Write (Write_Stat) then
-                        GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                        if Terminal.App.Session_Table.Count (Sessions) = 1 then
+                           GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                        end if;
                      elsif Write_Stat = Terminal.App.PTY_Write.Incomplete then
                         exit;
                      end if;
@@ -1838,8 +1852,12 @@ package body Terminal.App.Main_Loop is
                                           Write_Stat);
                                        Last_Write_Status := Write_Stat;
                                        if Fatal_Write (Write_Stat) then
-                                          GLFW_Vulkan.Windows.Set_Should_Close
-                                            (W, True);
+                                          if Terminal.App.Session_Table.Count
+                                            (Sessions) = 1
+                                          then
+                                             GLFW_Vulkan.Windows.Set_Should_Close
+                                               (W, True);
+                                          end if;
                                           exit;
                                        elsif Write_Stat =
                                          Terminal.App.PTY_Write.Incomplete

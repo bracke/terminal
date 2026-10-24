@@ -99,7 +99,7 @@ package body Terminal.App.Session_Runtime is
       Core_Status : Terminal.Core.Initialize_Status;
       Spawn_Status : Terminal.PTY.Backend.Spawn_Status;
    begin
-      if R.Current_State = Active then
+      if R.Current_State in Active | Exited then
          Close (R);
       end if;
 
@@ -176,7 +176,9 @@ package body Terminal.App.Session_Runtime is
       Status := Terminal.Core.Ok;
       Write_Status := Terminal.App.PTY_Write.Ok;
       Had_Output := False;
-      if R.Current_State /= Active or else R.T = null or else R.Q = null then
+      if R.Current_State = Exited then
+         return;
+      elsif R.Current_State /= Active or else R.T = null or else R.Q = null then
          Status := Terminal.Core.Invalid_State;
          return;
       end if;
@@ -209,6 +211,10 @@ package body Terminal.App.Session_Runtime is
          Write (R, Chunk, Write_Status);
          exit when Write_Status /= Terminal.App.PTY_Write.Ok;
       end loop;
+
+      if R.Reader /= null and then R.Reader.all'Terminated then
+         R.Current_State := Exited;
+      end if;
    end Poll_Output;
 
    procedure Write
@@ -242,6 +248,10 @@ package body Terminal.App.Session_Runtime is
          if Status = Terminal.App.PTY_Write.Ok then
             R.Pending_Write := (others => <>);
             R.Pending_Write_Offset := 1;
+         elsif Status in
+           Terminal.App.PTY_Write.Failed | Terminal.App.PTY_Write.Session_Closed
+         then
+            R.Current_State := Exited;
          end if;
       end if;
    end Flush_Write;
@@ -294,11 +304,16 @@ package body Terminal.App.Session_Runtime is
       return R.Q;
    end PTY_Queue;
 
-   function Is_Alive (R : Runtime) return Boolean is
+   function Is_Alive (R : in out Runtime) return Boolean is
    begin
-      return R.Current_State = Active
-        and then R.S /= null
-        and then Terminal.PTY.Backend.Is_Alive (R.S.all);
+      if R.Current_State /= Active or else R.S = null then
+         return False;
+      elsif Terminal.PTY.Backend.Is_Alive (R.S.all) then
+         return True;
+      else
+         R.Current_State := Exited;
+         return False;
+      end if;
    end Is_Alive;
 
    function Status_Label (R : Runtime) return String is
@@ -310,6 +325,8 @@ package body Terminal.App.Session_Runtime is
             return
               "Session runtime active; queued="
               & (if R.Q = null then "0" else Trim_Image (R.Q.Length));
+         when Exited =>
+            return "Session runtime exited";
          when Closed =>
             return "Session runtime closed";
       end case;

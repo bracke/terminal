@@ -358,9 +358,53 @@ procedure Session_Hardening_Smoke is
       Terminal.App.Renderer.Finalize (R);
       Tables.Close_All (Table);
    end Background_Graphics_Progress;
+
+   procedure Background_Runtime_Exit_Is_Isolated is
+      Table : Tables.Runtime_Table;
+      Tab_State : Tabs.Tab_State;
+      Split_State : Splits.Split_State;
+      Table_Status : Tables.Table_Status;
+      Write_Status : Terminal.App.PTY_Write.Write_All_Status;
+      Feed_Status : Terminal.Core.Feed_Status;
+      Had_Output : Tables.Runtime_Output_Set;
+      Hidden : access Runtime.Runtime;
+      Visible : access Runtime.Runtime;
+      Deadline : constant Ada.Real_Time.Time :=
+        Ada.Real_Time.Clock + Ada.Real_Time.Seconds (2);
+   begin
+      Tabs.Initialize (Tab_State);
+      Splits.Initialize (Split_State);
+      Tables.Initialize (Table, 4, 12, 16, Table_Status);
+      Assert (Table_Status = Tables.Ok, "exit isolation table initialize");
+      Tables.New_Tab
+        (Table, Tab_State, Split_State, 4, 12, 16, Table_Status);
+      Assert (Table_Status = Tables.Ok, "exit isolation second tab");
+      Hidden := Tables.Runtime_At (Table, 1);
+      Visible := Tables.Runtime_At (Table, 2);
+      Runtime.Write
+        (Hidden.all, Chunk_From_String ("exit" & ASCII.LF), Write_Status);
+      Assert
+        (Write_Status = Terminal.App.PTY_Write.Ok,
+         "background runtime accepts exit command");
+      while Runtime.State (Hidden.all) = Runtime.Active
+        and then Ada.Real_Time.Clock < Deadline
+      loop
+         Tables.Poll_Output
+           (Table, Had_Output, Feed_Status, Write_Status);
+         delay 0.01;
+      end loop;
+      Assert
+        (Runtime.State (Hidden.all) = Runtime.Exited,
+         "background runtime records its own exit");
+      Assert
+        (Runtime.State (Visible.all) = Runtime.Active,
+         "background exit leaves active runtime running");
+      Tables.Close_All (Table);
+   end Background_Runtime_Exit_Is_Isolated;
 begin
    Repeated_Runtime_Start_Close;
    Runtime_Table_Churn;
    Renderer_Composition_Churn;
    Background_Graphics_Progress;
+   Background_Runtime_Exit_Is_Isolated;
 end Session_Hardening_Smoke;

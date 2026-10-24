@@ -56,6 +56,9 @@ package body Terminal.PTY.Backend is
    function C_Error_Is_Would_Block return int
      with Import, Convention => C,
           External_Name => "terminal_pty_error_is_would_block";
+   function C_Error_Is_IO return int
+     with Import, Convention => C,
+          External_Name => "terminal_pty_error_is_io";
    function C_Path_Is_Executable
      (Path : Interfaces.C.Strings.chars_ptr) return int
      with Import, Convention => C,
@@ -67,6 +70,13 @@ package body Terminal.PTY.Backend is
    function C_Hangup_Process_Group (PID : int) return int
      with Import, Convention => C,
           External_Name => "terminal_pty_hangup_process_group";
+   function C_Kill_Process_Group (PID : int) return int
+     with Import, Convention => C,
+          External_Name => "terminal_pty_kill_process_group";
+   function C_Wait
+     (PID : int; Status : System.Address) return int
+     with Import, Convention => C,
+          External_Name => "terminal_pty_wait";
    function getenv (Name : Interfaces.C.Strings.chars_ptr) return Interfaces.C.Strings.chars_ptr
      with Import, Convention => C, External_Name => "getenv";
    function setenv
@@ -314,6 +324,10 @@ package body Terminal.PTY.Backend is
          Status := Interrupted;
       elsif C_Error_Is_Would_Block /= 0 then
          Status := Would_Block;
+      elsif C_Error_Is_IO /= 0 then
+         --  Linux PTY masters report EIO after the final slave closes.  It is
+         --  the normal terminal end-of-file condition, not a retryable error.
+         Status := End_Of_File;
       else
          Status := Failed;
       end if;
@@ -365,24 +379,37 @@ package body Terminal.PTY.Backend is
       Status := (if Size_Success then Ok else Ioctl_Failed);
    end Resize;
 
-   function Is_Alive (S : Session) return Boolean is
+   procedure Remember_Exit (S : in out Session; Status : int) is
+   begin
+      S.Last_Status := Integer (Status);
+      S.Last_State := Decode_Exit_State (Status);
+   end Remember_Exit;
+
+   function Is_Alive (S : in out Session) return Boolean is
       Status : aliased int := 0;
       R : int;
    begin
       if S.Child_PID <= 0 then
          return False;
+      elsif S.Last_State in Exited | Signaled then
+         return False;
       end if;
       R := C_Wait_No_Hang (int (S.Child_PID), Status'Address);
-      return R = 0;
+      if R = 0 then
+         return True;
+      elsif R > 0 then
+         Remember_Exit (S, Status);
+      end if;
+      return False;
    end Is_Alive;
 
-   function Child_State (S : Session) return Exit_State is
+   function Child_State (S : in out Session) return Exit_State is
       Status : aliased int := 0;
       R : int;
    begin
       if S.Child_PID <= 0 then
          return Unknown;
-      elsif S.Closed then
+      elsif S.Last_State in Exited | Signaled or else S.Closed then
          return S.Last_State;
       end if;
 
@@ -390,7 +417,8 @@ package body Terminal.PTY.Backend is
       if R = 0 then
          return Still_Running;
       elsif R > 0 then
-         return Decode_Exit_State (Status);
+         Remember_Exit (S, Status);
+         return S.Last_State;
       else
          return Unknown;
       end if;
@@ -410,16 +438,31 @@ package body Terminal.PTY.Backend is
          S.Master_FD := -1;
       end if;
       if S.Child_PID > 0 then
-         R := C_Hangup_Process_Group (int (S.Child_PID));
-         for Attempt in 1 .. 20 loop
-            R := C_Wait_No_Hang (int (S.Child_PID), Status'Address);
-            exit when R /= 0;
-            delay 0.01;
-         end loop;
-         if R > 0 then
-            S.Last_Status := Integer (Status);
-            S.Last_State := Decode_Exit_State (Status);
+         if S.Last_State in Exited | Signaled then
+            R := int (S.Child_PID);
          else
+            R := C_Wait_No_Hang (int (S.Child_PID), Status'Address);
+         end if;
+
+         if R = 0 then
+            R := C_Hangup_Process_Group (int (S.Child_PID));
+            for Attempt in 1 .. 20 loop
+               R := C_Wait_No_Hang (int (S.Child_PID), Status'Address);
+               exit when R /= 0;
+               delay 0.01;
+            end loop;
+         end if;
+
+         if R = 0 then
+            R := C_Kill_Process_Group (int (S.Child_PID));
+            R := C_Wait (int (S.Child_PID), Status'Address);
+         end if;
+
+         if R > 0 then
+            if S.Last_State not in Exited | Signaled then
+               Remember_Exit (S, Status);
+            end if;
+         elsif S.Last_State not in Exited | Signaled then
             S.Last_State := Unknown;
          end if;
       end if;

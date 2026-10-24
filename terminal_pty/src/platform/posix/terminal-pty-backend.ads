@@ -109,7 +109,7 @@ package Terminal.PTY.Backend is
 
    function Last_Read_Trace return Read_Trace;
 
-   function Is_Alive (S : Session) return Boolean;
+   function Is_Alive (S : in out Session) return Boolean;
 
    type Exit_State is
      (Still_Running,
@@ -117,7 +117,7 @@ package Terminal.PTY.Backend is
       Signaled,
       Unknown);
 
-   function Child_State (S : Session) return Exit_State;
+   function Child_State (S : in out Session) return Exit_State;
 
    --  What the child exited with, once it has. Zero until then. On Windows this
    --  is the exit code reinterpreted as signed, which is how the platform prints

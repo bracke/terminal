@@ -65,6 +65,11 @@ int terminal_pty_error_is_would_block (void)
    return errno == EAGAIN || errno == EWOULDBLOCK;
 }
 
+int terminal_pty_error_is_io (void)
+{
+   return errno == EIO;
+}
+
 int terminal_pty_path_is_executable (const char *path)
 {
    return access (path, X_OK) == 0;
@@ -78,4 +83,25 @@ int terminal_pty_wait_nohang (pid_t pid, int *status)
 int terminal_pty_hangup_process_group (pid_t pid)
 {
    return kill (-pid, SIGHUP);
+}
+
+int terminal_pty_kill_process_group (pid_t pid)
+{
+   int result = kill (-pid, SIGKILL);
+   if (result < 0) {
+      /* A child can move itself out of the process group created for the PTY.
+         Still terminate the direct child so close cannot block indefinitely on
+         a live process after the bounded SIGHUP grace period. */
+      result = kill (pid, SIGKILL);
+   }
+   return result;
+}
+
+int terminal_pty_wait (pid_t pid, int *status)
+{
+   int result;
+   do {
+      result = (int) waitpid (pid, status, 0);
+   } while (result < 0 && errno == EINTR);
+   return result;
 }
