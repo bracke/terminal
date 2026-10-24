@@ -1495,7 +1495,7 @@ package body Terminal.Core is
       Reset_Buffer (T, T.Alt_Cells);
       Mark_All_Dirty (T);
    exception
-      when Storage_Error =>
+      when Storage_Error | Constraint_Error =>
          Status := False;
    end Allocate_Buffers;
 
@@ -1512,8 +1512,13 @@ package body Terminal.Core is
       --  owned by an earlier initialization (including a partially failed
       --  one) before establishing the new state.
       Finalize (T);
-      if Rows = 0 or else Cols = 0 then
+      if Rows > Positive'Last / Cols then
          Status := Invalid_Size;
+         return;
+      elsif Scrollback_Limit > 0
+        and then Scrollback_Limit > Natural'Last / Cols
+      then
+         Status := Invalid_Scrollback_Limit;
          return;
       end if;
 

@@ -16,6 +16,13 @@ procedure Core_Smoke is
    Init : Terminal.Core.Initialize_Status;
    Feed_Status : Terminal.Core.Feed_Status;
 begin
+   Terminal.Core.Initialize (T, Positive'Last, 2, 0, Init);
+   Assert (Init = Terminal.Core.Invalid_Size, "grid overflow is rejected");
+   Terminal.Core.Initialize (T, 1, Positive'Last, 2, Init);
+   Assert
+     (Init = Terminal.Core.Invalid_Scrollback_Limit,
+      "scrollback overflow is rejected distinctly");
+
    Terminal.Core.Initialize (T, 3, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "initialize failed");
    Assert
