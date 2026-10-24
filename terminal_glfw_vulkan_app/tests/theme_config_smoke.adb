@@ -78,7 +78,8 @@ begin
          Window_Width => Terminal.App.Config.Default_Window_Width,
          Window_Height => Terminal.App.Config.Default_Window_Height,
          Startup_Rows => Terminal.App.Config.Default_Startup_Rows,
-         Startup_Cols => Terminal.App.Config.Default_Startup_Cols);
+         Startup_Cols => Terminal.App.Config.Default_Startup_Cols,
+         others => <>);
       Light : constant Terminal.App.Theme.Theme :=
         Terminal.App.Config.Active_Theme (C);
    begin
@@ -113,6 +114,133 @@ begin
       Assert
         (C.Startup_Cols = Terminal.App.Config.Default_Startup_Cols,
          "default startup cols");
+      Assert
+        (not C.Kitty_File_Transfer
+         and then C.Kitty_Temporary_Transfer
+         and then C.Kitty_Shared_Memory
+         and then not C.ITerm2_File_Downloads,
+         "secure default graphics transport policy");
+      Terminal.App.Config.Apply_Line
+        (C, "iterm2-file-downloads = allow", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.ITerm2_File_Downloads,
+         "explicit iTerm2 FILE download policy");
+      Terminal.App.Config.Apply_Line
+        (C, "kitty-file-transfer = allow", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted and then C.Kitty_File_Transfer,
+         "explicit regular-file graphics policy");
+      Terminal.App.Config.Apply_Line
+        (C, "kitty-shared-memory = deny", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then not C.Kitty_Shared_Memory,
+         "explicit shared-memory graphics policy");
+      Terminal.App.Config.Apply_Line
+        (C, "kitty-temporary-transfer = maybe", Status);
+      Assert
+        (Status = Terminal.App.Config.Invalid_Value
+         and then C.Kitty_Temporary_Transfer,
+         "invalid graphics transport policy is rejected atomically");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-transaction-bytes = 4096", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Transaction_Bytes = 4_096,
+         "configurable graphics transaction quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-pending-events = 23", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Pending_Events = 23,
+         "configurable graphics event quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-pending-bytes = 131072", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Pending_Bytes = 131_072,
+         "configurable graphics queue-byte quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-deferred-input-bytes = 262144", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Deferred_Input_Bytes = 262_144,
+         "configurable deferred-input quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-image-objects = 17", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Image_Objects = 17,
+         "configurable graphics object quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-image-bytes = 2097152", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Image_Bytes = 2_097_152,
+         "configurable graphics store byte quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-per-image-bytes = 65536", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Per_Image_Bytes = 65_536,
+         "configurable per-image quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-placements = 127", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Placements = 127,
+         "configurable graphics placement quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-animation-frames = 63", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Animation_Frames = 63,
+         "configurable animation-frame quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-pixel-dimension = 2048", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_Pixel_Dimension = 2_048,
+         "configurable graphics dimension quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-gpu-atlas-bytes = 1048576", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_GPU_Atlas_Bytes = 1_048_576,
+         "configurable graphics GPU byte quota");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-gpu-atlas-dimension = 1024", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then C.Graphics_GPU_Atlas_Dimension = 1_024,
+         "configurable graphics GPU dimension quota");
+      Terminal.App.Config.Apply_Line
+        (C,
+         "graphics-gpu-atlas-bytes ="
+         & Natural'Image
+             (Terminal.App.Config.Min_Graphics_GPU_Atlas_Bytes - 1),
+         Status);
+      Assert
+        (Status = Terminal.App.Config.Invalid_Value
+         and then C.Graphics_GPU_Atlas_Bytes = 1_048_576,
+         "nonviable graphics GPU byte quota is rejected atomically");
+      Terminal.App.Config.Apply_Line
+        (C,
+         "graphics-gpu-atlas-dimension ="
+         & Natural'Image
+             (Terminal.App.Config.Min_Graphics_GPU_Atlas_Dimension - 1),
+         Status);
+      Assert
+        (Status = Terminal.App.Config.Invalid_Value
+         and then C.Graphics_GPU_Atlas_Dimension = 1_024,
+         "nonviable graphics GPU dimension quota is rejected atomically");
+      Terminal.App.Config.Apply_Line
+        (C, "graphics-image-objects = 0", Status);
+      Assert
+        (Status = Terminal.App.Config.Invalid_Value
+         and then C.Graphics_Image_Objects = 17,
+         "invalid graphics quota is rejected atomically");
       Terminal.App.Config.Apply_Line (C, "", Status);
       Assert
         (Status = Terminal.App.Config.Ignored_Blank,
@@ -281,7 +409,16 @@ begin
          & " scrollback-limit=0"
          & " wheel-scroll-lines=1"
          & " window=1200x720"
-         & " startup-grid=40x120",
+         & " startup-grid=40x120"
+         & " kitty-local-media=file,temp"
+         & " iterm2-file-downloads=allow"
+         & " graphics-core=4096/23/131072/262144"
+         & " graphics-store=17/2097152"
+         & " graphics-per-image=65536"
+         & " graphics-placements=127"
+         & " graphics-frames=63"
+         & " graphics-pixels=2048"
+         & " graphics-gpu-atlas=1048576/1024",
          "config image should expose effective settings");
       Assert
         (Terminal.App.Config.Status_Label (C) =

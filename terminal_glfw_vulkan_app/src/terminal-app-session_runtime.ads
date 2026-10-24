@@ -25,7 +25,9 @@ package Terminal.App.Session_Runtime is
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural;
-      Status           : out Start_Status);
+      Status           : out Start_Status;
+      Graphics_Profile : Terminal.Core.Graphics_Capability_Profile :=
+        Terminal.App.Core_Graphics_Profile);
 
    procedure Poll_Output
      (R      : in out Runtime;
@@ -46,6 +48,8 @@ package Terminal.App.Session_Runtime is
    procedure Close (R : in out Runtime);
 
    function State (R : Runtime) return Runtime_Status;
+   function Graphics_Stream_ID
+     (R : Runtime) return Terminal.Core.Graphics_Stream_ID;
    function Core (R : Runtime) return access Terminal.Core.Terminal;
    function PTY_Queue
      (R : Runtime) return access Terminal.App.Queues.PTY_Output_Queue;
@@ -64,6 +68,10 @@ private
       S             : Session_Access := null;
       Q             : PTY_Queue_Access := null;
       Reader        : Reader_Access := null;
+      Stream_ID     : Terminal.Core.Graphics_Stream_ID := 0;
+      Rows          : Positive := 1;
+      Cols          : Positive := 1;
+      Size_Known    : Boolean := False;
       Last_Start    : Start_Status := Allocation_Failed;
       Last_Spawn    : Terminal.PTY.Backend.Spawn_Status :=
         Terminal.PTY.Backend.Fork_Failed;

@@ -15,6 +15,7 @@ procedure Session_Runtime_Smoke is
    use type Terminal.App.Session_Runtime.Start_Status;
    use type Terminal.Common.Bytes.Byte;
    use type Terminal.Core.Feed_Status;
+   use type Terminal.Core.Graphics_Stream_ID;
    use type Terminal.Core.Resize_Status;
    use type Terminal.PTY.Backend.Resize_Status;
    use type Ada.Real_Time.Time;
@@ -67,6 +68,12 @@ begin
    Assert (Start_Status = Runtime.Ok, "second runtime should start");
    Assert (Runtime.State (B) = Runtime.Active, "second runtime active");
    Assert (Runtime.Is_Alive (B), "second runtime shell alive");
+   Assert
+     (Runtime.Graphics_Stream_ID (A) /= 0
+      and then Runtime.Graphics_Stream_ID (B) /= 0
+      and then Runtime.Graphics_Stream_ID (A) /=
+        Runtime.Graphics_Stream_ID (B),
+      "active runtimes need distinct graphics stream identities");
 
    Runtime.Write (A, Chunk_From_String ("printf A-runtime" & ASCII.LF), Write_Status);
    Assert (Write_Status = Terminal.App.PTY_Write.Ok, "write first runtime");
@@ -78,6 +85,9 @@ begin
    Runtime.Resize (A, 30, 100, Core_Resize, PTY_Resize);
    Assert (Core_Resize = Terminal.Core.Ok, "runtime core resize");
    Assert (PTY_Resize = Terminal.PTY.Backend.Ok, "runtime pty resize");
+   Runtime.Resize (A, 30, 100, Core_Resize, PTY_Resize);
+   Assert (Core_Resize = Terminal.Core.Ok, "unchanged runtime core resize");
+   Assert (PTY_Resize = Terminal.PTY.Backend.Ok, "unchanged runtime pty resize");
 
    Runtime.Close (A);
    Runtime.Close (B);

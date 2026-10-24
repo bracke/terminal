@@ -32,56 +32,69 @@ package body Terminal.App.Scrollback_View is
       return Natural'Min (Offset, Max_Offset (T));
    end Clamp_Offset;
 
-   function Snapshot
+   procedure Snapshot
      (T      : Terminal.Core.Terminal;
-      Offset : Natural) return Terminal.Core.Render_Snapshot
+      Offset : Natural;
+      Result : in out Terminal.Core.Render_Snapshot)
    is
-      Live : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
       Effective_Offset : constant Natural :=
         Natural'Min (Offset, Terminal.Core.Scrollback_Row_Count (T));
       Scroll_Rows : constant Natural := Terminal.Core.Scrollback_Row_Count (T);
       Start_Row : Natural;
-      Result : Terminal.Core.Render_Snapshot;
    begin
+      Terminal.Core.Snapshot (T, Result);
       if Effective_Offset = 0 then
-         return Live;
+         return;
       end if;
 
-      Result.Rows := Live.Rows;
-      Result.Cols := Live.Cols;
-      Result.Cells := new Terminal.Core.Cell_Array (1 .. Live.Rows * Live.Cols);
-      Result.Dirty := new Terminal.Core.Dirty_Row_Array (1 .. Live.Rows);
+      Result.Scrollback_Offset := Effective_Offset;
       Start_Row := Scroll_Rows - Effective_Offset + 1;
+      Result.Image_Cell_Count := 0;
 
-      for Row in 1 .. Live.Rows loop
+      --  Live rows move toward larger destination indices.  Walk backwards so
+      --  the reusable snapshot can be transformed in place without replacing
+      --  a live source row before it is copied.
+      for Row in reverse 1 .. Result.Rows loop
          declare
             Source_Row : constant Natural := Start_Row + Row - 1;
          begin
-            for Col in 1 .. Live.Cols loop
-               if Source_Row <= Scroll_Rows then
-                  Result.Cells ((Row - 1) * Live.Cols + Col) :=
-                    Terminal.Core.Scrollback_Cell_At (T, Source_Row, Col);
-               else
-                  Result.Cells ((Row - 1) * Live.Cols + Col) :=
-                    Terminal.Core.Cell_At
-                      (Live, Source_Row - Scroll_Rows, Col);
-               end if;
+            for Col in 1 .. Result.Cols loop
+               declare
+                  Cell : constant Terminal.Core.Cell :=
+                    (if Source_Row <= Scroll_Rows
+                     then Terminal.Core.Scrollback_Cell_At
+                       (T, Source_Row, Col)
+                     else Terminal.Core.Cell_At
+                       (Result, Source_Row - Scroll_Rows, Col));
+               begin
+                  Result.Cells ((Row - 1) * Result.Cols + Col) := Cell;
+                  if Cell.Image.Is_Placeholder then
+                     Result.Image_Cell_Count := Result.Image_Cell_Count + 1;
+                  end if;
+               end;
             end loop;
             Result.Dirty (Row) := True;
          end;
       end loop;
 
       Result.Cursor :=
-        (Row     => Live.Cursor.Row,
-         Col     => Live.Cursor.Col,
+        (Row     => Result.Cursor.Row,
+         Col     => Result.Cursor.Col,
          Visible => False,
-         Shape   => Live.Cursor.Shape,
-         Blinking => Live.Cursor.Blinking);
-      Terminal.Core.Release (Live);
+         Shape   => Result.Cursor.Shape,
+         Blinking => Result.Cursor.Blinking);
+   end Snapshot;
+
+   function Snapshot
+     (T      : Terminal.Core.Terminal;
+      Offset : Natural) return Terminal.Core.Render_Snapshot
+   is
+      Result : Terminal.Core.Render_Snapshot;
+   begin
+      Snapshot (T, Offset, Result);
       return Result;
    exception
       when Storage_Error =>
-         Terminal.Core.Release (Live);
          Terminal.Core.Release (Result);
          return Terminal.Core.Snapshot (T);
    end Snapshot;

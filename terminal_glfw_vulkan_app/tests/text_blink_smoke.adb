@@ -12,8 +12,19 @@ procedure Text_Blink_Smoke is
      (Rows   => 1,
       Cols   => 2,
       Cells  => Cells,
+      Image_Cell_Count => <>,
       Dirty  => null,
       Cursor => <>,
+      Graphics_Stream => <>,
+      Graphics_Transaction => <>,
+      Alternate_Screen => <>,
+      Screen_Generation => <>,
+      Scrollback_Offset => <>,
+      Scrollback_Rows => <>,
+      Graphics_Scroll_Current => <>,
+      Graphics_Scroll_Oldest => <>,
+      Graphics_Scroll_Count => <>,
+      Graphics_Scroll_Events => <>,
       Graphics => <>);
 begin
    Cells.all (1).Kind := Terminal.Core.Character;

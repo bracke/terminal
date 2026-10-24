@@ -1,31 +1,46 @@
 with AUnit.Assertions;
+with Ada.Directories;
+with GNAT.OS_Lib;
+with Interfaces;
 with System;
 with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Hyperlinks;
+with Terminal.App.Graphics_Transport;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Scrollback_View;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
 
 procedure Renderer_Metrics_Smoke is
    use AUnit.Assertions;
    use Terminal.Common.Bytes;
+   use type Terminal.Common.Code_Point;
    use type Terminal.App.Renderer.Init_Status;
+   use type Terminal.App.Renderer.Graphics_Resource_Limits;
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
    use type Terminal.App.Render_Model.Image_Data_Access;
    use type Terminal.App.Render_Model.Image_Protocol;
+   use type Terminal.App.Render_Model.Rectangle_Layer;
    use type Terminal.App.Render_Model.Text_Run_Direction;
    use type Terminal.App.Render_Model.Text_Run_Kind;
    use type Terminal.App.Render_Model.Text_Run_Script;
    use type Terminal.App.Render_Model.Text_Run_Shape_Status;
    use type System.Address;
+   use type Interfaces.Unsigned_32;
+   use type Interfaces.Unsigned_64;
    use type Terminal.Core.Feed_Status;
+
+
+   use type Terminal.Core.Graphics_ID;
    use type Terminal.Core.Initialize_Status;
+   use type Terminal.Core.Kitty_Graphics_Result_Code;
    use type Terminal.App.Splits.Split_Status;
    use type Terminal.App.Tabs.Tab_Status;
+   use type GNAT.OS_Lib.File_Descriptor;
 
    R      : Terminal.App.Renderer.Renderer;
    Status : Terminal.App.Renderer.Init_Status;
@@ -57,6 +72,45 @@ procedure Renderer_Metrics_Smoke is
       end loop;
       return Result;
    end Repeat_Char;
+
+   procedure Render_And_Complete_Graphics
+     (Target : in out Terminal.Core.Terminal)
+   is
+      Rendered : Boolean := False;
+   begin
+      loop
+         declare
+            Event : Terminal.Core.Graphics_Event;
+         begin
+            Terminal.Core.Peek_Graphics_Event (Target, Event);
+            exit when not Event.Pending;
+            declare
+               Snap : Terminal.Core.Render_Snapshot :=
+                 Terminal.Core.Snapshot (Target);
+               Result : Terminal.Core.Kitty_Graphics_Result;
+            begin
+               Snap.Graphics := Event;
+               Terminal.App.Renderer.Render (R, Snap, Render_Status);
+               Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+               Terminal.Core.Release (Snap);
+               Terminal.Core.Complete_Graphics_Event (Target, Event, Result);
+               Terminal.App.Renderer.Commit_Graphics_Events (R);
+               Rendered := True;
+            end;
+            exit when Render_Status /= Terminal.App.Renderer.Ok;
+         end;
+      end loop;
+
+      if not Rendered then
+         declare
+            Snap : Terminal.Core.Render_Snapshot :=
+              Terminal.Core.Snapshot (Target);
+         begin
+            Terminal.App.Renderer.Render (R, Snap, Render_Status);
+            Terminal.Core.Release (Snap);
+         end;
+      end if;
+   end Render_And_Complete_Graphics;
 
    procedure Assert_Close
      (Actual  : Float;
@@ -117,12 +171,7 @@ begin
    Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "core initialize failed");
 
-   declare
-      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-   begin
-      Terminal.App.Renderer.Render (R, Snap, Render_Status);
-      Terminal.Core.Release (Snap);
-   end;
+   Render_And_Complete_Graphics (T);
    Assert (Render_Status = Terminal.App.Renderer.Ok, "render failed");
 
    declare
@@ -147,9 +196,262 @@ begin
         (Frame.Rectangles (2).Y = Float (Terminal.App.Renderer.Content_Margin),
          "first cell should be inset vertically");
       Assert
+        (Frame.Rectangles (1).Layer =
+           Terminal.App.Render_Model.Rectangle_Base_Background
+         and then Frame.Rectangles (2).Layer =
+           Terminal.App.Render_Model.Rectangle_Base_Background
+         and then Frame.Rectangles (3).Layer =
+           Terminal.App.Render_Model.Rectangle_Foreground,
+         "default background and cursor rectangle layers");
+      Assert
         (Frame.Rectangles (3).Height <= Float (Terminal.App.Renderer.Cell_Height (R)),
          "cursor block should fit within the terminal cell");
    end;
+
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "image placeholder renderer initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#1B#, 2 => Byte (Character'Pos ('[')),
+       3 => Byte (Character'Pos ('3')), 4 => Byte (Character'Pos ('8')),
+       5 => Byte (Character'Pos (';')), 6 => Byte (Character'Pos ('5')),
+       7 => Byte (Character'Pos (';')), 8 => Byte (Character'Pos ('4')),
+       9 => Byte (Character'Pos ('2')), 10 => Byte (Character'Pos ('m')),
+       11 => 16#F4#, 12 => 16#8E#, 13 => 16#BB#, 14 => 16#AE#),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "image placeholder renderer feed failed");
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (Snap, 1, 1).Image.Is_Placeholder,
+         "renderer input should expose image-cell metadata");
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "image placeholder renderer render failed");
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Glyph_Count = 0 and then Frame.Text_Run_Count = 0,
+         "unresolved image placeholder must not render a missing glyph");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 2, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "virtual kitty placement renderer initialize failed");
+   declare
+      Placeholder : constant String :=
+        Character'Val (16#F4#) & Character'Val (16#8E#)
+        & Character'Val (16#BB#) & Character'Val (16#AE#);
+      Row_Zero : constant String :=
+        Character'Val (16#CC#) & Character'Val (16#85#);
+      Col_One : constant String :=
+        Character'Val (16#CC#) & Character'Val (16#8D#);
+      Input : constant String :=
+        ASCII.ESC & "_Gf=32,s=2,v=1,a=T,i=42,p=7,U=1,c=2,r=1;"
+        & "/wAA/wD/AP8=" & ASCII.ESC & "\"
+        & ASCII.ESC & "[38;5;42;58;5;7m"
+        & Placeholder & Row_Zero & Row_Zero
+        & Placeholder & Row_Zero & Col_One;
+   begin
+      Terminal.Core.Feed (T, To_Bytes (Input), Feed_Status);
+   end;
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "virtual kitty placement renderer feed failed");
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Event : constant Terminal.Core.Graphics_Event := Snap.Graphics;
+      Result : Terminal.Core.Kitty_Graphics_Result;
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Terminal.Core.Release (Snap);
+      Terminal.Core.Complete_Graphics_Event (T, Event, Result);
+      Terminal.App.Renderer.Commit_Graphics_Events (R);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "virtual kitty placement renderer render failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "virtual kitty placeholder renderer render failed");
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Image_Count = 2,
+         "virtual placement should emit one image tile per placeholder cell");
+      Assert
+        (Frame.Glyph_Count = 0 and then Frame.Text_Run_Count = 0,
+         "resolved image placeholders must remain outside text rendering");
+      Assert_Close (Frame.Images (1).U0, 0.0, "first tile U0");
+      Assert_Close (Frame.Images (1).U1, 0.5, "first tile U1");
+      Assert_Close (Frame.Images (2).U0, 0.5, "second tile U0");
+      Assert_Close (Frame.Images (2).U1, 1.0, "second tile U1");
+      Assert_Close (Frame.Images (1).V0, 0.0, "first tile V0");
+      Assert_Close (Frame.Images (1).V1, 1.0, "first tile V1");
+      Assert
+        (Frame.Images (1).Width =
+           Float (Terminal.App.Renderer.Cell_Width (R))
+         and then Frame.Images (2).Width =
+           Float (Terminal.App.Renderer.Cell_Width (R)),
+         "virtual placement tiles should occupy individual cells");
+   end;
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Snap.Graphics := (others => <>);
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "retained virtual kitty placement render failed");
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Image_Count = 2,
+         "virtual placement should outlive its transmission event");
+   end;
+
+   declare
+      Palette_T : Terminal.Core.Terminal;
+      Palette_Init : Terminal.Core.Initialize_Status;
+      Palette_Feed : Terminal.Core.Feed_Status;
+      procedure Feed_And_Render (Text : String; Label_Text : String) is
+         Event : Terminal.Core.Graphics_Event;
+         Snap : Terminal.Core.Render_Snapshot;
+      begin
+         Terminal.Core.Feed (Palette_T, To_Bytes (Text), Palette_Feed);
+         Assert (Palette_Feed = Terminal.Core.Ok, Label_Text & " feed");
+         Terminal.Core.Peek_Graphics_Event (Palette_T, Event);
+         Assert (Event.Pending, Label_Text & " event");
+         Snap := Terminal.Core.Snapshot (Palette_T);
+         Snap.Graphics := Event;
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+         Terminal.Core.Discard_Graphics_Event (Palette_T);
+         Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
+      end Feed_And_Render;
+   begin
+      Terminal.Core.Initialize (Palette_T, 2, 10, 100, Palette_Init);
+      Assert
+        (Palette_Init = Terminal.Core.Ok,
+         "shared sixel palette terminal initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Palette_T, 3_100);
+      Feed_And_Render
+        (ASCII.ESC & "[?1070l"
+         & ASCII.ESC & "Pq#5;2;100;0;0~" & ASCII.ESC & "\",
+         "shared sixel palette definition");
+      Feed_And_Render
+        (ASCII.ESC & "Pq#5~" & ASCII.ESC & "\",
+         "shared sixel palette reuse");
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count = 2
+            and then Frame.Images (1).Decoded_Bytes /= null
+            and then Frame.Images (1).Decoded_Bytes (1) = 16#FF#
+            and then Frame.Images (1).Decoded_Bytes (2) = 0
+            and then Frame.Images (1).Decoded_Bytes (3) = 0,
+            "shared sixel palette should affect subsequent graphics");
+      end;
+      Feed_And_Render
+        (ASCII.ESC & "[?1070h"
+         & ASCII.ESC & "Pq#5~" & ASCII.ESC & "\",
+         "private sixel palette reset");
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count >= 1
+            and then Frame.Images (1).Decoded_Bytes (1) = 16#FF#
+            and then Frame.Images (1).Decoded_Bytes (2) = 16#FF#
+            and then Frame.Images (1).Decoded_Bytes (3) = 16#FF#,
+            "private sixel palettes should not inherit shared registers");
+      end;
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 3_100);
+      Terminal.Core.Finalize (Palette_T);
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Ga=d,d=A;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+      "screen-wide deletion must preserve virtual placement prototypes");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Ga=d,d=Z,z=0;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+      "z-index deletion must preserve virtual placement prototypes");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=d,d=i,i=42,p=7;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "soft virtual placement delete feed failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+      "lowercase delete should remove the virtual placement");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=p,i=42,p=7,U=1,c=2,r=1;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+      "lowercase delete should retain reusable image data");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=d,d=I,i=42,p=7;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+      "uppercase delete should remove the placement and image data");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=p,i=42,p=7,U=1,c=2,r=1;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+      "uppercase delete should prevent image-data reuse");
 
    Terminal.Core.Initialize (T, 1, 32, 100, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "hyperlink overlay initialize failed");
@@ -206,16 +508,11 @@ begin
 
    Terminal.Core.Feed
      (T,
-      To_Bytes (ASCII.ESC & "_Gf=32,a=T;AAAA" & ASCII.ESC & "\"),
+      To_Bytes (ASCII.ESC & "_Gf=32,a=T,C=1;AAAA" & ASCII.ESC & "\"),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "kitty graphics feed failed");
 
-   declare
-      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-   begin
-      Terminal.App.Renderer.Render (R, Snap, Render_Status);
-      Terminal.Core.Release (Snap);
-   end;
+   Render_And_Complete_Graphics (T);
    Assert (Render_Status = Terminal.App.Renderer.Ok, "graphics render failed");
 
    declare
@@ -237,7 +534,7 @@ begin
          Terminal.App.Renderer.Cell_Height (R) * 3,
          "graphics image diagnostic height");
       Assert
-        (Diagnostics.Last_Image_Payload_Length = 14,
+        (Diagnostics.Last_Image_Payload_Length = 18,
          "graphics image diagnostic payload length");
       Assert
         (Diagnostics.Last_Image_Payload_Preview_Complete,
@@ -267,7 +564,7 @@ begin
       Assert
         (Frame.Images (1).Protocol = Terminal.App.Render_Model.Image_Kitty,
          "graphics image protocol");
-      Assert (Frame.Images (1).Payload_Length = 14, "graphics payload length");
+      Assert (Frame.Images (1).Payload_Length = 18, "graphics payload length");
       Assert
         (Frame.Images (1).Payload_Preview_Complete,
          "graphics payload preview complete");
@@ -295,7 +592,7 @@ begin
          & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R) * 6)
          & "x"
          & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R) * 3)
-         & " payload=14 payload-complete preview=3/4 bytes=000000 placeholder decoded",
+         & " payload=18 payload-complete preview=3/4 bytes=000000 placeholder decoded",
          "graphics image diagnostic status label");
       Assert
         (Frame.Images (1).Width =
@@ -308,7 +605,7 @@ begin
    end;
 
    declare
-      Payload : constant String := "Gf=32,s=1,v=1,c=1,r=1;/wAA/w==";
+      Payload : constant String := "Gf=32,a=T,C=1,s=1,v=1,c=1,r=1;/wAA/w==";
    begin
       Terminal.Core.Feed
         (T,
@@ -316,12 +613,7 @@ begin
          Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "raw kitty graphics feed failed");
 
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "raw graphics render failed");
@@ -347,16 +639,16 @@ begin
             "raw graphics command pixel metadata");
          Assert
            (Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
-            and then Frame.Images (1).Decoded_Bytes = null
-            and then Frame.Images (1).Encoded_Source_Bytes /= null,
-            "raw graphics command should use encoded row source");
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Decoded_Bytes /= null
+            and then Frame.Images (1).Encoded_Source_Bytes = null,
+            "anonymous transmit-and-display should retain decoded pixels");
          Assert
            (Terminal.App.Render_Model.Image_Decoded_Row_Byte
               (Frame.Images (1), 0, 0) = 16#FF#
             and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
               (Frame.Images (1), 0, 3) = 16#FF#,
-            "raw graphics encoded row source bytes");
+            "raw graphics retained row bytes");
          Assert
            (not Frame.Images (1).Decoded_Bytes_Owned,
             "raw graphics command should not own decoded frame bytes");
@@ -369,20 +661,30 @@ begin
          Assert
            (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
             "image kitty size="
-            & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R))
+            & Trimmed_Natural
+              (Natural'Min
+                 (Terminal.App.Renderer.Cell_Width (R),
+                  Terminal.App.Renderer.Cell_Height (R)))
             & "x"
-            & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R))
-            & " pixels=1x1 format=32 payload="
-            & Trimmed_Natural (Diagnostics.Last_Image_Payload_Length)
-            & " payload-complete preview=4/8 bytes=FF0000FF textured decoded",
+            & Trimmed_Natural
+              (Natural'Min
+                 (Terminal.App.Renderer.Cell_Width (R),
+                  Terminal.App.Renderer.Cell_Height (R)))
+            & " pixels=1x1 format=32 payload=0"
+            & " payload-complete preview=4/0 bytes=FF0000FF textured decoded",
             "raw graphics image diagnostic status label");
       end;
    end;
 
+   --  The anonymous a=T image is now a real persistent placement. Retire it
+   --  before the independent explicit-ID object tests below.
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 0);
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_100);
+
    declare
       Store_Payload : constant String :=
-        "Gf=32,i=77,s=1,v=1,c=1,r=1;/wAA/w==";
-      Place_Payload : constant String := "Gi=77,a=p,c=2,r=1;";
+        "Gf=32,a=t,i=77,s=1,v=1,c=1,r=1;/wAA/w==";
+      Place_Payload : constant String := "Gi=77,a=p,C=1,c=2,r=1;";
    begin
       Terminal.Core.Feed
         (T,
@@ -391,25 +693,21 @@ begin
       Assert
         (Feed_Status = Terminal.Core.Ok,
          "kitty object store feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "kitty object store render failed");
 
       declare
-         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
-           Terminal.App.Renderer.Last_Frame (R);
+         Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
       begin
          Assert
-           (Frame.Images (1).Decoded_Bytes /= null
-            and then not Frame.Images (1).Decoded_Bytes_Owned,
-            "kitty object store frame should borrow transferred object bytes");
+           (Diagnostics.Last_Image_Count = 0,
+            "kitty transmit-only command should not display");
+         Assert
+           (Diagnostics.Kitty_Image_Object_Count > 0,
+            "kitty transmit-only command should store");
       end;
 
       Terminal.Core.Feed
@@ -419,13 +717,7 @@ begin
       Assert
         (Feed_Status = Terminal.Core.Ok,
          "kitty object placement feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "kitty object placement render failed");
@@ -445,11 +737,20 @@ begin
            (not Diagnostics.Last_Image_Placeholder,
             "kitty object placement should be textured");
          Assert
-           (Frame.Images (1).Width =
-            Float (Terminal.App.Renderer.Cell_Width (R) * 2)
-            and then Frame.Images (1).Height =
-              Float (Terminal.App.Renderer.Cell_Height (R)),
-            "kitty object placement dimensions");
+           (Frame.Images (1).Width = Float
+              (declare
+                  CW : constant Natural := Terminal.App.Renderer.Cell_Width (R);
+                  Draw : constant Natural := Natural'Min
+                    (CW * 2, Terminal.App.Renderer.Cell_Height (R));
+                  Offset : constant Natural := (CW * 2 - Draw) / 2;
+               begin Natural'Min (Draw, CW - Natural'Min (Offset, CW)))
+            and then Frame.Images (1).Height = Float
+              (Natural'Min
+                 (Terminal.App.Renderer.Cell_Height (R),
+                  Natural'Min
+                    (Terminal.App.Renderer.Cell_Width (R) * 2,
+                     Terminal.App.Renderer.Cell_Height (R)))),
+            "kitty object placement is aspect-fitted then viewport-clipped");
          Assert
            (Frame.Images (1).Raw_Format = 32
             and then Frame.Images (1).Pixel_Width = 1
@@ -470,10 +771,23 @@ begin
       end;
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Ga=d,d=i,i=77;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "kitty object placement cleanup feed failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "kitty object placement cleanup failed");
+
    for ID in 100 .. 120 loop
       declare
          Payload : constant String :=
-           "Gf=32,i="
+           "Gf=32,a=t,i="
            & Trimmed_Natural (ID)
            & ",s=1,v=1,c=1,r=1;/wAA/w==";
       begin
@@ -485,12 +799,7 @@ begin
            (Feed_Status = Terminal.Core.Ok,
             "unbounded kitty object feed failed");
 
-         declare
-            Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-         begin
-            Terminal.App.Renderer.Render (R, Snap, Render_Status);
-            Terminal.Core.Release (Snap);
-         end;
+         Render_And_Complete_Graphics (T);
          Assert
            (Render_Status = Terminal.App.Renderer.Ok,
             "unbounded kitty object render failed");
@@ -498,7 +807,7 @@ begin
    end loop;
 
    declare
-      Place_Payload : constant String := "Gi=100,a=p,c=3,r=1;";
+      Place_Payload : constant String := "Gi=100,a=p,C=1,c=3,r=1;";
    begin
       Terminal.Core.Feed
         (T,
@@ -507,13 +816,7 @@ begin
       Assert
         (Feed_Status = Terminal.Core.Ok,
          "unbounded kitty object placement feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "unbounded kitty object placement render failed");
@@ -523,8 +826,17 @@ begin
            Terminal.App.Renderer.Last_Frame (R);
       begin
          Assert
-           (Frame.Images (1).Width =
-            Float (Terminal.App.Renderer.Cell_Width (R) * 3)
+           (Frame.Images (1).Width = Float
+              (declare
+                  CW : constant Natural := Terminal.App.Renderer.Cell_Width (R);
+                  Draw : constant Natural := Natural'Min
+                    (CW * 3, Terminal.App.Renderer.Cell_Height (R));
+                  Offset : constant Natural := (CW * 3 - Draw) / 2;
+               begin Natural'Min (Draw, CW - Natural'Min (Offset, CW)))
+            and then Frame.Images (1).Height = Float
+              (Natural'Min
+                 (Terminal.App.Renderer.Cell_Width (R) * 3,
+                  Terminal.App.Renderer.Cell_Height (R)))
             and then Frame.Images (1).Raw_Format = 32
             and then Frame.Images (1).Decoded_Byte_Length = 4
             and then Frame.Images (1).Decoded_Bytes /= null
@@ -540,18 +852,12 @@ begin
 
    Terminal.Core.Feed
      (T,
-      To_Bytes (ASCII.ESC & "_Gi=100,a=d;" & ASCII.ESC & "\"),
+      To_Bytes (ASCII.ESC & "_Ga=d,d=I,i=100;" & ASCII.ESC & "\"),
       Feed_Status);
    Assert
      (Feed_Status = Terminal.Core.Ok,
       "kitty object delete feed failed");
-
-   declare
-      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-   begin
-      Terminal.App.Renderer.Render (R, Snap, Render_Status);
-      Terminal.Core.Release (Snap);
-   end;
+   Render_And_Complete_Graphics (T);
    Assert
      (Render_Status = Terminal.App.Renderer.Ok,
       "kitty object delete render failed");
@@ -560,24 +866,18 @@ begin
       "kitty object delete should not emit an image command");
    Terminal.Core.Feed
      (T,
-      To_Bytes (ASCII.ESC & "_Gi=100,a=p,c=1,r=1;" & ASCII.ESC & "\"),
+      To_Bytes (ASCII.ESC & "_Gi=100,a=p,C=1,c=1,r=1;" & ASCII.ESC & "\"),
       Feed_Status);
    Assert
      (Feed_Status = Terminal.Core.Ok,
       "deleted kitty object placement feed failed");
-
-   declare
-      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-   begin
-      Terminal.App.Renderer.Render (R, Snap, Render_Status);
-      Terminal.Core.Release (Snap);
-   end;
+   Render_And_Complete_Graphics (T);
    Assert
      (Render_Status = Terminal.App.Renderer.Ok,
       "deleted kitty object placement render failed");
    Assert
-     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Placeholder,
-      "deleted kitty object placement should fall back to placeholder");
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "deleted kitty object placement should not create a drawable");
 
    Terminal.Core.Feed
      (T,
@@ -586,13 +886,7 @@ begin
    Assert
      (Feed_Status = Terminal.Core.Ok,
       "kitty object delete-all feed failed");
-
-   declare
-      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-   begin
-      Terminal.App.Renderer.Render (R, Snap, Render_Status);
-      Terminal.Core.Release (Snap);
-   end;
+   Render_And_Complete_Graphics (T);
    Assert
      (Render_Status = Terminal.App.Renderer.Ok,
       "kitty object delete-all render failed");
@@ -600,8 +894,760 @@ begin
      (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
       "kitty object delete-all should not emit an image command");
 
+   --  Transmit-once/place-many clients need cropped placements to survive
+   --  consumption of the APC event and remain independently deletable.
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC
+         & "_Gq=2,a=t,i=500,f=32,s=2,v=1;/wAA/wD/AP8="
+         & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "kitty transmit-only feed failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "kitty transmit-only command must not create a placement");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC
+         & "_Gq=2,a=p,i=500,p=1,x=0,y=0,w=1,h=1,c=1,r=1,C=1;"
+         & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "first cropped placement feed failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 1,
+      "first cropped placement render failed");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC
+         & "_Gq=2,a=p,i=500,p=2,x=1,y=0,w=1,h=1,c=1,r=1,C=1;"
+         & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "second cropped placement feed failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 2,
+      "multiple conventional Kitty placements should coexist");
    declare
-      Payload : constant String := "Gf=24,s=1,v=1,c=1,r=1;/wAA";
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert_Close (Frame.Images (1).U0, 0.5, "second placement crop U0");
+      Assert_Close (Frame.Images (1).U1, 1.0, "second placement crop U1");
+      Assert_Close (Frame.Images (2).U0, 0.0, "first placement crop U0");
+      Assert_Close (Frame.Images (2).U1, 0.5, "first placement crop U1");
+   end;
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Snap.Graphics := (others => <>);
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 2,
+      "conventional Kitty placements should persist without a new event");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Gq=2,a=d,d=i,i=500,p=1;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "placement delete feed failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 1,
+      "placement-ID delete should preserve sibling placements");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Gq=2,a=d,d=I,i=500,p=2;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "placement data delete feed failed");
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "last placement data delete should release the image object");
+
+   for ID in 510 .. 511 loop
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=T,i=" & Trimmed_Natural (ID)
+            & ",f=32,s=1,v=1,c=1,r=1,C=1;/wAA/w=="
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "range-delete setup image render failed");
+   end loop;
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 2,
+      "range-delete setup should retain both placements");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Gq=2,a=d,d=r,x=510,y=510;" & ASCII.ESC & "\"),
+      Feed_Status);
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 1,
+      "lowercase ID range should delete only matching placements");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Gq=2,a=p,i=510,c=1,r=1,C=1;" & ASCII.ESC & "\"),
+      Feed_Status);
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 2,
+      "lowercase ID range should retain reusable image data");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Gq=2,a=d,d=R,x=510,y=511;" & ASCII.ESC & "\"),
+      Feed_Status);
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "uppercase ID range should remove placements and image data");
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Gq=2,a=p,i=510,c=1,r=1,C=1;" & ASCII.ESC & "\"),
+      Feed_Status);
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "uppercase ID range should make deleted data unavailable");
+
+   declare
+      First_ID  : Natural := 0;
+      Second_ID : Natural := 0;
+      Chunk_ID  : Natural := 0;
+
+      procedure Consume_Frame is
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "image-number command render failed");
+      end Consume_Frame;
+   begin
+      Terminal.Core.Initialize (T, 1, 8, 10, Core_Status);
+      Assert
+        (Core_Status = Terminal.Core.Ok,
+         "image-number core initialize failed");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,I=77,p=1,f=32,s=1,v=1,c=1,r=1,C=1;/wAA/w=="
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert (Frame.Image_Count = 1, "first numbered image placement");
+         First_ID := Natural (Frame.Images (1).Image_ID);
+         Assert (First_ID > 0, "numbered image should receive a nonzero ID");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,I=77,p=2,f=32,s=1,v=1,c=1,r=1,C=1;AP8A/w=="
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count = 2,
+            "same image number should create a second image object");
+         for I in 1 .. Frame.Image_Count loop
+            declare
+               ID : constant Natural := Natural (Frame.Images (I).Image_ID);
+            begin
+               if ID /= First_ID then
+                  Second_ID := ID;
+               end if;
+            end;
+         end loop;
+         Assert
+           (Second_ID > 0 and then Second_ID /= First_ID,
+            "reused image number should allocate a distinct ID");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=p,I=77,p=3,c=1,r=1,C=1;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+         Newest_Count : Natural := 0;
+      begin
+         for I in 1 .. Frame.Image_Count loop
+            if Natural (Frame.Images (I).Image_ID) = Second_ID then
+               Newest_Count := Newest_Count + 1;
+            end if;
+         end loop;
+         Assert
+           (Frame.Image_Count = 3,
+            "number lookup should add a third placement");
+         Assert
+           (Newest_Count = 2,
+            "number lookup should place only the newest matching image");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=n,I=77,p=3;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+         "number delete with placement ID should preserve sibling placement");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=N,I=77;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count = 1
+            and then Natural (Frame.Images (1).Image_ID) = First_ID,
+            "uppercase number delete should remove newest data only");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=p,I=77,p=4,c=1,r=1,C=1;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count = 2
+            and then Natural (Frame.Images (1).Image_ID) = First_ID
+            and then Natural (Frame.Images (2).Image_ID) = First_ID,
+            "number lookup should fall back to the newest remaining image");
+      end;
+
+      declare
+         Objects_Before : constant Natural :=
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count;
+      begin
+         Terminal.Core.Feed
+           (T,
+            To_Bytes
+              (ASCII.ESC
+               & "_Gq=2,a=T,i=999,I=88,f=32,s=1,v=1,C=1;/wAA/w=="
+               & ASCII.ESC & "\"),
+            Feed_Status);
+         Consume_Frame;
+         Assert
+           (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+              Objects_Before
+            and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+            "mixed image ID and number must not mutate graphics state");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=R,x=" & Trimmed_Natural (First_ID)
+            & ",y=" & Trimmed_Natural (Second_ID) & ";" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,I=99,p=5,f=32,s=1,v=1,c=1,r=1,C=1,m=1;/wAA"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+         "first numbered chunk must not allocate or display early");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes (ASCII.ESC & "_Gq=2,m=0;/w==" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count = 1,
+            "final numbered chunk should install and place its image");
+         Chunk_ID := Natural (Frame.Images (1).Image_ID);
+         Assert (Chunk_ID > 0, "chunked numbered image should receive an ID");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=p,I=99,p=6,c=1,r=1,C=1;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count = 2
+            and then Natural (Frame.Images (1).Image_ID) = Chunk_ID
+            and then Natural (Frame.Images (2).Image_ID) = Chunk_ID,
+            "number lookup should resolve a completed chunked transmission");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=N,I=99;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+         "numbered chunk cleanup should remove placements and data");
+   end;
+
+   declare
+      procedure Consume_Relative_Frame is
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "relative placement command render failed");
+      end Consume_Relative_Frame;
+
+      Root_X       : Float := 0.0;
+      Child_X      : Float := 0.0;
+      Grandchild_X : Float := 0.0;
+      Objects_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count;
+   begin
+      Terminal.Core.Initialize (T, 1, 8, 10, Core_Status);
+      Assert
+        (Core_Status = Terminal.Core.Ok,
+         "relative placement core initialize failed");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,i=600,p=1,f=32,s=1,v=1,c=1,r=1,C=1;"
+            & "/wAA/w==" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+
+      for ID in 601 .. 602 loop
+         Terminal.Core.Feed
+           (T,
+            To_Bytes
+              (ASCII.ESC & "_Gq=2,a=t,i=" & Trimmed_Natural (ID)
+               & ",f=32,s=1,v=1;/wAA/w==" & ASCII.ESC & "\"),
+            Feed_Status);
+         Consume_Relative_Frame;
+      end loop;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=p,i=601,p=2,P=600,Q=1,H=2,V=0,c=1,r=1;"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=p,i=602,p=3,P=601,Q=2,H=1,V=0,c=1,r=1;"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count = 3,
+            "relative placement chain should retain three images");
+         for I in 1 .. Frame.Image_Count loop
+            case Natural (Frame.Images (I).Image_ID) is
+               when 600 => Root_X := Frame.Images (I).X;
+               when 601 => Child_X := Frame.Images (I).X;
+               when 602 => Grandchild_X := Frame.Images (I).X;
+               when others => null;
+            end case;
+         end loop;
+         Assert_Close
+           (Child_X,
+            Root_X + 2.0 * Float (Terminal.App.Renderer.Cell_Width (R)),
+            "relative child should use the parent cell origin");
+         Assert_Close
+           (Grandchild_X,
+            Child_X + Float (Terminal.App.Renderer.Cell_Width (R)),
+            "relative placement chains should accumulate offsets");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=p,i=600,p=1,P=602,Q=3,H=1,V=0,c=1,r=1;"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 3,
+         "cycle-forming placement replacement must be rejected");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=p,i=600,p=1,P=999,Q=1,H=1,V=0,c=1,r=1;"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 3,
+         "placement with a missing parent must be rejected");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=i,i=600,p=1;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+             Objects_Before + 3,
+         "soft parent deletion cascades placements but retains reusable data");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=p,i=601,p=4,c=1,r=1,C=1;"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+         "cascaded child image data remains reusable after soft deletion");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=i,i=601,p=4;"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=I,i=600;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,i=610,p=1,f=32,s=1,v=1,c=1,r=1,C=1;"
+            & "/wAA/w==" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+      for Placement_ID in 2 .. 9 loop
+         Terminal.Core.Feed
+           (T,
+            To_Bytes
+              (ASCII.ESC & "_Gq=2,a=p,i=610,p="
+               & Trimmed_Natural (Placement_ID) & ",P=610,Q="
+               & Trimmed_Natural (Placement_ID - 1)
+               & ",H=0,V=0,c=1,r=1;" & ASCII.ESC & "\"),
+            Feed_Status);
+         Consume_Relative_Frame;
+      end loop;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 9,
+         "relative placement depth eight must be accepted");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=i,i=610,p=1;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+             Objects_Before + 3,
+         "soft relative chain deletion retains reusable image data");
+
+      --  Soft deletion deliberately leaves all three transmitted image
+      --  objects reusable.  Remove this test's objects explicitly so the
+      --  following independent quota checks retain their original baseline.
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=R,x=600,y=610;"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Relative_Frame;
+   end;
+
+   declare
+      Placeholder : constant String :=
+        Character'Val (16#F4#) & Character'Val (16#8E#)
+        & Character'Val (16#BB#) & Character'Val (16#AE#);
+      Row_Zero : constant String :=
+        Character'Val (16#CC#) & Character'Val (16#85#);
+      Objects_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count;
+
+      procedure Consume_Virtual_Parent_Frame is
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      begin
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "virtual-parent relative placement render failed");
+      end Consume_Virtual_Parent_Frame;
+   begin
+      Terminal.Core.Initialize (T, 1, 8, 10, Core_Status);
+      Assert
+        (Core_Status = Terminal.Core.Ok,
+         "virtual-parent relative placement initialize failed");
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,i=42,p=7,U=1,f=32,s=1,v=1,c=1,r=1;"
+            & "/wAA/w==" & ASCII.ESC & "\"
+            & ASCII.ESC & "[38;5;42;58;5;7m"
+            & Placeholder & Row_Zero & Row_Zero),
+         Feed_Status);
+      Consume_Virtual_Parent_Frame;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=t,i=611,f=32,s=1,v=1;/wAA/w=="
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Virtual_Parent_Frame;
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=p,i=611,p=1,P=42,Q=7,H=2,V=0,c=1,r=1;"
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Virtual_Parent_Frame;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+         Child_X : Float := 0.0;
+      begin
+         Assert
+           (Frame.Image_Count = 2,
+            "virtual parent and relative child should both render");
+         for I in 1 .. Frame.Image_Count loop
+            if Natural (Frame.Images (I).Image_ID) = 611 then
+               Child_X := Frame.Images (I).X;
+            end if;
+         end loop;
+         Assert_Close
+           (Child_X,
+            Float
+              (Terminal.App.Renderer.Content_Margin
+               + 2 * Terminal.App.Renderer.Cell_Width (R)),
+            "relative child should use minimum virtual-placeholder origin");
+      end;
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=i,i=42,p=7;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Virtual_Parent_Frame;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+             Objects_Before + 2,
+         "soft virtual-parent deletion cascades placements but retains data");
+
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=I,i=42;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Virtual_Parent_Frame;
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=I,i=611;" & ASCII.ESC & "\"),
+         Feed_Status);
+      Consume_Virtual_Parent_Frame;
+   end;
+
+   Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "post image-number core restore failed");
+
+   declare
+      Objects_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count;
+   begin
+      Terminal.Core.Feed
+        (T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=f,i=501,f=32,s=1,v=1;/wAA/w=="
+            & ASCII.ESC & "\"),
+         Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "animation frame feed failed");
+      Render_And_Complete_Graphics (T);
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok
+         and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+             Objects_Before,
+         "animation frame for a missing base image must not mutate the store");
+   end;
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=t,i=502,f=32,s=1,v=1;/wAA/w=="
+         & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "coordinate-delete setup feed failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "coordinate-delete transmit should remain hidden");
+   --  Verify that cell+z deletion matches only the requested layer.
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=p,i=502,p=9,c=1,r=1,z=5,C=1;"
+         & ASCII.ESC & "\"),
+      Feed_Status);
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 1,
+      "coordinate-delete setup placement failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=d,d=q,x=1,y=1,z=4;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 1,
+      "coordinate delete with another z-index must preserve placement");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=d,d=Q,x=1,y=1,z=5;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count = 0,
+      "coordinate and z-index delete should remove matching placement");
+
+   declare
+      Payload : constant String := "Gf=24,a=T,C=1,s=1,v=1,c=1,r=1;/wAA";
    begin
       Terminal.Core.Feed
         (T,
@@ -610,13 +1656,7 @@ begin
       Assert
         (Feed_Status = Terminal.Core.Ok,
          "raw RGB kitty graphics feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "raw RGB graphics render failed");
@@ -639,11 +1679,11 @@ begin
            (Frame.Images (1).Raw_Format = 24
             and then Frame.Images (1).Decoded_Byte_Length = 3
             and then Frame.Images (1).Decoded_Row_Stride_Bytes = 3
-            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null,
-            "raw RGB graphics command encoded source metadata");
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null,
+            "raw RGB graphics command retained source metadata");
          Assert
            (Terminal.App.Render_Model.Image_Decoded_Row_Byte
               (Frame.Images (1), 0, 0) = 16#FF#
@@ -658,10 +1698,13 @@ begin
       end;
    end;
 
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_100);
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_101);
+
    declare
-      First_Chunk  : constant String := "Gf=32,s=2,v=1,c=2,r=1,m=1;/w";
-      Middle_Chunk : constant String := "Gm=1;AA/w";
-      Last_Chunk   : constant String := "Gm=0;AA//8=";
+      First_Chunk  : constant String := "Gf=32,a=T,C=1,s=2,v=1,c=2,r=1,m=1;/wAA";
+      Middle_Chunk : constant String := "Gm=1;/wAA";
+      Last_Chunk   : constant String := "Gm=0;//8=";
    begin
       Terminal.Core.Feed
         (T,
@@ -671,12 +1714,7 @@ begin
         (Feed_Status = Terminal.Core.Ok,
          "chunked raw kitty first chunk feed failed");
 
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "chunked raw kitty first render failed");
@@ -692,12 +1730,7 @@ begin
         (Feed_Status = Terminal.Core.Ok,
          "chunked raw kitty middle chunk feed failed");
 
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "chunked raw kitty middle render failed");
@@ -713,12 +1746,7 @@ begin
         (Feed_Status = Terminal.Core.Ok,
          "chunked raw kitty final chunk feed failed");
 
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "chunked raw kitty final render failed");
@@ -753,11 +1781,11 @@ begin
          Assert
            (Frame.Images (1).Pixel_Width = 2
             and then Frame.Images (1).Pixel_Height = 1
-            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null,
-            "chunked raw kitty command encoded source metadata");
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null,
+            "chunked raw kitty command retained source metadata");
          Assert
            (Terminal.App.Render_Model.Image_Decoded_Row_Byte
               (Frame.Images (1), 0, 0) = 16#FF#
@@ -771,12 +1799,424 @@ begin
    end;
 
    declare
+      Chunk_T : Terminal.Core.Terminal;
+      Chunk_Init : Terminal.Core.Initialize_Status;
+      Chunk_Feed : Terminal.Core.Feed_Status;
+      Event : Terminal.Core.Graphics_Event;
+      Result : Terminal.Core.Kitty_Graphics_Result;
+      Tabs : Terminal.App.Tabs.Tab_State;
+      Splits : Terminal.App.Splits.Split_State;
+      Objects_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count;
+
+      procedure Feed_Render
+        (Text : String;
+         Expected : Terminal.Core.Kitty_Graphics_Result_Code;
+         Message : String)
+      is
+         --  Keep each protocol exchange isolated for source-level failure
+         --  diagnostics.
+         Snapshots : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+      begin
+         Terminal.Core.Feed
+           (Chunk_T,
+            To_Bytes (ASCII.ESC & "_" & Text & ASCII.ESC & "\"),
+            Chunk_Feed);
+         Assert (Chunk_Feed = Terminal.Core.Ok, Message & " feed");
+         Terminal.Core.Peek_Graphics_Event (Chunk_T, Event);
+         if not Event.Pending then
+            Assert
+              (Expected = Terminal.Core.Kitty_No_Response,
+               Message & " incomplete transaction result");
+            return;
+         end if;
+         Snapshots (1) := Terminal.Core.Snapshot (Chunk_T);
+         Snapshots (1).Graphics := Event;
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snapshots,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Terminal.Core.Release (Snapshots (1));
+         Assert (Render_Status = Terminal.App.Renderer.Ok, Message & " render");
+         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Assert (Result.Code = Expected, Message & " protocol result");
+         Terminal.Core.Complete_Graphics_Event (Chunk_T, Event, Result);
+         Terminal.App.Renderer.Commit_Graphics_Events (R);
+      end Feed_Render;
+   begin
+      Terminal.Core.Initialize (Chunk_T, 2, 4, 10, Chunk_Init);
+      Assert (Chunk_Init = Terminal.Core.Ok, "chunk validation initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Chunk_T, 3_001);
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Splits.Initialize (Splits);
+
+      Feed_Render
+        ("Gq=2,a=t,i=90,f=32,s=1,v=1,m=1;AAA",
+         Terminal.Core.Kitty_EINVAL,
+         "non-final chunk alignment rejection");
+      Feed_Render
+        ("Gq=2,a=t,i=91,f=32,s=1,v=1,m=1;"
+         & Repeat_Char ('A', 4_097),
+         Terminal.Core.Kitty_EINVAL,
+         "oversized chunk rejection");
+      Feed_Render
+        ("Gq=2,a=t,i=91,f=32,s=1,v=1,m=2;AAAA",
+         Terminal.Core.Kitty_EINVAL,
+         "invalid chunk flag rejection");
+
+      Feed_Render
+        ("Gq=2,a=t,i=92,f=32,s=1,v=1,m=1;AAAA",
+         Terminal.Core.Kitty_No_Response,
+         "valid first chunk retention");
+      Feed_Render
+        ("Gm=0,i=92;AA==",
+         Terminal.Core.Kitty_EINVAL,
+         "continuation control rejection");
+
+      Feed_Render
+        ("Gq=2,a=t,i=94,f=32,s=1,v=1,m=1;/wAA",
+         Terminal.Core.Kitty_No_Response,
+         "delete-cancel first chunk retention");
+      Feed_Render
+        ("Gq=2,a=d,d=i,i=94",
+         Terminal.Core.Kitty_OK,
+         "delete command aborts partial upload");
+      Feed_Render
+        ("Gq=2,a=t,i=94,f=32,s=1,v=1,m=1;/wAA",
+         Terminal.Core.Kitty_No_Response,
+         "fresh chunk after delete cancellation");
+      Feed_Render
+        ("Gq=2,m=0;/w==",
+         Terminal.Core.Kitty_OK,
+         "completed chunk after delete cancellation");
+
+      Feed_Render
+        ("Gq=2,a=t,i=92,f=32,s=1,v=1;/wAA/w==",
+         Terminal.Core.Kitty_OK,
+         "post-rejection transaction recovery");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+           Objects_Before + 2,
+         "valid transfer succeeds after malformed chunks");
+
+      Feed_Render
+        ("Gq=2,a=t,i=180,i=181,f=32,s=1,v=1;/wAA/w==",
+         Terminal.Core.Kitty_EINVAL,
+         "duplicate control rejection");
+      Feed_Render
+        ("Gq=2,a=t,i=182,f=32,s=bad,v=1;/wAA/w==",
+         Terminal.Core.Kitty_EINVAL,
+         "malformed numeric control rejection");
+      Feed_Render
+        ("Gq=2,a=p,i=92;AAAA",
+         Terminal.Core.Kitty_EINVAL,
+         "put action payload rejection");
+      Feed_Render
+        ("Gq=2,a=t,i=183,f=32,s=1,v=1",
+         Terminal.Core.Kitty_EINVAL,
+         "transmit action missing payload rejection");
+      Feed_Render
+        ("Gq=2,a=x,i=184",
+         Terminal.Core.Kitty_ENOTSUP,
+         "unsupported action rejection");
+
+      Feed_Render
+        ("Ga=q,i=200,f=32,s=1,v=1;/wAA/w==",
+         Terminal.Core.Kitty_OK,
+         "query validates direct raw payload");
+      Feed_Render
+        ("Ga=q,i=201,f=32,s=1,v=1;%%%%",
+         Terminal.Core.Kitty_EINVAL,
+         "query rejects invalid direct payload");
+      Feed_Render
+        ("Ga=q,i=202,f=32,s=1,v=1,o=z;eJz7z8DwHwAE/wH/",
+         Terminal.Core.Kitty_OK,
+         "query validates compressed direct payload");
+      Feed_Render
+        ("Ga=q,i=204,f=100,o=z;"
+         & "eJzrDPBz5+WS4mJgYOD19HAJAtKMIMzBBCQnlAff"
+         & "A0u4OIZUzEn+cf4AAwMzIyPDSYZjUx4BJRg8Xf1c1jklNAEA1dYQSw==",
+         Terminal.Core.Kitty_EINVAL,
+         "direct compressed PNG query requires inflated size");
+      Feed_Render
+        ("Ga=q,i=203,f=32,s=1,v=1,t=x;/wAA/w==",
+         Terminal.Core.Kitty_ENOTSUP,
+         "query rejects unsupported transfer medium");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+           Objects_Before + 2,
+         "query validation must not retain image objects");
+
+      Feed_Render
+        ("Gq=2,a=T,i=95,f=32,s=1,v=1,c=1,r=1,C=1,o=z;"
+         & "eJz7z8DwHwAE/wH/",
+         Terminal.Core.Kitty_OK,
+         "zlib raw direct transfer");
+      Feed_Render
+        ("Gq=2,a=T,i=96,f=100,S=70,c=1,r=1,C=1,o=z;"
+         & "eJzrDPBz5+WS4mJgYOD19HAJAtKMIMzBBCQnlAff"
+         & "A0u4OIZUzEn+cf4AAwMzIyPDSYZjUx4BJRg8Xf1c1jklNAEA1dYQSw==",
+         Terminal.Core.Kitty_OK,
+         "zlib PNG direct transfer");
+      Feed_Render
+        ("Gq=2,a=T,i=97,f=32,s=1,v=1,c=1,r=1,C=1,o=z,m=1;"
+         & "eJz7z8Dw",
+         Terminal.Core.Kitty_No_Response,
+         "zlib raw first chunk");
+      Feed_Render
+        ("Gq=2,m=0;HwAE/wH/",
+         Terminal.Core.Kitty_OK,
+         "zlib raw final chunk");
+      Feed_Render
+        ("Gq=2,a=T,i=98,f=32,s=1,v=1,c=1,r=1,C=1,o=z;"
+         & "eJz7z8DwHwAE/wHA",
+         Terminal.Core.Kitty_EINVAL,
+         "zlib checksum rejection");
+      Feed_Render
+        ("Gq=2,a=T,i=99,f=100,c=1,r=1,C=1,o=z;"
+         & "eJzrDPBz5+WS4mJgYOD19HAJAtKMIMzBBCQnlAff"
+         & "A0u4OIZUzEn+cf4AAwMzIyPDSYZjUx4BJRg8Xf1c1jklNAEA1dYQSw==",
+         Terminal.Core.Kitty_EINVAL,
+         "zlib PNG size requirement");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+           Objects_Before + 5,
+         "zlib transfers install only validated image objects");
+      Feed_Render
+        ("Gq=2,a=T,f=32,s=1,v=1,c=1,r=1,C=1,o=z;"
+         & "eJz7z8DwHwAE/wH/",
+         Terminal.Core.Kitty_OK,
+         "anonymous zlib raw display");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+           Objects_Before + 6,
+         "anonymous zlib display retains an anonymous image object");
+
+      Feed_Render
+        ("Gq=2,a=t,i=110,f=32,s=2,v=1;/wAA/wD/AP8=",
+         Terminal.Core.Kitty_OK,
+         "geometry source transmission");
+      Feed_Render
+        ("Gq=2,a=p,i=110,p=10,C=1",
+         Terminal.Core.Kitty_OK,
+         "natural geometry placement");
+      Feed_Render
+        ("Gq=2,a=p,i=110,p=11,c=2,C=1",
+         Terminal.Core.Kitty_OK,
+         "one-sided geometry placement");
+      Feed_Render
+        ("Gq=2,a=p,i=110,p=12,c=2,r=2,C=1",
+         Terminal.Core.Kitty_OK,
+         "letterboxed geometry placement");
+      Feed_Render
+        ("Gq=2,a=p,i=110,p=13,c=0,C=1",
+         Terminal.Core.Kitty_EINVAL,
+         "zero column geometry rejection");
+      Feed_Render
+        ("Gq=2,a=p,i=110,p=14,x=2,C=1",
+         Terminal.Core.Kitty_EINVAL,
+         "empty source crop rejection");
+      Feed_Render
+        ("Gq=2,a=p,i=110,p=15,X="
+         & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R))
+         & ",C=1",
+         Terminal.Core.Kitty_EINVAL,
+         "out-of-cell x offset rejection");
+      Feed_Render
+        ("Gq=2,a=p,i=110,p=16,x=bad,C=1",
+         Terminal.Core.Kitty_EINVAL,
+         "malformed crop rejection");
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+         Natural_Count : Natural := 0;
+         Scaled_Count : Natural := 0;
+         Scaled_Min_Y : Float := Float'Last;
+         Scaled_Max_Y : Float := Float'First;
+         Expected_Scaled_Width : constant Float :=
+           Float (2 * Terminal.App.Renderer.Cell_Width (R));
+         Expected_Scaled_Height : constant Float :=
+           Float (Terminal.App.Renderer.Cell_Width (R));
+      begin
+         for I in 1 .. Frame.Image_Count loop
+            if Frame.Images (I).Image_ID = 110 then
+               if Frame.Images (I).Width = 2.0
+                 and then Frame.Images (I).Height = 1.0
+               then
+                  Natural_Count := Natural_Count + 1;
+               elsif Frame.Images (I).Width = Expected_Scaled_Width
+                 and then Frame.Images (I).Height = Expected_Scaled_Height
+               then
+                  Scaled_Count := Scaled_Count + 1;
+                  Scaled_Min_Y := Float'Min
+                    (Scaled_Min_Y, Frame.Images (I).Y);
+                  Scaled_Max_Y := Float'Max
+                    (Scaled_Max_Y, Frame.Images (I).Y);
+               end if;
+            end if;
+         end loop;
+         Assert
+           (Natural_Count = 1 and then Scaled_Count = 2,
+            "placement geometry preserves natural size and aspect ratio");
+         Assert
+           (Scaled_Max_Y > Scaled_Min_Y,
+            "two-axis placement centers letterboxed image content");
+      end;
+      Feed_Render
+        ("Gq=2,a=T,f=32,s=2,v=1,C=1;/wAA/wD/AP8=",
+         Terminal.Core.Kitty_OK,
+         "anonymous natural geometry display");
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+         Found : Boolean := False;
+      begin
+         for I in 1 .. Frame.Image_Count loop
+            if Frame.Images (I).Protocol =
+              Terminal.App.Render_Model.Image_Kitty
+              and then Frame.Images (I).Image_ID = 0
+              and then Frame.Images (I).Width = 2.0
+              and then Frame.Images (I).Height = 1.0
+            then
+               Found := True;
+            end if;
+         end loop;
+         Assert
+           (Found,
+            "anonymous placement derives natural geometry without an ID");
+      end;
+
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 3_001);
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+           Objects_Before,
+         "chunk validation stream cleanup");
+      Terminal.Core.Finalize (Chunk_T);
+   end;
+
+   declare
+      Quota_R : Terminal.App.Renderer.Renderer;
+      Quota_Status : Terminal.App.Renderer.Init_Status;
+      Quota_T : Terminal.Core.Terminal;
+      Quota_Init : Terminal.Core.Initialize_Status;
+      Quota_Feed : Terminal.Core.Feed_Status;
+      Event : Terminal.Core.Graphics_Event;
+      Result : Terminal.Core.Kitty_Graphics_Result;
+      Tabs : Terminal.App.Tabs.Tab_State;
+      Splits : Terminal.App.Splits.Split_State;
+
+      procedure Feed_Quota
+        (Text : String;
+         Expected : Terminal.Core.Kitty_Graphics_Result_Code;
+         Message : String)
+      is
+         Snapshots : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+         Local_Render_Status : Terminal.App.Renderer.Render_Status;
+      begin
+         Terminal.Core.Feed
+           (Quota_T,
+            To_Bytes (ASCII.ESC & "_" & Text & ASCII.ESC & "\"),
+            Quota_Feed);
+         Assert (Quota_Feed = Terminal.Core.Ok, Message & " feed");
+         Terminal.Core.Peek_Graphics_Event (Quota_T, Event);
+         Snapshots (1) := Terminal.Core.Snapshot (Quota_T);
+         Snapshots (1).Graphics := Event;
+         Terminal.App.Renderer.Render_App
+           (Quota_R,
+            Snapshots,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Local_Render_Status);
+         Terminal.Core.Release (Snapshots (1));
+         Assert
+           (Local_Render_Status = Terminal.App.Renderer.Ok,
+            Message & " render");
+         Result := Terminal.App.Renderer.Graphics_Result (Quota_R, Event);
+         Assert (Result.Code = Expected, Message & " result");
+         Terminal.Core.Complete_Graphics_Event (Quota_T, Event, Result);
+         Terminal.App.Renderer.Commit_Graphics_Events (Quota_R);
+      end Feed_Quota;
+   begin
+      Terminal.App.Renderer.Initialize_Headless (Quota_R, Quota_Status);
+      Assert (Quota_Status = Terminal.App.Renderer.Ok, "quota renderer init");
+      Terminal.App.Renderer.Set_Graphics_Resource_Limits
+        (Quota_R,
+         (Image_Objects => 2,
+          Image_Bytes   => 8,
+          Placements    => 2,
+          Animation_Frames => 2,
+          others => <>));
+      Assert
+        (Terminal.App.Renderer.Graphics_Resource_Limit (Quota_R) =
+           (Image_Objects => 2,
+            Image_Bytes => 8,
+            Placements => 2,
+            Animation_Frames => 2,
+            others => <>),
+         "configurable graphics quotas");
+      Terminal.Core.Initialize (Quota_T, 2, 4, 10, Quota_Init);
+      Assert (Quota_Init = Terminal.Core.Ok, "quota core init");
+      Terminal.Core.Set_Graphics_Stream_ID (Quota_T, 3_002);
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Splits.Initialize (Splits);
+
+      Feed_Quota
+        ("Gq=2,a=t,i=1,N=0,f=32,s=1,v=1;/wAA/w==",
+         Terminal.Core.Kitty_OK,
+         "quota first image");
+      Feed_Quota
+        ("Gq=2,a=t,i=2,N=1,f=32,s=1,v=1;AP8A/w==",
+         Terminal.Core.Kitty_OK,
+         "quota transient image");
+      Feed_Quota
+        ("Gq=2,a=t,i=3,N=0,f=32,s=1,v=1;AAD//w==",
+         Terminal.Core.Kitty_OK,
+         "quota eviction image");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (Quota_R).Kitty_Image_Object_Count = 2
+         and then
+           Terminal.App.Renderer.Diagnostics (Quota_R).Kitty_Image_Object_Bytes = 8,
+         "quota accounting after eviction");
+      Feed_Quota
+        ("Gq=2,a=p,i=2,p=1,c=1,r=1,C=1",
+         Terminal.Core.Kitty_ENOENT,
+         "transient image evicted first");
+      Feed_Quota
+        ("Gq=2,a=p,i=1,p=1,c=1,r=1,C=1",
+         Terminal.Core.Kitty_OK,
+         "older persistent-hint image retained");
+      Feed_Quota
+        ("Gq=2,a=p,i=3,p=1,c=1,r=1,C=1",
+         Terminal.Core.Kitty_OK,
+         "new image retained");
+      Feed_Quota
+        ("Gq=2,a=t,i=4,N=0,f=32,s=1,v=1;/////w==",
+         Terminal.Core.Kitty_ENOMEM,
+         "image quota response when all objects are placed");
+      Feed_Quota
+        ("Gq=2,a=p,i=1,p=2,c=1,r=1,C=1",
+         Terminal.Core.Kitty_ENOMEM,
+         "placement quota response");
+
+      Terminal.App.Renderer.Release_Graphics_Stream (Quota_R, 3_002);
+      Terminal.Core.Finalize (Quota_T);
+      Terminal.App.Renderer.Finalize (Quota_R);
+   end;
+
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_101);
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_102);
+
+   declare
       Segment_Count : constant Natural := 64;
    begin
       for I in 1 .. Segment_Count loop
          declare
             Prefix : constant String :=
-              (if I = 1 then "Gf=32,s=48,v=1,c=12,r=1,m=1;"
+              (if I = 1 then "Gf=32,a=T,C=1,s=48,v=1,c=12,r=1,m=1;"
                elsif I = Segment_Count then "Gm=0;"
                else "Gm=1;");
          begin
@@ -820,30 +2260,37 @@ begin
             and then Diagnostics.Last_Image_Pixel_Height = 1,
             "many-segment kitty image diagnostic pixel metadata");
          Assert
-           (Diagnostics.Last_Image_Encoded_Preview_Length = Segment_Count * 4,
-            "many-segment kitty encoded length should come from segments");
+           (Diagnostics.Last_Image_Encoded_Preview_Length = 0,
+            "retained many-segment image no longer owns encoded chunks");
          Assert
            (not Diagnostics.Last_Image_Placeholder,
             "many-segment kitty image should be textured");
          Assert
            (Frame.Images (1).Decoded_Byte_Length = 48 * 4
-            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null,
-            "many-segment kitty command should retain encoded row source");
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null,
+            "many-segment kitty command should retain decoded pixels");
          Assert
            (not Frame.Images (1).Placeholder,
             "many-segment kitty command should be textured");
       end;
    end;
 
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_102);
+   Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "large chunked raw core reinitialize failed");
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_103);
+
    declare
       Width          : constant Natural := 450;
       Height         : constant Natural := 300;
       Decoded_Length : constant Natural := Width * Height * 4;
       Encoded_Length : constant Natural := Decoded_Length / 3 * 4;
-      Chunk_Length   : constant Natural := 120_000;
+      Chunk_Length   : constant Natural := 4_096;
       Sent           : Natural := 0;
 
       procedure Feed_Chunk
@@ -858,12 +2305,17 @@ begin
             Feed_Status);
          Assert (Feed_Status = Terminal.Core.Ok, Message & " feed failed");
 
-         declare
-            Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-         begin
-            Terminal.App.Renderer.Render (R, Snap, Render_Status);
-            Terminal.Core.Release (Snap);
-         end;
+         if Final then
+            declare
+               Event : Terminal.Core.Graphics_Event;
+            begin
+               Terminal.Core.Peek_Graphics_Event (T, Event);
+               Terminal.App.Renderer.Stage_Graphics_Event
+                 (R, Event, Terminal.Core.Graphics_Event_Payload (T, Event));
+            end;
+         end if;
+
+         Render_And_Complete_Graphics (T);
          Assert (Render_Status = Terminal.App.Renderer.Ok, Message & " render failed");
          if not Final then
             Assert
@@ -873,7 +2325,7 @@ begin
       end Feed_Chunk;
    begin
       Feed_Chunk
-        ("Gf=32,s=450,v=300,c=40,r=20,m=1;"
+        ("Gf=32,a=T,C=1,s=450,v=300,c=1,r=1,m=1;"
          & Repeat_Char ('A', Chunk_Length),
          "large chunked raw kitty first chunk",
          False);
@@ -917,22 +2369,25 @@ begin
            (Frame.Images (1).Pixel_Width = Width
             and then Frame.Images (1).Pixel_Height = Height
             and then Frame.Images (1).Decoded_Byte_Length = Decoded_Length
-            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null
             and then Frame.Images (1).Decoded_Preview_Length =
               Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
-            "large chunked raw kitty command should retain encoded row source");
+            "large chunked raw kitty command should retain decoded pixels");
          Assert
            (not Frame.Images (1).Placeholder,
             "large chunked raw kitty command should be textured");
       end;
    end;
 
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_103);
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_104);
+
    declare
       Payload : constant String :=
-        "Gf=32,s=33,v=32,c=33,r=32;" & Repeat_Char ('A', 5632);
+        "Gf=32,a=T,C=1,s=33,v=32,c=1,r=1;" & Repeat_Char ('A', 5632);
    begin
       Terminal.Core.Feed
         (T,
@@ -941,13 +2396,7 @@ begin
       Assert
         (Feed_Status = Terminal.Core.Ok,
          "large raw kitty graphics feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "large raw graphics render failed");
@@ -977,22 +2426,25 @@ begin
            (Frame.Images (1).Pixel_Width = 33
             and then Frame.Images (1).Pixel_Height = 32
             and then Frame.Images (1).Decoded_Byte_Length = 33 * 32 * 4
-            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null
             and then Frame.Images (1).Decoded_Preview_Length =
               Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
-            "large raw graphics command encoded source metadata");
+            "large raw graphics command retained source metadata");
          Assert
            (not Frame.Images (1).Placeholder,
             "large raw graphics command should be textured");
       end;
    end;
 
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_104);
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_105);
+
    declare
       Payload : constant String :=
-        "Gf=32,s=129,v=128,c=40,r=20;" & Repeat_Char ('A', 88064);
+        "Gf=32,a=T,C=1,s=129,v=128,c=1,r=1;" & Repeat_Char ('A', 88064);
    begin
       Terminal.Core.Feed
         (T,
@@ -1001,13 +2453,7 @@ begin
       Assert
         (Feed_Status = Terminal.Core.Ok,
          "over-64KiB raw kitty graphics feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "over-64KiB raw graphics render failed");
@@ -1037,22 +2483,27 @@ begin
            (Frame.Images (1).Pixel_Width = 129
             and then Frame.Images (1).Pixel_Height = 128
             and then Frame.Images (1).Decoded_Byte_Length = 129 * 128 * 4
-            and then Frame.Images (1).Decoded_Bytes = null
+            and then Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_Raw_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null
             and then Frame.Images (1).Decoded_Preview_Length =
               Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length,
-            "over-64KiB raw graphics command encoded source metadata");
+            "over-64KiB raw graphics command retained source metadata");
          Assert
            (not Frame.Images (1).Placeholder,
             "over-64KiB raw graphics command should be textured");
       end;
    end;
 
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_105);
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_106);
+
    declare
       Payload : constant String :=
-        "Gf=32,s=513,v=512,c=40,r=20;AAAA";
+        "Gf=32,a=T,C=1,s=16385,v=1024,c=40,r=20;AAAA";
+      Allocation_Failures_Before : constant Interfaces.Unsigned_64 :=
+        Terminal.App.Renderer.Diagnostics (R).Allocation_Failure_Count;
    begin
       Terminal.Core.Feed
         (T,
@@ -1061,13 +2512,7 @@ begin
       Assert
         (Feed_Status = Terminal.Core.Ok,
          "oversized raw kitty graphics feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "oversized raw graphics render failed");
@@ -1079,45 +2524,25 @@ begin
            Terminal.App.Renderer.Last_Frame (R);
       begin
          Assert
-           (Diagnostics.Last_Image_Raw_Format = 32
-            and then Diagnostics.Last_Image_Pixel_Width = 513
-            and then Diagnostics.Last_Image_Pixel_Height = 512,
-            "oversized raw graphics image diagnostic pixel metadata");
-         Assert
-           (Diagnostics.Last_Image_Placeholder,
-            "oversized raw graphics image should fall back to placeholder");
-         Assert
-           (Diagnostics.Last_Image_Decode_Status =
-            Terminal.App.Render_Model.Image_Decode_Preview_Truncated,
-            "oversized raw graphics image diagnostic decode status");
-         Assert
-           (not Diagnostics.Last_Image_Preview_Decode_Complete,
-            "oversized raw graphics image should not report decode complete");
-         Assert
-           (Frame.Images (1).Placeholder
-            and then Frame.Images (1).Decoded_Bytes = null
-            and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_None,
-            "oversized raw graphics command should not expose decoded source");
+           (Frame.Image_Count = 0
+            and then Diagnostics.Allocation_Failure_Count =
+              Allocation_Failures_Before + 1,
+            "oversized raw graphics is rejected before image allocation");
       end;
    end;
 
    declare
       Payload : constant String :=
-        "File=name=pixel.png;inline=1:iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+        "File=name=pixel.png;size=69;inline=1;doNotMoveCursor=1;width=20px;height=40px;"
+        & "preserveAspectRatio=1:"
+        & "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==";
    begin
       Terminal.Core.Feed
         (T,
          To_Bytes (ASCII.ESC & "]1337;" & Payload & ASCII.BEL),
          Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "iTerm2 PNG image feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "iTerm2 PNG image render failed");
@@ -1154,36 +2579,115 @@ begin
             and then Frame.Images (1).Raw_Format = 32
             and then Frame.Images (1).Pixel_Width = 1
             and then Frame.Images (1).Pixel_Height = 1
-            and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
-            "iTerm2 PNG image command pixel metadata");
+            and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4
+            and then Frame.Images (1).Width = 12.0
+            and then Frame.Images (1).Height = 20.0,
+            "iTerm2 PNG retained command is clipped to the viewport");
          Assert
-           (Frame.Images (1).Decoded_Bytes = null
+           (Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_PNG_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null,
-            "iTerm2 PNG image command should retain encoded row source");
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null,
+            "iTerm2 PNG retained command should borrow decoded pixels");
          Assert
            (not Frame.Images (1).Placeholder,
             "iTerm2 PNG image command should be textured");
       end;
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "]1337;File=size=70;inline=1;doNotMoveCursor=1:"
+         & "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg=="
+         & ASCII.BEL),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "iTerm2 size mismatch feed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok
+      and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 2,
+      "iTerm2 declared size remains a non-binding progress hint");
+
+   declare
+      Cursor_T : Terminal.Core.Terminal;
+      Cursor_Init : Terminal.Core.Initialize_Status;
+      Cursor_Feed : Terminal.Core.Feed_Status;
+      Event : Terminal.Core.Graphics_Event;
+      Outcome : Terminal.Core.Kitty_Graphics_Result;
+      Cursor_Tabs : Terminal.App.Tabs.Tab_State;
+      Cursor_Splits : Terminal.App.Splits.Split_State;
+   begin
+      Terminal.Core.Initialize (Cursor_T, 4, 4, 10, Cursor_Init);
+      Assert
+        (Cursor_Init = Terminal.Core.Ok,
+         "iTerm2 cursor renderer initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Cursor_T, 4_107);
+      Terminal.Core.Feed
+        (Cursor_T,
+         To_Bytes
+           (ASCII.ESC
+            & "]1337;File=inline=1;width=1;height=2;preserveAspectRatio=0:"
+            & "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg=="
+            & ASCII.BEL & "x"),
+         Cursor_Feed);
+      Assert (Cursor_Feed = Terminal.Core.Ok, "iTerm2 cursor renderer feed");
+      Terminal.Core.Peek_Graphics_Event (Cursor_T, Event);
+      Terminal.App.Tabs.Initialize (Cursor_Tabs);
+      Terminal.App.Splits.Initialize (Cursor_Splits);
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (Cursor_T);
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+      begin
+         Snaps (1) := Snap;
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Cursor_Tabs),
+            Terminal.App.Splits.Snapshot (Cursor_Splits),
+            Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "iTerm2 cursor renderer render");
+      Outcome := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Assert
+        (Outcome.Code = Terminal.Core.Kitty_OK,
+         "iTerm2 successful rendering produces an internal cursor commit result");
+      Assert
+        (Outcome.Move_Cursor and then Outcome.Cursor_To_Line_Start,
+         "iTerm2 default rendering requests next-line cursor movement");
+      Assert
+        (Outcome.Placement_Rows = 2,
+         "iTerm2 cursor movement reflects rendered cell height");
+      Terminal.Core.Complete_Graphics_Event (Cursor_T, Event, Outcome);
+      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (Cursor_T);
+      begin
+         Assert
+           (Terminal.Core.Cell_At (Snap, 3, 1).Text.Code_Point = 16#78#,
+            "iTerm2 renderer commits cursor movement before trailing input");
+         Terminal.Core.Release (Snap);
+      end;
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 4_107);
+      Terminal.Core.Finalize (Cursor_T);
+   end;
+
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_106);
+
    declare
       Payload : constant String :=
-        "Gf=100,a=T,c=1,r=1;iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+        "Gf=100,a=T,C=1,c=1,r=1;iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==";
    begin
       Terminal.Core.Feed
         (T,
          To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
          Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "kitty PNG image feed failed");
-
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "kitty PNG image render failed");
@@ -1223,24 +2727,27 @@ begin
             and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
             "kitty PNG image command pixel metadata");
          Assert
-           (Frame.Images (1).Decoded_Bytes = null
+           (Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_PNG_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null,
-            "kitty PNG image command should retain encoded row source");
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null,
+            "kitty PNG image command should retain decoded pixels");
          Assert
            (not Frame.Images (1).Placeholder,
             "kitty PNG image command should be textured");
       end;
    end;
 
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_106);
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_107);
+
    declare
       First_Chunk : constant String :=
-        "Gf=100,c=1,r=1,m=1;iVBORw0KGgoAAAANSUhEUgAA";
+        "Gf=100,a=T,C=1,c=1,r=1,m=1;iVBORw0KGgoAAAANSUhEUgAA";
       Middle_Chunk : constant String :=
         "Gm=1;AAEAAAABCAIAAACQd1PeAAAA";
       Last_Chunk : constant String :=
-        "Gm=0;DUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+        "Gm=0;DUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==";
    begin
       Terminal.Core.Feed
         (T,
@@ -1250,12 +2757,7 @@ begin
         (Feed_Status = Terminal.Core.Ok,
          "chunked kitty PNG first chunk feed failed");
 
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "chunked kitty PNG first render failed");
@@ -1271,12 +2773,7 @@ begin
         (Feed_Status = Terminal.Core.Ok,
          "chunked kitty PNG middle chunk feed failed");
 
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "chunked kitty PNG middle render failed");
@@ -1292,12 +2789,7 @@ begin
         (Feed_Status = Terminal.Core.Ok,
          "chunked kitty PNG final chunk feed failed");
 
-      declare
-         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
-      begin
-         Terminal.App.Renderer.Render (R, Snap, Render_Status);
-         Terminal.Core.Release (Snap);
-      end;
+      Render_And_Complete_Graphics (T);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "chunked kitty PNG final render failed");
@@ -1321,12 +2813,11 @@ begin
            (Diagnostics.Last_Image_Decoded_Preview_Length = 4,
             "chunked kitty PNG decoded byte length");
          Assert
-           (Diagnostics.Last_Image_Encoded_Preview_Length =
-            24 + 24 + 44,
-            "chunked kitty PNG encoded length should come from segments");
+           (Diagnostics.Last_Image_Encoded_Preview_Length = 0,
+            "retained chunked PNG no longer owns encoded segments");
          Assert
-           (Diagnostics.Last_Image_Staging_Byte_Length = 69,
-            "chunked kitty PNG staging should be sized to Base64 upper bound");
+           (Diagnostics.Last_Image_Staging_Byte_Length = 0,
+            "retained chunked PNG no longer requires decode staging");
          Assert
            (Diagnostics.Last_Image_Decoded_Preview_Bytes (1) = 16#FF#
             and then Diagnostics.Last_Image_Decoded_Preview_Bytes (2) = 16#00#
@@ -1343,16 +2834,19 @@ begin
             and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
             "chunked kitty PNG command pixel metadata");
          Assert
-           (Frame.Images (1).Decoded_Bytes = null
+           (Frame.Images (1).Decoded_Bytes /= null
             and then Frame.Images (1).Decoded_Source =
-              Terminal.App.Render_Model.Image_Decoded_Source_PNG_Base64
-            and then Frame.Images (1).Encoded_Source_Bytes /= null,
-            "chunked kitty PNG command should retain encoded row source");
+              Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+            and then Frame.Images (1).Encoded_Source_Bytes = null,
+            "chunked kitty PNG command should retain decoded pixels");
          Assert
            (not Frame.Images (1).Placeholder,
             "chunked kitty PNG command should be textured");
       end;
    end;
+
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_107);
+   Terminal.Core.Set_Graphics_Stream_ID (T, 4_108);
 
    Terminal.Core.Feed
      (T,
@@ -1405,36 +2899,197 @@ begin
          and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4,
          "sixel graphics command pixel metadata");
       Assert
-        (Frame.Images (1).Decoded_Bytes = null
+         (Frame.Images (1).Decoded_Bytes /= null
          and then Frame.Images (1).Decoded_Source =
-           Terminal.App.Render_Model.Image_Decoded_Source_Sixel_Text
-         and then Frame.Images (1).Encoded_Source_Bytes /= null,
-         "sixel graphics command should retain encoded row source");
+           Terminal.App.Render_Model.Image_Decoded_Source_Buffer
+         and then Frame.Images (1).Encoded_Source_Bytes = null,
+         "sixel retained command should borrow resolved palette pixels");
       Assert
         (not Frame.Images (1).Placeholder,
          "sixel graphics command should be textured");
       Assert
         (Terminal.App.Renderer.Image_Status_Label (Diagnostics) =
          "image sixel size="
-         & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R) * 4)
+         & "1"
          & "x"
-         & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R) * 2)
-         & " pixels=1x6 format=32 payload=2 payload-complete preview=24/1 bytes=FFFFFFFF textured decoded",
+         & "6"
+         & " pixels=1x6 format=32 payload=0 payload-complete preview=24/0 bytes=FFFFFFFF textured decoded",
          "sixel graphics image diagnostic status label");
    end;
-
-   Terminal.Core.Feed
-     (T,
-      To_Bytes (ASCII.ESC & "_Gf=100,a=T;SG$=" & ASCII.ESC & "\"),
-      Feed_Status);
-   Assert (Feed_Status = Terminal.Core.Ok, "partial kitty graphics feed failed");
 
    declare
       Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
+      Snap.Graphics := (others => <>);
       Terminal.App.Renderer.Render (R, Snap, Render_Status);
       Terminal.Core.Release (Snap);
    end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "retained sixel render failed");
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Image_Count = 1
+         and then Frame.Images (1).Protocol =
+           Terminal.App.Render_Model.Image_Sixel,
+         "sixel image should persist after its graphics event is consumed");
+   end;
+
+   Terminal.App.Renderer.Release_Graphics_Stream (R, 4_108);
+
+   declare
+      Aux_T : Terminal.Core.Terminal;
+      Aux_Init : Terminal.Core.Initialize_Status;
+      Aux_Feed : Terminal.Core.Feed_Status;
+      Aux_Objects_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Image_Object_Count;
+      Aux_Placements_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Placement_Count;
+
+      procedure Feed_Render_And_Discard (Text : String; Label_Text : String) is
+         Event : Terminal.Core.Graphics_Event;
+         Snap : Terminal.Core.Render_Snapshot;
+      begin
+         Terminal.Core.Feed (Aux_T, To_Bytes (Text), Aux_Feed);
+         Assert (Aux_Feed = Terminal.Core.Ok, Label_Text & " feed");
+         Terminal.Core.Peek_Graphics_Event (Aux_T, Event);
+         Assert (Event.Pending, Label_Text & " event");
+         Snap := Terminal.Core.Snapshot (Aux_T);
+         Snap.Graphics := Event;
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
+         Terminal.Core.Release (Snap);
+         Terminal.Core.Discard_Graphics_Event (Aux_T);
+      end Feed_Render_And_Discard;
+   begin
+      Terminal.Core.Initialize (Aux_T, 4, 10, 100, Aux_Init);
+      Assert (Aux_Init = Terminal.Core.Ok, "auxiliary coexist terminal initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Aux_T, 4_109);
+      Feed_Render_And_Discard
+        (ASCII.ESC & "Pq~" & ASCII.ESC & "\",
+         "coexisting sixel image");
+      Feed_Render_And_Discard
+        (ASCII.ESC & "]1337;File=inline=1;doNotMoveCursor=1;width=1;height=1:"
+         & "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg=="
+         & ASCII.BEL,
+         "coexisting iTerm2 image");
+      declare
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (Aux_T);
+      begin
+         Snap.Graphics := (others => <>);
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "coexisting auxiliary retained render");
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+         Aux_Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+           Terminal.App.Renderer.Diagnostics (R);
+         Saw_Sixel : Boolean := False;
+         Saw_ITerm2 : Boolean := False;
+      begin
+         for I in 1 .. Frame.Image_Count loop
+            Saw_Sixel := Saw_Sixel
+              or else Frame.Images (I).Protocol =
+                Terminal.App.Render_Model.Image_Sixel;
+            Saw_ITerm2 := Saw_ITerm2
+              or else Frame.Images (I).Protocol =
+                Terminal.App.Render_Model.Image_ITerm2;
+         end loop;
+         Assert
+           (Frame.Image_Count = 2 and then Saw_Sixel and then Saw_ITerm2,
+            "retained Sixel and iTerm2 images should coexist");
+         Assert
+           (Aux_Diagnostics.Image_Object_Count = Aux_Objects_Before + 2
+            and then Aux_Diagnostics.Placement_Count =
+              Aux_Placements_Before + 2
+            and then Aux_Diagnostics.Kitty_Image_Object_Count =
+              Aux_Diagnostics.Image_Object_Count
+            and then Aux_Diagnostics.Kitty_Placement_Count =
+              Aux_Diagnostics.Placement_Count,
+            "shared graphics-store diagnostics are protocol-neutral");
+      end;
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 4_109);
+      Terminal.Core.Finalize (Aux_T);
+   end;
+
+   declare
+      Retry_T : Terminal.Core.Terminal;
+      Retry_Init : Terminal.Core.Initialize_Status;
+      Retry_Feed : Terminal.Core.Feed_Status;
+      Retry_Tabs : Terminal.App.Tabs.Tab_State;
+      Retry_Splits : Terminal.App.Splits.Split_State;
+
+      procedure Retry_Event (Text : String; Label_Text : String) is
+         Event : Terminal.Core.Graphics_Event;
+         Snapshots : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+         Objects_Before : constant Natural :=
+           Terminal.App.Renderer.Diagnostics (R).Image_Object_Count;
+         Placements_Before : constant Natural :=
+           Terminal.App.Renderer.Diagnostics (R).Placement_Count;
+      begin
+         Terminal.Core.Feed (Retry_T, To_Bytes (Text), Retry_Feed);
+         Assert (Retry_Feed = Terminal.Core.Ok, Label_Text & " feed");
+         Terminal.Core.Peek_Graphics_Event (Retry_T, Event);
+         Assert (Event.Pending, Label_Text & " event");
+         Snapshots (1) := Terminal.Core.Snapshot (Retry_T);
+         Snapshots (1).Graphics := Event;
+         for Attempt in 1 .. 2 loop
+            Terminal.App.Renderer.Render_App
+              (R,
+               Snapshots,
+               1,
+               Terminal.App.Tabs.Snapshot (Retry_Tabs),
+               Terminal.App.Splits.Snapshot (Retry_Splits),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Ok,
+               Label_Text & " retry render");
+            Assert
+              (Terminal.App.Renderer.Diagnostics (R).Image_Object_Count =
+                 Objects_Before + 1
+               and then
+                 Terminal.App.Renderer.Diagnostics (R).Placement_Count =
+                   Placements_Before + 1,
+               Label_Text & " retry does not duplicate resources");
+         end loop;
+         Terminal.Core.Release (Snapshots (1));
+         Terminal.Core.Discard_Graphics_Event (Retry_T);
+         Terminal.App.Renderer.Commit_Graphics_Events (R);
+      end Retry_Event;
+   begin
+      Terminal.Core.Initialize (Retry_T, 4, 10, 100, Retry_Init);
+      Assert (Retry_Init = Terminal.Core.Ok, "auxiliary retry initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Retry_T, 4_110);
+      Terminal.App.Tabs.Initialize (Retry_Tabs);
+      Terminal.App.Splits.Initialize (Retry_Splits);
+      Retry_Event
+        (ASCII.ESC & "Pq~" & ASCII.ESC & "\",
+         "Sixel presentation");
+      Retry_Event
+        (ASCII.ESC & "]1337;File=inline=1;doNotMoveCursor=1;width=1;height=1:"
+         & "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg=="
+         & ASCII.BEL,
+         "iTerm2 presentation");
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 4_110);
+      Terminal.Core.Finalize (Retry_T);
+   end;
+
+   while Terminal.Core.Pending_Graphics_Event_Count (T) > 0 loop
+      Terminal.Core.Discard_Graphics_Event (T);
+   end loop;
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "_Gf=100,a=T,C=1;SG$=" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "partial kitty graphics feed failed");
+   Render_And_Complete_Graphics (T);
    Assert
      (Render_Status = Terminal.App.Renderer.Ok,
       "partial graphics render failed");
@@ -1468,7 +3123,7 @@ begin
          & Trimmed_Natural (Terminal.App.Renderer.Cell_Width (R) * 6)
          & "x"
          & Trimmed_Natural (Terminal.App.Renderer.Cell_Height (R) * 3)
-         & " payload=15 payload-complete preview=0/4 placeholder partial invalid-byte",
+         & " payload=19 payload-complete preview=0/4 placeholder partial invalid-byte",
          "partial graphics image diagnostic status label");
    end;
 
@@ -1923,6 +3578,10 @@ begin
         (Frame.Rectangles (3).Color.B,
          8.0 / 255.0,
          "xterm 232 grayscale blue");
+      Assert
+        (Frame.Rectangles (3).Layer =
+           Terminal.App.Render_Model.Rectangle_Cell_Background,
+         "explicit cell background covers deep negative images");
    end;
 
    Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
@@ -2525,6 +4184,53 @@ begin
          "RTL shaped run should start from full run right edge");
    end;
 
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "_Ga=d,d=R,x=0,y=4294967295;" & ASCII.ESC & "\"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "quota reset feed failed");
+   Render_And_Complete_Graphics (T);
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "quota reset render failed");
+
+   for Offset in 0 .. Terminal.App.Renderer.Max_Kitty_Image_Objects + 9 loop
+      declare
+         ID : constant Natural := 10_000 + Offset;
+         Payload : constant String :=
+           "Gq=2,a=t,i=" & Trimmed_Natural (ID)
+           & ",f=32,s=1,v=1;/wAA/w==";
+      begin
+         Terminal.Core.Feed
+           (T,
+            To_Bytes (ASCII.ESC & "_" & Payload & ASCII.ESC & "\"),
+            Feed_Status);
+         Assert (Feed_Status = Terminal.Core.Ok, "quota object feed failed");
+         Render_And_Complete_Graphics (T);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "quota object render failed");
+      end;
+   end loop;
+
+   declare
+      Diag : constant Terminal.App.Renderer.Renderer_Diagnostics :=
+        Terminal.App.Renderer.Diagnostics (R);
+   begin
+      Assert
+        (Diag.Kitty_Image_Object_Count =
+           Terminal.App.Renderer.Max_Kitty_Image_Objects,
+         "kitty image-object count quota");
+      Assert
+        (Diag.Kitty_Image_Object_Bytes =
+           Terminal.App.Renderer.Max_Kitty_Image_Objects * 4,
+         "kitty decoded-image byte accounting");
+      Assert
+        (Diag.Kitty_Placement_Count = 0,
+         "transmit-only quota test should not create placements");
+   end;
+
    Terminal.App.Renderer.Finalize (R);
    Terminal.App.Renderer.Finalize (R);
 
@@ -2539,6 +4245,148 @@ begin
 
    Terminal.App.Renderer.Initialize_Headless (R, Status);
    Assert (Status = Terminal.App.Renderer.Ok, "renderer reinitialize failed");
+
+   declare
+      Retry_Core : Terminal.Core.Terminal;
+      Retry_Init : Terminal.Core.Initialize_Status;
+      Retry_Feed : Terminal.Core.Feed_Status;
+      Tabs : Terminal.App.Tabs.Tab_State;
+      Splits : Terminal.App.Splits.Split_State;
+      Allocated_ID : Terminal.Core.Graphics_ID := 0;
+
+      procedure Process_Relative_Result
+        (Command  : String;
+         Expected : Terminal.Core.Kitty_Graphics_Result_Code;
+         Label_Text : String)
+      is
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+      begin
+         Terminal.Core.Feed (Retry_Core, To_Bytes (Command), Retry_Feed);
+         Assert (Retry_Feed = Terminal.Core.Ok, Label_Text & " feed");
+         Snaps (1) := Terminal.Core.Snapshot (Retry_Core);
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            Label_Text & " render");
+         declare
+            Outcome : constant Terminal.Core.Kitty_Graphics_Result :=
+              Terminal.App.Renderer.Graphics_Result
+                (R, Snaps (1).Graphics);
+         begin
+            Assert (Outcome.Code = Expected, Label_Text & " result code");
+            Assert
+              (not Outcome.Move_Cursor,
+               Label_Text & " relative placement must not move cursor");
+            Terminal.Core.Complete_Graphics_Event
+              (Retry_Core, Snaps (1).Graphics, Outcome);
+         end;
+         Terminal.App.Renderer.Commit_Graphics_Events (R);
+         Terminal.Core.Release (Snaps (1));
+      end Process_Relative_Result;
+   begin
+      Terminal.Core.Initialize (Retry_Core, 1, 4, 10, Retry_Init);
+      Assert (Retry_Init = Terminal.Core.Ok, "retry core initialize failed");
+      Terminal.Core.Set_Graphics_Stream_ID (Retry_Core, 999);
+      Terminal.Core.Feed
+        (Retry_Core,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=0,a=T,I=700,p=1,f=32,s=1,v=1,c=1,r=1;"
+            & "/wAA/w==" & ASCII.ESC & "\"),
+         Retry_Feed);
+      Assert (Retry_Feed = Terminal.Core.Ok, "retry graphics feed failed");
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Splits.Initialize (Splits);
+
+      declare
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1) :=
+           (1 => Terminal.Core.Snapshot (Retry_Core));
+      begin
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "initial retry-sensitive render failed");
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "repeated retry-sensitive render failed");
+         declare
+            Outcome : constant Terminal.Core.Kitty_Graphics_Result :=
+              Terminal.App.Renderer.Graphics_Result
+                (R, Snaps (1).Graphics);
+         begin
+            Assert
+              (Outcome.Code = Terminal.Core.Kitty_OK
+               and then Outcome.Image_ID /= 0
+               and then Outcome.Has_Image_Number
+               and then Outcome.Image_Number = 700
+               and then Outcome.Has_Placement_ID
+               and then Outcome.Placement_ID = 1
+               and then Outcome.Move_Cursor
+               and then Outcome.Placement_Columns = 1
+               and then Outcome.Placement_Rows = 1,
+               "numbered transmission should retain its committed response");
+            Allocated_ID := Outcome.Image_ID;
+            Terminal.Core.Complete_Graphics_Event
+              (Retry_Core, Snaps (1).Graphics, Outcome);
+         end;
+         Terminal.Core.Release (Snaps (1));
+      end;
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count = 1
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count = 1
+         and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+         "re-rendering one event before commit must not repeat mutations");
+      Assert
+        (Terminal.Core.Pending_Response_Length (Retry_Core) > 0,
+         "committed numbered transmission should queue an acknowledgement");
+      Terminal.App.Renderer.Commit_Graphics_Events (R);
+
+      Process_Relative_Result
+        (ASCII.ESC
+         & "_Gq=2,a=p,I=700,p=2,P=999,Q=1,H=1,V=0,c=1,r=1;"
+         & ASCII.ESC & "\",
+         Terminal.Core.Kitty_ENOPARENT,
+         "missing relative parent");
+      Process_Relative_Result
+        (ASCII.ESC & "_Gq=1,a=p,I=700,p=2,P="
+         & Trimmed_Natural (Natural (Allocated_ID))
+         & ",Q=1,H=1,V=0,c=1,r=1;" & ASCII.ESC & "\",
+         Terminal.Core.Kitty_OK,
+         "valid relative child");
+      Process_Relative_Result
+        (ASCII.ESC & "_Gq=2,a=p,I=700,p=1,P="
+         & Trimmed_Natural (Natural (Allocated_ID))
+         & ",Q=2,H=1,V=0,c=1,r=1;" & ASCII.ESC & "\",
+         Terminal.Core.Kitty_ECYCLE,
+         "relative placement cycle");
+      Terminal.Core.Finalize (Retry_Core);
+   end;
+
+   Terminal.App.Renderer.Finalize (R);
+   Terminal.App.Renderer.Initialize_Headless (R, Status);
+   Assert
+     (Status = Terminal.App.Renderer.Ok,
+      "renderer post-retry reinitialize failed");
 
    declare
       T1 : Terminal.Core.Terminal;
@@ -2607,6 +4455,811 @@ begin
            (Frame.Glyph_Count >= 16,
             "composited render should draw both pane labels and tab labels");
       end;
+   end;
+
+   declare
+      T1 : Terminal.Core.Terminal;
+      T2 : Terminal.Core.Terminal;
+      S1 : Terminal.Core.Initialize_Status;
+      S2 : Terminal.Core.Initialize_Status;
+      F1 : Terminal.Core.Feed_Status;
+      F2 : Terminal.Core.Feed_Status;
+      E1 : Terminal.Core.Graphics_Event;
+      E2 : Terminal.Core.Graphics_Event;
+      Tabs : Terminal.App.Tabs.Tab_State;
+      Splits : Terminal.App.Splits.Split_State;
+      Tab_Status : Terminal.App.Tabs.Tab_Status;
+      Split_Status : Terminal.App.Splits.Split_Status;
+      Objects_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count;
+      Placements_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count;
+
+      procedure Render_Pair is
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 2) :=
+           (1 => Terminal.Core.Snapshot (T1),
+            2 => Terminal.Core.Snapshot (T2));
+      begin
+         Terminal.Core.Peek_Graphics_Event (T1, E1);
+         Terminal.Core.Peek_Graphics_Event (T2, E2);
+         Snaps (1).Graphics := E1;
+         Snaps (2).Graphics := E2;
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            2,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Terminal.Core.Release (Snaps (1));
+         Terminal.Core.Release (Snaps (2));
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "isolated graphics pair render");
+      end Render_Pair;
+   begin
+      Terminal.Core.Initialize (T1, 1, 4, 10, S1);
+      Terminal.Core.Initialize (T2, 1, 4, 10, S2);
+      Assert
+        (S1 = Terminal.Core.Ok and then S2 = Terminal.Core.Ok,
+         "isolated graphics cores initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (T1, 1_001);
+      Terminal.Core.Set_Graphics_Stream_ID (T2, 1_002);
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Tabs.Apply (Tabs, Terminal.App.Tabs.New_Tab, Tab_Status);
+      Terminal.App.Splits.Initialize (Splits);
+      Terminal.App.Splits.Apply
+        (Splits, Terminal.App.Splits.Split_Horizontal, Split_Status);
+      Assert
+        (Tab_Status = Terminal.App.Tabs.Ok
+         and then Split_Status = Terminal.App.Splits.Ok,
+         "isolated graphics pane model");
+
+      Terminal.Core.Feed
+        (T1,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,i=55,p=1,f=32,s=1,v=1,c=1,r=1,C=1,m=1;/wAA"
+            & ASCII.ESC & "\"),
+         F1);
+      Terminal.Core.Feed
+        (T2,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,i=55,p=1,f=32,s=1,v=1,c=1,r=1,C=1,m=1;AP8A"
+            & ASCII.ESC & "\"),
+         F2);
+      Assert
+        (F1 = Terminal.Core.Ok and then F2 = Terminal.Core.Ok,
+         "isolated first chunks feed");
+      Render_Pair;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+         "independent first chunks remain incomplete");
+      Terminal.Core.Complete_Graphics_Event
+        (T1, E1, Terminal.App.Renderer.Graphics_Result (R, E1));
+      Terminal.Core.Complete_Graphics_Event
+        (T2, E2, Terminal.App.Renderer.Graphics_Result (R, E2));
+      Terminal.App.Renderer.Commit_Graphics_Events (R);
+
+      Terminal.Core.Feed
+        (T1,
+         To_Bytes (ASCII.ESC & "_Gq=2,m=0;/w==" & ASCII.ESC & "\"),
+         F1);
+      Terminal.Core.Feed
+        (T2,
+         To_Bytes (ASCII.ESC & "_Gq=2,m=0;/w==" & ASCII.ESC & "\"),
+         F2);
+      Assert
+        (F1 = Terminal.Core.Ok and then F2 = Terminal.Core.Ok,
+         "isolated final chunks feed");
+      Render_Pair;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count > 0,
+            "isolated streams should render at least one image");
+         Assert
+           (Frame.Image_Count > 1,
+            "same image ID coexists in separate streams");
+         Assert
+           (Frame.Image_Count = 2,
+            "isolated streams should not duplicate placements");
+         Assert
+           (Natural (Frame.Images (1).Image_ID) = 55
+            and then Natural (Frame.Images (2).Image_ID) = 55,
+            "isolated images retain their protocol ID");
+         Assert
+           (Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 0) = 16#FF#
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 1) = 16#00#
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (2), 0, 0) = 16#00#
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (2), 0, 1) = 16#FF#,
+            "same-ID stream images retain distinct pixels");
+      end;
+      Terminal.Core.Complete_Graphics_Event
+        (T1, E1, Terminal.App.Renderer.Graphics_Result (R, E1));
+      Terminal.Core.Complete_Graphics_Event
+        (T2, E2, Terminal.App.Renderer.Graphics_Result (R, E2));
+      Terminal.App.Renderer.Commit_Graphics_Events (R);
+
+      Terminal.Core.Feed
+        (T1,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=d,d=I,i=55" & ASCII.ESC & "\"),
+         F1);
+      declare
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 2) :=
+           (1 => Terminal.Core.Snapshot (T1),
+            2 => Terminal.Core.Snapshot (T2));
+      begin
+         Terminal.Core.Peek_Graphics_Event (T1, E1);
+         Snaps (1).Graphics := E1;
+         Snaps (2).Graphics := (others => <>);
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            2,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Terminal.Core.Release (Snaps (1));
+         Terminal.Core.Release (Snaps (2));
+      end;
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok
+            and then Frame.Image_Count = 1
+            and then Natural (Frame.Images (1).Image_ID) = 55
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 1) = 16#FF#,
+            "deleting one stream preserves same-ID image in another");
+      end;
+      Terminal.Core.Complete_Graphics_Event
+        (T1, E1, Terminal.App.Renderer.Graphics_Result (R, E1));
+      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 1_001);
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 1_002);
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+           Objects_Before
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count =
+             Placements_Before,
+         "closing streams releases their graphics resources");
+      Terminal.Core.Finalize (T1);
+      Terminal.Core.Finalize (T2);
+   end;
+
+   declare
+      Screen_T : Terminal.Core.Terminal;
+      Screen_Init : Terminal.Core.Initialize_Status;
+      Screen_Feed : Terminal.Core.Feed_Status;
+      Event : Terminal.Core.Graphics_Event;
+      Objects_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count;
+      Placements_Before : constant Natural :=
+        Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count;
+
+      procedure Render_Current is
+         Snapshot : Terminal.Core.Render_Snapshot :=
+           Terminal.Core.Snapshot (Screen_T);
+      begin
+         Terminal.Core.Peek_Graphics_Event (Screen_T, Event);
+         Snapshot.Graphics := Event;
+         Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
+         Terminal.Core.Release (Snapshot);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "screen-owned graphics render");
+         if Event.Pending then
+            Terminal.Core.Complete_Graphics_Event
+              (Screen_T,
+               Event,
+               Terminal.App.Renderer.Graphics_Result (R, Event));
+            Terminal.App.Renderer.Commit_Graphics_Events (R);
+         end if;
+      end Render_Current;
+   begin
+      Terminal.Core.Initialize (Screen_T, 2, 4, 10, Screen_Init);
+      Assert (Screen_Init = Terminal.Core.Ok, "screen-owned core initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Screen_T, 2_001);
+
+      Terminal.Core.Feed
+        (Screen_T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,i=70,p=1,f=32,s=1,v=1,c=1,r=1,C=1;/wAA/w=="
+            & ASCII.ESC & "\"),
+         Screen_Feed);
+      Assert (Screen_Feed = Terminal.Core.Ok, "primary placement feed");
+      Render_Current;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+         "primary placement visible on primary screen");
+
+      Terminal.Core.Feed
+        (Screen_T, To_Bytes (ASCII.ESC & "[?1049h"), Screen_Feed);
+      Render_Current;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+         "primary placement hidden on alternate screen");
+
+      Terminal.Core.Feed
+        (Screen_T,
+         To_Bytes
+           (ASCII.ESC
+            & "_Gq=2,a=T,i=71,p=1,f=32,s=1,v=1,c=1,r=1,C=1;AP8A/w=="
+            & ASCII.ESC & "\"),
+         Screen_Feed);
+      Assert (Screen_Feed = Terminal.Core.Ok, "alternate placement feed");
+      Render_Current;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
+         and then Natural
+           (Terminal.App.Renderer.Last_Frame (R).Images (1).Image_ID) = 71,
+         "alternate placement visible only on alternate screen");
+
+      Terminal.Core.Feed
+        (Screen_T, To_Bytes (ASCII.ESC & "[?1049l"), Screen_Feed);
+      Render_Current;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
+         and then Natural
+           (Terminal.App.Renderer.Last_Frame (R).Images (1).Image_ID) = 70,
+         "leaving alternate restores primary placement");
+
+      Terminal.Core.Feed
+        (Screen_T, To_Bytes (ASCII.ESC & "[?1049h"), Screen_Feed);
+      Render_Current;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+         "alternate re-entry clears its old placements");
+
+      Terminal.Core.Feed
+        (Screen_T,
+         To_Bytes (ASCII.ESC & "[?1049l" & ASCII.ESC & "[2J"),
+         Screen_Feed);
+      Render_Current;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+         "full-screen erase clears primary placements");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+           Objects_Before + 2
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count =
+             Placements_Before,
+         "screen clears retain image data but retire placements");
+
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 2_001);
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count =
+           Objects_Before
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count =
+             Placements_Before,
+         "screen-owned stream cleanup releases retained image data");
+      Terminal.Core.Finalize (Screen_T);
+   end;
+
+   declare
+      Scroll_T : Terminal.Core.Terminal;
+      Scroll_Init : Terminal.Core.Initialize_Status;
+      Scroll_Feed : Terminal.Core.Feed_Status;
+      Event : Terminal.Core.Graphics_Event;
+      Tabs : Terminal.App.Tabs.Tab_State;
+      Splits : Terminal.App.Splits.Split_State;
+      Initial_Y : Float := 0.0;
+
+      procedure Render_Event is
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+         Result : Terminal.Core.Kitty_Graphics_Result;
+      begin
+         Terminal.Core.Peek_Graphics_Event (Scroll_T, Event);
+         Snaps (1) := Terminal.Core.Snapshot (Scroll_T);
+         Snaps (1).Graphics := Event;
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "scrolling placement event render");
+         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Assert
+           (Result.Code = Terminal.Core.Kitty_OK,
+            "scrolling placement event result");
+         Terminal.Core.Complete_Graphics_Event (Scroll_T, Event, Result);
+         Terminal.App.Renderer.Commit_Graphics_Events (R);
+         Terminal.Core.Release (Snaps (1));
+      end Render_Event;
+
+      procedure Render_Live is
+         Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (Scroll_T);
+      begin
+         Snap.Graphics := (others => <>);
+         Terminal.App.Renderer.Render (R, Snap, Render_Status);
+         Terminal.Core.Release (Snap);
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            "scrolling placement live render");
+      end Render_Live;
+   begin
+      Terminal.Core.Initialize (Scroll_T, 3, 3, 10, Scroll_Init);
+      Assert (Scroll_Init = Terminal.Core.Ok, "scroll graphics initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Scroll_T, 2_050);
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Splits.Initialize (Splits);
+      Terminal.Core.Feed
+        (Scroll_T,
+         To_Bytes
+           (ASCII.ESC & "[2;1H"
+            & ASCII.ESC
+            & "_Gq=2,a=T,i=80,f=32,s=1,v=2,c=1,r=2,C=1;"
+            & "/wAA//8AAP8="
+            & ASCII.ESC & "\"),
+         Scroll_Feed);
+      Assert (Scroll_Feed = Terminal.Core.Ok, "scroll graphics placement feed");
+      Render_Event;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+         "scrolling placement initially visible");
+      Initial_Y := Terminal.App.Renderer.Last_Frame (R).Images (1).Y;
+
+      Terminal.Core.Feed
+        (Scroll_T,
+         To_Bytes (ASCII.ESC & "[3;1H" & ASCII.LF),
+         Scroll_Feed);
+      Render_Live;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
+         and then Terminal.App.Renderer.Last_Frame (R).Images (1).Y =
+           Initial_Y - Float (Terminal.App.Renderer.Cell_Height (R)),
+         "full-screen scroll moves conventional placement with text");
+
+      --  Move the placement wholly into history before exercising clears.
+      Terminal.Core.Feed
+        (Scroll_T, To_Bytes ("" & ASCII.LF), Scroll_Feed);
+      Render_Live;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
+         and then Terminal.App.Renderer.Last_Frame (R).Images (1).Y =
+           Float (Terminal.App.Renderer.Content_Margin)
+         and then Terminal.App.Renderer.Last_Frame (R).Images (1).Height <
+           Float (Terminal.App.Renderer.Cell_Width (R) * 2),
+         "placement crossing the viewport edge is clipped");
+
+      declare
+         History : Terminal.Core.Render_Snapshot :=
+           Terminal.App.Scrollback_View.Snapshot (Scroll_T, 1);
+      begin
+         History.Graphics := (others => <>);
+         Terminal.App.Renderer.Render (R, History, Render_Status);
+         Terminal.Core.Release (History);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok
+         and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1
+         and then Terminal.App.Renderer.Last_Frame (R).Images (1).Height =
+           Float (Terminal.App.Renderer.Cell_Width (R) * 2),
+         "scrollback navigation restores the full retained placement");
+
+      Terminal.Core.Feed
+        (Scroll_T, To_Bytes ("" & ASCII.LF), Scroll_Feed);
+      Render_Live;
+      Assert
+        (Terminal.App.Renderer.Last_Frame (R).Image_Count = 0,
+         "fully scrolled placement leaves the live viewport");
+
+      Terminal.Core.Feed
+        (Scroll_T, To_Bytes (ASCII.ESC & "[2J"), Scroll_Feed);
+      Render_Live;
+      declare
+         History : Terminal.Core.Render_Snapshot :=
+           Terminal.App.Scrollback_View.Snapshot (Scroll_T, 2);
+      begin
+         History.Graphics := (others => <>);
+         Terminal.App.Renderer.Render (R, History, Render_Status);
+         Terminal.Core.Release (History);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok
+         and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+         "viewport erase preserves a placement retained in scrollback");
+
+      Terminal.Core.Feed
+        (Scroll_T,
+         To_Bytes (ASCII.ESC & "_Gq=2,a=d,d=a" & ASCII.ESC & "\"),
+         Scroll_Feed);
+      Render_Event;
+      declare
+         History : Terminal.Core.Render_Snapshot :=
+           Terminal.App.Scrollback_View.Snapshot (Scroll_T, 2);
+      begin
+         History.Graphics := (others => <>);
+         Terminal.App.Renderer.Render (R, History, Render_Status);
+         Terminal.Core.Release (History);
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok
+         and then Terminal.App.Renderer.Last_Frame (R).Image_Count = 1,
+         "d=a preserves placements that are visible only in scrollback");
+
+      declare
+         History_Placements : constant Natural :=
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count;
+      begin
+         Terminal.Core.Feed
+           (Scroll_T,
+            To_Bytes
+              (ASCII.ESC & "[2;1H"
+               & ASCII.ESC & "_Gq=2,a=p,i=80,C=1,c=1,r=1"
+               & ASCII.ESC & "\"),
+            Scroll_Feed);
+         Render_Event;
+         Assert
+           (Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count =
+              History_Placements + 1,
+            "positional-delete fixture placement is installed");
+
+         Terminal.Core.Feed
+           (Scroll_T,
+            To_Bytes
+              (ASCII.ESC & "[3;1H" & ASCII.LF
+               & ASCII.ESC & "_Gq=2,a=d,d=p,x=1,y=1"
+               & ASCII.ESC & "\"),
+            Scroll_Feed);
+         Render_Event;
+         Assert
+           (Terminal.App.Renderer.Diagnostics (R).Kitty_Placement_Count =
+              History_Placements,
+            "positional delete observes scrolling preceding its command");
+      end;
+
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 2_050);
+      Terminal.Core.Finalize (Scroll_T);
+   end;
+
+   declare
+      Local_T : Terminal.Core.Terminal;
+      Local_Init : Terminal.Core.Initialize_Status;
+      Local_Feed : Terminal.Core.Feed_Status;
+      Event : Terminal.Core.Graphics_Event;
+      Tabs : Terminal.App.Tabs.Tab_State;
+      Splits : Terminal.App.Splits.Split_State;
+      Path : constant String := "/tmp/terminal-renderer-local-graphics.bin";
+      Encoded_Path : constant String :=
+        "L3RtcC90ZXJtaW5hbC1yZW5kZXJlci1sb2NhbC1ncmFwaGljcy5iaW4=";
+      Pixels : aliased Byte_Array :=
+        (1 => 16#FF#, 2 => 0, 3 => 0, 4 => 16#FF#);
+      Compressed_PNG : aliased Byte_Array :=
+        (16#78#, 16#9C#, 16#EB#, 16#0C#, 16#F0#, 16#73#, 16#E7#,
+         16#E5#, 16#92#, 16#E2#, 16#62#, 16#60#, 16#60#, 16#E0#,
+         16#F5#, 16#F4#, 16#70#, 16#09#, 16#02#, 16#D2#, 16#8C#,
+         16#20#, 16#CC#, 16#C1#, 16#04#, 16#24#, 16#27#, 16#94#,
+         16#07#, 16#DF#, 16#03#, 16#4B#, 16#B8#, 16#38#, 16#86#,
+         16#54#, 16#CC#, 16#49#, 16#FE#, 16#71#, 16#FE#, 16#00#,
+         16#03#, 16#03#, 16#33#, 16#23#, 16#23#, 16#C3#, 16#49#,
+         16#86#, 16#63#, 16#53#, 16#1E#, 16#01#, 16#25#, 16#18#,
+         16#3C#, 16#5D#, 16#FD#, 16#5C#, 16#D6#, 16#39#, 16#25#,
+         16#34#, 16#01#, 16#00#, 16#D5#, 16#D6#, 16#10#, 16#4B#);
+      FD : GNAT.OS_Lib.File_Descriptor;
+      Written : Integer;
+      Deleted : Boolean;
+
+      procedure Process
+        (Command : String;
+         Expected : Terminal.Core.Kitty_Graphics_Result_Code;
+         Label_Text : String)
+      is
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+         Result : Terminal.Core.Kitty_Graphics_Result;
+      begin
+         Terminal.Core.Feed
+           (Local_T,
+            To_Bytes (ASCII.ESC & "_" & Command & ASCII.ESC & "\"),
+            Local_Feed);
+         Assert (Local_Feed = Terminal.Core.Ok, Label_Text & " feed");
+         Terminal.Core.Peek_Graphics_Event (Local_T, Event);
+         Snaps (1) := Terminal.Core.Snapshot (Local_T);
+         Snaps (1).Graphics := Event;
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Terminal.Core.Release (Snaps (1));
+         Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
+         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Assert (Result.Code = Expected, Label_Text & " result");
+         Terminal.Core.Complete_Graphics_Event (Local_T, Event, Result);
+         Terminal.App.Renderer.Commit_Graphics_Events (R);
+      end Process;
+   begin
+      if Ada.Directories.Exists (Path) then
+         GNAT.OS_Lib.Delete_File (Path, Deleted);
+      end if;
+      FD := GNAT.OS_Lib.Create_File (Path, GNAT.OS_Lib.Binary);
+      Assert (FD /= GNAT.OS_Lib.Invalid_FD, "local graphics fixture create");
+      Written := GNAT.OS_Lib.Write (FD, Pixels (1)'Address, Pixels'Length);
+      GNAT.OS_Lib.Close (FD);
+      Assert (Written = Pixels'Length, "local graphics fixture write");
+
+      Terminal.Core.Initialize (Local_T, 1, 2, 10, Local_Init);
+      Assert (Local_Init = Terminal.Core.Ok, "local graphics core initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Local_T, 2_101);
+      Terminal.App.Renderer.Set_Graphics_Access_Policy
+        (R, Terminal.App.Graphics_Transport.Trusted_Access_Policy);
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Splits.Initialize (Splits);
+      Process
+        ("Gq=2,a=T,t=f,i=81,f=32,s=1,v=1,c=1,r=1,C=1;"
+         & Encoded_Path,
+         Terminal.Core.Kitty_OK,
+         "regular-file graphics");
+      declare
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+      begin
+         Assert
+           (Frame.Image_Count = 1
+            and then Natural (Frame.Images (1).Image_ID) = 81
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 0) = 16#FF#
+            and then Terminal.App.Render_Model.Image_Decoded_Row_Byte
+              (Frame.Images (1), 0, 3) = 16#FF#,
+            "regular-file graphics decoded pixels");
+      end;
+      Process
+        ("Gq=2,a=t,t=f,i=82,f=32,s=1,v=1;L2Rldi9udWxs",
+         Terminal.Core.Kitty_EBADF,
+         "uniform local-file failure");
+      FD := GNAT.OS_Lib.Create_File (Path, GNAT.OS_Lib.Binary);
+      Assert
+        (FD /= GNAT.OS_Lib.Invalid_FD,
+         "compressed local PNG fixture create");
+      Written :=
+        GNAT.OS_Lib.Write
+          (FD, Compressed_PNG (1)'Address, Compressed_PNG'Length);
+      GNAT.OS_Lib.Close (FD);
+      Assert
+        (Written = Compressed_PNG'Length,
+         "compressed local PNG fixture write");
+      Process
+        ("Ga=q,t=f,i=83,f=100,o=z;" & Encoded_Path,
+         Terminal.Core.Kitty_OK,
+         "local compressed PNG query self-sizes inflated data");
+      GNAT.OS_Lib.Delete_File (Path, Deleted);
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 2_101);
+      Terminal.App.Renderer.Set_Graphics_Access_Policy
+        (R, Terminal.App.Graphics_Transport.Default_Access_Policy);
+      Terminal.Core.Finalize (Local_T);
+   end;
+
+   declare
+      Animation_T : Terminal.Core.Terminal;
+      Animation_Init : Terminal.Core.Initialize_Status;
+      Animation_Feed : Terminal.Core.Feed_Status;
+      Event : Terminal.Core.Graphics_Event;
+      Tabs : Terminal.App.Tabs.Tab_State;
+      Splits : Terminal.App.Splits.Split_State;
+
+      procedure Process
+        (Command : String;
+         Expected : Terminal.Core.Kitty_Graphics_Result_Code;
+         Label_Text : String)
+      is
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+         Result : Terminal.Core.Kitty_Graphics_Result;
+      begin
+         Terminal.Core.Feed
+           (Animation_T,
+            To_Bytes (ASCII.ESC & "_" & Command & ASCII.ESC & "\"),
+            Animation_Feed);
+         Assert (Animation_Feed = Terminal.Core.Ok, Label_Text & " feed");
+         Terminal.Core.Peek_Graphics_Event (Animation_T, Event);
+         Snaps (1) := Terminal.Core.Snapshot (Animation_T);
+         Snaps (1).Graphics := Event;
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Terminal.Core.Release (Snaps (1));
+         Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
+         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Assert (Result.Code = Expected, Label_Text & " result");
+         Terminal.Core.Complete_Graphics_Event (Animation_T, Event, Result);
+         Terminal.App.Renderer.Commit_Graphics_Events (R);
+      end Process;
+
+      procedure Assert_Pixel
+        (X : Natural;
+         Component : Natural;
+         Expected : Byte;
+         Label_Text : String)
+      is
+         Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+           Terminal.App.Renderer.Last_Frame (R);
+         Actual : Terminal.Common.Bytes.Byte := 0;
+      begin
+         Assert (Frame.Image_Count = 1, Label_Text & " image count");
+         Actual := Terminal.App.Render_Model.Image_Decoded_Row_Byte
+           (Frame.Images (1), 0, X * 4 + Component);
+         Assert
+           (Actual = Expected,
+            Label_Text);
+      end Assert_Pixel;
+
+      procedure Render_Animation (Label_Text : String) is
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
+      begin
+         Snaps (1) := Terminal.Core.Snapshot (Animation_T);
+         Snaps (1).Graphics := (others => <>);
+         Terminal.App.Renderer.Render_App
+           (R,
+            Snaps,
+            1,
+            Terminal.App.Tabs.Snapshot (Tabs),
+            Terminal.App.Splits.Snapshot (Splits),
+            Render_Status);
+         Terminal.Core.Release (Snaps (1));
+         Assert
+           (Render_Status = Terminal.App.Renderer.Ok,
+            Label_Text & " render");
+      end Render_Animation;
+   begin
+      Terminal.Core.Initialize (Animation_T, 1, 2, 10, Animation_Init);
+      Assert
+        (Animation_Init = Terminal.Core.Ok,
+         "animation core initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Animation_T, 2_102);
+      Terminal.App.Tabs.Initialize (Tabs);
+      Terminal.App.Splits.Initialize (Splits);
+
+      Process
+        ("Gq=2,a=T,i=90,f=32,s=2,v=1,c=2,r=1,C=1;"
+         & "/wAA/wD/AP8=",
+         Terminal.Core.Kitty_OK,
+         "animation root");
+      Assert_Pixel (0, 0, 16#FF#, "animation root red");
+
+      Process
+        ("Gq=2,a=f,i=90,f=32,s=2,v=1;AAD/////AP8=",
+         Terminal.Core.Kitty_OK,
+         "animation frame");
+      Process
+        ("Gq=2,a=f,i=90,f=32,r=2,s=2,v=1,X=1,o=z;"
+         & "eJxjYPgPBAz/ARL1BPw=",
+         Terminal.Core.Kitty_OK,
+         "compressed animation frame edit");
+      Process
+        ("Gq=2,a=a,i=90,c=2",
+         Terminal.Core.Kitty_OK,
+         "animation select frame");
+      Assert_Pixel (0, 2, 16#FF#, "animation selected blue frame");
+
+      Process
+        ("Gq=2,a=f,i=90,f=32,r=2,x=1,y=0,s=1,v=1,X=1;////gA==",
+         Terminal.Core.Kitty_OK,
+         "animation partial edit");
+      Assert_Pixel (1, 0, 16#FF#, "animation edited red");
+      Assert_Pixel (1, 3, 16#80#, "animation edited alpha");
+
+      Process
+        ("Gq=2,a=c,i=90,r=2,c=1,X=0,Y=0,x=1,y=0,w=1,h=1,C=1",
+         Terminal.Core.Kitty_OK,
+         "animation compose");
+      Process
+        ("Gq=2,a=a,i=90,c=1",
+         Terminal.Core.Kitty_OK,
+         "animation select root");
+      Assert_Pixel (1, 2, 16#FF#, "animation composed blue root");
+
+      Process
+        ("Gq=2,a=f,i=90,f=32,r=2,s=2,v=1,m=1;AAD/",
+         Terminal.Core.Kitty_No_Response,
+         "animation first chunk");
+      Process
+        ("Gq=2,a=f,m=0;////AP8=",
+         Terminal.Core.Kitty_OK,
+         "animation final chunk");
+      Process
+        ("Gq=2,a=a,i=90,c=2",
+         Terminal.Core.Kitty_OK,
+         "animation select chunked frame");
+      Assert_Pixel (1, 0, 16#FF#, "animation chunked yellow frame");
+
+      Process
+        ("Gq=2,a=a,i=90,r=1,z=-1",
+         Terminal.Core.Kitty_OK,
+         "animation root gap control");
+      Process
+        ("Gq=2,a=a,i=90,r=2,z=-1",
+         Terminal.Core.Kitty_OK,
+         "animation frame gap control");
+      Process
+        ("Gq=2,a=a,i=90,s=3,c=1,v=2",
+         Terminal.Core.Kitty_OK,
+         "animation finite playback");
+      Render_Animation ("animation first advance");
+      Assert_Pixel (1, 2, 16#FF#, "animation first loop returns to root");
+      Render_Animation ("animation first loop");
+      Assert_Pixel (1, 0, 16#FF#, "animation stops on final frame");
+      Render_Animation ("animation stopped stability");
+      Assert_Pixel (1, 0, 16#FF#, "animation stopped frame remains stable");
+
+      Process
+        ("Gq=2,a=a,i=90,s=2,c=1",
+         Terminal.Core.Kitty_OK,
+         "animation loading playback");
+      Render_Animation ("animation loading reaches tail");
+      Assert_Pixel (1, 0, 16#FF#, "animation loading tail frame");
+      Process
+        ("Gq=2,a=f,i=90,f=32,s=2,v=1;AP8A/wD/AP8=",
+         Terminal.Core.Kitty_OK,
+         "animation append while loading");
+      Render_Animation ("animation loading consumes appended frame");
+      Assert_Pixel (0, 1, 16#FF#, "animation loading appended green frame");
+
+      declare
+         Original : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
+           Terminal.App.Renderer.Graphics_Resource_Limit (R);
+         Tight_Limits : Terminal.App.Renderer.Graphics_Resource_Limits :=
+           Original;
+      begin
+         Tight_Limits.Animation_Frames := 2;
+         Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight_Limits);
+         Process
+           ("Gq=2,a=f,i=90,f=32,s=2,v=1;/////wAAAP8=",
+            Terminal.Core.Kitty_ENOSPC,
+            "animation frame quota");
+         Assert
+           (Terminal.App.Renderer.Diagnostics (R).
+              Kitty_Animation_Frame_Count = 2,
+            "animation frame quota accounting");
+
+         Tight_Limits.Animation_Frames := Original.Animation_Frames;
+         Tight_Limits.Per_Image_Bytes := 7;
+         Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight_Limits);
+         Process
+           ("Gq=2,a=f,i=90,f=32,r=2,s=2,v=1,X=1;/////wAAAP8=",
+            Terminal.Core.Kitty_ENOSPC,
+            "animation decoded byte quota");
+         Assert
+           (Terminal.App.Renderer.Diagnostics (R).
+              Kitty_Animation_Frame_Count = 2,
+            "rejected animation edit preserves frame accounting");
+         Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Original);
+      end;
+
+      Process
+        ("Gq=2,a=d,d=f,i=90",
+         Terminal.Core.Kitty_OK,
+         "animation delete frames");
+      Process
+        ("Gq=2,a=a,i=90,c=2",
+         Terminal.Core.Kitty_ENOENT,
+         "animation deleted frame missing");
+
+      Terminal.App.Renderer.Release_Graphics_Stream (R, 2_102);
+      Terminal.Core.Finalize (Animation_T);
    end;
 
    Terminal.App.Renderer.Finalize (R);

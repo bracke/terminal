@@ -26,7 +26,10 @@ package body Terminal.App.Theme is
                Default_FG => (0.86, 0.88, 0.88, 1.0),
                Default_BG => (0.03, 0.035, 0.04, 1.0),
                Cursor_BG  => (0.86, 0.88, 0.88, 1.0),
-               Cursor_FG  => (0.03, 0.035, 0.04, 1.0));
+               Cursor_FG  => (0.03, 0.035, 0.04, 1.0),
+               Selection_BG => (0.25, 0.45, 0.86, 1.0),
+               Selection_FG => (0.95, 0.95, 0.95, 1.0),
+               URL_Highlight => (0.38, 0.88, 0.92, 1.0));
          when Light =>
             return
               (Palette =>
@@ -49,7 +52,10 @@ package body Terminal.App.Theme is
                Default_FG => (0.11, 0.12, 0.13, 1.0),
                Default_BG => (0.97, 0.97, 0.95, 1.0),
                Cursor_BG  => (0.11, 0.12, 0.13, 1.0),
-               Cursor_FG  => (0.97, 0.97, 0.95, 1.0));
+               Cursor_FG  => (0.97, 0.97, 0.95, 1.0),
+               Selection_BG => (0.10, 0.32, 0.78, 1.0),
+               Selection_FG => (0.97, 0.97, 0.95, 1.0),
+               URL_Highlight => (0.00, 0.48, 0.58, 1.0));
          when High_Contrast =>
             return
               (Palette =>
@@ -72,7 +78,10 @@ package body Terminal.App.Theme is
                Default_FG => (1.00, 1.00, 1.00, 1.0),
                Default_BG => (0.00, 0.00, 0.00, 1.0),
                Cursor_BG  => (1.00, 1.00, 1.00, 1.0),
-               Cursor_FG  => (0.00, 0.00, 0.00, 1.0));
+               Cursor_FG  => (0.00, 0.00, 0.00, 1.0),
+               Selection_BG => (0.25, 0.55, 1.00, 1.0),
+               Selection_FG => (1.00, 1.00, 1.00, 1.0),
+               URL_Highlight => (0.10, 1.00, 1.00, 1.0));
       end case;
    end Built_In;
 

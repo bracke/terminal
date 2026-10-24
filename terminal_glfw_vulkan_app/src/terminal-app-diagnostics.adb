@@ -1,6 +1,7 @@
 with Ada.Strings;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
+with Interfaces;
 
 with Terminal.Common.Bytes;
 with Terminal.App;
@@ -27,6 +28,7 @@ package body Terminal.App.Diagnostics is
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
+   use type Interfaces.Unsigned_64;
 
    function Natural_Label (Value : Natural) return String is
      (Ada.Strings.Fixed.Trim (Natural'Image (Value), Ada.Strings.Left));
@@ -155,6 +157,24 @@ package body Terminal.App.Diagnostics is
      Terminal.App.Render_Model.Image_Decode_Status :=
        Terminal.App.Render_Model.Image_Decode_Not_Attempted;
    Last_Image_Placeholder : Boolean := False;
+   Last_Image_Object_Count : Natural := 0;
+   Last_Image_Object_Bytes : Natural := 0;
+   Last_Placement_Count : Natural := 0;
+   Last_Animation_Frame_Count : Natural := 0;
+   Last_Graphics_Event_Count : Interfaces.Unsigned_64 := 0;
+   Last_Kitty_Command_Count : Interfaces.Unsigned_64 := 0;
+   Last_Kitty_Success_Count : Interfaces.Unsigned_64 := 0;
+   Last_Kitty_Error_Count : Interfaces.Unsigned_64 := 0;
+   Last_Image_Install_Count : Interfaces.Unsigned_64 := 0;
+   Last_Image_Installed_Bytes : Interfaces.Unsigned_64 := 0;
+   Last_Image_Eviction_Count : Interfaces.Unsigned_64 := 0;
+   Last_Placement_Create_Count : Interfaces.Unsigned_64 := 0;
+   Last_Placement_Delete_Count : Interfaces.Unsigned_64 := 0;
+   Last_Transport_Failure_Count : Interfaces.Unsigned_64 := 0;
+   Last_Decode_Failure_Count : Interfaces.Unsigned_64 := 0;
+   Last_Allocation_Failure_Count : Interfaces.Unsigned_64 := 0;
+   Last_Animation_Advance_Count : Interfaces.Unsigned_64 := 0;
+   Last_Chunk_Cancel_Count : Interfaces.Unsigned_64 := 0;
    Last_Render_Status : Terminal.App.Renderer.Render_Status :=
      Terminal.App.Renderer.Not_Initialized;
    Last_Presenter_Status : Terminal.App.Vulkan_Presenter.Present_Status :=
@@ -218,6 +238,8 @@ package body Terminal.App.Diagnostics is
    Last_Device_Image_Texture_Descriptor_Capacity : Natural := 0;
    Last_Device_Image_Texture_Descriptor_Bound_Count : Natural := 0;
    Last_Atlas_Upload_Count : Natural := 0;
+   Last_Image_Texture_Upload_Count : Natural := 0;
+   Last_Image_Texture_Cache_Hit_Count : Natural := 0;
 
    procedure Put (Message : String) is
    begin
@@ -920,6 +942,33 @@ package body Terminal.App.Diagnostics is
           S.Renderer.Last_Image_Decode_Status /= Last_Image_Decode_Status
         or else
           S.Renderer.Last_Image_Placeholder /= Last_Image_Placeholder
+        or else S.Renderer.Image_Object_Count /= Last_Image_Object_Count
+        or else S.Renderer.Image_Object_Bytes /= Last_Image_Object_Bytes
+        or else S.Renderer.Placement_Count /= Last_Placement_Count
+        or else
+          S.Renderer.Kitty_Animation_Frame_Count /=
+            Last_Animation_Frame_Count
+        or else
+          S.Renderer.Graphics_Event_Count /= Last_Graphics_Event_Count
+        or else S.Renderer.Kitty_Command_Count /= Last_Kitty_Command_Count
+        or else S.Renderer.Kitty_Success_Count /= Last_Kitty_Success_Count
+        or else S.Renderer.Kitty_Error_Count /= Last_Kitty_Error_Count
+        or else S.Renderer.Image_Install_Count /= Last_Image_Install_Count
+        or else
+          S.Renderer.Image_Installed_Bytes /= Last_Image_Installed_Bytes
+        or else S.Renderer.Image_Eviction_Count /= Last_Image_Eviction_Count
+        or else
+          S.Renderer.Placement_Create_Count /= Last_Placement_Create_Count
+        or else
+          S.Renderer.Placement_Delete_Count /= Last_Placement_Delete_Count
+        or else
+          S.Renderer.Transport_Failure_Count /= Last_Transport_Failure_Count
+        or else S.Renderer.Decode_Failure_Count /= Last_Decode_Failure_Count
+        or else
+          S.Renderer.Allocation_Failure_Count /= Last_Allocation_Failure_Count
+        or else
+          S.Renderer.Animation_Advance_Count /= Last_Animation_Advance_Count
+        or else S.Renderer.Chunk_Cancel_Count /= Last_Chunk_Cancel_Count
         or else S.Renderer.Last_Shaped_Glyph_Count /= Last_Shaped_Glyphs
         or else
           S.Renderer.Last_Shaping_Fallback_Count /=
@@ -942,7 +991,6 @@ package body Terminal.App.Diagnostics is
    function Presenter_Changed (S : Snapshot) return Boolean is
    begin
       return S.Presenter.Last_Status /= Last_Presenter_Status
-        or else S.Presenter.Accepted_Frames /= Last_Accepted_Frames
         or else S.Presenter.Rejected_Frames /= Last_Rejected_Frames
         or else
           S.Presenter.Last_Image_Command_Count /= Last_Presenter_Image_Count
@@ -1062,7 +1110,10 @@ package body Terminal.App.Diagnostics is
             Last_Device_Image_Texture_Descriptor_Bound_Count
         or else
           S.Presenter.Logical_Device.Atlas_Upload_Count /=
-            Last_Atlas_Upload_Count;
+            Last_Atlas_Upload_Count
+        or else
+          S.Presenter.Logical_Device.Image_Texture_Upload_Count /=
+            Last_Image_Texture_Upload_Count;
    end Presenter_Changed;
 
    procedure Remember (S : Snapshot) is
@@ -1146,6 +1197,24 @@ package body Terminal.App.Diagnostics is
         S.Renderer.Last_Image_Preview_Decode_Complete;
       Last_Image_Decode_Status := S.Renderer.Last_Image_Decode_Status;
       Last_Image_Placeholder := S.Renderer.Last_Image_Placeholder;
+      Last_Image_Object_Count := S.Renderer.Image_Object_Count;
+      Last_Image_Object_Bytes := S.Renderer.Image_Object_Bytes;
+      Last_Placement_Count := S.Renderer.Placement_Count;
+      Last_Animation_Frame_Count := S.Renderer.Kitty_Animation_Frame_Count;
+      Last_Graphics_Event_Count := S.Renderer.Graphics_Event_Count;
+      Last_Kitty_Command_Count := S.Renderer.Kitty_Command_Count;
+      Last_Kitty_Success_Count := S.Renderer.Kitty_Success_Count;
+      Last_Kitty_Error_Count := S.Renderer.Kitty_Error_Count;
+      Last_Image_Install_Count := S.Renderer.Image_Install_Count;
+      Last_Image_Installed_Bytes := S.Renderer.Image_Installed_Bytes;
+      Last_Image_Eviction_Count := S.Renderer.Image_Eviction_Count;
+      Last_Placement_Create_Count := S.Renderer.Placement_Create_Count;
+      Last_Placement_Delete_Count := S.Renderer.Placement_Delete_Count;
+      Last_Transport_Failure_Count := S.Renderer.Transport_Failure_Count;
+      Last_Decode_Failure_Count := S.Renderer.Decode_Failure_Count;
+      Last_Allocation_Failure_Count := S.Renderer.Allocation_Failure_Count;
+      Last_Animation_Advance_Count := S.Renderer.Animation_Advance_Count;
+      Last_Chunk_Cancel_Count := S.Renderer.Chunk_Cancel_Count;
       Last_Render_Status := S.Renderer.Last_Render_Status;
       Last_Presenter_Status := S.Presenter.Last_Status;
       Last_Accepted_Frames := S.Presenter.Accepted_Frames;
@@ -1223,6 +1292,10 @@ package body Terminal.App.Diagnostics is
         S.Presenter.Logical_Device.Image_Texture_Descriptor_Bound_Count;
       Last_Atlas_Upload_Count :=
         S.Presenter.Logical_Device.Atlas_Upload_Count;
+      Last_Image_Texture_Upload_Count :=
+        S.Presenter.Logical_Device.Image_Texture_Upload_Count;
+      Last_Image_Texture_Cache_Hit_Count :=
+        S.Presenter.Logical_Device.Image_Texture_Cache_Hit_Count;
    end Remember;
 
    function Image_Texture_Pipeline_Status_Label (S : Snapshot) return String is
@@ -1373,6 +1446,12 @@ package body Terminal.App.Diagnostics is
          & " vertices=" & Natural'Image (S.Presenter.Last_Vertex_Count)
          & " atlas_uploads=" &
            Natural'Image (S.Presenter.Logical_Device.Atlas_Upload_Count)
+         & " image_texture_uploads=" &
+           Natural'Image
+             (S.Presenter.Logical_Device.Image_Texture_Upload_Count)
+         & " image_texture_cache_hits=" &
+           Natural'Image
+             (S.Presenter.Logical_Device.Image_Texture_Cache_Hit_Count)
          & " pty_overflows=" & Natural'Image (S.PTY_Overflows)
          & " input_overflows=" & Natural'Image (S.Input_Overflows)
          & " pty_queue_status=" & PTY_Queue_Status
@@ -1516,6 +1595,39 @@ package body Terminal.App.Diagnostics is
          & " render=" &
            Terminal.App.Renderer.Render_Status'Image
              (S.Renderer.Last_Render_Status)
+         & " graphics_events=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Graphics_Event_Count)
+         & " kitty_commands=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Kitty_Command_Count)
+         & " kitty_ok=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Kitty_Success_Count)
+         & " kitty_errors=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Kitty_Error_Count)
+         & " image_objects=" & Natural'Image (S.Renderer.Image_Object_Count)
+         & " image_bytes=" & Natural'Image (S.Renderer.Image_Object_Bytes)
+         & " image_installs=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Image_Install_Count)
+         & " installed_bytes=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Image_Installed_Bytes)
+         & " image_evictions=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Image_Eviction_Count)
+         & " placements=" & Natural'Image (S.Renderer.Placement_Count)
+         & " placement_creates=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Placement_Create_Count)
+         & " placement_deletes=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Placement_Delete_Count)
+         & " animation_frames=" &
+           Natural'Image (S.Renderer.Kitty_Animation_Frame_Count)
+         & " animation_advances=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Animation_Advance_Count)
+         & " transport_failures=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Transport_Failure_Count)
+         & " decode_failures=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Decode_Failure_Count)
+         & " allocation_failures=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Allocation_Failure_Count)
+         & " chunk_cancels=" &
+           Interfaces.Unsigned_64'Image (S.Renderer.Chunk_Cancel_Count)
          & " missing_glyphs=" &
            Natural'Image (S.Renderer.Missing_Glyph_Count)
          & " shaped_glyphs=" &

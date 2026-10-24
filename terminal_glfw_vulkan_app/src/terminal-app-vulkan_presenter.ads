@@ -12,6 +12,7 @@ package Terminal.App.Vulkan_Presenter is
    type Init_Status is
      (Ok,
       Context_Not_Initialized,
+      Device_Lost,
       Surface_Unavailable,
       Surface_Query_Failed,
       No_Suitable_Device,
@@ -58,6 +59,8 @@ package Terminal.App.Vulkan_Presenter is
       Not_Initialized,
       Invalid_Context,
       Invalid_Batch,
+      Device_Lost,
+      Resources_In_Flight,
       Upload_Failed,
       Atlas_Upload_Failed,
       Render_Failed,
@@ -128,8 +131,32 @@ package Terminal.App.Vulkan_Presenter is
       Batch   : Terminal.App.Vulkan_Submit.Submission_Batch;
       Status  : out Present_Status);
 
+   --  Present the most recently uploaded batch without remapping the vertex
+   --  buffer or rebuilding image/atlas resources.  This is intended for
+   --  compositor pacing frames where terminal and renderer state are
+   --  unchanged.
+   procedure Present_Retained
+     (P       : in out Presenter;
+      Context : Terminal.App.Vulkan_Context.Context;
+      Status  : out Present_Status);
+
+   subtype Readback_Status is Terminal.App.Vulkan_Device.Readback_Status;
+   Readback_Ok : constant Readback_Status :=
+     Terminal.App.Vulkan_Device.Readback_Ok;
+
+   procedure Enable_Framebuffer_Readback
+     (P      : in out Presenter;
+      Status : out Readback_Status);
+
+   procedure Readback_Pixel
+     (P      : in out Presenter;
+      X, Y   : Natural;
+      Red, Green, Blue, Alpha : out Terminal.Common.Bytes.Byte;
+      Status : out Readback_Status);
+
    procedure Finalize (P : in out Presenter);
 
+   function Is_Initialized (P : Presenter) return Boolean;
    function Diagnostics (P : Presenter) return Diagnostic_Snapshot;
    function Status_Label (Status : Present_Status) return String;
    function Image_Status_Label
@@ -180,6 +207,7 @@ private
       Last_Frame_Height : Natural := 0;
       Last_Atlas_Bytes  : Natural := 0;
       Atlas_Dirty       : Boolean := False;
+      Has_Uploaded_Frame : Boolean := False;
       Device            : Terminal.App.Vulkan_Device.Selection;
       Logical_Device    : Terminal.App.Vulkan_Device.Logical_Device;
    end record;

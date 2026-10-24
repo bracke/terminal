@@ -1,4 +1,5 @@
 with Terminal.App.Theme;
+with Terminal.App.Vulkan_Submit;
 
 package Terminal.App.Config is
    Max_Status_Label_Length : constant := 128;
@@ -12,6 +13,24 @@ package Terminal.App.Config is
    Default_Startup_Rows : constant Positive := 24;
    Default_Startup_Cols : constant Positive := 80;
    Max_Startup_Cells : constant Positive := 1_000;
+   Max_Graphics_Transaction_Bytes : constant Positive := 8 * 1024 * 1024;
+   Max_Graphics_Pending_Events : constant Positive := 4_096;
+   Max_Graphics_Pending_Bytes : constant Positive := 16 * 1024 * 1024;
+   Max_Graphics_Deferred_Input_Bytes : constant Positive := 16 * 1024 * 1024;
+   Max_Graphics_Image_Objects : constant Positive :=
+     Terminal.App.Vulkan_Submit.Max_Image_Atlas_Sources;
+   Max_Graphics_Image_Bytes : constant Positive := 64 * 1024 * 1024;
+   Max_Graphics_Placements : constant Positive := 16 * 1024;
+   Max_Graphics_Animation_Frames : constant Positive := 4_096;
+   Max_Graphics_Pixel_Dimension : constant Positive := 16_384;
+   Max_Graphics_GPU_Atlas_Bytes : constant Positive :=
+     Terminal.App.Vulkan_Submit.Max_Image_Atlas_Bytes;
+   Max_Graphics_GPU_Atlas_Dimension : constant Positive :=
+     Terminal.App.Vulkan_Submit.Max_Image_Atlas_Dimension;
+   Min_Graphics_GPU_Atlas_Bytes : constant Positive :=
+     Terminal.App.Vulkan_Submit.Min_Image_Atlas_Bytes;
+   Min_Graphics_GPU_Atlas_Dimension : constant Positive :=
+     Terminal.App.Vulkan_Submit.Min_Image_Atlas_Dimension;
 
    type Config is record
       Color_Theme : Terminal.App.Theme.Theme_Name :=
@@ -22,6 +41,25 @@ package Terminal.App.Config is
       Window_Height : Positive := Default_Window_Height;
       Startup_Rows : Positive := Default_Startup_Rows;
       Startup_Cols : Positive := Default_Startup_Cols;
+      Kitty_File_Transfer : Boolean := False;
+      Kitty_Temporary_Transfer : Boolean := True;
+      Kitty_Shared_Memory : Boolean := True;
+      ITerm2_File_Downloads : Boolean := False;
+      Graphics_Transaction_Bytes : Positive :=
+        Max_Graphics_Transaction_Bytes;
+      Graphics_Pending_Events : Positive := Max_Graphics_Pending_Events;
+      Graphics_Pending_Bytes : Positive := Max_Graphics_Pending_Bytes;
+      Graphics_Deferred_Input_Bytes : Positive :=
+        Max_Graphics_Deferred_Input_Bytes;
+      Graphics_Image_Objects : Positive := Max_Graphics_Image_Objects;
+      Graphics_Image_Bytes : Positive := Max_Graphics_Image_Bytes;
+      Graphics_Per_Image_Bytes : Positive := Max_Graphics_Image_Bytes;
+      Graphics_Placements : Positive := Max_Graphics_Placements;
+      Graphics_Animation_Frames : Positive :=
+        Max_Graphics_Animation_Frames;
+      Graphics_Pixel_Dimension : Positive := Max_Graphics_Pixel_Dimension;
+      Graphics_GPU_Atlas_Bytes : Positive := 4 * 1024 * 1024;
+      Graphics_GPU_Atlas_Dimension : Positive := 4_096;
    end record;
 
    type Line_Status is

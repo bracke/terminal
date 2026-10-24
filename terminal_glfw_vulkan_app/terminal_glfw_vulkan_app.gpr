@@ -4,6 +4,7 @@ with "../terminal_pty/terminal_pty.gpr";
 with "../glfw_vulkan/glfw_vulkan.gpr";
 with "../../textrender/textrender.gpr";
 with "../../jpeglib/jpeglib.gpr";
+with "../../giflib/giflib.gpr";
 with "df_vulkan";
 with "zlib";
 

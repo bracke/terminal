@@ -53,6 +53,8 @@ package body Terminal.App.Vulkan_Presenter is
       case Status is
          when VD.Ok =>
             return Ok;
+         when VD.Device_Lost =>
+            return Device_Lost;
          when VD.Acquire_Image_Failed =>
             return Acquire_Image_Failed;
          when VD.Swapchain_Out_Of_Date =>
@@ -143,6 +145,7 @@ package body Terminal.App.Vulkan_Presenter is
       P.Last_Frame_Height := 0;
       P.Last_Atlas_Bytes := 0;
       P.Atlas_Dirty := False;
+      P.Has_Uploaded_Frame := False;
    end Remember_Rejection;
 
    procedure Initialize
@@ -184,6 +187,7 @@ package body Terminal.App.Vulkan_Presenter is
       P.Last_Frame_Height := 0;
       P.Last_Atlas_Bytes := 0;
       P.Atlas_Dirty := False;
+      P.Has_Uploaded_Frame := False;
 
       if not VC.Is_Initialized (Context) then
          Status := Context_Not_Initialized;
@@ -221,6 +225,9 @@ package body Terminal.App.Vulkan_Presenter is
          case Create_Status is
             when VD.Ok =>
                null;
+            when VD.Device_Lost =>
+               Status := Device_Lost;
+               return;
             when VD.Swapchain_Extension_Missing =>
                Status := Swapchain_Extension_Missing;
                return;
@@ -343,7 +350,11 @@ package body Terminal.App.Vulkan_Presenter is
      (P       : in out Presenter;
       Context : VC.Context;
       Batch   : VS.Submission_Batch;
-      Status  : out Present_Status) is
+      Status  : out Present_Status)
+   is
+      Previous_Preview_Length : constant Natural := Natural'Min
+        (P.Last_Image_Decoded_Preview_Length,
+         RM.Max_Image_Decoded_Preview_Length);
    begin
       if not P.Initialized then
          Status := Not_Initialized;
@@ -378,8 +389,21 @@ package body Terminal.App.Vulkan_Presenter is
          Upload_Status : VD.Create_Status;
          Render_Status : VD.Render_Status;
       begin
+         --  A failed upload may have replaced or invalidated a previous GPU
+         --  buffer, so retained presentation is permitted only after this
+         --  upload has completed successfully.
+         P.Has_Uploaded_Frame := False;
          VD.Upload (P.Logical_Device, P.Device, Batch, Upload_Status);
          if Upload_Status /= VD.Ok then
+            if Upload_Status = VD.Device_Lost then
+               Status := Device_Lost;
+               Remember_Rejection (P, Status);
+               return;
+            elsif Upload_Status = VD.Resources_In_Flight then
+               Status := Resources_In_Flight;
+               Remember_Rejection (P, Status);
+               return;
+            end if;
             case Upload_Status is
                when VD.Atlas_Too_Large
                   | VD.Create_Atlas_Image_Failed
@@ -398,6 +422,7 @@ package body Terminal.App.Vulkan_Presenter is
             Remember_Rejection (P, Status);
             return;
          end if;
+         P.Has_Uploaded_Frame := True;
 
          VD.Render (P.Logical_Device, Render_Status);
          if Render_Status /= VD.Ok then
@@ -426,8 +451,15 @@ package body Terminal.App.Vulkan_Presenter is
         VS.Last_Image_Encoded_Preview_Length (Batch);
       P.Last_Image_Decoded_Preview_Length :=
         VS.Last_Image_Decoded_Preview_Length (Batch);
-      P.Last_Image_Decoded_Preview_Bytes := (others => 0);
-      for I in 1 .. RM.Max_Image_Decoded_Preview_Length loop
+      for I in P.Last_Image_Decoded_Preview_Length + 1 ..
+        Previous_Preview_Length
+      loop
+         P.Last_Image_Decoded_Preview_Bytes (I) := 0;
+      end loop;
+      for I in 1 .. Natural'Min
+        (P.Last_Image_Decoded_Preview_Length,
+         RM.Max_Image_Decoded_Preview_Length)
+      loop
          P.Last_Image_Decoded_Preview_Bytes (I) :=
            VS.Last_Image_Decoded_Preview_Byte (Batch, I);
       end loop;
@@ -448,14 +480,83 @@ package body Terminal.App.Vulkan_Presenter is
       Status := Ok;
    end Present;
 
+   procedure Present_Retained
+     (P       : in out Presenter;
+      Context : VC.Context;
+      Status  : out Present_Status)
+   is
+      Render_Status : VD.Render_Status;
+   begin
+      if not P.Initialized then
+         Status := Not_Initialized;
+         Remember_Rejection (P, Status);
+         return;
+      end if;
+
+      if not VC.Is_Initialized (Context) or else not Has_Surface (Context) then
+         P.Context_Ready := VC.Is_Initialized (Context);
+         P.Surface_Ready := Has_Surface (Context);
+         Status := Invalid_Context;
+         Remember_Rejection (P, Status);
+         return;
+      end if;
+
+      if not VD.Is_Initialized (P.Logical_Device) then
+         Status := Invalid_Context;
+         Remember_Rejection (P, Status);
+         return;
+      end if;
+
+      P.Context_Ready := True;
+      P.Surface_Ready := True;
+
+      if not P.Has_Uploaded_Frame then
+         Status := Invalid_Batch;
+         Remember_Rejection (P, Status);
+         return;
+      end if;
+
+      VD.Render (P.Logical_Device, Render_Status);
+      if Render_Status /= VD.Ok then
+         Status := To_Present_Status (Render_Status);
+         Remember_Rejection (P, Status);
+         return;
+      end if;
+
+      P.Accepted_Frames := P.Accepted_Frames + 1;
+      P.Last_Status := Ok;
+      Status := Ok;
+   end Present_Retained;
+
+   procedure Enable_Framebuffer_Readback
+     (P      : in out Presenter;
+      Status : out Readback_Status) is
+   begin
+      VD.Enable_Framebuffer_Readback (P.Logical_Device, P.Device, Status);
+   end Enable_Framebuffer_Readback;
+
+   procedure Readback_Pixel
+     (P      : in out Presenter;
+      X, Y   : Natural;
+      Red, Green, Blue, Alpha : out Terminal.Common.Bytes.Byte;
+      Status : out Readback_Status) is
+   begin
+      VD.Readback_Pixel
+        (P.Logical_Device, X, Y, Red, Green, Blue, Alpha, Status);
+   end Readback_Pixel;
+
    procedure Finalize (P : in out Presenter) is
    begin
       VD.Finalize (P.Logical_Device);
       P.Initialized := False;
       P.Context_Ready := False;
       P.Surface_Ready := False;
+      P.Has_Uploaded_Frame := False;
       P.Last_Status := Not_Initialized;
    end Finalize;
+
+   function Is_Initialized (P : Presenter) return Boolean is
+     (P.Initialized);
 
    function Diagnostics (P : Presenter) return Diagnostic_Snapshot is
    begin

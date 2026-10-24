@@ -45,6 +45,23 @@ package body Terminal.App.Config is
          when others =>
             return False;
       end Parse_Natural;
+
+      function Parse_Boolean
+        (Text  : String;
+         Value : out Boolean) return Boolean
+      is
+         Lower : constant String :=
+           Ada.Characters.Handling.To_Lower (Trimmed (Text));
+      begin
+         if Lower in "true" | "yes" | "on" | "allow" | "1" then
+            Value := True;
+            return True;
+         elsif Lower in "false" | "no" | "off" | "deny" | "0" then
+            Value := False;
+            return True;
+         end if;
+         return False;
+      end Parse_Boolean;
    begin
       if Clean'Length = 0 then
          Status := Ignored_Blank;
@@ -76,6 +93,8 @@ package body Terminal.App.Config is
          Wheel_Lines : Natural;
          Dimension : Natural;
          Cells : Natural;
+         Limit : Natural;
+         Enabled : Boolean;
       begin
          if Key = "theme" or else Key = "color-theme" then
             if Terminal.App.Theme.Parse_Name (Value, Name) then
@@ -139,6 +158,145 @@ package body Terminal.App.Config is
               and then Cells <= Max_Startup_Cells
             then
                C.Startup_Cols := Positive (Cells);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "kitty-file-transfer" then
+            if Parse_Boolean (Value, Enabled) then
+               C.Kitty_File_Transfer := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "kitty-temporary-transfer" then
+            if Parse_Boolean (Value, Enabled) then
+               C.Kitty_Temporary_Transfer := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "kitty-shared-memory" then
+            if Parse_Boolean (Value, Enabled) then
+               C.Kitty_Shared_Memory := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "iterm2-file-downloads" then
+            if Parse_Boolean (Value, Enabled) then
+               C.ITerm2_File_Downloads := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-transaction-bytes" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Transaction_Bytes
+            then
+               C.Graphics_Transaction_Bytes := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-pending-events" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Pending_Events
+            then
+               C.Graphics_Pending_Events := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-pending-bytes" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Pending_Bytes
+            then
+               C.Graphics_Pending_Bytes := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-deferred-input-bytes" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Deferred_Input_Bytes
+            then
+               C.Graphics_Deferred_Input_Bytes := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-image-objects" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Image_Objects
+            then
+               C.Graphics_Image_Objects := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-image-bytes" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Image_Bytes
+            then
+               C.Graphics_Image_Bytes := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-per-image-bytes" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Image_Bytes
+            then
+               C.Graphics_Per_Image_Bytes := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-placements" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Placements
+            then
+               C.Graphics_Placements := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-animation-frames" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Animation_Frames
+            then
+               C.Graphics_Animation_Frames := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-pixel-dimension" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in 1 .. Max_Graphics_Pixel_Dimension
+            then
+               C.Graphics_Pixel_Dimension := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-gpu-atlas-bytes" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in
+                Min_Graphics_GPU_Atlas_Bytes .. Max_Graphics_GPU_Atlas_Bytes
+            then
+               C.Graphics_GPU_Atlas_Bytes := Positive (Limit);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "graphics-gpu-atlas-dimension" then
+            if Parse_Natural (Value, Limit)
+              and then Limit in
+                Min_Graphics_GPU_Atlas_Dimension ..
+                  Max_Graphics_GPU_Atlas_Dimension
+            then
+               C.Graphics_GPU_Atlas_Dimension := Positive (Limit);
                Status := Accepted;
             else
                Status := Invalid_Value;
@@ -241,7 +399,49 @@ package body Terminal.App.Config is
         & " startup-grid="
         & Trim_Image (C.Startup_Rows)
         & "x"
-        & Trim_Image (C.Startup_Cols);
+        & Trim_Image (C.Startup_Cols)
+        & " kitty-local-media="
+        & (if not C.Kitty_File_Transfer
+             and then not C.Kitty_Temporary_Transfer
+             and then not C.Kitty_Shared_Memory
+           then "none"
+           else
+             (if C.Kitty_File_Transfer
+              then "file"
+                & (if C.Kitty_Temporary_Transfer or else C.Kitty_Shared_Memory
+                   then "," else "")
+              else "")
+             & (if C.Kitty_Temporary_Transfer
+                then "temp"
+                  & (if C.Kitty_Shared_Memory then "," else "")
+                else "")
+             & (if C.Kitty_Shared_Memory then "shm" else ""))
+        & " iterm2-file-downloads="
+        & (if C.ITerm2_File_Downloads then "allow" else "deny")
+        & " graphics-core="
+        & Trim_Image (C.Graphics_Transaction_Bytes)
+        & "/"
+        & Trim_Image (C.Graphics_Pending_Events)
+        & "/"
+        & Trim_Image (C.Graphics_Pending_Bytes)
+        & "/"
+        & Trim_Image (C.Graphics_Deferred_Input_Bytes)
+        & " graphics-store="
+        & Trim_Image (C.Graphics_Image_Objects)
+        & "/"
+        & Trim_Image (C.Graphics_Image_Bytes)
+        & " graphics-per-image="
+        & Trim_Image (C.Graphics_Per_Image_Bytes)
+        & " graphics-placements="
+        & Trim_Image (C.Graphics_Placements)
+        & " graphics-frames="
+        & Trim_Image (C.Graphics_Animation_Frames)
+        & " graphics-pixels="
+        & Trim_Image (C.Graphics_Pixel_Dimension)
+        & " graphics-gpu-atlas="
+        & Trim_Image (C.Graphics_GPU_Atlas_Bytes)
+        & "/"
+        & Trim_Image (C.Graphics_GPU_Atlas_Dimension);
    end Image;
 
    function Line_Status_Label (Status : Line_Status) return String is

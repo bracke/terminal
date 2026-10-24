@@ -9,6 +9,7 @@ package body Terminal.App.Text_Shaper is
    package RM renames Terminal.App.Render_Model;
    package HB renames Terminal.App.HarfBuzz;
    use type RM.Text_Run_Kind;
+   use type RM.Text_Run_Script;
    use type HB.Load_Status;
    use type HB.Shape_Status;
 
@@ -707,13 +708,12 @@ package body Terminal.App.Text_Shaper is
       return RM.Direction_Neutral;
    end Direction_Of;
 
-   function Script_Of (Run : RM.Text_Run_Command) return RM.Text_Run_Script is
+   function Script_Of_Codepoint
+     (Codepoint : Natural) return RM.Text_Run_Script
+   is
+      C : constant Natural := Codepoint;
    begin
-      for I in 1 .. Run.Codepoint_Count loop
-         declare
-            C : constant Natural := Run.Codepoints (I);
-         begin
-            if Is_Hebrew (C) then
+      if Is_Hebrew (C) then
                return RM.Script_Hebrew;
             elsif Is_Syriac (C) then
                return RM.Script_Syriac;
@@ -979,12 +979,45 @@ package body Terminal.App.Text_Shaper is
                return RM.Script_Emoji;
             elsif not Is_Common (C) then
                return RM.Script_Unknown;
-            end if;
-         end;
+      end if;
+
+      return RM.Script_Common;
+   end Script_Of_Codepoint;
+
+   function Script_Of (Run : RM.Text_Run_Command) return RM.Text_Run_Script is
+      Script : RM.Text_Run_Script;
+   begin
+      for I in 1 .. Run.Codepoint_Count loop
+         Script := Script_Of_Codepoint (Run.Codepoints (I));
+         if Script /= RM.Script_Common then
+            return Script;
+         end if;
       end loop;
 
       return RM.Script_Common;
    end Script_Of;
+
+   procedure Properties_Of
+     (Codepoint : Natural;
+      Direction : out RM.Text_Run_Direction;
+      Script    : out RM.Text_Run_Script)
+   is
+   begin
+      Script := Script_Of_Codepoint (Codepoint);
+      if Is_RTL_Script (Codepoint)
+        or else Is_RTL_Directional_Control (Codepoint)
+      then
+         Direction := RM.Direction_Right_To_Left;
+      elsif Is_LTR_Directional_Control (Codepoint)
+        or else Is_ASCII_Digit (Codepoint)
+        or else Script not in RM.Script_Common | RM.Script_Unknown
+        or else Is_Complex_Script (Codepoint)
+      then
+         Direction := RM.Direction_Left_To_Right;
+      else
+         Direction := RM.Direction_Neutral;
+      end if;
+   end Properties_Of;
 
    procedure Prepare
      (Run    : in out RM.Text_Run_Command;

@@ -3,6 +3,7 @@ with AUnit.Assertions;
 with Terminal.Common.Bytes;
 with Terminal.App.Render_Model;
 with Terminal.App.Vulkan_Context;
+with Terminal.App.Vulkan_Device;
 with Terminal.App.Vulkan_Presenter;
 with Terminal.App.Vulkan_Submit;
 
@@ -13,6 +14,7 @@ procedure Vulkan_Presenter_Smoke is
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Vulkan_Presenter.Init_Status;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
+   use type Terminal.App.Vulkan_Presenter.Readback_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
 
    package VC renames Terminal.App.Vulkan_Context;
@@ -24,7 +26,18 @@ procedure Vulkan_Presenter_Smoke is
    Batch : VS.Submission_Batch;
    Init_Status : VP.Init_Status;
    Present_Status : VP.Present_Status;
+   Readback_Status : VP.Readback_Status;
+   Red, Green, Blue, Alpha : Terminal.Common.Bytes.Byte := 0;
 begin
+   VP.Enable_Framebuffer_Readback (Presenter, Readback_Status);
+   Assert
+     (Readback_Status = Terminal.App.Vulkan_Device.Readback_Not_Initialized,
+      "uninitialized presenter must reject framebuffer readback");
+   VP.Readback_Pixel
+     (Presenter, 0, 0, Red, Green, Blue, Alpha, Readback_Status);
+   Assert
+     (Readback_Status = Terminal.App.Vulkan_Device.Readback_Not_Initialized,
+      "uninitialized presenter must reject pixel reads");
    Assert
      (VC.Status_Label (VC.Ok) = "Vulkan context: Ok",
       "context ok status label");
@@ -44,6 +57,10 @@ begin
      (VP.Status_Label (VP.Queue_Present_Failed) =
       "Present: Queue Present Failed",
       "failed present status label");
+   Assert
+     (VP.Status_Label (VP.Resources_In_Flight) =
+      "Present: Resources In Flight",
+      "deferred present status label");
    Assert
      (VP.Status_Label (VP.Queue_Present_Failed)'Length <=
       VP.Max_Status_Label_Length,
@@ -203,4 +220,9 @@ begin
         (Diag.Last_Shaped_Glyph_Count = 0,
          "rejected present should clear shaped glyph count");
    end;
+
+   VP.Present_Retained (Presenter, Context, Present_Status);
+   Assert
+     (Present_Status = VP.Not_Initialized,
+      "retained present before initialize must be rejected");
 end Vulkan_Presenter_Smoke;

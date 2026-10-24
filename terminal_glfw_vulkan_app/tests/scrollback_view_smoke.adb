@@ -9,7 +9,12 @@ procedure Scrollback_View_Smoke is
    use Terminal.Common.Bytes;
    use type Terminal.Common.Code_Point;
    use type Terminal.Core.Feed_Status;
+   use type Terminal.Core.Graphics_Screen_Generation;
+   use type Terminal.Core.Graphics_Stream_ID;
+   use type Terminal.Core.Graphics_Transaction_Generation;
    use type Terminal.Core.Initialize_Status;
+   use type Terminal.Core.Cell_Array_Access;
+   use type Terminal.Core.Dirty_Row_Array_Access;
 
    T : Terminal.Core.Terminal;
    Init : Terminal.Core.Initialize_Status;
@@ -32,6 +37,7 @@ procedure Scrollback_View_Smoke is
 begin
    Terminal.Core.Initialize (T, 2, 4, 3, Init);
    Assert (Init = Terminal.Core.Ok, "initialize failed");
+   Terminal.Core.Set_Graphics_Stream_ID (T, 88);
    Feed_Text
      ("a" & ASCII.CR & ASCII.LF
       & "b" & ASCII.CR & ASCII.LF
@@ -72,7 +78,14 @@ begin
         (Terminal.Core.Cell_At (S, 2, 1).Text.Code_Point = 16#64#,
          "offset one should include top live row");
       Assert (not S.Cursor.Visible, "scrolled snapshot should hide cursor");
+      Assert (S.Image_Cell_Count = 0, "scrolled snapshot image count");
       Assert (S.Dirty (1) and then S.Dirty (2), "scrolled view is fully dirty");
+      Assert
+        (S.Graphics_Stream = 88
+         and then S.Graphics_Transaction /= 0
+         and then not S.Alternate_Screen
+         and then S.Screen_Generation /= 0,
+         "scrolled snapshot preserves graphics screen identity");
       Terminal.Core.Release (S);
    end;
 
@@ -92,11 +105,22 @@ begin
    declare
       S : Terminal.Core.Render_Snapshot :=
         Terminal.App.Scrollback_View.Snapshot (T, 0);
+      Cells : constant Terminal.Core.Cell_Array_Access := S.Cells;
+      Dirty : constant Terminal.Core.Dirty_Row_Array_Access := S.Dirty;
    begin
       Assert
         (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#64#,
          "zero offset should return live top row");
       Assert (S.Cursor.Visible, "live snapshot should keep cursor visibility");
+      Terminal.App.Scrollback_View.Snapshot (T, 1, S);
+      Assert
+        (S.Cells = Cells and then S.Dirty = Dirty,
+         "same-size snapshot refresh should retain backing arrays");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#63#
+         and then
+           Terminal.Core.Cell_At (S, 2, 1).Text.Code_Point = 16#64#,
+         "reused snapshot should preserve scrollback ordering");
       Terminal.Core.Release (S);
    end;
 end Scrollback_View_Smoke;

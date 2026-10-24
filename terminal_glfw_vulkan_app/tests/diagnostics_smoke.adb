@@ -76,6 +76,14 @@ begin
       Graphics_Event : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 14,
@@ -164,6 +172,24 @@ begin
       S.Renderer.Last_Image_Decode_Status :=
         Terminal.App.Render_Model.Image_Decode_Ok;
       S.Renderer.Last_Image_Placeholder := True;
+      S.Renderer.Image_Object_Count := 2;
+      S.Renderer.Image_Object_Bytes := 128;
+      S.Renderer.Placement_Count := 3;
+      S.Renderer.Kitty_Animation_Frame_Count := 4;
+      S.Renderer.Graphics_Event_Count := 11;
+      S.Renderer.Kitty_Command_Count := 10;
+      S.Renderer.Kitty_Success_Count := 8;
+      S.Renderer.Kitty_Error_Count := 2;
+      S.Renderer.Image_Install_Count := 5;
+      S.Renderer.Image_Installed_Bytes := 256;
+      S.Renderer.Image_Eviction_Count := 1;
+      S.Renderer.Placement_Create_Count := 7;
+      S.Renderer.Placement_Delete_Count := 4;
+      S.Renderer.Animation_Advance_Count := 9;
+      S.Renderer.Transport_Failure_Count := 1;
+      S.Renderer.Decode_Failure_Count := 2;
+      S.Renderer.Allocation_Failure_Count := 3;
+      S.Renderer.Chunk_Cancel_Count := 6;
       S.Presenter.Last_Image_Command_Count := 1;
       S.Presenter.Last_Image_Vertex_Count := 6;
       S.Presenter.Last_Image_Texture_Vertex_Count := 0;
@@ -212,6 +238,8 @@ begin
         Terminal.App.Vulkan_Submit.Texture_None;
       S.Presenter.Logical_Device.Image_Texture_Descriptor_Capacity := 0;
       S.Presenter.Logical_Device.Image_Texture_Descriptor_Bound_Count := 0;
+      S.Presenter.Logical_Device.Image_Texture_Upload_Count := 12;
+      S.Presenter.Logical_Device.Image_Texture_Cache_Hit_Count := 34;
    end;
 
    declare
@@ -228,6 +256,11 @@ begin
       Assert
         (Contains (Line, "presenter_status=Present: Not Initialized"),
          "presenter status label should be used");
+      Assert
+        (Contains
+           (Line,
+            "image_texture_uploads= 12 image_texture_cache_hits= 34"),
+         "GPU image cache counters should be included");
       Assert
         (Contains (Line, "pty_queue_status=pty queue 0/64"),
          "empty pty queue status should be included");
@@ -263,7 +296,8 @@ begin
       Assert
         (Contains
            (Line,
-            "profile_status=xterm-256color truecolor profile; OSC 52 selections app-local"),
+            "profile_status=xterm-256color truecolor profile; Kitty placeholders; "
+            & "OSC 52 selections app-local"),
          "profile status should be included");
       Assert
         (Contains
@@ -368,6 +402,25 @@ begin
       Assert
         (Contains (Line, "core_status=Diagnostics: clean"),
          "clean core diagnostics label should be included");
+      Assert
+        (Contains
+           (Line,
+            "graphics_events= 11 kitty_commands= 10 kitty_ok= 8"
+            & " kitty_errors= 2 image_objects= 2 image_bytes= 128"),
+         "graphics command and live resource counters should be included");
+      Assert
+        (Contains
+           (Line,
+            "image_installs= 5 installed_bytes= 256 image_evictions= 1"
+            & " placements= 3 placement_creates= 7 placement_deletes= 4"),
+         "graphics ownership counters should be included");
+      Assert
+        (Contains
+           (Line,
+            "animation_frames= 4 animation_advances= 9"
+            & " transport_failures= 1 decode_failures= 2"
+            & " allocation_failures= 3 chunk_cancels= 6"),
+         "graphics failure and animation counters should be included");
    end;
 
    declare

@@ -300,4 +300,18 @@ package body Terminal.App.Render_Model is
             return 0;
       end case;
    end Image_Decoded_Row_Byte;
+
+   function Image_Decoded_Preview_Byte
+     (Image : Image_Command;
+      Index : Positive) return Terminal.Common.Bytes.Byte is
+   begin
+      if Index > Image.Decoded_Preview_Length
+        or else Index > Max_Image_Decoded_Preview_Length
+        or else Image.Decoded_Preview_Bytes = null
+        or else Index > Image.Decoded_Preview_Bytes'Length
+      then
+         return 0;
+      end if;
+      return Image.Decoded_Preview_Bytes (Index);
+   end Image_Decoded_Preview_Byte;
 end Terminal.App.Render_Model;

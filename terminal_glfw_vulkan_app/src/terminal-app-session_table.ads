@@ -2,6 +2,7 @@ with Terminal.App.Session_Runtime;
 with Terminal.App.Sessions;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
+with Terminal.Core;
 
 package Terminal.App.Session_Table is
    Max_Status_Label_Length : constant := 96;
@@ -20,7 +21,9 @@ package Terminal.App.Session_Table is
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural;
-      Status           : out Table_Status);
+      Status           : out Table_Status;
+      Graphics_Profile : Terminal.Core.Graphics_Capability_Profile :=
+        Terminal.App.Core_Graphics_Profile);
 
    procedure New_Tab
      (Table            : in out Runtime_Table;
@@ -75,6 +78,8 @@ private
    type Runtime_Table is limited record
       Sessions : Terminal.App.Sessions.Session_Table;
       Runtimes : Runtime_Array := (others => null);
+      Graphics_Profile : Terminal.Core.Graphics_Capability_Profile :=
+        Terminal.App.Core_Graphics_Profile;
       Last_Start : Terminal.App.Session_Runtime.Start_Status :=
         Terminal.App.Session_Runtime.Allocation_Failed;
    end record;

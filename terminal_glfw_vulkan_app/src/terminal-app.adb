@@ -19,8 +19,58 @@ package body Terminal.App is
          OSC52_App_Local_Selections => True,
          OSC8_Hyperlinks       => True,
          Truecolor             => True,
-         Tmux_DCS_Passthrough  => True);
+         Tmux_DCS_Passthrough  => True,
+         Kitty_Direct_Graphics => True,
+         Kitty_Unicode_Placeholders => True,
+         Kitty_File_Transfer   => False,
+         Kitty_Temporary_Transfer => True,
+         Kitty_Shared_Memory   => True,
+         ITerm2_File_Downloads => False);
    end Profile;
+
+   function Core_Graphics_Profile
+     return Terminal.Core.Graphics_Capability_Profile is
+   begin
+      return Core_Graphics_Profile
+        (Kitty_File_Transfer      => False,
+         Kitty_Temporary_Transfer => True,
+         Kitty_Shared_Memory      => True,
+         ITerm2_File_Downloads    => False);
+   end Core_Graphics_Profile;
+
+   function Core_Graphics_Profile
+     (Kitty_File_Transfer      : Boolean;
+      Kitty_Temporary_Transfer : Boolean;
+      Kitty_Shared_Memory      : Boolean;
+      ITerm2_File_Downloads    : Boolean := False)
+      return Terminal.Core.Graphics_Capability_Profile is
+   begin
+      return
+     ((Kitty_Direct_RGB         => True,
+       Kitty_Direct_RGBA        => True,
+       Kitty_Indexed_RGB        => True,
+       Kitty_Indexed_RGBA       => True,
+       Kitty_Direct_PNG         => True,
+       Kitty_Zlib_Compression   => True,
+       Kitty_File_Transfer      => Kitty_File_Transfer,
+       Kitty_Temporary_Transfer => Kitty_Temporary_Transfer,
+       Kitty_Shared_Memory      => Kitty_Shared_Memory,
+       Sixel                    => True,
+       ITerm2_Inline_Images     => True,
+       ITerm2_File_Downloads    => ITerm2_File_Downloads));
+   end Core_Graphics_Profile;
+
+   function Graphics_Feature_Report
+     (Profile : Terminal.Core.Graphics_Capability_Profile) return String is
+   begin
+      if Profile.ITerm2_Inline_Images
+        and then Profile.ITerm2_File_Downloads
+      then
+         return (if Profile.Sixel then "FSx" else "F");
+      else
+         return (if Profile.Sixel then "Sx" else "");
+      end if;
+   end Graphics_Feature_Report;
 
    function Profile_Status_Label
      (Profile : Terminal_Profile) return String is
@@ -29,8 +79,12 @@ package body Terminal.App is
         and then Profile.OSC52_Clipboard
         and then Profile.OSC52_App_Local_Selections
         and then Profile.OSC8_Hyperlinks
+        and then Profile.Kitty_Direct_Graphics
+        and then Profile.Kitty_Unicode_Placeholders
       then
-         return "xterm-256color truecolor profile; OSC 52 selections app-local";
+         return
+           "xterm-256color truecolor profile; Kitty placeholders; "
+           & "OSC 52 selections app-local";
       else
          return "reduced terminal profile";
       end if;

@@ -6,6 +6,7 @@ with Jpeglib.Results;
 with Jpeglib.Streams;
 
 with Terminal.App.Graphics;
+with Terminal.App.Image_Media;
 with Terminal.App.Render_Model;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
@@ -14,10 +15,12 @@ with Terminal.Core;
 procedure Graphics_Capabilities_Smoke is
    use AUnit.Assertions;
    use type Terminal.App.Graphics.Data_Decode_Status;
+   use type Terminal.App.Graphics.ITerm2_Size_Unit;
    use type Terminal.App.Render_Model.Image_Data_Access;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
    use type Terminal.Common.Bytes.Byte;
+   use type Terminal.Core.Graphics_ID;
    use type Jpeglib.Destination_Offset;
 
    package Graphics renames Terminal.App.Graphics;
@@ -239,11 +242,13 @@ begin
       "sixel capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.Kitty) =
-      "kitty graphics recognized; raw/PNG/JPEG texture rendering available",
+      "kitty graphics; RGB/RGBA/indexed/PNG texture rendering",
       "kitty capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2) =
-      "iTerm2 images recognized; PNG/JPEG texture rendering available",
+      (if Terminal.App.Image_Media.Extended_Media_Available
+       then "iTerm2 images; PNG/JPEG/GIF plus runtime media decoding"
+       else "iTerm2 images; PNG/JPEG/GIF texture rendering"),
       "iTerm2 capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2)'Length <=
@@ -292,6 +297,14 @@ begin
       Kitty : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -300,6 +313,14 @@ begin
       ITerm2 : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -308,6 +329,14 @@ begin
       ITerm2_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -316,6 +345,14 @@ begin
       ITerm2_JPEG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -324,6 +361,14 @@ begin
       ITerm2_Gray_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -332,6 +377,14 @@ begin
       ITerm2_Palette_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -340,6 +393,14 @@ begin
       ITerm2_Gray1_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -348,6 +409,14 @@ begin
       ITerm2_Gray2_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -356,6 +425,14 @@ begin
       ITerm2_Gray4_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -364,6 +441,14 @@ begin
       ITerm2_RGB16_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -372,6 +457,14 @@ begin
       ITerm2_GA16_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -380,6 +473,14 @@ begin
       ITerm2_RGBA16_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -388,6 +489,14 @@ begin
       ITerm2_Palette1_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -396,6 +505,14 @@ begin
       ITerm2_Adam7_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.ITerm2_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -404,6 +521,14 @@ begin
       Kitty_Sized : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -412,6 +537,14 @@ begin
       Kitty_RGBA : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -420,6 +553,14 @@ begin
       Kitty_Chunk : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -428,6 +569,14 @@ begin
       Kitty_PNG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -436,6 +585,14 @@ begin
       Kitty_JPEG : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -444,6 +601,14 @@ begin
       Kitty_Large_RGBA : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -452,6 +617,14 @@ begin
       Kitty_Oversized_RGBA : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -460,6 +633,14 @@ begin
       Kitty_Partial : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -468,6 +649,14 @@ begin
       Kitty_Trailing : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Kitty_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
@@ -476,12 +665,21 @@ begin
       Sixel : Terminal.Core.Graphics_Event :=
         (Pending        => True,
          Protocol       => Terminal.Core.Sixel_Graphics,
+         Cancelled      => False,
+         Stream_ID      => 0,
+         Sequence       => 0,
+         Transaction_Generation => 0,
+         Alternate_Screen => False,
+         Screen_Generation => 0,
+         Scroll_Sequence => 0,
+         Sixel_Private_Colors => True,
          Row            => 1,
          Col            => 1,
          Payload_Length => 0,
          Preview_Length => 0,
          Preview        => (others => ASCII.NUL));
       Kitty_Header : Graphics.Graphics_Header;
+      Kitty_Placement_Header : Graphics.Graphics_Header;
       ITerm2_Header : Graphics.Graphics_Header;
       Sized_Header : Graphics.Graphics_Header;
       Kitty_Data : Graphics.Graphics_Data_Preview;
@@ -507,7 +705,7 @@ begin
       ITerm2_Palette1_PNG_Data : Graphics.Graphics_Data_Preview;
       ITerm2_Adam7_PNG_Data : Graphics.Graphics_Data_Preview;
       Sixel_Data : Graphics.Graphics_Data_Preview;
-      PNG_Row_Data : constant Terminal.Common.Bytes.Byte_Array (1 .. 69) :=
+      PNG_Row_Data : constant Terminal.Common.Bytes.Byte_Array (1 .. 70) :=
         (1 => 16#89#, 2 => 16#50#, 3 => 16#4E#, 4 => 16#47#,
          5 => 16#0D#, 6 => 16#0A#, 7 => 16#1A#, 8 => 16#0A#,
          9 => 16#00#, 10 => 16#00#, 11 => 16#00#, 12 => 16#0D#,
@@ -521,11 +719,11 @@ begin
          41 => 16#54#, 42 => 16#78#, 43 => 16#9C#, 44 => 16#63#,
          45 => 16#F8#, 46 => 16#CF#, 47 => 16#C0#, 48 => 16#00#,
          49 => 16#00#, 50 => 16#03#, 51 => 16#01#, 52 => 16#01#,
-         53 => 16#00#, 54 => 16#C9#, 55 => 16#FE#, 56 => 16#92#,
-         57 => 16#EF#, 58 => 16#00#, 59 => 16#00#, 60 => 16#00#,
-         61 => 16#00#, 62 => 16#49#, 63 => 16#45#, 64 => 16#4E#,
-         65 => 16#44#, 66 => 16#AE#, 67 => 16#42#, 68 => 16#60#,
-         69 => 16#82#);
+         53 => 16#00#, 54 => 16#C9#, 55 => 16#00#, 56 => 16#C6#,
+         57 => 16#94#, 58 => 16#E2#, 59 => 16#00#, 60 => 16#00#,
+         61 => 16#00#, 62 => 16#00#, 63 => 16#49#, 64 => 16#45#,
+         65 => 16#4E#, 66 => 16#44#, 67 => 16#AE#, 68 => 16#42#,
+         69 => 16#60#, 70 => 16#82#);
       PNG_Row_Result : Graphics.Graphics_Data_Preview;
       PNG_Row_Count : Natural := 0;
       PNG_Row_Bytes : Terminal.Common.Bytes.Byte_Array (1 .. 4) :=
@@ -534,6 +732,19 @@ begin
       PNG_Source_Row_Count : Natural := 0;
       PNG_Source_Row_Bytes : Terminal.Common.Bytes.Byte_Array (1 .. 4) :=
         (others => 0);
+      PNG_Corrupt_CRC : Terminal.Common.Bytes.Byte_Array (PNG_Row_Data'Range) :=
+        PNG_Row_Data;
+      PNG_Corrupt_CRC_Result : Graphics.Graphics_Data_Preview;
+      PNG_Huge_Chunk : constant Terminal.Common.Bytes.Byte_Array (1 .. 20) :=
+        (1 => 16#89#, 2 => 16#50#, 3 => 16#4E#, 4 => 16#47#,
+         5 => 16#0D#, 6 => 16#0A#, 7 => 16#1A#, 8 => 16#0A#,
+         9 => 16#FF#, 10 => 16#FF#, 11 => 16#FF#, 12 => 16#FF#,
+         13 => 16#49#, 14 => 16#44#, 15 => 16#41#, 16 => 16#54#,
+         17 .. 20 => 0);
+      PNG_Huge_Chunk_Result : Graphics.Graphics_Data_Preview;
+      PNG_Trailing : Terminal.Common.Bytes.Byte_Array (1 .. 71) :=
+        (others => 0);
+      PNG_Trailing_Result : Graphics.Graphics_Data_Preview;
       Base64_PNG_Row_Result : Graphics.Graphics_Data_Preview;
       Base64_PNG_Encoded_Length : Natural := 0;
       Base64_PNG_Length : Natural := 0;
@@ -563,6 +774,16 @@ begin
       Raw_Chunk_Row_Result : Graphics.Graphics_Data_Preview;
       Raw_Chunk_Row_Count : Natural := 0;
       Raw_Chunk_Row_Bytes : Terminal.Common.Bytes.Byte_Array (1 .. 4) :=
+        (others => 0);
+      Zlib_Raw_Result : Graphics.Graphics_Data_Preview;
+      Zlib_Raw_Row_Count : Natural := 0;
+      Zlib_Raw_Row_Bytes : Terminal.Common.Bytes.Byte_Array (1 .. 4) :=
+        (others => 0);
+      Zlib_Raw_Invalid_Result : Graphics.Graphics_Data_Preview;
+      Zlib_PNG_Result : Graphics.Graphics_Data_Preview;
+      Zlib_PNG_Encoded_Length : Natural := 0;
+      Zlib_PNG_Row_Count : Natural := 0;
+      Zlib_PNG_Row_Bytes : Terminal.Common.Bytes.Byte_Array (1 .. 4) :=
         (others => 0);
       Base64_Byte_Result : Graphics.Graphics_Data_Preview;
       Base64_Byte_Count : Natural := 0;
@@ -695,7 +916,7 @@ begin
             when 1 =>
                return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1Pe";
             when 2 =>
-               return "AAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+               return "AAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==";
             when others =>
                return "";
          end case;
@@ -808,6 +1029,67 @@ begin
          Raw_Chunk_Row_Bytes := Row;
       end Capture_Raw_Chunk_Row;
 
+      function Zlib_Raw_Chunk_Text (Index : Positive) return String is
+      begin
+         case Index is
+            when 1 =>
+               return "eJz7z8Dw";
+            when 2 =>
+               return "HwAE/wH/";
+            when others =>
+               return "";
+         end case;
+      end Zlib_Raw_Chunk_Text;
+
+      function Zlib_Raw_Invalid_Text (Index : Positive) return String is
+      begin
+         if Index = 1 then
+            return "eJz7z8DwHwAE/wHA";
+         else
+            return "";
+         end if;
+      end Zlib_Raw_Invalid_Text;
+
+      procedure Capture_Zlib_Raw_Row
+        (Y : Natural;
+         Row : Terminal.Common.Bytes.Byte_Array;
+         Continue : in out Boolean)
+      is
+      begin
+         Zlib_Raw_Row_Count := Zlib_Raw_Row_Count + 1;
+         if Y /= 0 or else Row'Length /= 4 then
+            Continue := False;
+            return;
+         end if;
+         Zlib_Raw_Row_Bytes := Row;
+      end Capture_Zlib_Raw_Row;
+
+      function Zlib_PNG_Chunk_Text (Index : Positive) return String is
+      begin
+         case Index is
+            when 1 =>
+               return "eJzrDPBz5+WS4mJgYOD19HAJAtKMIMzBBCQnlAff";
+            when 2 =>
+               return "A0u4OIZUzEn+cf4AAwMzIyPDSYZjUx4BJRg8Xf1c1jklNAEA1dYQSw==";
+            when others =>
+               return "";
+         end case;
+      end Zlib_PNG_Chunk_Text;
+
+      procedure Capture_Zlib_PNG_Row
+        (Y : Natural;
+         Row : Terminal.Common.Bytes.Byte_Array;
+         Continue : in out Boolean)
+      is
+      begin
+         Zlib_PNG_Row_Count := Zlib_PNG_Row_Count + 1;
+         if Y /= 0 or else Row'Length /= 4 then
+            Continue := False;
+            return;
+         end if;
+         Zlib_PNG_Row_Bytes := Row;
+      end Capture_Zlib_PNG_Row;
+
       function Base64_Chunk_Text (Index : Positive) return String is
       begin
          case Index is
@@ -897,10 +1179,10 @@ begin
       Set_Preview (Kitty, "Gf=32,a=T,i=42;SGk=");
       Set_Preview
         (ITerm2,
-         "File=name=a;inline=1;width=12;height=5:SGk=");
+         "File=name=a;inline=1;width=12;height=5;doNotMoveCursor=1:SGk=");
       Set_Preview
         (ITerm2_PNG,
-         "File=name=pixel.png;inline=1:iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC");
+         "File=name=pixel.png;inline=1:iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==");
       Build_JPEG;
       declare
          JPEG_Base64 : constant String :=
@@ -948,13 +1230,13 @@ begin
       Set_Preview (Kitty_Chunk, "Gf=32,s=2,v=1,m=1;/wAA");
       Set_Preview
         (Kitty_PNG,
-         "Gf=100,a=T,c=1,r=1;iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC");
+         "Gf=100,a=T,c=1,r=1;iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==");
       Set_Preview
         (Kitty_Large_RGBA,
          "Gf=32,s=33,v=32,c=33,r=32;" & Repeat_Char ('A', 5632));
       Set_Preview
         (Kitty_Oversized_RGBA,
-         "Gf=32,s=513,v=512,c=40,r=20;AAAA");
+         "Gf=32,s=16385,v=1024,c=40,r=20;AAAA");
       Set_Preview (Kitty_Partial, "Gf=100,a=T;SG$=");
       Set_Preview (Kitty_Trailing, "Gf=100,a=T;SGk=A");
       Set_Preview (Sixel, "q??~~");
@@ -965,8 +1247,134 @@ begin
       Assert (Kitty_Header.Kitty_Action = 'T', "kitty action field");
       Assert (Kitty_Header.Kitty_ID = 42, "kitty image id field");
       Assert (Kitty_Header.Kitty_Format = 32, "kitty format field");
+      Assert
+        (Graphics.Header (Kitty_RGBA).Kitty_Action = 't',
+         "kitty omitted action defaults to transmit-only");
+      Kitty_Placement_Header := Graphics.Header_Text
+        (Terminal.Core.Kitty_Graphics,
+         "Ga=p,i=42,I=43,p=44,t=d,o=z,q=1,N=1,S=45,O=46," &
+         "x=2,y=3,w=4,h=5,X=6,Y=7,z=-8,C=1,U=1,P=9,Q=10," &
+         "H=-11,V=12,d=p");
+      Assert
+        (Kitty_Placement_Header.Recognized
+         and then Kitty_Placement_Header.Kitty_Action = 'p'
+         and then Kitty_Placement_Header.Kitty_ID = 42
+         and then Kitty_Placement_Header.Kitty_Image_Number = 43
+         and then Kitty_Placement_Header.Kitty_Placement_ID = 44,
+         "kitty placement identity fields");
+      Assert
+        (Kitty_Placement_Header.Kitty_Transmission = 'd'
+         and then Kitty_Placement_Header.Kitty_Compression = 'z'
+         and then Kitty_Placement_Header.Kitty_Delete = 'p'
+         and then Kitty_Placement_Header.Kitty_Quiet = 1
+         and then Kitty_Placement_Header.Kitty_Usage_Hint = 1
+         and then Kitty_Placement_Header.Kitty_Data_Size = 45
+         and then Kitty_Placement_Header.Kitty_Data_Offset = 46,
+         "kitty control fields");
+      Assert
+        (Kitty_Placement_Header.Kitty_Source_X = 2
+         and then Kitty_Placement_Header.Kitty_Source_Y = 3
+         and then Kitty_Placement_Header.Kitty_Source_Width = 4
+         and then Kitty_Placement_Header.Kitty_Source_Height = 5
+         and then Kitty_Placement_Header.Kitty_Cell_X = 6
+         and then Kitty_Placement_Header.Kitty_Cell_Y = 7,
+         "kitty crop and cell offset fields");
+      Assert
+        (Kitty_Placement_Header.Kitty_Z_Index = -8
+         and then Kitty_Placement_Header.Kitty_No_Cursor_Move
+         and then Kitty_Placement_Header.Kitty_Virtual_Placement,
+         "kitty placement behavior fields");
+      Assert
+        (Kitty_Placement_Header.Kitty_Parent_ID = 9
+         and then Kitty_Placement_Header.Kitty_Parent_Placement_ID = 10
+         and then Kitty_Placement_Header.Kitty_Parent_Offset_X = -11
+         and then Kitty_Placement_Header.Kitty_Parent_Offset_Y = 12,
+         "kitty relative placement fields");
+      declare
+         Max_ID_Header : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics,
+              "Gi=4294967295,p=4294967295");
+      begin
+         Assert
+           (Max_ID_Header.Kitty_ID = Terminal.Core.Graphics_ID'Last
+            and then Max_ID_Header.Kitty_Placement_ID =
+              Terminal.Core.Graphics_ID'Last,
+            "kitty IDs should preserve all unsigned 32 bits");
+      end;
+      declare
+         Duplicate : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics,
+              "Ga=t,i=1,i=2,f=32,s=1,v=1;/wAA/w==");
+         Malformed : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics,
+              "Ga=t,i=1,f=32,s=bad,v=1;/wAA/w==");
+         Bad_Action_Shape : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics,
+              "Ga=p,i=1;AAAA");
+         Default_Format : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics,
+              "Ga=t,s=1,v=1;/wAA/w==");
+      begin
+         Assert
+           (not Duplicate.Kitty_Control_Data_Valid,
+            "kitty duplicate controls are invalid");
+         Assert
+           (not Malformed.Kitty_Control_Data_Valid,
+            "kitty malformed numeric controls are invalid");
+         Assert
+           (not Bad_Action_Shape.Kitty_Action_Controls_Valid,
+            "kitty put action rejects transmitted payload data");
+         Assert
+           (Default_Format.Kitty_Format = 32
+            and then Default_Format.Raw_Format = 32
+            and then Default_Format.Kitty_Action_Controls_Valid,
+            "kitty omitted format defaults to RGBA");
+      end;
       Assert (Graphics.Placeholder_Cols (Kitty) = 6, "kitty parsed placeholder cols");
       Assert (Graphics.Placeholder_Rows (Kitty) = 3, "kitty parsed placeholder rows");
+      Assert
+        (not Kitty_Header.Kitty_Columns_Specified
+         and then Kitty_Header.Kitty_Columns_Valid
+         and then not Kitty_Header.Kitty_Rows_Specified
+         and then Kitty_Header.Kitty_Rows_Valid,
+         "kitty omitted placement span validity");
+      declare
+         Exact_Span : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics, "Ga=p,c=1000,r=2000");
+         Invalid_Span : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics, "Ga=p,c=0,r=bad");
+         Omitted_Span : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics, "Ga=p,i=1");
+         Invalid_Geometry : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.Kitty_Graphics, "Ga=p,x=bad,w=999999999999999999999");
+      begin
+         Assert
+           (Exact_Span.Placeholder_Cols = 1000
+            and then Exact_Span.Placeholder_Rows = 2000,
+            "kitty placement spans are not silently clamped");
+         Assert
+           (Invalid_Span.Kitty_Columns_Specified
+            and then not Invalid_Span.Kitty_Columns_Valid
+            and then Invalid_Span.Kitty_Rows_Specified
+            and then not Invalid_Span.Kitty_Rows_Valid,
+            "kitty invalid placement spans remain distinguishable");
+         Assert
+           (not Omitted_Span.Kitty_Columns_Specified
+            and then not Omitted_Span.Kitty_Rows_Specified,
+            "kitty omitted placement spans remain distinguishable");
+         Assert
+           (not Invalid_Geometry.Kitty_Geometry_Controls_Valid,
+            "kitty malformed and overflowing geometry fields are invalid");
+      end;
       Assert
         (Graphics.Header_Status_Label (Kitty) =
          "kitty header ready; format=32; data previewed",
@@ -1007,8 +1415,14 @@ begin
 
       Kitty_Chunk_Header := Graphics.Header (Kitty_Chunk);
       Assert
-        (Kitty_Chunk_Header.Kitty_More,
+        (Kitty_Chunk_Header.Kitty_More
+         and then Kitty_Chunk_Header.Kitty_More_Specified
+         and then Kitty_Chunk_Header.Kitty_More_Valid,
          "kitty chunk continuation field");
+      Assert
+        (not Graphics.Header_Text
+           (Terminal.Core.Kitty_Graphics, "Gm=2;AAAA").Kitty_More_Valid,
+         "invalid kitty chunk continuation value");
 
       Kitty_PNG_Data := Graphics.Data_Preview (Kitty_PNG);
       Assert
@@ -1038,19 +1452,12 @@ begin
 
       Kitty_JPEG_Data := Graphics.Data_Preview (Kitty_JPEG);
       Assert
-        (Kitty_JPEG_Data.Raw_Format = 32
-         and then Kitty_JPEG_Data.Pixel_Width = 1
-         and then Kitty_JPEG_Data.Pixel_Height = 1,
-         "kitty JPEG pixel metadata");
-      Assert
-        (Kitty_JPEG_Data.Decoded_Length = 4
-         and then Kitty_JPEG_Data.Decode_Complete
-         and then Kitty_JPEG_Data.Decode_Status = Graphics.Decode_Ok,
-         "kitty JPEG decode complete");
-      Assert
-        (Kitty_JPEG_Data.Bytes /= null
-         and then Kitty_JPEG_Data.Bytes (4) = 16#FF#,
-         "kitty JPEG decoded alpha");
+        (Kitty_JPEG_Data.Decoded_Length = 0
+         and then not Kitty_JPEG_Data.Decode_Complete
+         and then Kitty_JPEG_Data.Bytes = null
+         and then Kitty_JPEG_Data.Decode_Status =
+           Graphics.Decode_Unsupported_Format,
+         "Kitty f=100 rejects non-PNG image data");
 
       Graphics.Decode_PNG_RGBA_Rows
         (PNG_Row_Data,
@@ -1110,6 +1517,42 @@ begin
          and then PNG_Source_Row_Bytes (4) = 16#FF#,
          "PNG source row decoder RGBA bytes");
 
+      PNG_Corrupt_CRC (55) := 16#01#;
+      Graphics.Decode_PNG_RGBA_Rows
+        (PNG_Corrupt_CRC,
+         PNG_Corrupt_CRC'Length,
+         Capture_PNG_Row'Access,
+         PNG_Corrupt_CRC_Result);
+      Assert
+        (not PNG_Corrupt_CRC_Result.Decode_Complete
+         and then PNG_Corrupt_CRC_Result.Decode_Status =
+           Graphics.Decode_Invalid_Byte,
+         "PNG row decoder rejects a corrupt chunk CRC");
+
+      Graphics.Decode_PNG_RGBA_Rows
+        (PNG_Huge_Chunk,
+         PNG_Huge_Chunk'Length,
+         Capture_PNG_Row'Access,
+         PNG_Huge_Chunk_Result);
+      Assert
+        (not PNG_Huge_Chunk_Result.Decode_Complete
+         and then PNG_Huge_Chunk_Result.Decode_Status =
+           Graphics.Decode_Invalid_Byte,
+         "PNG row decoder rejects an overflowing chunk length");
+
+      PNG_Trailing (PNG_Row_Data'Range) := PNG_Row_Data;
+      PNG_Trailing (PNG_Trailing'Last) := 16#00#;
+      Graphics.Decode_PNG_RGBA_Rows
+        (PNG_Trailing,
+         PNG_Trailing'Length,
+         Capture_PNG_Row'Access,
+         PNG_Trailing_Result);
+      Assert
+        (not PNG_Trailing_Result.Decode_Complete
+         and then PNG_Trailing_Result.Decode_Status =
+           Graphics.Decode_Trailing_Data,
+         "PNG row decoder rejects bytes after IEND");
+
       Graphics.Decode_Base64_PNG_Chunk_Rows
         (2,
          Base64_PNG_Text'Access,
@@ -1118,7 +1561,7 @@ begin
          Capture_Base64_PNG_Row'Access,
          Base64_PNG_Row_Result);
       Assert
-        (Base64_PNG_Encoded_Length = 92
+        (Base64_PNG_Encoded_Length = 96
          and then Base64_PNG_Length = PNG_Row_Data'Length,
          "Base64 PNG row decoder byte counts");
       Assert
@@ -1192,7 +1635,7 @@ begin
          Reject_Base64_PNG_Row'Access,
          Base64_PNG_Stop_Result);
       Assert
-        (Base64_PNG_Stop_Encoded_Length = 92
+        (Base64_PNG_Stop_Encoded_Length = 96
          and then Base64_PNG_Stop_Length = PNG_Row_Data'Length
          and then not Base64_PNG_Stop_Result.Decode_Complete
          and then Base64_PNG_Stop_Result.Decode_Status =
@@ -1224,6 +1667,128 @@ begin
          and then Sixel_First_Row (3) = 16#FF#
          and then Sixel_First_Row (4) = 16#FF#,
          "sixel row decoder first RGBA row");
+
+      declare
+         Oversized : Graphics.Graphics_Data_Preview;
+      begin
+         Sixel_Row_Count := 0;
+         Graphics.Decode_Sixel_Rows
+           ("q""1;1;999999999;999999999~",
+            Capture_Sixel_Row'Access,
+            Oversized,
+            Maximum_Decoded_Bytes => 1_024,
+            Maximum_Pixel_Dimension => 1_024);
+         Assert
+           (not Oversized.Decode_Complete
+            and then Oversized.Decode_Status =
+              Graphics.Decode_Preview_Truncated
+            and then Sixel_Row_Count = 0,
+            "oversized sixel raster is rejected before band allocation");
+      end;
+
+      declare
+         Palette : Graphics.Sixel_Palette_State :=
+           Graphics.Default_Sixel_Palette;
+         Shared_Result : Graphics.Graphics_Data_Preview;
+      begin
+         Sixel_Row_Count := 0;
+         Sixel_First_Row := (others => 0);
+         Graphics.Decode_Sixel_Rows
+           ("q#5;2;100;0;0~",
+            Capture_Sixel_Row'Access,
+            Palette,
+            Reset_Palette => False,
+            Result => Shared_Result);
+         Graphics.Decode_Sixel_Rows
+           ("q#5~",
+            Capture_Sixel_Row'Access,
+            Palette,
+            Reset_Palette => False,
+            Result => Shared_Result);
+         Assert
+           (Shared_Result.Decode_Complete
+            and then Sixel_First_Row (1) = 16#FF#
+            and then Sixel_First_Row (2) = 0
+            and then Sixel_First_Row (3) = 0,
+            "sixel shared palette definitions persist across graphics");
+         Graphics.Decode_Sixel_Rows
+           ("q#5~",
+            Capture_Sixel_Row'Access,
+            Palette,
+            Reset_Palette => True,
+            Result => Shared_Result);
+         Assert
+           (Sixel_First_Row (1) = 16#FF#
+            and then Sixel_First_Row (2) = 16#FF#
+            and then Sixel_First_Row (3) = 16#FF#,
+            "sixel private palette resets for each graphic");
+      end;
+
+      declare
+         Transparent_Raster : Graphics.Graphics_Data_Preview :=
+           Graphics.Data_Preview_Text
+             (Terminal.Core.Sixel_Graphics,
+              "1;1q""1;1;3;8#2;2;100;0;0~");
+         Opaque_Raster : Graphics.Graphics_Data_Preview :=
+           Graphics.Data_Preview_Text
+             (Terminal.Core.Sixel_Graphics, "q""1;1;2;7?");
+         HLS_Raster : Graphics.Graphics_Data_Preview :=
+           Graphics.Data_Preview_Text
+             (Terminal.Core.Sixel_Graphics, "q#5;1;120;50;100~");
+         Aspect_Raster : Graphics.Graphics_Data_Preview :=
+           Graphics.Data_Preview_Text
+             (Terminal.Core.Sixel_Graphics, "q""2;1;1;6~");
+         DCS_Aspect_Raster : Graphics.Graphics_Data_Preview :=
+           Graphics.Data_Preview_Text
+             (Terminal.Core.Sixel_Graphics, "5q~");
+      begin
+         Assert
+           (Transparent_Raster.Decode_Complete
+            and then Transparent_Raster.Pixel_Width = 3
+            and then Transparent_Raster.Pixel_Height = 8
+            and then Transparent_Raster.Decoded_Length = 96,
+            "sixel raster attributes should declare a minimum canvas");
+         Assert
+           (Transparent_Raster.Bytes /= null
+            and then Transparent_Raster.Bytes (1) = 16#FF#
+            and then Transparent_Raster.Bytes (2) = 0
+            and then Transparent_Raster.Bytes (3) = 0
+            and then Transparent_Raster.Bytes (4) = 16#FF#
+            and then Transparent_Raster.Bytes (8) = 0,
+            "sixel transparent background mode should preserve unset alpha");
+         Assert
+           (Opaque_Raster.Decode_Complete
+            and then Opaque_Raster.Pixel_Width = 2
+            and then Opaque_Raster.Pixel_Height = 7
+            and then Opaque_Raster.Bytes /= null
+            and then Opaque_Raster.Bytes (4) = 16#FF#,
+            "sixel default background mode should erase to register zero");
+         Assert
+           (HLS_Raster.Decode_Complete
+            and then HLS_Raster.Bytes /= null
+            and then HLS_Raster.Bytes (1) = 16#FF#
+            and then HLS_Raster.Bytes (2) = 0
+            and then HLS_Raster.Bytes (3) = 0
+            and then HLS_Raster.Bytes (4) = 16#FF#,
+            "sixel HLS palette definitions should use the DEC color wheel");
+         Assert
+           (Aspect_Raster.Decode_Complete
+            and then Aspect_Raster.Pixel_Width = 1
+            and then Aspect_Raster.Pixel_Height = 12
+            and then Aspect_Raster.Decoded_Length = 48,
+            "sixel Pan/Pad should apply the vertical pixel aspect ratio");
+         Assert
+           (DCS_Aspect_Raster.Decode_Complete
+            and then DCS_Aspect_Raster.Pixel_Width = 1
+            and then DCS_Aspect_Raster.Pixel_Height = 12
+            and then DCS_Aspect_Raster.Decoded_Length = 48,
+            "sixel DCS aspect selector should scale raster rows");
+         Graphics.Release (Transparent_Raster);
+         Graphics.Release (Aspect_Raster);
+         Graphics.Release (DCS_Aspect_Raster);
+         Graphics.Release (Opaque_Raster);
+         Graphics.Release (HLS_Raster);
+      end;
 
       Graphics.Decode_Base64_Raw_Rows
         ("/wAA/w==", 32, 1, 1, Capture_Raw_Row'Access, Raw_Row_Result);
@@ -1279,6 +1844,79 @@ begin
          and then Raw_Chunk_Row_Bytes (3) = 16#00#
          and then Raw_Chunk_Row_Bytes (4) = 16#FF#,
          "chunked raw row decoder RGBA bytes");
+
+      Graphics.Decode_Base64_Zlib_Raw_Chunk_Rows
+        (2,
+         Zlib_Raw_Chunk_Text'Access,
+         32,
+         1,
+         1,
+         Capture_Zlib_Raw_Row'Access,
+         Zlib_Raw_Result);
+      Assert
+        (Zlib_Raw_Result.Encoded_Length = 16
+         and then Zlib_Raw_Result.Decoded_Length = 4
+         and then Zlib_Raw_Result.Decode_Complete
+         and then Zlib_Raw_Result.Decode_Status = Graphics.Decode_Ok,
+         "zlib raw row decoder completion");
+      Assert
+        (Zlib_Raw_Row_Count = 1
+         and then Zlib_Raw_Row_Bytes (1) = 16#FF#
+         and then Zlib_Raw_Row_Bytes (2) = 16#00#
+         and then Zlib_Raw_Row_Bytes (3) = 16#00#
+         and then Zlib_Raw_Row_Bytes (4) = 16#FF#,
+         "zlib raw row decoder bytes");
+
+      Graphics.Decode_Base64_Zlib_Raw_Chunk_Rows
+        (1,
+         Zlib_Raw_Invalid_Text'Access,
+         32,
+         1,
+         1,
+         Capture_Zlib_Raw_Row'Access,
+         Zlib_Raw_Invalid_Result);
+      Assert
+        (not Zlib_Raw_Invalid_Result.Decode_Complete
+         and then Zlib_Raw_Invalid_Result.Decode_Status =
+           Graphics.Decode_Invalid_Byte,
+         "zlib raw decoder rejects invalid checksum");
+
+      Graphics.Decode_Base64_Zlib_PNG_Chunk_Rows
+        (2,
+         Zlib_PNG_Chunk_Text'Access,
+         70,
+         Zlib_PNG_Encoded_Length,
+         Capture_Zlib_PNG_Row'Access,
+         Zlib_PNG_Result);
+      Assert
+        (Zlib_PNG_Encoded_Length = 96
+         and then Zlib_PNG_Result.Decoded_Length = 4
+         and then Zlib_PNG_Result.Decode_Complete
+         and then Zlib_PNG_Result.Decode_Status = Graphics.Decode_Ok,
+         "zlib PNG row decoder completion");
+      Assert
+        (Zlib_PNG_Row_Count = 1
+         and then Zlib_PNG_Row_Bytes (1) = 16#FF#
+         and then Zlib_PNG_Row_Bytes (2) = 16#00#
+         and then Zlib_PNG_Row_Bytes (3) = 16#00#
+         and then Zlib_PNG_Row_Bytes (4) = 16#FF#,
+         "zlib PNG row decoder RGBA bytes");
+
+      Zlib_PNG_Row_Count := 0;
+      Zlib_PNG_Row_Bytes := (others => 0);
+      Graphics.Decode_Base64_Zlib_PNG_Chunk_Rows
+        (2,
+         Zlib_PNG_Chunk_Text'Access,
+         0,
+         Zlib_PNG_Encoded_Length,
+         Capture_Zlib_PNG_Row'Access,
+         Zlib_PNG_Result);
+      Assert
+        (Zlib_PNG_Result.Decode_Complete
+         and then Zlib_PNG_Result.Decode_Status = Graphics.Decode_Ok
+         and then Zlib_PNG_Row_Count = 1
+         and then Zlib_PNG_Row_Bytes (1) = 16#FF#,
+         "bounded zlib PNG decoder discovers inflated length");
 
       Graphics.Decode_Base64_Chunk_Bytes
         (2,
@@ -1379,8 +2017,8 @@ begin
       Kitty_Oversized_RGBA_Data := Graphics.Data_Preview (Kitty_Oversized_RGBA);
       Assert
         (Kitty_Oversized_RGBA_Data.Raw_Format = 32
-         and then Kitty_Oversized_RGBA_Data.Pixel_Width = 513
-         and then Kitty_Oversized_RGBA_Data.Pixel_Height = 512,
+         and then Kitty_Oversized_RGBA_Data.Pixel_Width = 16_385
+         and then Kitty_Oversized_RGBA_Data.Pixel_Height = 1_024,
          "oversized kitty RGBA pixel metadata");
       Assert
         (Kitty_Oversized_RGBA_Data.Decoded_Length = 0
@@ -1420,11 +2058,53 @@ begin
       Assert (ITerm2_Header.ITerm2_Inline, "iTerm2 inline field");
       Assert (ITerm2_Header.ITerm2_Name_Length = 1, "iTerm2 name field length");
       Assert
+        (ITerm2_Header.ITerm2_Width_Specified
+         and then ITerm2_Header.ITerm2_Width_Valid
+         and then ITerm2_Header.ITerm2_Width_Value = 12
+         and then ITerm2_Header.ITerm2_Width_Unit = Graphics.ITerm2_Cells,
+         "iTerm2 cell width parsed");
+      Assert
+        (ITerm2_Header.ITerm2_Height_Specified
+         and then ITerm2_Header.ITerm2_Height_Valid
+         and then ITerm2_Header.ITerm2_Height_Value = 5
+         and then ITerm2_Header.ITerm2_Height_Unit = Graphics.ITerm2_Cells,
+         "iTerm2 cell height parsed");
+      Assert
         (Graphics.Placeholder_Cols (ITerm2) = 12,
          "iTerm2 numeric width placeholder cols");
       Assert
         (Graphics.Placeholder_Rows (ITerm2) = 5,
          "iTerm2 numeric height placeholder rows");
+      declare
+         Sized : constant Graphics.Graphics_Header := Graphics.Header_Text
+           (Terminal.Core.ITerm2_Graphics,
+            "File=inline=1;width=25%;height=40px;preserveAspectRatio=0;doNotMoveCursor=1:AAAA");
+         Automatic : constant Graphics.Graphics_Header := Graphics.Header_Text
+           (Terminal.Core.ITerm2_Graphics,
+            "File=inline=1;width=auto;height=bad:AAAA");
+         Invalid_Controls : constant Graphics.Graphics_Header :=
+           Graphics.Header_Text
+             (Terminal.Core.ITerm2_Graphics,
+              "File=inline=2;size=bad;preserveAspectRatio=7;doNotMoveCursor=7:AAAA");
+      begin
+         Assert
+           (Sized.ITerm2_Width_Unit = Graphics.ITerm2_Percent
+            and then Sized.ITerm2_Width_Value = 25
+            and then Sized.ITerm2_Height_Unit = Graphics.ITerm2_Pixels
+            and then Sized.ITerm2_Height_Value = 40
+            and then not Sized.ITerm2_Preserve_Aspect_Ratio
+            and then Sized.ITerm2_Do_Not_Move_Cursor,
+            "iTerm2 percent/pixel sizing parsed");
+         Assert
+           (Automatic.ITerm2_Width_Unit = Graphics.ITerm2_Auto
+            and then Automatic.ITerm2_Width_Valid
+            and then not Automatic.ITerm2_Height_Valid,
+            "iTerm2 auto and invalid sizing parsed");
+         Assert
+           (not Invalid_Controls.ITerm2_Control_Data_Valid
+            and then not Invalid_Controls.ITerm2_Declared_Size_Valid,
+            "iTerm2 enumerated controls and declared size are validated");
+      end;
       Assert
         (Graphics.Header_Status_Label (ITerm2) =
          "iTerm2 header ready; inline=yes; name bytes=1",
@@ -1638,7 +2318,7 @@ begin
          "sixel raster header pixel metadata");
       Assert
         (Graphics.Data_Status_Label (Sixel) =
-         "sixel raster decoded=96/4 bytes=00000000 decoded",
+         "sixel raster decoded=96/4 bytes=000000FF decoded",
          "sixel data status label");
    end;
 end Graphics_Capabilities_Smoke;

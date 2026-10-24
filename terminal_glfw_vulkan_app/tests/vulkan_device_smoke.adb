@@ -14,6 +14,7 @@ procedure Vulkan_Device_Smoke is
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Vulkan_Device.Create_Status;
    use type Terminal.App.Vulkan_Device.Render_Status;
+   use type Terminal.App.Vulkan_Device.Readback_Status;
    use type Terminal.App.Vulkan_Device.Select_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
 
@@ -27,7 +28,18 @@ procedure Vulkan_Device_Smoke is
    Select_Status : VD.Select_Status;
    Create_Status : VD.Create_Status;
    Render_Status : VD.Render_Status;
+   Readback_Status : VD.Readback_Status;
+   Red, Green, Blue, Alpha : Terminal.Common.Bytes.Byte := 0;
 begin
+   VD.Enable_Framebuffer_Readback (Device, Choice, Readback_Status);
+   Assert
+     (Readback_Status = VD.Readback_Not_Initialized,
+      "uninitialized device must reject framebuffer readback");
+   VD.Readback_Pixel
+     (Device, 0, 0, Red, Green, Blue, Alpha, Readback_Status);
+   Assert
+     (Readback_Status = VD.Readback_Not_Initialized,
+      "uninitialized device must reject pixel reads");
    Assert
      (VD.Select_Status_Label (VD.Ok) = "Select device: Ok",
       "select ok status label");
@@ -39,6 +51,10 @@ begin
      (VD.Create_Status_Label (VD.Create_Swapchain_Failed) =
       "Create device: Create Swapchain Failed",
       "create failure status label");
+   Assert
+     (VD.Create_Status_Label (VD.Resources_In_Flight) =
+      "Create device: Resources In Flight",
+      "deferred upload status label");
    Assert
      (VD.Render_Status_Label (VD.Queue_Present_Failed) =
       "Render device: Queue Present Failed",

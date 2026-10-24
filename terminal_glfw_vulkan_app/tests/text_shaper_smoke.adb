@@ -281,6 +281,23 @@ procedure Text_Shaper_Smoke is
          Label & " direction");
       Assert (Text.Script = Script, Label & " script");
    end Assert_Bidi_Script;
+
+   procedure Assert_Scalar_Properties
+     (Codepoint : Natural;
+      Label     : String)
+   is
+      Item      : constant RM.Text_Run_Command := Run (Codepoint);
+      Direction : RM.Text_Run_Direction;
+      Script    : RM.Text_Run_Script;
+   begin
+      TS.Properties_Of (Codepoint, Direction, Script);
+      Assert
+        (Direction = TS.Direction_Of (Item),
+         Label & " scalar direction should match run classification");
+      Assert
+        (Script = TS.Script_Of (Item),
+         Label & " scalar script should match run classification");
+   end Assert_Scalar_Properties;
 begin
    Assert
      (TS.Backend_Status_Label (TS.Backend_Ok) = "Shaping backend ready",
@@ -289,6 +306,18 @@ begin
      (TS.Backend_Status_Label (TS.Backend_Unavailable) =
       "Shaping backend unavailable",
       "backend unavailable status label");
+
+   Assert_Scalar_Properties (Character'Pos ('A'), "Latin");
+   Assert_Scalar_Properties (Character'Pos ('1'), "digit");
+   Assert_Scalar_Properties (16#0301#, "combining mark");
+   Assert_Scalar_Properties (16#05D0#, "Hebrew");
+   Assert_Scalar_Properties (16#0627#, "Arabic");
+   Assert_Scalar_Properties (16#0915#, "Devanagari");
+   Assert_Scalar_Properties (16#200E#, "left-to-right mark");
+   Assert_Scalar_Properties (16#200F#, "right-to-left mark");
+   Assert_Scalar_Properties (16#4E00#, "CJK");
+   Assert_Scalar_Properties (16#1F642#, "emoji");
+   Assert_Scalar_Properties (16#10FFFF#, "unknown");
    Assert
      (TS.Backend_Status_Label (TS.Backend_Load_Failed) =
       "Shaping backend load failed",

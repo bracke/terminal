@@ -1,4 +1,6 @@
 with AUnit.Assertions;
+with Ada.Unchecked_Deallocation;
+with Interfaces;
 with System;
 
 with Terminal.Common.Bytes;
@@ -10,6 +12,7 @@ procedure Vulkan_Submit_Smoke is
    use type Terminal.Common.Bytes.Byte;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
+   use type Terminal.App.Render_Model.Image_Data_Access;
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Render_Model.Text_Run_Array_Access;
    use type Terminal.App.Render_Model.Text_Run_Direction;
@@ -17,8 +20,10 @@ procedure Vulkan_Submit_Smoke is
    use type Terminal.App.Render_Model.Text_Run_Script;
    use type Terminal.App.Render_Model.Text_Run_Shape_Status;
    use type Terminal.App.Vulkan_Submit.Build_Status;
+   use type Terminal.App.Vulkan_Submit.Image_Atlas_Limits;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
    use type Terminal.App.Vulkan_Submit.Vertex_Array_Access;
+   use type Interfaces.Unsigned_64;
 
    package RM renames Terminal.App.Render_Model;
    package VS renames Terminal.App.Vulkan_Submit;
@@ -29,7 +34,8 @@ procedure Vulkan_Submit_Smoke is
          Y      => 0.0,
          Width  => 50.0,
          Height => 20.0,
-         Color  => (R => 1.0, G => 0.0, B => 0.0, A => 1.0))];
+         Color  => (R => 1.0, G => 0.0, B => 0.0, A => 1.0),
+         Layer  => RM.Rectangle_Base_Background)];
    Glyphs : aliased RM.Glyph_Array :=
      [1 =>
         (X         => 10.0,
@@ -46,6 +52,8 @@ procedure Vulkan_Submit_Smoke is
      (1 => 16#FF#, 2 => 16#00#, 3 => 16#00#, 4 => 16#FF#);
    White_RGBA : aliased Terminal.Common.Bytes.Byte_Array :=
      (1 => 16#FF#, 2 => 16#FF#, 3 => 16#FF#, 4 => 16#FF#);
+   Blue_RGBA : aliased Terminal.Common.Bytes.Byte_Array :=
+     (1 => 16#00#, 2 => 16#00#, 3 => 16#FF#, 4 => 16#FF#);
   Strided_RGBA : aliased Terminal.Common.Bytes.Byte_Array :=
      (1 => 16#FF#, 2 => 16#00#, 3 => 16#00#, 4 => 16#FF#,
       5 => 16#00#, 6 => 16#FF#, 7 => 16#00#, 8 => 16#FF#,
@@ -57,8 +65,10 @@ procedure Vulkan_Submit_Smoke is
       3 => Character'Pos ('A'), 4 => Character'Pos ('A'),
       5 => Character'Pos ('/'), 6 => Character'Pos ('w'),
       7 => Character'Pos ('='), 8 => Character'Pos ('='));
+   Preview_ABC : aliased Terminal.Common.Bytes.Byte_Array :=
+     (1 => 16#41#, 2 => 16#42#, 3 => 16#43#);
    Large_RGBA : RM.Image_Data_Access :=
-     new Terminal.Common.Bytes.Byte_Array'(1 .. 33 * 32 * 4 => 16#7F#);
+     new Terminal.Common.Bytes.Byte_Array'(1 .. 65 * 64 * 4 => 16#7F#);
    Images : aliased RM.Image_Array :=
      [1 =>
         (X              => 20.0,
@@ -83,10 +93,17 @@ procedure Vulkan_Submit_Smoke is
          Encoded_Source_Bytes_Owned => False,
          Encoded_Source_Length => 0,
          Decoded_Preview_Length => 3,
-         Decoded_Preview_Bytes =>
-           (1 => 16#41#, 2 => 16#42#, 3 => 16#43#, others => 0),
+         Decoded_Preview_Bytes => Preview_ABC'Unchecked_Access,
+         Decoded_Preview_Bytes_Owned => False,
          Preview_Decode_Complete => True,
          Decode_Status => RM.Image_Decode_Ok,
+         U0             => 0.0,
+         V0             => 0.0,
+         U1             => 1.0,
+         V1             => 1.0,
+         Image_ID       => 0,
+         Content_Serial => 1,
+         Z_Index        => 0,
          Tint           => (R => 0.1, G => 0.6, B => 0.9, A => 1.0))];
    Runs : aliased RM.Text_Run_Array :=
      [1 =>
@@ -135,7 +152,7 @@ procedure Vulkan_Submit_Smoke is
       Colour_Sheet_Width => 0,
       Colour_Sheet_Height => 0,
       Colour_Sheet_Pixels => System.Null_Address,
-      Colour_Sheet_Dirty => False,
+      Colour_Sheet_Dirty => True,
       Images          => Images'Unchecked_Access,
       Image_Count     => 1,
       Text_Runs       => Runs'Unchecked_Access,
@@ -148,6 +165,9 @@ procedure Vulkan_Submit_Smoke is
 
    Batch  : VS.Submission_Batch;
    Status : VS.Build_Status;
+
+   function Near (Left, Right : Float) return Boolean is
+     (abs (Left - Right) < 0.000_01);
 begin
    Assert
      (VS.Status_Label (VS.Ok) = "Submit build: Ok",
@@ -191,6 +211,9 @@ begin
       "built submit status label");
    Assert (VS.Width (Batch) = 100, "frame width not carried");
    Assert (VS.Height (Batch) = 40, "frame height not carried");
+   Assert
+     (VS.Colour_Atlas_Dirty (Batch),
+      "colour atlas dirty flag not carried");
    Assert (VS.Vertex_Count (Batch) = 18, "three quads should produce 18 vertices");
    Assert (VS.Rectangle_Vertex_Count (Batch) = 6, "rectangle vertex count");
    Assert (VS.Glyph_Vertex_Count (Batch) = 6, "glyph vertex count");
@@ -288,6 +311,23 @@ begin
    Assert
      (VS.Text_Runs (Batch) (1).Fallback_Glyphs,
       "text run fallback flag");
+   declare
+      Retained_Vertices : constant VS.Vertex_Array_Access :=
+        VS.Vertices (Batch);
+      Retained_Runs : constant RM.Text_Run_Array_Access :=
+        VS.Text_Runs (Batch);
+   begin
+      Frame.Colour_Sheet_Dirty := False;
+      VS.Build (Frame, Batch, Status);
+      Assert (Status = VS.Ok, "retained-capacity batch rebuild");
+      Assert
+        (VS.Vertices (Batch) = Retained_Vertices
+         and then VS.Text_Runs (Batch) = Retained_Runs,
+         "equal-sized batch rebuild should retain storage");
+      Assert
+        (not VS.Colour_Atlas_Dirty (Batch),
+         "clean colour atlas flag not carried");
+   end;
    Runs (1).Codepoints (3) := 0;
    Assert
      (VS.Text_Runs (Batch) (1).Codepoints (3) = 16#1F468#,
@@ -299,18 +339,47 @@ begin
    Assert (VS.Atlas_Bytes (Batch) = 65_536, "atlas bytes");
    Assert (VS.Vertices (Batch) /= null, "vertices not allocated");
    Assert
-     (VS.Vertices (Batch) (13).Texture = VS.Texture_Text_Atlas,
+     (VS.Vertices (Batch) (7).Texture = VS.Texture_Text_Atlas,
       "glyph vertices should be textured");
    Assert
-     (not VS.Vertices (Batch) (7).Textured
-      and then VS.Vertices (Batch) (7).Texture = VS.Texture_None,
-      "image placeholder vertices should be untextured");
+     (not VS.Vertices (Batch) (13).Textured
+      and then VS.Vertices (Batch) (13).Texture = VS.Texture_None,
+      "non-negative image placeholder should be above text");
    Assert
      (VS.Vertices (Batch) (1).Y = -1.0,
       "top edge should map to Vulkan clip-space top");
    Assert
      (VS.Vertices (Batch) (3).Y = 0.0,
       "lower edge should map downward in Vulkan clip space");
+
+   Images (1).Z_Index := -1;
+   VS.Build (Frame, Batch, Status);
+   Assert (Status = VS.Ok, "negative z-index batch build failed");
+   Assert
+     (VS.Vertices (Batch) (7).Texture = VS.Texture_None
+      and then VS.Vertices (Batch) (13).Texture = VS.Texture_Text_Atlas,
+      "negative z-index image should be submitted below text");
+
+   Rects (1).Layer := RM.Rectangle_Cell_Background;
+   Images (1).Z_Index := -1_073_741_825;
+   VS.Build (Frame, Batch, Status);
+   Assert (Status = VS.Ok, "deep negative z-index batch build failed");
+   Assert
+     (Near (VS.Vertices (Batch) (1).Color.R, 0.1)
+      and then Near (VS.Vertices (Batch) (7).Color.R, 1.0)
+      and then VS.Vertices (Batch) (13).Texture = VS.Texture_Text_Atlas,
+      "deep negative image should be below non-default cell background");
+
+   Images (1).Z_Index := -1_073_741_824;
+   VS.Build (Frame, Batch, Status);
+   Assert (Status = VS.Ok, "z-index threshold batch build failed");
+   Assert
+     (Near (VS.Vertices (Batch) (1).Color.R, 1.0)
+      and then Near (VS.Vertices (Batch) (7).Color.R, 0.1),
+      "INT32_MIN/2 threshold remains above cell background");
+
+   Rects (1).Layer := RM.Rectangle_Base_Background;
+   Images (1).Z_Index := 0;
 
    VS.Release (Batch);
    Assert (VS.Vertex_Count (Batch) = 0, "release should clear vertices");
@@ -375,8 +444,8 @@ begin
      (VS.Image_Texture_Vertex_Count (Batch) = 0,
       "downgraded image texture vertex count");
    Assert
-     (not VS.Vertices (Batch) (7).Textured
-      and then VS.Vertices (Batch) (7).Texture = VS.Texture_None,
+     (not VS.Vertices (Batch) (13).Textured
+      and then VS.Vertices (Batch) (13).Texture = VS.Texture_None,
       "downgraded image vertices should remain untextured");
    Assert
      (VS.Image_Status_Label (Batch) =
@@ -403,8 +472,7 @@ begin
    Images (1).Decoded_Source := RM.Image_Decoded_Source_Buffer;
    Images (1).Decoded_Bytes := Red_RGBA'Unchecked_Access;
    Images (1).Decoded_Preview_Length := 4;
-   Images (1).Decoded_Preview_Bytes :=
-     (1 => 16#FF#, 2 => 16#00#, 3 => 16#00#, 4 => 16#FF#, others => 0);
+   Images (1).Decoded_Preview_Bytes := Red_RGBA'Unchecked_Access;
    Images (1).Preview_Decode_Complete := True;
    Images (1).Decode_Status := RM.Image_Decode_Ok;
    VS.Build (Frame, Batch, Status);
@@ -428,8 +496,8 @@ begin
      (VS.Image_Texture_Vertex_Count (Batch) = 6,
       "raw image texture vertex count");
    Assert
-     (VS.Vertices (Batch) (7).Textured
-      and then VS.Vertices (Batch) (7).Texture = VS.Texture_Image,
+     (VS.Vertices (Batch) (13).Textured
+      and then VS.Vertices (Batch) (13).Texture = VS.Texture_Image,
       "raw image vertices should use image texture");
    Assert
      (VS.Image_Status_Label (Batch) =
@@ -440,6 +508,140 @@ begin
       "submit image texture ready; vertices=6",
       "raw image texture status label");
    VS.Release (Batch);
+
+   declare
+      Multi_Images : aliased RM.Image_Array :=
+        [1 => Images (1), 2 => Images (1), 3 => Images (1)];
+      Multi_Frame : RM.Frame_Commands := Frame;
+   begin
+      Multi_Images (1).Decoded_Bytes := Red_RGBA'Unchecked_Access;
+      Multi_Images (1).Image_ID := 2;
+      Multi_Images (1).X := 0.0;
+      Multi_Images (2).Decoded_Bytes := Blue_RGBA'Unchecked_Access;
+      Multi_Images (2).Image_ID := 1;
+      Multi_Images (2).X := 10.0;
+      Multi_Images (3).Decoded_Bytes := Red_RGBA'Unchecked_Access;
+      Multi_Images (3).Image_ID := 2;
+      Multi_Images (3).X := 20.0;
+      Multi_Frame.Images := Multi_Images'Unchecked_Access;
+      Multi_Frame.Image_Count := Multi_Images'Length;
+
+      VS.Build (Multi_Frame, Batch, Status);
+      Assert (Status = VS.Ok, "multi-image atlas batch build failed");
+      Assert
+        (VS.Image_Atlas_Source_Count (Batch) = 2,
+         "atlas should deduplicate repeated image storage");
+      Assert
+        (VS.Image_Atlas_Width (Batch) = 3
+         and then VS.Image_Atlas_Height (Batch) = 6
+         and then VS.Image_Atlas_Bytes (Batch) = 72,
+         "two one-pixel images should have isolated padded atlas slots");
+      Assert
+        (VS.Image_Atlas_Source_Command (Batch, 1).Decoded_Bytes =
+           Red_RGBA'Unchecked_Access
+         and then VS.Image_Atlas_Source_Command (Batch, 2).Decoded_Bytes =
+           Blue_RGBA'Unchecked_Access,
+         "atlas should retain both distinct image sources");
+      Assert
+        (Near (VS.Vertices (Batch) (13).U, 1.0 / 3.0)
+         and then Near (VS.Vertices (Batch) (13).V, 4.0 / 6.0)
+         and then Near (VS.Vertices (Batch) (19).U, 1.0 / 3.0)
+         and then Near (VS.Vertices (Batch) (19).V, 1.0 / 6.0)
+         and then Near (VS.Vertices (Batch) (25).U, 1.0 / 3.0)
+         and then Near (VS.Vertices (Batch) (25).V, 1.0 / 6.0),
+         "equal-z images should sort by id and address their own atlas slots");
+      Assert
+        (VS.Vertices (Batch) (19).X < VS.Vertices (Batch) (25).X,
+         "equal-z equal-id images should preserve source order");
+      Assert
+        (VS.Image_Texture_Vertex_Count (Batch) = 18,
+         "all multi-image vertices should remain textured");
+      declare
+         First_Signature : constant Interfaces.Unsigned_64 :=
+           VS.Image_Atlas_Signature (Batch);
+      begin
+         Assert (First_Signature /= 0, "cacheable atlas has a signature");
+         VS.Release (Batch);
+         VS.Build (Multi_Frame, Batch, Status);
+         Assert
+           (Status = VS.Ok
+            and then VS.Image_Atlas_Signature (Batch) = First_Signature,
+            "unchanged atlas sources retain a stable signature");
+         VS.Release (Batch);
+         Multi_Images (2).Content_Serial := 2;
+         VS.Build (Multi_Frame, Batch, Status);
+         Assert
+           (Status = VS.Ok
+            and then VS.Image_Atlas_Signature (Batch) /= First_Signature,
+            "pixel content generation invalidates the atlas signature");
+      end;
+      VS.Release (Batch);
+
+      VS.Set_Image_Atlas_Limits
+        (Batch,
+         (Bytes => VS.Min_Image_Atlas_Bytes,
+          Dimension => VS.Min_Image_Atlas_Dimension));
+      Assert
+        (VS.Image_Atlas_Limit (Batch) =
+           (Bytes => VS.Min_Image_Atlas_Bytes,
+            Dimension => VS.Min_Image_Atlas_Dimension),
+         "configurable image atlas limits");
+      VS.Build (Multi_Frame, Batch, Status);
+      Assert
+        (Status = VS.Ok
+         and then VS.Image_Atlas_Source_Count (Batch) = 2
+         and then VS.Image_Texture_Vertex_Count (Batch) = 18,
+         "minimum GPU atlas limits retain all configured image objects");
+      VS.Release (Batch);
+      VS.Set_Image_Atlas_Limits
+        (Batch, VS.Default_Image_Atlas_Limits);
+   end;
+
+   declare
+      Overflow_Count : constant := VS.Max_Image_Atlas_Sources + 1;
+      Overflow_Images : aliased RM.Image_Array :=
+        [1 .. Overflow_Count => (others => <>)];
+      type Source_Array is
+        array (Positive range <>) of RM.Image_Data_Access;
+      Sources : Source_Array (1 .. Overflow_Count) := (others => null);
+      Overflow_Frame : RM.Frame_Commands := Frame;
+      procedure Free_Source is new Ada.Unchecked_Deallocation
+        (Terminal.Common.Bytes.Byte_Array, RM.Image_Data_Access);
+   begin
+      for I in Overflow_Images'Range loop
+         Sources (I) :=
+           new Terminal.Common.Bytes.Byte_Array'
+             (1 => Terminal.Common.Bytes.Byte (I mod 256),
+              2 => 0,
+              3 => 0,
+              4 => 16#FF#);
+         Overflow_Images (I) := Images (1);
+         Overflow_Images (I).Image_ID := Interfaces.Unsigned_32 (I);
+         Overflow_Images (I).Decoded_Bytes := Sources (I);
+      end loop;
+      Overflow_Frame.Images := Overflow_Images'Unchecked_Access;
+      Overflow_Frame.Image_Count := Overflow_Count;
+      VS.Set_Image_Atlas_Limits
+        (Batch,
+         (Bytes => VS.Min_Image_Atlas_Bytes,
+          Dimension => VS.Min_Image_Atlas_Dimension));
+      VS.Build (Overflow_Frame, Batch, Status);
+      Assert
+        (Status = VS.Ok
+         and then VS.Image_Atlas_Source_Count (Batch) =
+           VS.Max_Image_Atlas_Sources
+         and then VS.Image_Texture_Vertex_Count (Batch) =
+           VS.Max_Image_Atlas_Sources * 6,
+         "atlas overflow retains the bounded texture set");
+      Assert
+        (VS.Last_Image_Texture_Downgraded (Batch),
+         "only an atlas source beyond the bound is downgraded");
+      VS.Release (Batch);
+      VS.Set_Image_Atlas_Limits (Batch, VS.Default_Image_Atlas_Limits);
+      for I in Sources'Range loop
+         Free_Source (Sources (I));
+      end loop;
+   end;
 
    Images (1).Decoded_Source := RM.Image_Decoded_Source_Raw_Base64;
    Images (1).Decoded_Bytes := null;
@@ -528,10 +730,7 @@ begin
    Images (1).Decoded_Source := RM.Image_Decoded_Source_Buffer;
    Images (1).Decoded_Bytes := Strided_RGBA'Unchecked_Access;
    Images (1).Decoded_Preview_Length := 8;
-   Images (1).Decoded_Preview_Bytes :=
-     (1 => 16#FF#, 2 => 16#00#, 3 => 16#00#, 4 => 16#FF#,
-      5 => 16#00#, 6 => 16#FF#, 7 => 16#00#, 8 => 16#FF#,
-      others => 0);
+   Images (1).Decoded_Preview_Bytes := Strided_RGBA'Unchecked_Access;
    Images (1).Preview_Decode_Complete := True;
    Images (1).Decode_Status := RM.Image_Decode_Ok;
    VS.Build (Frame, Batch, Status);
@@ -579,8 +778,7 @@ begin
    Images (1).Decoded_Source := RM.Image_Decoded_Source_Buffer;
    Images (1).Decoded_Bytes := White_RGBA'Unchecked_Access;
    Images (1).Decoded_Preview_Length := 4;
-   Images (1).Decoded_Preview_Bytes :=
-     (1 => 16#FF#, 2 => 16#FF#, 3 => 16#FF#, 4 => 16#FF#, others => 0);
+   Images (1).Decoded_Preview_Bytes := White_RGBA'Unchecked_Access;
    Images (1).Preview_Decode_Complete := True;
    Images (1).Decode_Status := RM.Image_Decode_Ok;
    VS.Build (Frame, Batch, Status);
@@ -598,8 +796,8 @@ begin
      (VS.Image_Texture_Vertex_Count (Batch) = 6,
       "sixel image texture vertex count");
    Assert
-     (VS.Vertices (Batch) (7).Textured
-      and then VS.Vertices (Batch) (7).Texture = VS.Texture_Image,
+     (VS.Vertices (Batch) (13).Textured
+      and then VS.Vertices (Batch) (13).Texture = VS.Texture_Image,
       "sixel image vertices should use image texture");
    Assert
      (VS.Image_Status_Label (Batch) =
@@ -619,8 +817,7 @@ begin
    Images (1).Decoded_Source := RM.Image_Decoded_Source_Buffer;
    Images (1).Decoded_Bytes := Red_RGBA'Unchecked_Access;
    Images (1).Decoded_Preview_Length := 4;
-   Images (1).Decoded_Preview_Bytes :=
-     (1 => 16#FF#, 2 => 16#00#, 3 => 16#00#, 4 => 16#FF#, others => 0);
+   Images (1).Decoded_Preview_Bytes := Red_RGBA'Unchecked_Access;
    Images (1).Preview_Decode_Complete := True;
    Images (1).Decode_Status := RM.Image_Decode_Ok;
    VS.Build (Frame, Batch, Status);
@@ -642,18 +839,22 @@ begin
    Images (1).Protocol := RM.Image_Kitty;
    Images (1).Placeholder := False;
    Images (1).Raw_Format := 32;
-   Images (1).Pixel_Width := 33;
-   Images (1).Pixel_Height := 32;
+   Images (1).Pixel_Width := 65;
+   Images (1).Pixel_Height := 64;
    Images (1).Payload_Length := 5_632;
    Images (1).Payload_Preview_Complete := True;
    Images (1).Encoded_Preview_Length := 5_632;
-   Images (1).Decoded_Byte_Length := 33 * 32 * 4;
+   Images (1).Decoded_Byte_Length := 65 * 64 * 4;
    Images (1).Decoded_Source := RM.Image_Decoded_Source_Buffer;
    Images (1).Decoded_Bytes := Large_RGBA;
    Images (1).Decoded_Preview_Length := RM.Max_Image_Decoded_Preview_Length;
-   Images (1).Decoded_Preview_Bytes := (others => 16#7F#);
+   Images (1).Decoded_Preview_Bytes := Large_RGBA;
    Images (1).Preview_Decode_Complete := True;
    Images (1).Decode_Status := RM.Image_Decode_Ok;
+   VS.Set_Image_Atlas_Limits
+     (Batch,
+      (Bytes => VS.Min_Image_Atlas_Bytes,
+       Dimension => VS.Min_Image_Atlas_Dimension));
    VS.Build (Frame, Batch, Status);
    Assert (Status = VS.Ok, "large image texture batch build failed");
    Assert
@@ -667,12 +868,18 @@ begin
       RM.Max_Image_Decoded_Preview_Length,
       "large image should keep capped decoded diagnostics preview");
    Assert
-     (VS.Last_Image_Decoded_Data_Byte (Batch, 33 * 32 * 4) = 16#7F#,
+     (VS.Last_Image_Decoded_Data_Byte (Batch, 65 * 64 * 4) = 16#7F#,
       "large image should expose decoded bytes through row source");
    Assert
      (VS.Image_Texture_Vertex_Count (Batch) = 6,
       "large image texture vertex count");
+   Assert
+     (VS.Image_Atlas_Source_Width (Batch, 1) = 33
+      and then VS.Image_Atlas_Source_Height (Batch, 1) = 32
+      and then VS.Image_Atlas_Bytes (Batch) <= VS.Min_Image_Atlas_Bytes,
+      "oversized image is reduced to fit without losing its texture");
    VS.Release (Batch);
+   VS.Set_Image_Atlas_Limits (Batch, VS.Default_Image_Atlas_Limits);
 
    Frame.Width := 0;
    VS.Build (Frame, Batch, Status);

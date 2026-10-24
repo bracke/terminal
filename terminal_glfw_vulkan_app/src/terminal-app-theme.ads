@@ -13,6 +13,9 @@ package Terminal.App.Theme is
       Default_BG : RM.Pixel_Color;
       Cursor_FG  : RM.Pixel_Color;
       Cursor_BG  : RM.Pixel_Color;
+      Selection_FG : RM.Pixel_Color;
+      Selection_BG : RM.Pixel_Color;
+      URL_Highlight : RM.Pixel_Color;
    end record;
 
    function Built_In (Name : Theme_Name) return Theme;

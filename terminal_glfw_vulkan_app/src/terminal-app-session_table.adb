@@ -38,13 +38,19 @@ package body Terminal.App.Session_Table is
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural;
+      Graphics_Profile : Terminal.Core.Graphics_Capability_Profile;
       Status           : out Table_Status;
       Start_Status     : out Terminal.App.Session_Runtime.Start_Status)
    is
    begin
       Slot := new Terminal.App.Session_Runtime.Runtime;
       Terminal.App.Session_Runtime.Start
-        (Slot.all, Rows, Cols, Scrollback_Limit, Start_Status);
+        (Slot.all,
+         Rows,
+         Cols,
+         Scrollback_Limit,
+         Start_Status,
+         Graphics_Profile);
       if Start_Status = Terminal.App.Session_Runtime.Ok then
          Status := Ok;
       else
@@ -63,16 +69,20 @@ package body Terminal.App.Session_Table is
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural;
-      Status           : out Table_Status)
+      Status           : out Table_Status;
+      Graphics_Profile : Terminal.Core.Graphics_Capability_Profile :=
+        Terminal.App.Core_Graphics_Profile)
    is
    begin
       Close_All (Table);
+      Table.Graphics_Profile := Graphics_Profile;
       Terminal.App.Sessions.Initialize (Table.Sessions);
       Start_Runtime
         (Table.Runtimes (1),
          Rows,
          Cols,
          Scrollback_Limit,
+         Table.Graphics_Profile,
          Status,
          Table.Last_Start);
    end Initialize;
@@ -101,6 +111,7 @@ package body Terminal.App.Session_Table is
          Rows,
          Cols,
          Scrollback_Limit,
+         Table.Graphics_Profile,
          Status,
          Table.Last_Start);
       if Status /= Ok then
@@ -190,6 +201,7 @@ package body Terminal.App.Session_Table is
          Rows,
          Cols,
          Scrollback_Limit,
+         Table.Graphics_Profile,
          Status,
          Table.Last_Start);
       if Status /= Ok then

@@ -39,6 +39,12 @@ package Terminal.App.Text_Shaper is
      (Run : Terminal.App.Render_Model.Text_Run_Command)
       return Terminal.App.Render_Model.Text_Run_Script;
 
+   --  Classify one terminal cell without constructing a full text-run record.
+   procedure Properties_Of
+     (Codepoint : Natural;
+      Direction : out Terminal.App.Render_Model.Text_Run_Direction;
+      Script    : out Terminal.App.Render_Model.Text_Run_Script);
+
    procedure Prepare
      (Run    : in out Terminal.App.Render_Model.Text_Run_Command;
       Status : out Shape_Status);

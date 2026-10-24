@@ -4,6 +4,7 @@ package body Terminal.App.Session_Runtime is
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
    use type Terminal.Core.Resize_Status;
+   use type Terminal.Core.Graphics_Stream_ID;
    use type Terminal.PTY.Backend.Resize_Status;
    use type Terminal.PTY.Backend.Spawn_Status;
 
@@ -19,6 +20,21 @@ package body Terminal.App.Session_Runtime is
    procedure Free_Reader is new Ada.Unchecked_Deallocation
      (Terminal.App.PTY_Reader.Reader,
       Reader_Access);
+
+   Next_Graphics_Stream_ID : Terminal.Core.Graphics_Stream_ID := 1;
+
+   function Allocate_Graphics_Stream_ID
+     return Terminal.Core.Graphics_Stream_ID
+   is
+      Result : constant Terminal.Core.Graphics_Stream_ID :=
+        Next_Graphics_Stream_ID;
+   begin
+      Next_Graphics_Stream_ID := Next_Graphics_Stream_ID + 1;
+      if Next_Graphics_Stream_ID = 0 then
+         Next_Graphics_Stream_ID := 1;
+      end if;
+      return Result;
+   end Allocate_Graphics_Stream_ID;
 
    function Trim_Image (Value : Natural) return String is
       Text : constant String := Natural'Image (Value);
@@ -52,8 +68,10 @@ package body Terminal.App.Session_Runtime is
          Free_Queue (R.Q);
       end if;
       if R.T /= null then
+         Terminal.Core.Finalize (R.T.all);
          Free_Core (R.T);
       end if;
+      R.Size_Known := False;
       R.Current_State := Closed;
    end Close;
 
@@ -62,7 +80,9 @@ package body Terminal.App.Session_Runtime is
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural;
-      Status           : out Start_Status)
+      Status           : out Start_Status;
+      Graphics_Profile : Terminal.Core.Graphics_Capability_Profile :=
+        Terminal.App.Core_Graphics_Profile)
    is
       Core_Status : Terminal.Core.Initialize_Status;
       Spawn_Status : Terminal.PTY.Backend.Spawn_Status;
@@ -84,8 +104,17 @@ package body Terminal.App.Session_Runtime is
          return;
       end if;
 
+      Terminal.Core.Set_Graphics_Capabilities
+        (R.T.all, Graphics_Profile);
+      R.Stream_ID := Allocate_Graphics_Stream_ID;
+      Terminal.Core.Set_Graphics_Stream_ID (R.T.all, R.Stream_ID);
+
       Terminal.PTY.Backend.Spawn_Default_Shell
-        (R.S.all, Rows, Cols, Spawn_Status);
+        (R.S.all,
+         Rows,
+         Cols,
+         Spawn_Status,
+         Terminal.App.Graphics_Feature_Report (Graphics_Profile));
       R.Last_Spawn := Spawn_Status;
       if Spawn_Status /= Terminal.PTY.Backend.Ok then
          Status := Spawn_Failed;
@@ -97,6 +126,9 @@ package body Terminal.App.Session_Runtime is
       R.Reader :=
         new Terminal.App.PTY_Reader.Reader
           (R.S.all'Unchecked_Access, R.Q.all'Unchecked_Access);
+      R.Rows := Rows;
+      R.Cols := Cols;
+      R.Size_Known := True;
       R.Current_State := Active;
       Status := Ok;
       R.Last_Start := Status;
@@ -155,14 +187,28 @@ package body Terminal.App.Session_Runtime is
       if R.Current_State /= Active or else R.T = null or else R.S = null then
          Core_Status := Terminal.Core.Invalid_Size;
          PTY_Status := Terminal.PTY.Backend.Session_Closed;
+      elsif R.Size_Known and then R.Rows = Rows and then R.Cols = Cols then
+         Core_Status := Terminal.Core.Ok;
+         PTY_Status := Terminal.PTY.Backend.Ok;
       else
          Terminal.Core.Resize (R.T.all, Rows, Cols, Core_Status);
          Terminal.PTY.Backend.Resize (R.S.all, Rows, Cols, PTY_Status);
+         if Core_Status = Terminal.Core.Ok
+           and then PTY_Status = Terminal.PTY.Backend.Ok
+         then
+            R.Rows := Rows;
+            R.Cols := Cols;
+            R.Size_Known := True;
+         end if;
       end if;
    end Resize;
 
    function State (R : Runtime) return Runtime_Status is
      (R.Current_State);
+
+   function Graphics_Stream_ID
+     (R : Runtime) return Terminal.Core.Graphics_Stream_ID is
+     (R.Stream_ID);
 
    function Core (R : Runtime) return access Terminal.Core.Terminal is
    begin

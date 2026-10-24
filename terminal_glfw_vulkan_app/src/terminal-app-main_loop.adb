@@ -14,6 +14,7 @@ with Terminal.App.Fonts;
 with Terminal.App.Graphics;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Input_Map;
+with Terminal.App.ITerm2_Files;
 with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.App.Renderer;
@@ -30,6 +31,7 @@ with Terminal.App.Text_Blink;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
+with Terminal.App.Vulkan_Recovery;
 with Terminal.PTY.Backend;
 
 package body Terminal.App.Main_Loop is
@@ -350,6 +352,8 @@ package body Terminal.App.Main_Loop is
       Vk_Status : Terminal.App.Vulkan_Context.Init_Status;
       Presenter : Terminal.App.Vulkan_Presenter.Presenter;
       Presenter_Status : Terminal.App.Vulkan_Presenter.Init_Status;
+      Vulkan_Recovery : Terminal.App.Vulkan_Recovery.Controller;
+      Recovery_Tick : Natural := 0;
       Renderer_Status : Terminal.App.Renderer.Init_Status;
       App_Config : Terminal.App.Config.Config;
       FB_Width  : Natural := 0;
@@ -365,6 +369,8 @@ package body Terminal.App.Main_Loop is
       Splits : Terminal.App.Splits.Split_State;
       Tabs : Terminal.App.Tabs.Tab_State;
       Sessions : Terminal.App.Session_Table.Runtime_Table;
+      Snapshot_Cache : Terminal.App.Renderer.Snapshot_Array
+        (1 .. Terminal.App.Sessions.Max_Sessions);
       Hovered_Link : Terminal.Core.Hyperlink;
       Has_Link_Activation : Boolean := False;
       Link_Activation :
@@ -430,6 +436,21 @@ package body Terminal.App.Main_Loop is
 
       procedure Configure_Active_Core is
       begin
+         Terminal.Core.Set_Graphics_Capabilities
+           (Active_Core.all,
+            Terminal.App.Core_Graphics_Profile
+              (App_Config.Kitty_File_Transfer,
+               App_Config.Kitty_Temporary_Transfer,
+               App_Config.Kitty_Shared_Memory,
+               App_Config.ITerm2_File_Downloads));
+         Terminal.Core.Set_Graphics_Resource_Limits
+           (Active_Core.all,
+            (Transaction_Length => App_Config.Graphics_Transaction_Bytes,
+             Pending_Events => App_Config.Graphics_Pending_Events,
+             Pending_Bytes => App_Config.Graphics_Pending_Bytes,
+             Deferred_Input_Bytes =>
+               App_Config.Graphics_Deferred_Input_Bytes,
+             Pixel_Dimension => App_Config.Graphics_Pixel_Dimension));
          Terminal.Core.Set_Cell_Pixel_Size
            (Active_Core.all,
             Terminal.App.Renderer.Cell_Width (R),
@@ -601,6 +622,7 @@ package body Terminal.App.Main_Loop is
          Terminal.Core.Release (Copy_Snap);
       end Copy_Selection;
    begin
+      Terminal.App.Vulkan_Recovery.Initialize (Vulkan_Recovery);
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
       if Init_Status /= GLFW_Vulkan.Ok then
          Terminal.App.Diagnostics.Log_Startup_Failure
@@ -665,6 +687,30 @@ package body Terminal.App.Main_Loop is
       end if;
       Terminal.App.Renderer.Set_Theme
         (R, Terminal.App.Config.Active_Theme (App_Config));
+      Terminal.App.Renderer.Set_Graphics_Access_Policy
+        (R,
+         (Allow_Regular_Files   => App_Config.Kitty_File_Transfer,
+          Allow_Temporary_Files => App_Config.Kitty_Temporary_Transfer,
+          Allow_Shared_Memory   => App_Config.Kitty_Shared_Memory));
+      declare
+         Policy : Terminal.App.ITerm2_Files.Download_Policy;
+      begin
+         Terminal.App.ITerm2_Files.Configure
+           (Policy,
+            App_Config.ITerm2_File_Downloads,
+            Terminal.App.ITerm2_Files.Default_Download_Directory);
+         Terminal.App.Renderer.Set_ITerm2_Download_Policy (R, Policy);
+      end;
+      Terminal.App.Renderer.Set_Graphics_Resource_Limits
+        (R,
+         (Image_Objects => App_Config.Graphics_Image_Objects,
+          Image_Bytes => App_Config.Graphics_Image_Bytes,
+          Placements => App_Config.Graphics_Placements,
+          Animation_Frames => App_Config.Graphics_Animation_Frames,
+          Per_Image_Bytes => App_Config.Graphics_Per_Image_Bytes,
+          Pixel_Dimension => App_Config.Graphics_Pixel_Dimension,
+          GPU_Atlas_Bytes => App_Config.Graphics_GPU_Atlas_Bytes,
+          GPU_Atlas_Dimension => App_Config.Graphics_GPU_Atlas_Dimension));
 
       Terminal.App.Resize.Startup_Cells
         (Pixel_Width  => FB_Width,
@@ -683,7 +729,13 @@ package body Terminal.App.Main_Loop is
          Initial_Rows,
          Initial_Cols,
          App_Config.Scrollback_Limit,
-         Session_Table_Status);
+         Session_Table_Status,
+         Graphics_Profile =>
+           Terminal.App.Core_Graphics_Profile
+             (App_Config.Kitty_File_Transfer,
+              App_Config.Kitty_Temporary_Transfer,
+              App_Config.Kitty_Shared_Memory,
+              App_Config.ITerm2_File_Downloads));
       if Session_Table_Status /= Terminal.App.Session_Table.Ok then
          Terminal.App.Diagnostics.Log_Startup_Failure
            ("session-table",
@@ -722,6 +774,9 @@ package body Terminal.App.Main_Loop is
                Local_Redraw : Boolean := False;
                Current_Blink_Tick : Natural := Last_Blink_Tick;
             begin
+               if Recovery_Tick < Natural'Last then
+                  Recovery_Tick := Recovery_Tick + 1;
+               end if;
                --  Wait a frame's worth instead of spinning at ~60 fps. Present is
                --  already skipped for unchanged frames, so this timeout alone sets
                --  the idle rate and a short fixed wait keeps it cheap. Do not sleep
@@ -837,16 +892,27 @@ package body Terminal.App.Main_Loop is
                                     Apply_Hovered_Link ((others => <>));
                                  end if;
                               when Terminal.App.Tabs.Close_Tab =>
-                                 Terminal.App.Session_Table.Close_Tab
-                                   (Sessions, Tabs, Session_Table_Status);
-                                 if Session_Table_Status =
-                                   Terminal.App.Session_Table.Ok
-                                 then
-                                    Configure_Active_Core;
-                                    Scroll_Offset := 0;
-                                    Terminal.App.Selection.Clear (Selection);
-                                    Apply_Hovered_Link ((others => <>));
-                                 end if;
+                                 declare
+                                    Closed_Stream : constant
+                                      Terminal.Core.Graphics_Stream_ID :=
+                                        Terminal.App.Session_Runtime
+                                          .Graphics_Stream_ID
+                                            (Active_Runtime.all);
+                                 begin
+                                    Terminal.App.Session_Table.Close_Tab
+                                      (Sessions, Tabs, Session_Table_Status);
+                                    if Session_Table_Status =
+                                      Terminal.App.Session_Table.Ok
+                                    then
+                                       Terminal.App.Renderer
+                                         .Release_Graphics_Stream
+                                           (R, Closed_Stream);
+                                       Configure_Active_Core;
+                                       Scroll_Offset := 0;
+                                       Terminal.App.Selection.Clear (Selection);
+                                       Apply_Hovered_Link ((others => <>));
+                                    end if;
+                                 end;
                               when Terminal.App.Tabs.Next_Tab
                                  | Terminal.App.Tabs.Previous_Tab =>
                                  Terminal.App.Tabs.Apply
@@ -896,16 +962,29 @@ package body Terminal.App.Main_Loop is
                                     Apply_Hovered_Link ((others => <>));
                                  end if;
                               when Terminal.App.Splits.Close_Pane =>
-                                 Terminal.App.Session_Table.Close_Pane
-                                   (Sessions, Splits, Session_Table_Status);
-                                 if Session_Table_Status =
-                                   Terminal.App.Session_Table.Ok
-                                 then
-                                    Configure_Active_Core;
-                                    Scroll_Offset := 0;
-                                    Terminal.App.Selection.Clear (Selection);
-                                    Apply_Hovered_Link ((others => <>));
-                                 end if;
+                                 declare
+                                    Closed_Stream : constant
+                                      Terminal.Core.Graphics_Stream_ID :=
+                                        Terminal.App.Session_Runtime
+                                          .Graphics_Stream_ID
+                                            (Active_Runtime.all);
+                                 begin
+                                    Terminal.App.Session_Table.Close_Pane
+                                      (Sessions,
+                                       Splits,
+                                       Session_Table_Status);
+                                    if Session_Table_Status =
+                                      Terminal.App.Session_Table.Ok
+                                    then
+                                       Terminal.App.Renderer
+                                         .Release_Graphics_Stream
+                                           (R, Closed_Stream);
+                                       Configure_Active_Core;
+                                       Scroll_Offset := 0;
+                                       Terminal.App.Selection.Clear (Selection);
+                                       Apply_Hovered_Link ((others => <>));
+                                    end if;
+                                 end;
                               when Terminal.App.Splits.Next_Pane =>
                                  Terminal.App.Splits.Apply
                                    (Splits, Split_Command, Split_Status);
@@ -1367,6 +1446,41 @@ package body Terminal.App.Main_Loop is
                     Local_Redraw_Request => Local_Redraw)
                then
                   Need_Redraw := True;
+               elsif Grace_Active
+                 and then not Dirty
+                 and then
+                   Terminal.App.Vulkan_Presenter.Is_Initialized (Presenter)
+               then
+                  --  Input grace exists to keep presenting on the compositor's
+                  --  frame clock.  The terminal state has not changed, so reuse
+                  --  the existing renderer batch instead of rebuilding terminal
+                  --  snapshots, image tiles, and Vulkan vertices 24 times.
+                  declare
+                     Present_Status :
+                       Terminal.App.Vulkan_Presenter.Present_Status;
+                  begin
+                     Terminal.App.Renderer.Present_Retained
+                       (R, Vk_Ctx, Presenter, Present_Status);
+                     if Present_Status in
+                       Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
+                         | Terminal.App.Vulkan_Presenter.Device_Lost
+                     then
+                        Terminal.App.Vulkan_Presenter.Finalize (Presenter);
+                        Terminal.App.Vulkan_Recovery.Begin_Recovery
+                          (Vulkan_Recovery,
+                           (if Present_Status =
+                                 Terminal.App.Vulkan_Presenter.Device_Lost
+                            then Terminal.App.Vulkan_Recovery.Device_Lost
+                            else Terminal.App.Vulkan_Recovery
+                              .Swapchain_Invalid),
+                           Recovery_Tick);
+                        Need_Redraw := True;
+                     elsif Present_Status =
+                       Terminal.App.Vulkan_Presenter.Resources_In_Flight
+                     then
+                        Need_Redraw := True;
+                     end if;
+                  end;
                elsif Dirty or else Grace_Active then
                   declare
                      Visible_Count : constant Positive :=
@@ -1377,8 +1491,8 @@ package body Terminal.App.Main_Loop is
                        (if Terminal.App.Splits.Count (Splits) > 1
                         then Positive (Terminal.App.Splits.Active (Splits))
                         else 1);
-                     Snaps : Terminal.App.Renderer.Snapshot_Array
-                       (1 .. Visible_Count);
+                     Snaps : Terminal.App.Renderer.Snapshot_Array renames
+                       Snapshot_Cache (1 .. Visible_Count);
                      Render_Status : Terminal.App.Renderer.Render_Status;
                      Present_Status : Terminal.App.Vulkan_Presenter.Present_Status;
                      Can_Present : Boolean := True;
@@ -1393,19 +1507,46 @@ package body Terminal.App.Main_Loop is
                                 else Terminal.App.Session_Table.Runtime_At
                                   (Sessions,
                                    Terminal.App.Sessions.Session_Index (I)));
+                           Core : constant access Terminal.Core.Terminal :=
+                             (if Runtime = null
+                              then Active_Core
+                              else Terminal.App.Session_Runtime.Core
+                                (Runtime.all));
                         begin
                            if Runtime = null then
-                              Snaps (I) :=
-                                Terminal.App.Scrollback_View.Snapshot
-                                  (Active_Core.all, 0);
+                              Terminal.App.Scrollback_View.Snapshot
+                                (Active_Core.all, 0, Snaps (I));
                            else
-                              Snaps (I) :=
-                                Terminal.App.Scrollback_View.Snapshot
-                                  (Terminal.App.Session_Runtime.Core
-                                     (Runtime.all).all,
-                                   (if I = Active_Render_Index
-                                    then Scroll_Offset
-                                    else 0));
+                              Terminal.App.Scrollback_View.Snapshot
+                                (Terminal.App.Session_Runtime.Core
+                                   (Runtime.all).all,
+                                 (if I = Active_Render_Index
+                                  then Scroll_Offset
+                                  else 0),
+                                 Snaps (I));
+                           end if;
+
+                           --  Render the oldest unconsumed graphics command.
+                           --  It is acknowledged only after a successful
+                           --  presentation, so swapchain retries cannot lose
+                           --  protocol events.
+                           if I /= Active_Render_Index
+                             or else Scroll_Offset = 0
+                           then
+                              Terminal.Core.Peek_Graphics_Event
+                                (Core.all, Snaps (I).Graphics);
+                              if Snaps (I).Graphics.Pending
+                                and then Snaps (I).Graphics.Payload_Length >
+                                  Snaps (I).Graphics.Preview_Length
+                              then
+                                 Terminal.App.Renderer.Stage_Graphics_Event
+                                   (R,
+                                    Snaps (I).Graphics,
+                                    Terminal.Core.Graphics_Event_Payload
+                                      (Core.all, Snaps (I).Graphics));
+                              end if;
+                           else
+                              Snaps (I).Graphics := (others => <>);
                            end if;
                         end;
                      end loop;
@@ -1421,23 +1562,51 @@ package body Terminal.App.Main_Loop is
                         Terminal.App.Cursor_Blink.Apply
                           (Snaps (I), Current_Blink_Tick);
                      end loop;
-                     if not
-                       Terminal.App.Vulkan_Presenter.Diagnostics
-                         (Presenter).Initialized
+                     if not Terminal.App.Vulkan_Presenter.Is_Initialized
+                       (Presenter)
                      then
                         GLFW_Vulkan.Windows.Framebuffer_Size
                           (W, FB_Width, FB_Height);
                         if FB_Width > 0 and then FB_Height > 0 then
-                           Terminal.App.Vulkan_Presenter.Initialize
-                             (P              => Presenter,
-                              Context        => Vk_Ctx,
-                              Status         => Presenter_Status,
-                              Desired_Width  => FB_Width,
-                              Desired_Height => FB_Height);
-                           if Presenter_Status /=
-                             Terminal.App.Vulkan_Presenter.Ok
+                           if not Terminal.App.Vulkan_Recovery.Is_Pending
+                             (Vulkan_Recovery)
                            then
-                              GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                              Terminal.App.Vulkan_Recovery.Begin_Recovery
+                                (Vulkan_Recovery,
+                                 Terminal.App.Vulkan_Recovery
+                                   .Swapchain_Invalid,
+                                 Recovery_Tick);
+                           end if;
+                           if Terminal.App.Vulkan_Recovery.Attempt_Due
+                             (Vulkan_Recovery, Recovery_Tick)
+                           then
+                              Terminal.App.Vulkan_Presenter.Initialize
+                                (P              => Presenter,
+                                 Context        => Vk_Ctx,
+                                 Status         => Presenter_Status,
+                                 Desired_Width  => FB_Width,
+                                 Desired_Height => FB_Height);
+                              Terminal.App.Vulkan_Recovery.Record_Attempt
+                                (Vulkan_Recovery,
+                                 Recovery_Tick,
+                                 Presenter_Status =
+                                   Terminal.App.Vulkan_Presenter.Ok);
+                              if Presenter_Status /=
+                                Terminal.App.Vulkan_Presenter.Ok
+                              then
+                                 --  Creation routines clean their own partial
+                                 --  work; Finalize also makes that guarantee
+                                 --  explicit before the next retry.
+                                 Terminal.App.Vulkan_Presenter.Finalize
+                                   (Presenter);
+                                 Present_Status :=
+                                   Terminal.App.Vulkan_Presenter
+                                     .Not_Initialized;
+                                 Can_Present := False;
+                              end if;
+                           else
+                              Present_Status :=
+                                Terminal.App.Vulkan_Presenter.Not_Initialized;
                               Can_Present := False;
                            end if;
                         else
@@ -1464,29 +1633,23 @@ package body Terminal.App.Main_Loop is
                      else
                         Render_Status := Terminal.App.Renderer.Not_Initialized;
                      end if;
-                     if Present_Status =
+                     if Present_Status in
                        Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
+                         | Terminal.App.Vulkan_Presenter.Device_Lost
                      then
                         Terminal.App.Vulkan_Presenter.Finalize (Presenter);
-                        GLFW_Vulkan.Windows.Framebuffer_Size
-                          (W, FB_Width, FB_Height);
-                        if FB_Width = 0 or else FB_Height = 0 then
-                           Need_Redraw := True;
-                        else
-                           Terminal.App.Vulkan_Presenter.Initialize
-                             (P              => Presenter,
-                              Context        => Vk_Ctx,
-                              Status         => Presenter_Status,
-                              Desired_Width  => FB_Width,
-                              Desired_Height => FB_Height);
-                           Need_Redraw :=
-                             Presenter_Status = Terminal.App.Vulkan_Presenter.Ok;
-                           if Presenter_Status /=
-                             Terminal.App.Vulkan_Presenter.Ok
-                           then
-                              GLFW_Vulkan.Windows.Set_Should_Close (W, True);
-                           end if;
-                        end if;
+                        Terminal.App.Vulkan_Recovery.Begin_Recovery
+                          (Vulkan_Recovery,
+                           (if Present_Status =
+                                 Terminal.App.Vulkan_Presenter.Device_Lost
+                            then Terminal.App.Vulkan_Recovery.Device_Lost
+                            else Terminal.App.Vulkan_Recovery
+                              .Swapchain_Invalid),
+                           Recovery_Tick);
+                        --  Keep terminal, PTY, image objects and the window
+                        --  alive.  Reconstruction is attempted on subsequent
+                        --  loop ticks with bounded backoff.
+                        Need_Redraw := True;
                      end if;
                      declare
                         Grid_Status : constant String :=
@@ -1576,21 +1739,103 @@ package body Terminal.App.Main_Loop is
                      begin
                         Terminal.App.Diagnostics.Log_If_Changed (Diag);
                      end;
-                     for I in Snaps'Range loop
-                        Terminal.Core.Release (Snaps (I));
-                     end loop;
                      if Render_Status = Terminal.App.Renderer.Ok
                        and then
                          (Present_Status = Terminal.App.Vulkan_Presenter.Ok
                           or else Present_Status =
                             Terminal.App.Vulkan_Presenter.Validated_Not_Presented)
                      then
+                        declare
+                           More_Graphics : Boolean := False;
+                        begin
+                           for I in Snaps'Range loop
+                              declare
+                                 Runtime : constant access
+                                   Terminal.App.Session_Runtime.Runtime :=
+                                     (if Visible_Count = 1
+                                      then Active_Runtime
+                                      else Terminal.App.Session_Table.Runtime_At
+                                        (Sessions,
+                                         Terminal.App.Sessions.Session_Index
+                                           (I)));
+                                 Core : constant access Terminal.Core.Terminal :=
+                                   (if Runtime = null
+                                    then Active_Core
+                                    else Terminal.App.Session_Runtime.Core
+                                      (Runtime.all));
+                                 Response_Runtime : constant access
+                                   Terminal.App.Session_Runtime.Runtime :=
+                                     (if Runtime = null
+                                      then Active_Runtime
+                                      else Runtime);
+                              begin
+                                 if (I /= Active_Render_Index
+                                     or else Scroll_Offset = 0)
+                                 then
+                                    Terminal.Core.Complete_Graphics_Event
+                                      (Core.all,
+                                       Snaps (I).Graphics,
+                                       Terminal.App.Renderer.Graphics_Result
+                                         (R, Snaps (I).Graphics));
+                                    while Terminal.Core.Pending_Response_Length
+                                      (Core.all) > 0
+                                    loop
+                                       Chunk := (others => <>);
+                                       Terminal.Core.Read_Response
+                                         (Core.all,
+                                          Chunk.Data,
+                                          Chunk.Length);
+                                       exit when Chunk.Length = 0;
+                                       Terminal.App.Session_Runtime.Write
+                                         (Response_Runtime.all,
+                                          Chunk,
+                                          Write_Stat);
+                                       Last_Write_Status := Write_Stat;
+                                       if Write_Stat /=
+                                         Terminal.App.PTY_Write.Ok
+                                       then
+                                          GLFW_Vulkan.Windows.Set_Should_Close
+                                            (W, True);
+                                          exit;
+                                       end if;
+                                    end loop;
+                                 end if;
+                                 --  The active pane's graphics queue is
+                                 --  intentionally suspended while displaying
+                                 --  scrollback.  Do not turn that suspended
+                                 --  work into an immediate redraw request: it
+                                 --  would spin continuously without consuming
+                                 --  the event.  Returning to the live view is
+                                 --  itself a redraw request and resumes it.
+                                 if I /= Active_Render_Index
+                                   or else Scroll_Offset = 0
+                                 then
+                                    More_Graphics := More_Graphics
+                                      or else
+                                        Terminal.Core
+                                          .Pending_Graphics_Event_Count
+                                            (Core.all) > 0;
+                                 end if;
+                              end;
+                           end loop;
+                           Terminal.App.Renderer.Commit_Graphics_Events (R);
+                           Need_Redraw := More_Graphics;
+                        end;
                         Terminal.Core.Clear_Damage (Active_Core.all);
-                        Need_Redraw := False;
-                     elsif Present_Status /=
+                     elsif Present_Status not in
                        Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
+                         | Terminal.App.Vulkan_Presenter.Device_Lost
+                         | Terminal.App.Vulkan_Presenter.Resources_In_Flight
                      then
-                        Need_Redraw := False;
+                        Need_Redraw :=
+                          Terminal.App.Vulkan_Recovery.Is_Pending
+                            (Vulkan_Recovery);
+                     elsif Present_Status =
+                       Terminal.App.Vulkan_Presenter.Resources_In_Flight
+                     then
+                        --  A submitted frame still owns the shared descriptor
+                        --  or vertex resources. Retry after its fence signals.
+                        Need_Redraw := True;
                      end if;
                   end;
                end if;
@@ -1599,6 +1844,9 @@ package body Terminal.App.Main_Loop is
       end loop;
 
       Input_Queue := null;
+      for I in Snapshot_Cache'Range loop
+         Terminal.Core.Release (Snapshot_Cache (I));
+      end loop;
       Terminal.App.Session_Table.Close_All (Sessions);
       Terminal.App.Renderer.Finalize (R);
       Terminal.App.Vulkan_Presenter.Finalize (Presenter);

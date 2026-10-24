@@ -15,12 +15,18 @@ package Terminal.App.Render_Model is
       A : Float := 1.0;
    end record;
 
+   type Rectangle_Layer is
+     (Rectangle_Base_Background,
+      Rectangle_Cell_Background,
+      Rectangle_Foreground);
+
    type Rectangle_Command is record
       X      : Float := 0.0;
       Y      : Float := 0.0;
       Width  : Float := 0.0;
       Height : Float := 0.0;
       Color  : Pixel_Color;
+      Layer  : Rectangle_Layer := Rectangle_Foreground;
    end record;
 
    type Glyph_Command is record
@@ -74,8 +80,8 @@ package Terminal.App.Render_Model is
    function Image_Payload_Status_Suffix
      (Preview_Complete : Boolean) return String;
 
-   Max_Image_Encoded_Data_Length : constant := 2 * 1024 * 1024;
-   Max_Image_Decoded_Data_Length : constant := 1024 * 1024;
+   Max_Image_Encoded_Data_Length : constant := 8 * 1024 * 1024;
+   Max_Image_Decoded_Data_Length : constant := 64 * 1024 * 1024;
    Max_Image_Decoded_Preview_Length : constant := 4096;
    type Image_Data_Access is access all Terminal.Common.Bytes.Byte_Array;
    type Image_Decoded_Source_Kind is
@@ -108,10 +114,22 @@ package Terminal.App.Render_Model is
       Encoded_Source_Bytes_Owned : Boolean := False;
       Encoded_Source_Length : Natural := 0;
       Decoded_Preview_Length : Natural := 0;
-      Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
-        (1 .. Max_Image_Decoded_Preview_Length) := (others => 0);
+      --  Preview diagnostics borrow the decoded source whenever possible.  A
+      --  pointer keeps the 4 KiB diagnostic prefix out of every draw command,
+      --  which is particularly important for one-command-per-cell placeholders.
+      Decoded_Preview_Bytes : Image_Data_Access := null;
+      Decoded_Preview_Bytes_Owned : Boolean := False;
       Preview_Decode_Complete : Boolean := False;
       Decode_Status : Image_Decode_Status := Image_Decode_Not_Attempted;
+      U0             : Float := 0.0;
+      V0             : Float := 0.0;
+      U1             : Float := 1.0;
+      V1             : Float := 1.0;
+      Image_ID       : Interfaces.Unsigned_32 := 0;
+      --  Changes whenever the backing pixels change.  Backends may use this
+      --  with the atlas layout to retain an already uploaded GPU texture.
+      Content_Serial : Interfaces.Unsigned_64 := 0;
+      Z_Index        : Integer := 0;
       Tint           : Pixel_Color;
    end record;
 
@@ -123,6 +141,9 @@ package Terminal.App.Render_Model is
      (Image       : Image_Command;
       Row         : Natural;
       Byte_Offset : Natural) return Terminal.Common.Bytes.Byte;
+   function Image_Decoded_Preview_Byte
+     (Image : Image_Command;
+      Index : Positive) return Terminal.Common.Bytes.Byte;
 
    Max_Text_Run_Codepoints : constant := 9;
    Max_Shaped_Glyphs_Per_Run : constant := 16;

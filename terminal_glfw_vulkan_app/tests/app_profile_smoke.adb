@@ -60,6 +60,11 @@ begin
    Assert
      (Terminal.App.Color_Term = Terminal.PTY.Backend.Color_Term,
       "app and PTY COLORTERM identity should match");
+   Assert
+     (Terminal.App.Term_Program = Terminal.PTY.Backend.Term_Program
+      and then Terminal.App.Term_Program_Version =
+        Terminal.PTY.Backend.Term_Program_Version,
+      "app and PTY terminal program identity should match");
    Assert (Profile.Bracketed_Paste, "profile bracketed paste");
    Assert (Profile.Focus_Reporting, "profile focus reporting");
    Assert (Profile.Xterm_Mouse_Reporting, "profile xterm mouse reporting");
@@ -75,8 +80,47 @@ begin
    Assert (Profile.Truecolor, "profile truecolor");
    Assert (Profile.Tmux_DCS_Passthrough, "profile tmux DCS passthrough");
    Assert
+     (Profile.Kitty_Direct_Graphics
+      and then Profile.Kitty_Unicode_Placeholders
+      and then not Profile.Kitty_File_Transfer
+      and then Profile.Kitty_Temporary_Transfer
+      and then Profile.Kitty_Shared_Memory
+      and then not Profile.ITerm2_File_Downloads,
+      "truthful Kitty graphics profile");
+   declare
+      Graphics : constant Terminal.Core.Graphics_Capability_Profile :=
+        Terminal.App.Core_Graphics_Profile;
+   begin
+      Assert
+        (Graphics.Kitty_Direct_RGB
+         and then Graphics.Kitty_Direct_RGBA
+         and then Graphics.Kitty_Indexed_RGB
+         and then Graphics.Kitty_Indexed_RGBA
+         and then Graphics.Kitty_Direct_PNG
+         and then Graphics.Kitty_Zlib_Compression
+         and then not Graphics.Kitty_File_Transfer
+         and then Graphics.Kitty_Temporary_Transfer
+         and then Graphics.Kitty_Shared_Memory
+         and then not Graphics.ITerm2_File_Downloads,
+         "core Kitty query capabilities");
+      declare
+         Downloads_Enabled : constant Terminal.Core.Graphics_Capability_Profile :=
+           Terminal.App.Core_Graphics_Profile
+             (Kitty_File_Transfer      => False,
+              Kitty_Temporary_Transfer => True,
+              Kitty_Shared_Memory      => True,
+              ITerm2_File_Downloads    => True);
+      begin
+         Assert
+           (Downloads_Enabled.ITerm2_Inline_Images
+            and then Downloads_Enabled.ITerm2_File_Downloads,
+            "explicit iTerm2 FILE capability profile");
+      end;
+   end;
+   Assert
      (Terminal.App.Profile_Status_Label (Profile) =
-      "xterm-256color truecolor profile; OSC 52 selections app-local",
+      "xterm-256color truecolor profile; Kitty placeholders; "
+      & "OSC 52 selections app-local",
       "profile status label");
    Assert
      (Terminal.App.Profile_Status_Label (Profile)'Length <=
@@ -90,6 +134,16 @@ begin
      (Terminal.App.Multiplexer_Status_Label (Profile)'Length <=
       Terminal.App.Max_Status_Label_Length,
       "profile multiplexer status label should be bounded");
+   Assert
+     (Terminal.App.Graphics_Feature_Report
+        (Terminal.App.Core_Graphics_Profile) = "Sx"
+      and then Terminal.App.Graphics_Feature_Report
+        (Terminal.App.Core_Graphics_Profile
+           (Kitty_File_Transfer      => False,
+            Kitty_Temporary_Transfer => True,
+            Kitty_Shared_Memory      => True,
+            ITerm2_File_Downloads    => True)) = "FSx",
+      "TERM_FEATURES follows the configured graphics profile");
 
    if Profile.Bracketed_Paste then
       declare

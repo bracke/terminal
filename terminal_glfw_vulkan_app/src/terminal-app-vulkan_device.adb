@@ -137,9 +137,17 @@ package body Terminal.App.Vulkan_Device is
    Packed_Vertex_Bytes : constant Interfaces.Unsigned_64 := 40;
    Max_Atlas_Bytes : constant := 16 * 1024 * 1024;
    Max_Image_Texture_Bytes : constant :=
-     RM.Max_Image_Decoded_Data_Length * 4;
+     VS.Max_Image_Atlas_Bytes;
+   Max_Framebuffer_Readback_Bytes : constant := 256 * 1024 * 1024;
    Queue_Family_Ignored : constant Interfaces.Unsigned_32 :=
      Interfaces.Unsigned_32'Last;
+
+   type Readback_Byte_Array is array
+     (Positive range 1 .. Max_Framebuffer_Readback_Bytes) of
+       aliased Interfaces.Unsigned_8
+     with Convention => C;
+   package Readback_Byte_Conversions is new System.Address_To_Access_Conversions
+     (Readback_Byte_Array);
 
    type Physical_Device_Array is array (Device_Count_Range) of Vk.Physical_Device_T
      with Convention => C;
@@ -305,6 +313,8 @@ package body Terminal.App.Vulkan_Device is
    procedure Destroy_Atlas_Image (Device : in out Logical_Device);
    procedure Destroy_Image_Texture (Device : in out Logical_Device);
    procedure Destroy_Colour_Sheet (Device : in out Logical_Device);
+
+   procedure Restore_Upload_Fence (Device : in out Logical_Device);
 
    --  One transparent pixel, for the colour sheet before any emoji exists.
    type Blank_Pixel is array (1 .. 4) of Interfaces.Unsigned_8;
@@ -683,15 +693,20 @@ package body Terminal.App.Vulkan_Device is
          Device.Image_Texture_Width := 0;
          Device.Image_Texture_Height := 0;
          Device.Image_Texture_Bytes := 0;
+         Device.Image_Texture_Content_Signature := 0;
          Device.Image_Texture_Descriptor_Capacity := 0;
          Device.Image_Texture_Descriptor_Bound_Count := 0;
+         Device.Image_Texture_Upload_Count := 0;
+         Device.Image_Texture_Cache_Hit_Count := 0;
          Device.Swapchain_Images := (others => System.Null_Address);
          Device.Swapchain_Views := (others => System.Null_Address);
          Device.Framebuffers := (others => System.Null_Address);
          Device.Command_Buffers := (others => System.Null_Address);
+         Device.Upload_Command_Buffer := System.Null_Address;
          Device.Image_Available := (others => System.Null_Address);
          Device.Render_Finished := (others => System.Null_Address);
          Device.In_Flight := (others => System.Null_Address);
+         Device.Upload_Fence := System.Null_Address;
          Device.Queue_Family_Index := 0;
          Device.Swapchain_Image_Count := 0;
          Device.Swapchain_View_Count := 0;
@@ -704,6 +719,14 @@ package body Terminal.App.Vulkan_Device is
          Device.Uploaded_Shaped_Glyph_Count := 0;
          Device.Uploaded_Image_Vertex_Count := 0;
          Device.Uploaded_Image_Texture_Vertex_Count := 0;
+         Device.Fence_Deferred_Upload_Count := 0;
+         Device.Readback_Supported := False;
+         Device.Readback_Enabled := False;
+         Device.Readback_Pending := False;
+         Device.Readback_Buffer := System.Null_Address;
+         Device.Readback_Memory := System.Null_Address;
+         Device.Readback_Bytes := 0;
+         Device.Readback_Frame := 0;
          Device.Swapchain_Width := 0;
          Device.Swapchain_Height := 0;
          Device.Last_Status := Status_Value;
@@ -843,6 +866,11 @@ package body Terminal.App.Vulkan_Device is
 
       procedure Destroy_Sync (Handle : Vk.Device_T) is
       begin
+         if Device.Upload_Fence /= System.Null_Address then
+            Vk.Destroy_Fence
+              (Handle, Device.Upload_Fence, System.Null_Address);
+            Device.Upload_Fence := System.Null_Address;
+         end if;
          for I in 1 .. Device.Sync_Frame_Count loop
             if Device.In_Flight (I) /= System.Null_Address then
                Vk.Destroy_Fence (Handle, Device.In_Flight (I), System.Null_Address);
@@ -865,6 +893,14 @@ package body Terminal.App.Vulkan_Device is
       procedure Destroy_Command_Resources (Handle : Vk.Device_T) is
       begin
          if Device.Command_Pool /= System.Null_Address then
+            if Device.Upload_Command_Buffer /= System.Null_Address then
+               Vk.Free_Command_Buffers
+                 (Handle,
+                  Device.Command_Pool,
+                  1,
+                  Device.Upload_Command_Buffer'Address);
+               Device.Upload_Command_Buffer := System.Null_Address;
+            end if;
             if Device.Command_Buffer_Count > 0 then
                Vk.Free_Command_Buffers
                  (Handle,
@@ -1466,6 +1502,28 @@ package body Terminal.App.Vulkan_Device is
          end;
 
          declare
+            Allocate_Info : aliased Vk.Command_Buffer_Allocate_Info_T :=
+              (s_Type               =>
+                 Vk.STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+               p_Next               => System.Null_Address,
+               command_Pool         => Device.Command_Pool,
+               level                => Vk.COMMAND_BUFFER_LEVEL_PRIMARY,
+               command_Buffer_Count => 1);
+         begin
+            Result :=
+              Vk.Allocate_Command_Buffers
+                (Handle,
+                 Allocate_Info'Address,
+                 Device.Upload_Command_Buffer'Address);
+            if Result /= Vk.SUCCESS
+              or else Device.Upload_Command_Buffer = System.Null_Address
+            then
+               Destroy_Command_Resources (Handle);
+               return Allocate_Command_Buffers_Failed;
+            end if;
+         end;
+
+         declare
             Semaphore_Info : aliased Vk.Semaphore_Create_Info_T :=
               (s_Type => Vk.STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
                p_Next => System.Null_Address,
@@ -1526,6 +1584,20 @@ package body Terminal.App.Vulkan_Device is
                   Device.Sync_Frame_Count := I;
                end;
             end loop;
+
+            Result :=
+              Vk.Create_Fence
+                (Handle,
+                 Fence_Info'Address,
+                 System.Null_Address,
+                 Device.Upload_Fence'Address);
+            if Result /= Vk.SUCCESS
+              or else Device.Upload_Fence = System.Null_Address
+            then
+               Destroy_Sync (Handle);
+               Destroy_Command_Resources (Handle);
+               return Create_Sync_Failed;
+            end if;
          end;
 
          return Ok;
@@ -1820,6 +1892,9 @@ package body Terminal.App.Vulkan_Device is
          then
             return Create_Swapchain_Failed;
          end if;
+         Device.Readback_Supported :=
+           (Capabilities.supported_Usage_Flags and
+              Vk.IMAGE_USAGE_TRANSFER_SRC_BIT) /= 0;
 
          Result :=
            Vk.Get_Physical_Device_Surface_Formats_KHR
@@ -1880,7 +1955,12 @@ package body Terminal.App.Vulkan_Device is
             image_Color_Space        => Chosen_Format.color_Space,
             image_Extent             => Chosen_Extent,
             image_Array_Layers       => 1,
-            image_Usage              => Vk.IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+            image_Usage              =>
+              Vk.IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+              or
+                (if Device.Readback_Supported
+                 then Vk.IMAGE_USAGE_TRANSFER_SRC_BIT
+                 else 0),
             image_Sharing_Mode       => Vk.SHARING_MODE_EXCLUSIVE,
             queue_Family_Index_Count => 0,
             p_Queue_Family_Indices   => System.Null_Address,
@@ -2148,6 +2228,10 @@ package body Terminal.App.Vulkan_Device is
             Result : constant Vk.Result_T := Vk.Device_Wait_Idle (Device.Device);
             pragma Unreferenced (Result);
          begin
+            if Device.Upload_Fence /= System.Null_Address then
+               Vk.Destroy_Fence
+                 (Device.Device, Device.Upload_Fence, System.Null_Address);
+            end if;
             for I in 1 .. Device.Sync_Frame_Count loop
                if Device.In_Flight (I) /= System.Null_Address then
                   Vk.Destroy_Fence
@@ -2164,6 +2248,13 @@ package body Terminal.App.Vulkan_Device is
             end loop;
 
             if Device.Command_Pool /= System.Null_Address then
+               if Device.Upload_Command_Buffer /= System.Null_Address then
+                  Vk.Free_Command_Buffers
+                    (Device.Device,
+                     Device.Command_Pool,
+                     1,
+                     Device.Upload_Command_Buffer'Address);
+               end if;
                if Device.Command_Buffer_Count > 0 then
                   Vk.Free_Command_Buffers
                     (Device.Device,
@@ -2183,6 +2274,16 @@ package body Terminal.App.Vulkan_Device is
             if Device.Vertex_Memory /= System.Null_Address then
                Vk.Free_Memory
                  (Device.Device, Device.Vertex_Memory, System.Null_Address);
+            end if;
+
+            if Device.Readback_Buffer /= System.Null_Address then
+               Vk.Destroy_Buffer
+                 (Device.Device, Device.Readback_Buffer, System.Null_Address);
+            end if;
+
+            if Device.Readback_Memory /= System.Null_Address then
+               Vk.Free_Memory
+                 (Device.Device, Device.Readback_Memory, System.Null_Address);
             end if;
 
             if Device.Atlas_View /= System.Null_Address then
@@ -2310,15 +2411,20 @@ package body Terminal.App.Vulkan_Device is
       Device.Image_Texture_Width := 0;
       Device.Image_Texture_Height := 0;
       Device.Image_Texture_Bytes := 0;
+      Device.Image_Texture_Content_Signature := 0;
       Device.Image_Texture_Descriptor_Capacity := 0;
       Device.Image_Texture_Descriptor_Bound_Count := 0;
+      Device.Image_Texture_Upload_Count := 0;
+      Device.Image_Texture_Cache_Hit_Count := 0;
       Device.Swapchain_Images := (others => System.Null_Address);
       Device.Swapchain_Views := (others => System.Null_Address);
       Device.Framebuffers := (others => System.Null_Address);
       Device.Command_Buffers := (others => System.Null_Address);
+      Device.Upload_Command_Buffer := System.Null_Address;
       Device.Image_Available := (others => System.Null_Address);
       Device.Render_Finished := (others => System.Null_Address);
       Device.In_Flight := (others => System.Null_Address);
+      Device.Upload_Fence := System.Null_Address;
       Device.Queue_Family_Index := 0;
       Device.Swapchain_Image_Count := 0;
       Device.Swapchain_View_Count := 0;
@@ -2335,6 +2441,14 @@ package body Terminal.App.Vulkan_Device is
       Device.Atlas_Height := 0;
       Device.Atlas_Bytes := 0;
       Device.Atlas_Upload_Count := 0;
+      Device.Fence_Deferred_Upload_Count := 0;
+      Device.Readback_Supported := False;
+      Device.Readback_Enabled := False;
+      Device.Readback_Pending := False;
+      Device.Readback_Buffer := System.Null_Address;
+      Device.Readback_Memory := System.Null_Address;
+      Device.Readback_Bytes := 0;
+      Device.Readback_Frame := 0;
       Device.Swapchain_Width := 0;
       Device.Swapchain_Height := 0;
       Device.Last_Status := Selection_Not_Ready;
@@ -2460,10 +2574,38 @@ package body Terminal.App.Vulkan_Device is
       Device.Image_Texture_Width := 0;
       Device.Image_Texture_Height := 0;
       Device.Image_Texture_Bytes := 0;
+      Device.Image_Texture_Content_Signature := 0;
       if Device.Image_Texture_Descriptor_Bound_Count > 1 then
          Device.Image_Texture_Descriptor_Bound_Count := 1;
       end if;
    end Destroy_Image_Texture;
+
+   procedure Restore_Upload_Fence (Device : in out Logical_Device) is
+      Fence_Info : aliased Vk.Fence_Create_Info_T :=
+        (s_Type => Vk.STRUCTURE_TYPE_FENCE_CREATE_INFO,
+         p_Next => System.Null_Address,
+         flags  => Vk.FENCE_CREATE_SIGNALED_BIT);
+      Result : Vk.Result_T;
+   begin
+      --  Queue submission failed after the fence was reset.  Vulkan will not
+      --  signal a fence which was not successfully submitted, so replace it
+      --  with a signalled fence before any later upload retries.
+      if Device.Upload_Fence /= System.Null_Address then
+         Vk.Destroy_Fence
+           (Device.Device, Device.Upload_Fence, System.Null_Address);
+         Device.Upload_Fence := System.Null_Address;
+      end if;
+
+      Result :=
+        Vk.Create_Fence
+          (Device.Device,
+           Fence_Info'Address,
+           System.Null_Address,
+           Device.Upload_Fence'Address);
+      if Result /= Vk.SUCCESS then
+         Device.Upload_Fence := System.Null_Address;
+      end if;
+   end Restore_Upload_Fence;
 
    procedure Upload_Atlas_Data
      (Device        : in out Logical_Device;
@@ -2541,12 +2683,6 @@ package body Terminal.App.Vulkan_Device is
         and then Device.Atlas_Bytes = Bytes_Natural
       then
          Status := Ok;
-         return;
-      end if;
-
-      Result := Vk.Queue_Wait_Idle (Device.Queue);
-      if Result /= Vk.SUCCESS then
-         Status := Copy_Atlas_Failed;
          return;
       end if;
 
@@ -2745,7 +2881,8 @@ package body Terminal.App.Vulkan_Device is
       end;
 
       declare
-         Command_Buffer : constant Vk.Command_Buffer_T := Device.Command_Buffers (1);
+         Command_Buffer : constant Vk.Command_Buffer_T :=
+           Device.Upload_Command_Buffer;
          Begin_Info : aliased Vk.Command_Buffer_Begin_Info_T :=
            (s_Type => Vk.STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             p_Next => System.Null_Address,
@@ -2810,10 +2947,28 @@ package body Terminal.App.Vulkan_Device is
             signal_Semaphore_Count => 0,
             p_Signal_Semaphores => System.Null_Address);
       begin
-         if Command_Buffer = System.Null_Address then
+         if Command_Buffer = System.Null_Address
+           or else Device.Upload_Fence = System.Null_Address
+         then
             Cleanup_New_Image;
             Destroy_Staging;
             Status := Copy_Atlas_Failed;
+            return;
+         end if;
+
+         Result :=
+           Vk.Wait_For_Fences
+             (Device.Device,
+              1,
+              Device.Upload_Fence'Address,
+              1,
+              Interfaces.Unsigned_64'Last);
+         if Result /= Vk.SUCCESS then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
 
@@ -2821,7 +2976,9 @@ package body Terminal.App.Vulkan_Device is
          if Result /= Vk.SUCCESS then
             Cleanup_New_Image;
             Destroy_Staging;
-            Status := Copy_Atlas_Failed;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
 
@@ -2829,7 +2986,9 @@ package body Terminal.App.Vulkan_Device is
          if Result /= Vk.SUCCESS then
             Cleanup_New_Image;
             Destroy_Staging;
-            Status := Copy_Atlas_Failed;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
 
@@ -2871,21 +3030,45 @@ package body Terminal.App.Vulkan_Device is
             return;
          end if;
 
-         Result :=
-           Vk.Queue_Submit
-             (Device.Queue, 1, Submit_Info'Address, System.Null_Address);
+         Result := Vk.Reset_Fences
+           (Device.Device, 1, Device.Upload_Fence'Address);
          if Result /= Vk.SUCCESS then
             Cleanup_New_Image;
             Destroy_Staging;
-            Status := Copy_Atlas_Failed;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
 
-         Result := Vk.Queue_Wait_Idle (Device.Queue);
+         Result :=
+           Vk.Queue_Submit
+             (Device.Queue, 1, Submit_Info'Address, Device.Upload_Fence);
+         if Result /= Vk.SUCCESS then
+            if Result /= Vk.ERROR_DEVICE_LOST then
+               Restore_Upload_Fence (Device);
+            end if;
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
+            return;
+         end if;
+
+         Result :=
+           Vk.Wait_For_Fences
+             (Device.Device,
+              1,
+              Device.Upload_Fence'Address,
+              1,
+              Interfaces.Unsigned_64'Last);
          if Result /= Vk.SUCCESS then
             Cleanup_New_Image;
             Destroy_Staging;
-            Status := Copy_Atlas_Failed;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
       end;
@@ -2958,7 +3141,8 @@ package body Terminal.App.Vulkan_Device is
       Fill_Staging  : not null access procedure
         (Target : Image_Texture_Byte_Mapping.Object_Pointer;
          Status : out Create_Status);
-      Status        : out Create_Status)
+      Status        : out Create_Status;
+      Content_Signature : Interfaces.Unsigned_64 := 0)
    is
       Image : aliased Vk.Image_T := System.Null_Address;
       Image_Memory : aliased Vk.Device_Memory_T := System.Null_Address;
@@ -3078,9 +3262,17 @@ package body Terminal.App.Vulkan_Device is
          return;
       end if;
 
-      Result := Vk.Queue_Wait_Idle (Device.Queue);
-      if Result /= Vk.SUCCESS then
-         Status := Copy_Atlas_Failed;
+      if Slot = Inline_Picture
+        and then Content_Signature /= 0
+        and then Device.Image_Texture_Image /= System.Null_Address
+        and then Device.Image_Texture_Content_Signature = Content_Signature
+        and then Device.Image_Texture_Width = Width
+        and then Device.Image_Texture_Height = Height
+        and then Device.Image_Texture_Bytes = Upload_Bytes_Natural
+      then
+         Device.Image_Texture_Cache_Hit_Count :=
+           Device.Image_Texture_Cache_Hit_Count + 1;
+         Status := Ok;
          return;
       end if;
 
@@ -3282,7 +3474,8 @@ package body Terminal.App.Vulkan_Device is
       end;
 
       declare
-         Command_Buffer : constant Vk.Command_Buffer_T := Device.Command_Buffers (1);
+         Command_Buffer : constant Vk.Command_Buffer_T :=
+           Device.Upload_Command_Buffer;
          Begin_Info : aliased Vk.Command_Buffer_Begin_Info_T :=
            (s_Type => Vk.STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
             p_Next => System.Null_Address,
@@ -3347,10 +3540,28 @@ package body Terminal.App.Vulkan_Device is
             signal_Semaphore_Count => 0,
             p_Signal_Semaphores => System.Null_Address);
       begin
-         if Command_Buffer = System.Null_Address then
+         if Command_Buffer = System.Null_Address
+           or else Device.Upload_Fence = System.Null_Address
+         then
             Cleanup_New_Image;
             Destroy_Staging;
             Status := Copy_Atlas_Failed;
+            return;
+         end if;
+
+         Result :=
+           Vk.Wait_For_Fences
+             (Device.Device,
+              1,
+              Device.Upload_Fence'Address,
+              1,
+              Interfaces.Unsigned_64'Last);
+         if Result /= Vk.SUCCESS then
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
 
@@ -3358,7 +3569,9 @@ package body Terminal.App.Vulkan_Device is
          if Result /= Vk.SUCCESS then
             Cleanup_New_Image;
             Destroy_Staging;
-            Status := Copy_Atlas_Failed;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
 
@@ -3366,7 +3579,9 @@ package body Terminal.App.Vulkan_Device is
          if Result /= Vk.SUCCESS then
             Cleanup_New_Image;
             Destroy_Staging;
-            Status := Copy_Atlas_Failed;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
 
@@ -3408,21 +3623,45 @@ package body Terminal.App.Vulkan_Device is
             return;
          end if;
 
-         Result :=
-           Vk.Queue_Submit
-             (Device.Queue, 1, Submit_Info'Address, System.Null_Address);
+         Result := Vk.Reset_Fences
+           (Device.Device, 1, Device.Upload_Fence'Address);
          if Result /= Vk.SUCCESS then
             Cleanup_New_Image;
             Destroy_Staging;
-            Status := Copy_Atlas_Failed;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
 
-         Result := Vk.Queue_Wait_Idle (Device.Queue);
+         Result :=
+           Vk.Queue_Submit
+             (Device.Queue, 1, Submit_Info'Address, Device.Upload_Fence);
+         if Result /= Vk.SUCCESS then
+            if Result /= Vk.ERROR_DEVICE_LOST then
+               Restore_Upload_Fence (Device);
+            end if;
+            Cleanup_New_Image;
+            Destroy_Staging;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
+            return;
+         end if;
+
+         Result :=
+           Vk.Wait_For_Fences
+             (Device.Device,
+              1,
+              Device.Upload_Fence'Address,
+              1,
+              Interfaces.Unsigned_64'Last);
          if Result /= Vk.SUCCESS then
             Cleanup_New_Image;
             Destroy_Staging;
-            Status := Copy_Atlas_Failed;
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Copy_Atlas_Failed);
             return;
          end if;
       end;
@@ -3486,8 +3725,13 @@ package body Terminal.App.Vulkan_Device is
          Device.Image_Texture_View := Image_View;
          Device.Image_Texture_Width := Width;
          Device.Image_Texture_Height := Height;
+         Device.Image_Texture_Content_Signature := Content_Signature;
+         Device.Image_Texture_Upload_Count :=
+           Device.Image_Texture_Upload_Count + 1;
       end if;
-      Device.Image_Texture_Bytes := Upload_Bytes_Natural;
+      if Slot = Inline_Picture then
+         Device.Image_Texture_Bytes := Upload_Bytes_Natural;
+      end if;
       Device.Image_Texture_Descriptor_Bound_Count := 2;
       Image := System.Null_Address;
       Image_Memory := System.Null_Address;
@@ -3809,6 +4053,274 @@ package body Terminal.App.Vulkan_Device is
          Status        => Status);
    end Upload_Image_Texture_Encoded_Source;
 
+   --  All inline pictures share one descriptor binding. Pack every distinct
+   --  source used by this submission into a single RGBA atlas so that quads do
+   --  not all sample the final image uploaded for the frame.
+   procedure Upload_Image_Atlas
+     (Device : in out Logical_Device;
+      Choice : Selection;
+      Batch  : VS.Submission_Batch;
+      Status : out Create_Status)
+   is
+      Atlas_Width  : constant Natural := VS.Image_Atlas_Width (Batch);
+      Atlas_Height : constant Natural := VS.Image_Atlas_Height (Batch);
+      Atlas_Bytes  : constant Natural := VS.Image_Atlas_Bytes (Batch);
+
+      procedure Fill_Atlas
+        (Target : Image_Texture_Byte_Mapping.Object_Pointer;
+         Fill_Status : out Create_Status)
+      is
+         function Pixel_Index (X, Y : Natural) return Positive is
+           ((Y * Atlas_Width + X) * 4 + 1);
+
+         procedure Copy_Pixel
+           (From_X, From_Y, To_X, To_Y : Natural)
+         is
+            From_Index : constant Positive := Pixel_Index (From_X, From_Y);
+            To_Index   : constant Positive := Pixel_Index (To_X, To_Y);
+         begin
+            for Channel in 0 .. 3 loop
+               Target.all (To_Index + Channel) :=
+                 Target.all (From_Index + Channel);
+            end loop;
+         end Copy_Pixel;
+      begin
+         Fill_Status := Ok;
+         if Target = null
+           or else Atlas_Width = 0
+           or else Atlas_Height = 0
+           or else Atlas_Bytes = 0
+           or else Atlas_Bytes > Max_Image_Texture_Bytes
+         then
+            Fill_Status := Atlas_Too_Large;
+            return;
+         end if;
+
+         for I in 1 .. Atlas_Bytes loop
+            Target.all (I) := 0;
+         end loop;
+
+         for Source_Index in 1 .. VS.Image_Atlas_Source_Count (Batch) loop
+            declare
+               Source : constant RM.Image_Command :=
+                 VS.Image_Atlas_Source_Command (Batch, Source_Index);
+               X : constant Natural :=
+                 VS.Image_Atlas_Source_X (Batch, Source_Index);
+               Y : constant Natural :=
+                 VS.Image_Atlas_Source_Y (Batch, Source_Index);
+               Target_Width : constant Natural :=
+                 VS.Image_Atlas_Source_Width (Batch, Source_Index);
+               Target_Height : constant Natural :=
+                 VS.Image_Atlas_Source_Height (Batch, Source_Index);
+               Bytes_Per_Pixel : constant Natural :=
+                 (if Source.Raw_Format = 24 then 3
+                  elsif Source.Raw_Format = 32 then 4
+                  else 0);
+               Rows_Seen : Natural := 0;
+               Target_Rows_Written : Natural := 0;
+               Decode_Failed : Boolean := False;
+
+               procedure Write_Row
+                 (Row_Y : Natural;
+                  Row   : Terminal.Common.Bytes.Byte_Array;
+                  Continue : in out Boolean)
+               is
+               begin
+                  if Row_Y >= Source.Pixel_Height
+                    or else Row'Length < Source.Pixel_Width * Bytes_Per_Pixel
+                    or else X = 0
+                    or else Y = 0
+                    or else Target_Width = 0
+                    or else Target_Height = 0
+                    or else X + Target_Width >= Atlas_Width
+                    or else Y + Target_Height >= Atlas_Height
+                  then
+                     Decode_Failed := True;
+                     Continue := False;
+                     return;
+                  end if;
+
+                  Rows_Seen := Rows_Seen + 1;
+                  --  Nearest-neighbour reduction into the bounded atlas.  A
+                  --  source row can supply zero or more destination rows.
+                  while Target_Rows_Written < Target_Height
+                    and then
+                      (Target_Rows_Written * Source.Pixel_Height) /
+                        Target_Height = Row_Y
+                  loop
+                     declare
+                        Target_Index : constant Positive :=
+                          Pixel_Index (X, Y + Target_Rows_Written);
+                     begin
+                        for Pixel in 0 .. Target_Width - 1 loop
+                           declare
+                              Source_Pixel : constant Natural :=
+                                (Pixel * Source.Pixel_Width) / Target_Width;
+                              Source_Offset : constant Natural :=
+                                Source_Pixel * Bytes_Per_Pixel;
+                              Target_Offset : constant Natural := Pixel * 4;
+                           begin
+                              Target.all (Target_Index + Target_Offset) :=
+                                Interfaces.Unsigned_8
+                                  (Row (Row'First + Source_Offset));
+                              Target.all (Target_Index + Target_Offset + 1) :=
+                                Interfaces.Unsigned_8
+                                  (Row (Row'First + Source_Offset + 1));
+                              Target.all (Target_Index + Target_Offset + 2) :=
+                                Interfaces.Unsigned_8
+                                  (Row (Row'First + Source_Offset + 2));
+                              Target.all (Target_Index + Target_Offset + 3) :=
+                                (if Bytes_Per_Pixel = 4
+                                 then Interfaces.Unsigned_8
+                                   (Row (Row'First + Source_Offset + 3))
+                                 else 16#FF#);
+                           end;
+                        end loop;
+                     end;
+                     Target_Rows_Written := Target_Rows_Written + 1;
+                  end loop;
+               end Write_Row;
+
+               procedure Write_Buffer_Rows is
+                  Row : Terminal.Common.Bytes.Byte_Array
+                    (1 .. Source.Pixel_Width * Bytes_Per_Pixel);
+                  Continue : Boolean := True;
+               begin
+                  for Row_Y in 0 .. Source.Pixel_Height - 1 loop
+                     for Offset in 0 .. Row'Length - 1 loop
+                        Row (Offset + 1) :=
+                          RM.Image_Decoded_Row_Byte (Source, Row_Y, Offset);
+                     end loop;
+                     Write_Row (Row_Y, Row, Continue);
+                     exit when not Continue;
+                  end loop;
+               end Write_Buffer_Rows;
+
+               function Encoded_Text return String is
+                  Result : String (1 .. Source.Encoded_Source_Length);
+               begin
+                  if Source.Encoded_Source_Bytes = null
+                    or else Source.Encoded_Source_Length = 0
+                    or else Source.Encoded_Source_Length >
+                      Source.Encoded_Source_Bytes'Length
+                  then
+                     return "";
+                  end if;
+                  for I in Result'Range loop
+                     Result (I) :=
+                       Character'Val (Source.Encoded_Source_Bytes (I));
+                  end loop;
+                  return Result;
+               end Encoded_Text;
+
+               procedure Write_Encoded_Rows is
+                  Text : constant String := Encoded_Text;
+                  Data : Terminal.App.Graphics.Graphics_Data_Preview :=
+                    (Header_Recognized => True,
+                     Has_Data          => True,
+                     Raw_Format        => Source.Raw_Format,
+                     Pixel_Width       => Source.Pixel_Width,
+                     Pixel_Height      => Source.Pixel_Height,
+                     others            => <>);
+                  Encoded_Length : Natural := 0;
+                  PNG_Length : Natural := 0;
+
+                  function Chunk_Text (Index : Positive) return String is
+                  begin
+                     return (if Index = 1 then Text else "");
+                  end Chunk_Text;
+               begin
+                  if Text'Length = 0 then
+                     Decode_Failed := True;
+                     return;
+                  end if;
+                  case Source.Decoded_Source is
+                     when RM.Image_Decoded_Source_Raw_Base64 =>
+                        Terminal.App.Graphics.Decode_Base64_Raw_Rows
+                          (Text,
+                           Source.Raw_Format,
+                           Source.Pixel_Width,
+                           Source.Pixel_Height,
+                           Write_Row'Access,
+                           Data);
+                     when RM.Image_Decoded_Source_PNG_Base64 =>
+                        Terminal.App.Graphics.Decode_Base64_PNG_Chunk_Rows
+                          (1,
+                           Chunk_Text'Access,
+                           Encoded_Length,
+                           PNG_Length,
+                           Write_Row'Access,
+                           Data);
+                     when RM.Image_Decoded_Source_Sixel_Text =>
+                        Terminal.App.Graphics.Decode_Sixel_Rows
+                          (Text, Write_Row'Access, Data);
+                     when others =>
+                        Decode_Failed := True;
+                  end case;
+                  if not Data.Decode_Complete
+                    or else Data.Decode_Status /= Terminal.App.Graphics.Decode_Ok
+                  then
+                     Decode_Failed := True;
+                  end if;
+                  Terminal.App.Graphics.Release (Data);
+               exception
+                  when Storage_Error =>
+                     Decode_Failed := True;
+                     Terminal.App.Graphics.Release (Data);
+               end Write_Encoded_Rows;
+            begin
+               if Bytes_Per_Pixel = 0 then
+                  Decode_Failed := True;
+               elsif Source.Decoded_Source = RM.Image_Decoded_Source_Buffer then
+                  Write_Buffer_Rows;
+               else
+                  Write_Encoded_Rows;
+               end if;
+
+               if Decode_Failed
+                 or else Rows_Seen /= Source.Pixel_Height
+                 or else Target_Rows_Written /= Target_Height
+               then
+                  Fill_Status := Atlas_Too_Large;
+                  return;
+               end if;
+
+               --  Duplicate edge texels into a one-pixel gutter. The sampler
+               --  is linear, so transparent padding would darken image edges.
+               for Row_Y in 0 .. Target_Height - 1 loop
+                  Copy_Pixel (X, Y + Row_Y, X - 1, Y + Row_Y);
+                  Copy_Pixel
+                    (X + Target_Width - 1,
+                     Y + Row_Y,
+                     X + Target_Width,
+                     Y + Row_Y);
+               end loop;
+               for Column in X - 1 .. X + Target_Width loop
+                  Copy_Pixel (Column, Y, Column, Y - 1);
+                  Copy_Pixel
+                    (Column,
+                     Y + Target_Height - 1,
+                     Column,
+                     Y + Target_Height);
+               end loop;
+            end;
+         end loop;
+      end Fill_Atlas;
+   begin
+      Upload_Image_Texture_Staging_Source
+        (Device        => Device,
+         Slot          => Inline_Picture,
+         Choice        => Choice,
+         Width         => Atlas_Width,
+         Height        => Atlas_Height,
+         Source_Bytes_Per_Pixel => 4,
+         Row_Stride_Bytes => Atlas_Width * 4,
+         Bytes_Natural => Atlas_Bytes,
+         Fill_Staging  => Fill_Atlas'Access,
+         Status        => Status,
+         Content_Signature => VS.Image_Atlas_Signature (Batch));
+   end Upload_Image_Atlas;
+
    procedure Upload_Image_Texture_Rows
      (Device        : in out Logical_Device;
       Choice        : Selection;
@@ -3846,7 +4358,8 @@ package body Terminal.App.Vulkan_Device is
          Row_Stride_Bytes => Row_Stride_Bytes,
          Bytes_Natural => Bytes_Natural,
          Source_Byte   => Flat_Source_Byte'Access,
-         Status        => Status);
+         Status        => Status,
+         Slot          => Slot);
    end Upload_Image_Texture_Rows;
 
    procedure Upload_Image_Texture_Data
@@ -3960,6 +4473,36 @@ package body Terminal.App.Vulkan_Device is
       Status := Ok;
    end Ensure_Vertex_Buffer;
 
+   procedure Check_Frame_Resources
+     (Device    : in out Logical_Device;
+      Available : out Boolean;
+      Status    : out Create_Status)
+   is
+      Result : Vk.Result_T;
+   begin
+      Available := False;
+      Status := Ok;
+      for I in 1 .. Device.Sync_Frame_Count loop
+         if Device.In_Flight (I) /= System.Null_Address then
+            Result := Vk.Get_Fence_Status (Device.Device, Device.In_Flight (I));
+            if Result = Vk.NOT_READY then
+               if Device.Fence_Deferred_Upload_Count < Natural'Last then
+                  Device.Fence_Deferred_Upload_Count :=
+                    Device.Fence_Deferred_Upload_Count + 1;
+               end if;
+               Status := Resources_In_Flight;
+               return;
+            elsif Result /= Vk.SUCCESS then
+               Status :=
+                 (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+                  else Create_Device_Failed);
+               return;
+            end if;
+         end if;
+      end loop;
+      Available := True;
+   end Check_Frame_Resources;
+
    procedure Upload
      (Device : in out Logical_Device;
       Choice : Selection;
@@ -3967,9 +4510,13 @@ package body Terminal.App.Vulkan_Device is
       Status : out Create_Status)
    is
       Count : constant Natural := VS.Vertex_Count (Batch);
+      Previous_Preview_Length : constant Natural := Natural'Min
+        (Device.Uploaded_Image_Decoded_Preview_Length,
+         RM.Max_Image_Decoded_Preview_Length);
       Bytes : Interfaces.Unsigned_64;
       Data  : aliased System.Address := System.Null_Address;
       Result : Vk.Result_T;
+      Frame_Resources_Available : Boolean;
    begin
       if not Device.Initialized
         or else not Choice.Selected
@@ -4024,6 +4571,16 @@ package body Terminal.App.Vulkan_Device is
          return;
       end if;
 
+      --  The descriptor set and vertex buffer are shared by submitted frames.
+      --  Never update or retire either while a frame fence is unsignalled.
+      --  Returning a retry status keeps the GUI responsive and avoids a
+      --  queue-wide idle stall.
+      Check_Frame_Resources
+        (Device, Frame_Resources_Available, Status);
+      if not Frame_Resources_Available then
+         return;
+      end if;
+
       if VS.Text_Atlas_Used (Batch) then
          Upload_Atlas (Device, Choice, Batch, Status);
          if Status /= Ok then
@@ -4038,7 +4595,13 @@ package body Terminal.App.Vulkan_Device is
       --  can reach all three samplers whichever branch a pixel takes, and a
       --  descriptor nobody wrote is undefined. One transparent pixel does until
       --  there is a colour glyph to show.
-      if VS.Colour_Atlas_Bytes (Batch) > 0 then
+      if VS.Colour_Atlas_Bytes (Batch) > 0
+        and then
+          (VS.Colour_Atlas_Dirty (Batch)
+           or else Device.Colour_Sheet_View = System.Null_Address
+           or else Device.Colour_Sheet_Width /= VS.Colour_Atlas_Width (Batch)
+           or else Device.Colour_Sheet_Height /= VS.Colour_Atlas_Height (Batch))
+      then
          Upload_Image_Texture_Data
            (Device        => Device,
             Choice        => Choice,
@@ -4073,101 +4636,38 @@ package body Terminal.App.Vulkan_Device is
          end;
       end if;
 
-      if VS.Last_Image_Texture_Source (Batch) = VS.Texture_Image then
-         Device.Uploaded_Image_Texture_Staging_Bytes := 0;
+      if VS.Image_Atlas_Bytes (Batch) > 0 then
+         Device.Uploaded_Image_Texture_Staging_Bytes :=
+           VS.Image_Atlas_Bytes (Batch);
+         Upload_Image_Atlas (Device, Choice, Batch, Status);
+         if Status /= Ok then
+            return;
+         end if;
+      elsif Device.Image_Texture_View = System.Null_Address
+        or else Device.Image_Texture_Width /= 1
+        or else Device.Image_Texture_Height /= 1
+        or else Device.Image_Texture_Bytes /= 4
+        or else Device.Image_Texture_Content_Signature /= 0
+      then
+         --  Binding 1 is statically used by the fragment shader even on a
+         --  text-only frame. Keep it valid, and release a previous large image
+         --  atlas by replacing it with one transparent pixel.
          declare
-            Pixel_Width : constant Natural := VS.Last_Image_Pixel_Width (Batch);
-            Pixel_Height : constant Natural := VS.Last_Image_Pixel_Height (Batch);
-            Raw_Format : constant Natural := VS.Last_Image_Raw_Format (Batch);
-            Bytes_Per_Pixel : constant Natural :=
-              (if Raw_Format = 24 then 3
-               elsif Raw_Format = 32 then 4
-               else 0);
-            Raw_Bytes : constant Natural :=
-              Pixel_Width * Pixel_Height * Bytes_Per_Pixel;
-            RGBA_Bytes : constant Natural := Pixel_Width * Pixel_Height * 4;
-            Source_Row_Stride_Bytes : constant Natural :=
-              VS.Last_Image_Decoded_Row_Stride_Bytes (Batch);
-            Source_Row_Bytes : constant Natural :=
-              Pixel_Width * Bytes_Per_Pixel;
-            Source_Bytes_Required : constant Natural :=
-              VS.Last_Image_Decoded_Source_Bytes (Batch);
-            Image_Source : constant RM.Image_Command :=
-              VS.Last_Image_Source_Command (Batch);
-
-            function Batch_Source_Byte
-              (Row         : Natural;
-               Byte_Offset : Natural) return Interfaces.Unsigned_8
-            is
-            begin
-               return Interfaces.Unsigned_8
-                 (VS.Last_Image_Decoded_Row_Byte
-                    (Batch, Row, Byte_Offset));
-            end Batch_Source_Byte;
+            Blank : aliased constant Blank_Pixel := [others => 0];
          begin
-            if Pixel_Width = 0
-              or else Pixel_Height = 0
-              or else Bytes_Per_Pixel = 0
-              or else Raw_Bytes = 0
-              or else Raw_Bytes > RM.Max_Image_Decoded_Data_Length
-              or else not VS.Last_Image_Decoded_Source_Available (Batch)
-              or else Source_Row_Stride_Bytes < Source_Row_Bytes
-              or else Source_Bytes_Required = 0
-              or else RGBA_Bytes > Max_Image_Texture_Bytes
-            then
-              Device.Uploaded_Image_Texture_Downgraded := True;
-              Device.Uploaded_Image_Texture_Source := VS.Texture_None;
-            elsif Image_Source.Decoded_Source =
-              RM.Image_Decoded_Source_Raw_Base64
-              or else Image_Source.Decoded_Source =
-                RM.Image_Decoded_Source_PNG_Base64
-              or else Image_Source.Decoded_Source =
-                RM.Image_Decoded_Source_Sixel_Text
-            then
-               if Raw_Format = 24 then
-                  Device.Uploaded_Image_Texture_Staging_Bytes := RGBA_Bytes;
-               end if;
-               Upload_Image_Texture_Encoded_Source
-                 (Device       => Device,
-                  Choice       => Choice,
-                  Image_Source => Image_Source,
-                  Status       => Status);
-               if Status /= Ok then
-                  return;
-               end if;
-            elsif Raw_Format = 32 then
-               Upload_Image_Texture_Row_Source
-                 (Device           => Device,
-                  Choice           => Choice,
-                  Width            => Pixel_Width,
-                  Height           => Pixel_Height,
-                  Source_Bytes_Per_Pixel => 4,
-                  Row_Stride_Bytes => Source_Row_Stride_Bytes,
-                  Bytes_Natural    => Source_Bytes_Required,
-                  Source_Byte      => Batch_Source_Byte'Access,
-                  Status           => Status);
-               if Status /= Ok then
-                  return;
-               end if;
-            else
-               Device.Uploaded_Image_Texture_Staging_Bytes := RGBA_Bytes;
-               Upload_Image_Texture_Row_Source
-                 (Device           => Device,
-                  Choice           => Choice,
-                  Width            => Pixel_Width,
-                  Height           => Pixel_Height,
-                  Source_Bytes_Per_Pixel => 3,
-                  Row_Stride_Bytes => Source_Row_Stride_Bytes,
-                  Bytes_Natural    => Source_Bytes_Required,
-                  Source_Byte      => Batch_Source_Byte'Access,
-                  Status           => Status);
-               if Status /= Ok then
-                  return;
-               end if;
+            Upload_Image_Texture_Data
+              (Device        => Device,
+               Choice        => Choice,
+               Width         => 1,
+               Height        => 1,
+               Bytes_Natural => 4,
+               Pixels        => Blank'Address,
+               Status        => Status,
+               Slot          => Inline_Picture);
+            if Status /= Ok then
+               return;
             end if;
          end;
-      else
-         Destroy_Image_Texture (Device);
       end if;
 
       Bytes := Interfaces.Unsigned_64 (Count) * Packed_Vertex_Bytes;
@@ -4226,7 +4726,7 @@ package body Terminal.App.Vulkan_Device is
       Device.Uploaded_Image_Pixel_Height := VS.Last_Image_Pixel_Height (Batch);
       Device.Uploaded_Image_Payload_Length :=
         VS.Last_Image_Payload_Length (Batch);
-      if VS.Last_Image_Texture_Source (Batch) /= VS.Texture_Image then
+      if VS.Image_Atlas_Bytes (Batch) = 0 then
          Device.Uploaded_Image_Texture_Staging_Bytes := 0;
       end if;
       Device.Uploaded_Image_Payload_Preview_Complete :=
@@ -4235,8 +4735,15 @@ package body Terminal.App.Vulkan_Device is
         VS.Last_Image_Encoded_Preview_Length (Batch);
       Device.Uploaded_Image_Decoded_Preview_Length :=
         VS.Last_Image_Decoded_Preview_Length (Batch);
-      Device.Uploaded_Image_Decoded_Preview_Bytes := (others => 0);
-      for I in 1 .. RM.Max_Image_Decoded_Preview_Length loop
+      for I in Device.Uploaded_Image_Decoded_Preview_Length + 1 ..
+        Previous_Preview_Length
+      loop
+         Device.Uploaded_Image_Decoded_Preview_Bytes (I) := 0;
+      end loop;
+      for I in 1 .. Natural'Min
+        (Device.Uploaded_Image_Decoded_Preview_Length,
+         RM.Max_Image_Decoded_Preview_Length)
+      loop
          Device.Uploaded_Image_Decoded_Preview_Bytes (I) :=
            VS.Last_Image_Decoded_Preview_Byte (Batch, I);
       end loop;
@@ -4253,6 +4760,256 @@ package body Terminal.App.Vulkan_Device is
       Device.Uploaded_Shaped_Glyph_Count := VS.Shaped_Glyph_Count (Batch);
       Status := Ok;
    end Upload;
+
+   procedure Enable_Framebuffer_Readback
+     (Device : in out Logical_Device;
+      Choice : Selection;
+      Status : out Readback_Status)
+   is
+      Buffer_Handle : aliased Vk.Buffer_T := System.Null_Address;
+      Memory_Handle : aliased Vk.Device_Memory_T := System.Null_Address;
+      Requirements : aliased Vk.Memory_Requirements_T;
+      Properties : aliased Vk.Physical_Device_Memory_Properties_T;
+      Memory_Type : Interfaces.Unsigned_32 := 0;
+      Result : Vk.Result_T;
+      Byte_Count : Natural := 0;
+
+      procedure Release_Local is
+      begin
+         if Memory_Handle /= System.Null_Address then
+            Vk.Free_Memory
+              (Device.Device, Memory_Handle, System.Null_Address);
+            Memory_Handle := System.Null_Address;
+         end if;
+         if Buffer_Handle /= System.Null_Address then
+            Vk.Destroy_Buffer
+              (Device.Device, Buffer_Handle, System.Null_Address);
+            Buffer_Handle := System.Null_Address;
+         end if;
+      end Release_Local;
+   begin
+      if not Device.Initialized
+        or else Device.Device = System.Null_Address
+      then
+         Status := Readback_Not_Initialized;
+         return;
+      elsif not Device.Readback_Supported
+        or else
+          Device.Swapchain_Format not in
+            Vk.FORMAT_B8G8R8A8_UNORM | Vk.FORMAT_B8G8R8A8_SRGB
+              | Format_R8G8B8A8_Unorm | Vk.Format_T (43)
+      then
+         Status := Readback_Not_Supported;
+         return;
+      elsif Device.Swapchain_Width = 0
+        or else Device.Swapchain_Height = 0
+        or else Device.Swapchain_Width >
+          Max_Framebuffer_Readback_Bytes / 4 / Device.Swapchain_Height
+      then
+         Status := Readback_Invalid_Extent;
+         return;
+      end if;
+
+      Byte_Count := Device.Swapchain_Width * Device.Swapchain_Height * 4;
+      if Device.Readback_Buffer /= System.Null_Address
+        and then Device.Readback_Memory /= System.Null_Address
+        and then Device.Readback_Bytes = Byte_Count
+      then
+         Device.Readback_Enabled := True;
+         Status := Readback_Ok;
+         return;
+      end if;
+
+      declare
+         Buffer_Info : aliased Vk.Buffer_Create_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            p_Next => System.Null_Address,
+            flags => 0,
+            size => Interfaces.Unsigned_64 (Byte_Count),
+            usage => Vk.BUFFER_USAGE_TRANSFER_DST_BIT,
+            sharing_Mode => Vk.SHARING_MODE_EXCLUSIVE,
+            queue_Family_Index_Count => 0,
+            p_Queue_Family_Indices => System.Null_Address);
+      begin
+         Result :=
+           Vk.Create_Buffer
+             (Device.Device,
+              Buffer_Info'Address,
+              System.Null_Address,
+              Buffer_Handle'Address);
+      end;
+      if Result /= Vk.SUCCESS or else Buffer_Handle = System.Null_Address then
+         Status := Readback_Create_Buffer_Failed;
+         return;
+      end if;
+
+      Vk.Get_Buffer_Memory_Requirements
+        (Device.Device, Buffer_Handle, Requirements'Address);
+      Vk.Get_Physical_Device_Memory_Properties
+        (Choice.Physical_Device, Properties'Address);
+      declare
+         Required : constant Vk.Memory_Property_Flags_T :=
+           Vk.MEMORY_PROPERTY_HOST_VISIBLE_BIT
+           or Vk.MEMORY_PROPERTY_HOST_COHERENT_BIT;
+         Preferred : constant Vk.Memory_Property_Flags_T :=
+           Required or Vk.MEMORY_PROPERTY_HOST_CACHED_BIT;
+      begin
+         if not Has_Memory_Type
+           (Properties,
+            Requirements.memory_Type_Bits,
+            Preferred,
+            Memory_Type)
+           and then not Has_Memory_Type
+             (Properties,
+              Requirements.memory_Type_Bits,
+              Required,
+              Memory_Type)
+         then
+            Release_Local;
+            Status := Readback_Allocate_Memory_Failed;
+            return;
+         end if;
+      end;
+
+      declare
+         Allocate_Info : aliased Vk.Memory_Allocate_Info_T :=
+           (s_Type => Vk.STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            p_Next => System.Null_Address,
+            allocation_Size => Requirements.size,
+            memory_Type_Index => Memory_Type);
+      begin
+         Result :=
+           Vk.Allocate_Memory
+             (Device.Device,
+              Allocate_Info'Address,
+              System.Null_Address,
+              Memory_Handle'Address);
+      end;
+      if Result /= Vk.SUCCESS or else Memory_Handle = System.Null_Address then
+         Release_Local;
+         Status := Readback_Allocate_Memory_Failed;
+         return;
+      end if;
+
+      Result :=
+        Vk.Bind_Buffer_Memory
+          (Device.Device, Buffer_Handle, Memory_Handle, 0);
+      if Result /= Vk.SUCCESS then
+         Release_Local;
+         Status := Readback_Bind_Memory_Failed;
+         return;
+      end if;
+
+      Device.Readback_Buffer := Buffer_Handle;
+      Device.Readback_Memory := Memory_Handle;
+      Device.Readback_Bytes := Byte_Count;
+      Device.Readback_Enabled := True;
+      Device.Readback_Pending := False;
+      Device.Readback_Frame := 0;
+      Buffer_Handle := System.Null_Address;
+      Memory_Handle := System.Null_Address;
+      Status := Readback_Ok;
+   exception
+      when others =>
+         Release_Local;
+         Status := Readback_Allocate_Memory_Failed;
+   end Enable_Framebuffer_Readback;
+
+   procedure Readback_Pixel
+     (Device : in out Logical_Device;
+      X, Y   : Natural;
+      Red, Green, Blue, Alpha : out Terminal.Common.Bytes.Byte;
+      Status : out Readback_Status)
+   is
+      Mapped : aliased System.Address := System.Null_Address;
+      Result : Vk.Result_T;
+      Offset : Natural := 0;
+   begin
+      Red := 0;
+      Green := 0;
+      Blue := 0;
+      Alpha := 0;
+      if not Device.Initialized or else not Device.Readback_Enabled then
+         Status := Readback_Not_Initialized;
+         return;
+      elsif not Device.Readback_Pending
+        or else Device.Readback_Frame = 0
+        or else Device.Readback_Frame > Device.Sync_Frame_Count
+      then
+         Status := Readback_No_Completed_Frame;
+         return;
+      elsif X >= Device.Swapchain_Width or else Y >= Device.Swapchain_Height then
+         Status := Readback_Pixel_Out_Of_Range;
+         return;
+      end if;
+
+      Result :=
+        Vk.Wait_For_Fences
+          (Device.Device,
+           1,
+           Device.In_Flight (Device.Readback_Frame)'Address,
+           1,
+           Interfaces.Unsigned_64'Last);
+      if Result /= Vk.SUCCESS then
+         Status := Readback_Wait_Fence_Failed;
+         return;
+      end if;
+
+      Result :=
+        Vk.Map_Memory
+          (Device.Device,
+           Device.Readback_Memory,
+           0,
+           Interfaces.Unsigned_64 (Device.Readback_Bytes),
+           0,
+           Mapped'Address);
+      if Result /= Vk.SUCCESS or else Mapped = System.Null_Address then
+         if Mapped /= System.Null_Address then
+            Vk.Unmap_Memory (Device.Device, Device.Readback_Memory);
+            Mapped := System.Null_Address;
+         end if;
+         Status := Readback_Map_Failed;
+         return;
+      end if;
+
+      Offset := (Y * Device.Swapchain_Width + X) * 4;
+      declare
+         Bytes : constant Readback_Byte_Conversions.Object_Pointer :=
+           Readback_Byte_Conversions.To_Pointer (Mapped);
+         C0 : constant Terminal.Common.Bytes.Byte :=
+           Terminal.Common.Bytes.Byte (Bytes.all (Offset + 1));
+         C1 : constant Terminal.Common.Bytes.Byte :=
+           Terminal.Common.Bytes.Byte (Bytes.all (Offset + 2));
+         C2 : constant Terminal.Common.Bytes.Byte :=
+           Terminal.Common.Bytes.Byte (Bytes.all (Offset + 3));
+         C3 : constant Terminal.Common.Bytes.Byte :=
+           Terminal.Common.Bytes.Byte (Bytes.all (Offset + 4));
+      begin
+         if Device.Swapchain_Format in
+           Vk.FORMAT_B8G8R8A8_UNORM | Vk.FORMAT_B8G8R8A8_SRGB
+         then
+            Red := C2;
+            Green := C1;
+            Blue := C0;
+            Alpha := C3;
+         else
+            Red := C0;
+            Green := C1;
+            Blue := C2;
+            Alpha := C3;
+         end if;
+      end;
+      Vk.Unmap_Memory (Device.Device, Device.Readback_Memory);
+      Mapped := System.Null_Address;
+      Status := Readback_Ok;
+   exception
+      when others =>
+         if Mapped /= System.Null_Address then
+            Vk.Unmap_Memory (Device.Device, Device.Readback_Memory);
+         end if;
+         Device.Readback_Pending := False;
+         Status := Readback_Map_Failed;
+   end Readback_Pixel;
 
    procedure Render
      (Device : in out Logical_Device;
@@ -4279,6 +5036,28 @@ package body Terminal.App.Vulkan_Device is
          return;
       end if;
 
+      --  Validation readback uses one bounded transfer buffer.  Do not let a
+      --  later frame overwrite it while the previous copy is still in flight.
+      if Device.Readback_Enabled
+        and then Device.Readback_Pending
+        and then Device.Readback_Frame in 1 .. Device.Sync_Frame_Count
+      then
+         Result :=
+           Vk.Wait_For_Fences
+             (Device.Device,
+              1,
+              Device.In_Flight (Device.Readback_Frame)'Address,
+              1,
+              Interfaces.Unsigned_64'Last);
+         if Result /= Vk.SUCCESS then
+            Status :=
+              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+               else Wait_Fence_Failed);
+            return;
+         end if;
+         Device.Readback_Pending := False;
+      end if;
+
       if Frame = 0 or else Frame > Device.Sync_Frame_Count then
          Frame := 1;
       end if;
@@ -4291,7 +5070,9 @@ package body Terminal.App.Vulkan_Device is
            1,
            Interfaces.Unsigned_64'Last);
       if Result /= Vk.SUCCESS then
-         Status := Wait_Fence_Failed;
+         Status :=
+           (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+            else Wait_Fence_Failed);
          return;
       end if;
 
@@ -4307,7 +5088,9 @@ package body Terminal.App.Vulkan_Device is
          Status := Swapchain_Out_Of_Date;
          return;
       elsif Result /= Vk.SUCCESS then
-         Status := Acquire_Image_Failed;
+         Status :=
+           (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+            else Acquire_Image_Failed);
          return;
       end if;
 
@@ -4392,14 +5175,18 @@ package body Terminal.App.Vulkan_Device is
          begin
             Result := Vk.Reset_Command_Buffer (Command_Buffer, 0);
             if Result /= Vk.SUCCESS then
-               Status := Reset_Command_Buffer_Failed;
+               Status :=
+                 (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+                  else Reset_Command_Buffer_Failed);
                return;
             end if;
 
             Result :=
               Vk.Begin_Command_Buffer (Command_Buffer, Begin_Info'Address);
             if Result /= Vk.SUCCESS then
-               Status := Begin_Command_Buffer_Failed;
+               Status :=
+                 (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+                  else Begin_Command_Buffer_Failed);
                return;
             end if;
 
@@ -4432,9 +5219,97 @@ package body Terminal.App.Vulkan_Device is
                0);
             Vk.Cmd_End_Render_Pass (Command_Buffer);
 
+            if Device.Readback_Enabled
+              and then Device.Readback_Buffer /= System.Null_Address
+              and then Device.Readback_Bytes > 0
+            then
+               declare
+                  To_Transfer : aliased Vk.Image_Memory_Barrier_T :=
+                    (s_Type => Vk.STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                     p_Next => System.Null_Address,
+                     src_Access_Mask => Vk.ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                     dst_Access_Mask => Vk.ACCESS_TRANSFER_READ_BIT,
+                     old_Layout => Image_Layout_Present_Source,
+                     new_Layout => Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                     src_Queue_Family_Index => Queue_Family_Ignored,
+                     dst_Queue_Family_Index => Queue_Family_Ignored,
+                     image => Device.Swapchain_Images (Image_Slot),
+                     subresource_Range =>
+                       (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
+                        base_Mip_Level => 0,
+                        level_Count => 1,
+                        base_Array_Layer => 0,
+                        layer_Count => 1));
+                  Copy_Region : aliased Vk.Buffer_Image_Copy_T :=
+                    (buffer_Offset => 0,
+                     buffer_Row_Length => 0,
+                     buffer_Image_Height => 0,
+                     image_Subresource =>
+                       (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
+                        mip_Level => 0,
+                        base_Array_Layer => 0,
+                        layer_Count => 1),
+                     image_Offset => (x => 0, y => 0, z => 0),
+                     image_Extent =>
+                       (width => Interfaces.Unsigned_32
+                          (Device.Swapchain_Width),
+                        height => Interfaces.Unsigned_32
+                          (Device.Swapchain_Height),
+                        depth => 1));
+                  To_Present : aliased Vk.Image_Memory_Barrier_T :=
+                    (s_Type => Vk.STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+                     p_Next => System.Null_Address,
+                     src_Access_Mask => Vk.ACCESS_TRANSFER_READ_BIT,
+                     dst_Access_Mask => 0,
+                     old_Layout => Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                     new_Layout => Image_Layout_Present_Source,
+                     src_Queue_Family_Index => Queue_Family_Ignored,
+                     dst_Queue_Family_Index => Queue_Family_Ignored,
+                     image => Device.Swapchain_Images (Image_Slot),
+                     subresource_Range =>
+                       (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
+                        base_Mip_Level => 0,
+                        level_Count => 1,
+                        base_Array_Layer => 0,
+                        layer_Count => 1));
+               begin
+                  Vk.Cmd_Pipeline_Barrier
+                    (Command_Buffer,
+                     Vk.PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                     Vk.PIPELINE_STAGE_TRANSFER_BIT,
+                     0,
+                     0,
+                     System.Null_Address,
+                     0,
+                     System.Null_Address,
+                     1,
+                     To_Transfer'Address);
+                  Vk.Cmd_Copy_Image_To_Buffer
+                    (Command_Buffer,
+                     Device.Swapchain_Images (Image_Slot),
+                     Vk.IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                     Device.Readback_Buffer,
+                     1,
+                     Copy_Region'Address);
+                  Vk.Cmd_Pipeline_Barrier
+                    (Command_Buffer,
+                     Vk.PIPELINE_STAGE_TRANSFER_BIT,
+                     Vk.PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                     0,
+                     0,
+                     System.Null_Address,
+                     0,
+                     System.Null_Address,
+                     1,
+                     To_Present'Address);
+               end;
+            end if;
+
             Result := Vk.End_Command_Buffer (Command_Buffer);
             if Result /= Vk.SUCCESS then
-               Status := End_Command_Buffer_Failed;
+               Status :=
+                 (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+                  else End_Command_Buffer_Failed);
                return;
             end if;
 
@@ -4442,7 +5317,9 @@ package body Terminal.App.Vulkan_Device is
               Vk.Reset_Fences
                 (Device.Device, 1, Device.In_Flight (Frame)'Address);
             if Result /= Vk.SUCCESS then
-               Status := Reset_Fence_Failed;
+               Status :=
+                 (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+                  else Reset_Fence_Failed);
                return;
             end if;
 
@@ -4450,8 +5327,15 @@ package body Terminal.App.Vulkan_Device is
               Vk.Queue_Submit
                 (Device.Queue, 1, Submit_Info'Address, Device.In_Flight (Frame));
             if Result /= Vk.SUCCESS then
-               Status := Queue_Submit_Failed;
+               Status :=
+                 (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+                  else Queue_Submit_Failed);
                return;
+            end if;
+
+            if Device.Readback_Enabled then
+               Device.Readback_Frame := Frame;
+               Device.Readback_Pending := True;
             end if;
 
             Result := Vk.Queue_Present_KHR (Device.Queue, Present_Info'Address);
@@ -4459,7 +5343,9 @@ package body Terminal.App.Vulkan_Device is
                Status := Swapchain_Out_Of_Date;
                return;
             elsif Result /= Vk.SUCCESS then
-               Status := Queue_Present_Failed;
+               Status :=
+                 (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+                  else Queue_Present_Failed);
                return;
             end if;
          end;
@@ -4550,10 +5436,15 @@ package body Terminal.App.Vulkan_Device is
            Device.Image_Texture_Descriptor_Capacity,
          Image_Texture_Descriptor_Bound_Count =>
            Device.Image_Texture_Descriptor_Bound_Count,
+         Image_Texture_Upload_Count => Device.Image_Texture_Upload_Count,
+         Image_Texture_Cache_Hit_Count =>
+           Device.Image_Texture_Cache_Hit_Count,
          Atlas_Width => Device.Atlas_Width,
          Atlas_Height => Device.Atlas_Height,
          Atlas_Bytes => Device.Atlas_Bytes,
          Atlas_Upload_Count => Device.Atlas_Upload_Count,
+         Fence_Deferred_Upload_Count =>
+           Device.Fence_Deferred_Upload_Count,
          Swapchain_Width    => Device.Swapchain_Width,
          Swapchain_Height   => Device.Swapchain_Height,
          Last_Status        => Device.Last_Status);

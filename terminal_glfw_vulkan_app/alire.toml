@@ -1,5 +1,5 @@
 name = "terminal_glfw_vulkan_app"
-description = "Linux GLFW/Vulkan terminal application"
+description = "Ada GLFW/Vulkan terminal application"
 version = "0.1.0-dev"
 licenses = "MIT"
 
@@ -11,6 +11,7 @@ glfw_vulkan = "*"
 df_vulkan = "*"
 textrender = "*"
 zlib = "*"
+giflib = "*"
 aunit = "*"
 
 [[pins]]
@@ -20,3 +21,4 @@ terminal_pty = { path = "../terminal_pty" }
 glfw_vulkan = { path = "../glfw_vulkan" }
 textrender = { path = "../../textrender" }
 zlib = { path = "../../zlib" }
+giflib = { path = "../../giflib" }

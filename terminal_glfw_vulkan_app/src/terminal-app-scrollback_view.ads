@@ -13,6 +13,11 @@ package Terminal.App.Scrollback_View is
      (T      : Terminal.Core.Terminal;
       Offset : Natural) return Terminal.Core.Render_Snapshot;
 
+   procedure Snapshot
+     (T      : Terminal.Core.Terminal;
+      Offset : Natural;
+      Result : in out Terminal.Core.Render_Snapshot);
+
    function Status_Label
      (T      : Terminal.Core.Terminal;
       Offset : Natural) return String;

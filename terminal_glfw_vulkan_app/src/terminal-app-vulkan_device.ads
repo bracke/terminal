@@ -1,3 +1,4 @@
+with Interfaces;
 with System;
 with Terminal.Common.Bytes;
 with Terminal.App.Render_Model;
@@ -41,6 +42,8 @@ package Terminal.App.Vulkan_Device is
    type Create_Status is
      (Ok,
       Selection_Not_Ready,
+      Device_Lost,
+      Resources_In_Flight,
       Swapchain_Extension_Missing,
       Create_Device_Failed,
       Queue_Unavailable,
@@ -136,10 +139,13 @@ package Terminal.App.Vulkan_Device is
       Atlas_Sampler_Created : Boolean := False;
       Image_Texture_Descriptor_Capacity : Natural := 0;
       Image_Texture_Descriptor_Bound_Count : Natural := 0;
+      Image_Texture_Upload_Count : Natural := 0;
+      Image_Texture_Cache_Hit_Count : Natural := 0;
       Atlas_Width : Natural := 0;
       Atlas_Height : Natural := 0;
       Atlas_Bytes : Natural := 0;
       Atlas_Upload_Count : Natural := 0;
+      Fence_Deferred_Upload_Count : Natural := 0;
       Swapchain_Width    : Natural := 0;
       Swapchain_Height   : Natural := 0;
       Last_Status        : Create_Status := Selection_Not_Ready;
@@ -149,6 +155,7 @@ package Terminal.App.Vulkan_Device is
      (Ok,
       Not_Initialized,
       No_Uploaded_Vertices,
+      Device_Lost,
       Acquire_Image_Failed,
       Swapchain_Out_Of_Date,
       Wait_Fence_Failed,
@@ -158,6 +165,19 @@ package Terminal.App.Vulkan_Device is
       End_Command_Buffer_Failed,
       Queue_Submit_Failed,
       Queue_Present_Failed);
+
+   type Readback_Status is
+     (Readback_Ok,
+      Readback_Not_Initialized,
+      Readback_Not_Supported,
+      Readback_Invalid_Extent,
+      Readback_Create_Buffer_Failed,
+      Readback_Allocate_Memory_Failed,
+      Readback_Bind_Memory_Failed,
+      Readback_No_Completed_Frame,
+      Readback_Wait_Fence_Failed,
+      Readback_Pixel_Out_Of_Range,
+      Readback_Map_Failed);
 
    procedure Select_Physical_Device
      (Context : Terminal.App.Vulkan_Context.Context;
@@ -188,6 +208,17 @@ package Terminal.App.Vulkan_Device is
    procedure Render
      (Device : in out Logical_Device;
       Status : out Render_Status);
+
+   procedure Enable_Framebuffer_Readback
+     (Device : in out Logical_Device;
+      Choice : Selection;
+      Status : out Readback_Status);
+
+   procedure Readback_Pixel
+     (Device : in out Logical_Device;
+      X, Y   : Natural;
+      Red, Green, Blue, Alpha : out Terminal.Common.Bytes.Byte;
+      Status : out Readback_Status);
 
    function Is_Initialized (Device : Logical_Device) return Boolean;
    function Device_Handle (Device : Logical_Device) return Vk.Device_T;
@@ -267,16 +298,21 @@ private
       Image_Texture_Width : Natural := 0;
       Image_Texture_Height : Natural := 0;
       Image_Texture_Bytes : Natural := 0;
+      Image_Texture_Content_Signature : Interfaces.Unsigned_64 := 0;
       Image_Texture_Descriptor_Capacity : Natural := 0;
       Image_Texture_Descriptor_Bound_Count : Natural := 0;
+      Image_Texture_Upload_Count : Natural := 0;
+      Image_Texture_Cache_Hit_Count : Natural := 0;
       Swapchain_Images   : Swapchain_Image_Array := (others => System.Null_Address);
       Swapchain_Views    : Swapchain_Image_View_Array :=
         (others => System.Null_Address);
       Framebuffers       : Framebuffer_Array := (others => System.Null_Address);
       Command_Buffers    : Command_Buffer_Array := (others => System.Null_Address);
+      Upload_Command_Buffer : Vk.Command_Buffer_T := System.Null_Address;
       Image_Available    : Semaphore_Array := (others => System.Null_Address);
       Render_Finished    : Semaphore_Array := (others => System.Null_Address);
       In_Flight          : Fence_Array := (others => System.Null_Address);
+      Upload_Fence       : Vk.Fence_T := System.Null_Address;
       Queue_Family_Index : Natural := 0;
       Swapchain_Image_Count : Natural := 0;
       Swapchain_View_Count : Natural := 0;
@@ -320,6 +356,14 @@ private
       Atlas_Height       : Natural := 0;
       Atlas_Bytes        : Natural := 0;
       Atlas_Upload_Count : Natural := 0;
+      Fence_Deferred_Upload_Count : Natural := 0;
+      Readback_Supported : Boolean := False;
+      Readback_Enabled   : Boolean := False;
+      Readback_Pending   : Boolean := False;
+      Readback_Buffer    : Vk.Buffer_T := System.Null_Address;
+      Readback_Memory    : Vk.Device_Memory_T := System.Null_Address;
+      Readback_Bytes     : Natural := 0;
+      Readback_Frame     : Natural := 0;
       Swapchain_Width    : Natural := 0;
       Swapchain_Height   : Natural := 0;
       Last_Status        : Create_Status := Selection_Not_Ready;
