@@ -364,6 +364,40 @@ begin
    end;
 
    declare
+      Stream_T      : Terminal.Core.Terminal;
+      Stream_Init   : Terminal.Core.Initialize_Status;
+      Stream_Status : Terminal.Core.Feed_Status;
+      Event         : Terminal.Core.Graphics_Event;
+   begin
+      Terminal.Core.Initialize (Stream_T, 2, 10, 20, Stream_Init);
+      Assert (Stream_Init = Terminal.Core.Ok, "stream identity core initialize");
+      Terminal.Core.Set_Graphics_Stream_ID (Stream_T, 701);
+      Terminal.Core.Feed
+        (Stream_T,
+         To_Bytes
+           (ASCII.ESC & "_Gq=2,a=t,f=32,s=1,v=1;AAAAAA=="
+            & ASCII.ESC & "\"),
+         Stream_Status);
+      Assert (Stream_Status = Terminal.Core.Ok, "stream identity event feed");
+      Terminal.Core.Set_Graphics_Stream_ID (Stream_T, 702);
+      Terminal.Core.Peek_Graphics_Event (Stream_T, Event);
+      Assert
+        (Event.Pending and then Event.Stream_ID = 701,
+         "queued event retains enqueue-time stream identity");
+      Assert
+        (Terminal.Core.Graphics_Event_Payload (Stream_T, Event)'Length > 0,
+         "queued event payload remains addressable after stream change");
+      Terminal.Core.Complete_Graphics_Event
+        (Stream_T,
+         Event,
+         (Code => Terminal.Core.Kitty_OK, Respond => False, others => <>));
+      Assert
+        (Terminal.Core.Pending_Graphics_Event_Count (Stream_T) = 0,
+         "enqueue-time stream event completes after stream change");
+      Terminal.Core.Finalize (Stream_T);
+   end;
+
+   declare
       Ordered_T      : Terminal.Core.Terminal;
       Ordered_Init   : Terminal.Core.Initialize_Status;
       Ordered_Status : Terminal.Core.Feed_Status;

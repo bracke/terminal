@@ -510,6 +510,7 @@ private
    type Graphics_Event_Node is record
       Protocol       : Ignored_Graphics_Protocol := No_Graphics;
       Cancelled      : Boolean := False;
+      Stream_ID      : Graphics_Stream_ID := 0;
       Sequence       : Graphics_Event_Sequence := 0;
       Transaction_Generation : Graphics_Transaction_Generation := 0;
       Blocks_Input   : Boolean := False;
@@ -624,6 +625,9 @@ private
       Current_Link : Hyperlink;
       Responses     : Response_Buffer := (others => 0);
       Response_Length : Natural range 0 .. Max_Response_Length := 0;
+      Response_Transaction_Start : Natural range 0 .. Max_Response_Length := 0;
+      Response_Transaction_Active : Boolean := False;
+      Response_Transaction_Overflowed : Boolean := False;
 
       State         : Parser_State := Ground;
       CSI_Private   : Standard.Character := ASCII.NUL;

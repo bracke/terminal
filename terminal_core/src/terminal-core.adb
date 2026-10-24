@@ -334,6 +334,7 @@ package body Terminal.Core is
       Node := new Graphics_Event_Node'
         (Protocol       => Protocol,
          Cancelled      => Cancelled,
+         Stream_ID      => T.Graphics_Stream,
          Sequence       => T.Next_Graphics_Sequence,
          Transaction_Generation => T.Graphics_Transaction,
          Blocks_Input   => Blocks_Input,
@@ -1140,6 +1141,8 @@ package body Terminal.Core is
    procedure Append_Response_String
      (T    : in out Terminal;
       Text : String);
+   procedure Begin_Response (T : in out Terminal);
+   procedure End_Response (T : in out Terminal);
 
    procedure Mark_Dirty (T : in out Terminal; Row : Positive) is
    begin
@@ -1395,6 +1398,9 @@ package body Terminal.Core is
       T.Clipboard_Data := (others => <>);
       T.Current_Link := (others => <>);
       T.Response_Length := 0;
+      T.Response_Transaction_Start := 0;
+      T.Response_Transaction_Active := False;
+      T.Response_Transaction_Overflowed := False;
       T.State := Ground;
       T.CSI_Private := ASCII.NUL;
       T.CSI_Params := (others => 0);
@@ -1568,6 +1574,9 @@ package body Terminal.Core is
       T.Clipboard_Data := (others => <>);
       T.Current_Link := (others => <>);
       T.Response_Length := 0;
+      T.Response_Transaction_Start := 0;
+      T.Response_Transaction_Active := False;
+      T.Response_Transaction_Overflowed := False;
       T.State := Ground;
       T.CSI_Private := ASCII.NUL;
       T.CSI_Params := (others => 0);
@@ -1984,6 +1993,7 @@ package body Terminal.Core is
         and then T.OSC_Count - Payload_First + 1 = 12
         and then OSC_Slice (T, Payload_First, T.OSC_Count) = "Capabilities"
       then
+         Begin_Response (T);
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_String (T, "]1337;Capabilities=");
          if T.Graphics_Capabilities.ITerm2_Inline_Images
@@ -1996,6 +2006,7 @@ package body Terminal.Core is
          end if;
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '\');
+         End_Response (T);
       elsif Command = 1337 and then Payload_Starts_With ("File=") then
          Note_Graphics_Protocol
            (T,
@@ -2998,13 +3009,37 @@ package body Terminal.Core is
       B : Common.Bytes.Byte)
    is
    begin
-      if T.Response_Length < Max_Response_Length then
+      if T.Response_Transaction_Overflowed then
+         return;
+      elsif T.Response_Length < Max_Response_Length then
          T.Response_Length := T.Response_Length + 1;
          T.Responses (T.Response_Length) := B;
+      elsif T.Response_Transaction_Active then
+         T.Response_Transaction_Overflowed := True;
       else
          T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
       end if;
    end Append_Response_Byte;
+
+   procedure Begin_Response (T : in out Terminal) is
+   begin
+      pragma Assert (not T.Response_Transaction_Active);
+      T.Response_Transaction_Start := T.Response_Length;
+      T.Response_Transaction_Active := True;
+      T.Response_Transaction_Overflowed := False;
+   end Begin_Response;
+
+   procedure End_Response (T : in out Terminal) is
+   begin
+      pragma Assert (T.Response_Transaction_Active);
+      if T.Response_Transaction_Overflowed then
+         T.Response_Length := T.Response_Transaction_Start;
+         T.Diag.Parser_Overflow := T.Diag.Parser_Overflow + 1;
+      end if;
+      T.Response_Transaction_Start := 0;
+      T.Response_Transaction_Active := False;
+      T.Response_Transaction_Overflowed := False;
+   end End_Response;
 
    procedure Append_Response_Char
      (T  : in out Terminal;
@@ -3551,6 +3586,7 @@ package body Terminal.Core is
         and then T.Ignored_String_Data (1) = '$'
         and then T.Ignored_String_Data (2) = 'q'
       then
+         Begin_Response (T);
          if T.Ignored_String_Count = 2 then
             Append_DECRQSS_Negative (T);
          elsif T.Ignored_String_Count = 4
@@ -3587,6 +3623,7 @@ package body Terminal.Core is
                   Append_DECRQSS_Negative (T);
             end case;
          end if;
+         End_Response (T);
       end if;
 
       T.Ignored_String_Is_DCS := False;
@@ -3610,6 +3647,7 @@ package body Terminal.Core is
          Append_Response_Char (T, 'n');
       end Append_Private_DSR;
    begin
+      Begin_Response (T);
       case Kind is
          when 5 =>
             if not Valid_Report then
@@ -3629,22 +3667,21 @@ package body Terminal.Core is
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
             end if;
          when 6 =>
-            if not Valid_Report then
+            if not Valid_Report
+              or else T.CSI_Private not in ASCII.NUL | '?'
+            then
                T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
-               return;
+            else
+               Append_Response_Char (T, ASCII.ESC);
+               Append_Response_Char (T, '[');
+               if T.CSI_Private = '?' then
+                  Append_Response_Char (T, '?');
+               end if;
+               Append_Response_Natural (T, T.Cursor_Row);
+               Append_Response_Char (T, ';');
+               Append_Response_Natural (T, T.Cursor_Col);
+               Append_Response_Char (T, 'R');
             end if;
-            Append_Response_Char (T, ASCII.ESC);
-            Append_Response_Char (T, '[');
-            if T.CSI_Private = '?' then
-               Append_Response_Char (T, '?');
-            elsif T.CSI_Private /= ASCII.NUL then
-               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
-               return;
-            end if;
-            Append_Response_Natural (T, T.Cursor_Row);
-            Append_Response_Char (T, ';');
-            Append_Response_Natural (T, T.Cursor_Col);
-            Append_Response_Char (T, 'R');
          when 15 =>
             if T.CSI_Private = '?' and then Valid_Report then
                Append_Private_DSR ("11");
@@ -3678,12 +3715,14 @@ package body Terminal.Core is
          when others =>
             T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end case;
+      End_Response (T);
    end Queue_Device_Status_Report;
 
    procedure Queue_Device_Attributes
      (T : in out Terminal)
    is
    begin
+      Begin_Response (T);
       if T.CSI_Private = ASCII.NUL
         and then T.CSI_Count <= 1
         and then Param (T, 1, 0) = 0
@@ -3697,6 +3736,7 @@ package body Terminal.Core is
       else
          T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end if;
+      End_Response (T);
    end Queue_Device_Attributes;
 
    procedure Queue_Window_Operation_Report
@@ -3713,6 +3753,7 @@ package body Terminal.Core is
          and then T.CSI_Count <= 2
          and then Target in 0 .. 2);
    begin
+      Begin_Response (T);
       if T.CSI_Private = ASCII.NUL and then Number in 1 .. 10 then
          null;
       elsif Valid_Report and then Number = 11 then
@@ -3806,6 +3847,7 @@ package body Terminal.Core is
       else
          T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end if;
+      End_Response (T);
    end Queue_Window_Operation_Report;
 
    function Mode_Report_State
@@ -3880,6 +3922,7 @@ package body Terminal.Core is
          return;
       end if;
 
+      Begin_Response (T);
       Append_Response_Char (T, ASCII.ESC);
       Append_Response_Char (T, '[');
       if T.CSI_Private /= ASCII.NUL then
@@ -3890,6 +3933,7 @@ package body Terminal.Core is
       Append_Response_Natural (T, State);
       Append_Response_Char (T, '$');
       Append_Response_Char (T, 'y');
+      End_Response (T);
    end Queue_Mode_Report;
 
    procedure Move_Cursor
@@ -5827,7 +5871,7 @@ package body Terminal.Core is
       Event.Pending := True;
       Event.Cancelled := Node.Cancelled;
       Event.Protocol := Node.Protocol;
-      Event.Stream_ID := T.Graphics_Stream;
+      Event.Stream_ID := Node.Stream_ID;
       Event.Sequence := Node.Sequence;
       Event.Transaction_Generation := Node.Transaction_Generation;
       Event.Alternate_Screen := Node.Alternate_Screen;
@@ -5855,7 +5899,7 @@ package body Terminal.Core is
       if Node = null
         or else not Event.Pending
         or else Event.Protocol /= Node.Protocol
-        or else Event.Stream_ID /= T.Graphics_Stream
+        or else Event.Stream_ID /= Node.Stream_ID
         or else Event.Sequence /= Node.Sequence
         or else Node.Payload = null
       then
@@ -5903,7 +5947,7 @@ package body Terminal.Core is
       if Node = null
         or else not Event.Pending
         or else Event.Protocol /= Node.Protocol
-        or else Event.Stream_ID /= T.Graphics_Stream
+        or else Event.Stream_ID /= Node.Stream_ID
         or else Event.Sequence /= Node.Sequence
       then
          return;
@@ -5918,6 +5962,7 @@ package body Terminal.Core is
         and then Result.Quiet /= 2
         and then not (Result.Code = Kitty_OK and then Result.Quiet = 1)
       then
+         Begin_Response (T);
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_String (T, "_Gi=");
          Append_Response_Graphics_ID (T, Result.Image_ID);
@@ -5933,6 +5978,7 @@ package body Terminal.Core is
          Append_Response_String (T, Message);
          Append_Response_Char (T, ASCII.ESC);
          Append_Response_Char (T, '\');
+         End_Response (T);
       end if;
 
       if Was_Blocking
