@@ -17,8 +17,9 @@ application-layer packages.
 Graphics helpers keep protocol-independent responsibilities out of the main
 renderer body. `Terminal.App.Image_Decode` supplies the canonical decode status
 type, `Terminal.App.Image_Ingestion` owns payload boundaries and encoded-source
-copies, `Terminal.App.Image_Store` owns install transactions and allocation
-controls, `Terminal.App.Image_Placements` resolves crop and cell
+copies, `Terminal.App.Image_Store` owns image-object lookup, content release,
+accounting, install transactions, and allocation controls,
+`Terminal.App.Image_Placements` resolves crop and cell
 geometry, and `Terminal.App.Image_Rendering` owns media admission and bounded
 structured decoder diagnostics. `Terminal.App.Render_Model` owns final cleanup
 of image-command buffers, including aliased decoded, encoded, and preview

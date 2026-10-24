@@ -82,7 +82,9 @@ and clears every view before a command can be reused.
 `Frame_Commands` exposes command arrays through access-to-constant views. These
 views borrow renderer and text-atlas storage and are valid only until the next
 render, graphics-stream release, or renderer finalization; submission consumes
-them synchronously and does not retain the CPU pointers for presentation.
+them synchronously and does not retain the CPU pointers for presentation. The
+renderer does not publish those borrowed views as a production query API;
+white-box tests access them only through `Terminal.App.Renderer.Testing`.
 
 The presenter also exposes an opt-in validation-only framebuffer readback. If
 the surface supports transfer-source swapchain images, enabling it allocates a
@@ -170,12 +172,12 @@ Pure crop, aspect-ratio, cell-span, and pixel-offset calculation lives in
 `Terminal.App.Image_Placements`; renderer-owned lists remain responsible only
 for placement identity, lifetime, references, and screen association.
 `Terminal.App.Image_Ingestion` owns protocol payload-boundary discovery and
-encoded-source copies. `Terminal.App.Image_Store` owns allocation controls and
-the install transaction state. Every fallible staging allocation is completed
-before a new image becomes visible where possible. Operations that must install
-an object before allocating animation frames or placements use an explicit
-rollback path keyed by storage order, so a rejected event cannot consume image
-or placement quota.
+encoded-source copies. `Terminal.App.Image_Store` owns object lookup, byte
+accounting, object-content release, allocation controls, and install transaction
+state. Every fallible placement allocation is completed before a combined
+Kitty transmission replaces an object. The prior object remains owned until its
+new placement commits; a rejected placement rolls the new object back without
+consuming image or placement quota.
 
 Graphics protocol payloads are first consumed by `Terminal.Core`. Its limits
 are configured from the app, up to compiled safety ceilings of 8 MiB per
@@ -262,13 +264,14 @@ Base64 and RFC 1950 decoding, rasterizes Sixel rows, expands PNG to RGBA with
 the local zlib crate, decodes iTerm2 JPEG through the local jpeglib crate, and
 decodes/composites iTerm2 GIF animations through the local giflib crate.
 QuickDraw PICT input is rendered to bounded RGBA through the local pictlib
-crate. The adapter borrows encoded bytes, renders directly into its retained
-RGBA allocation, and transfers static-image ownership into the renderer without
-a full-image copy. Classic Macintosh font IDs and family names are mapped to
-discovered mono, sans-serif, serif, and symbol fonts, with exact-family and
-semantic environment overrides for installed classic fonts. Pictlib runs in
-compatible mode: drawing constructs it cannot reproduce exactly yield bounded,
-deterministic output plus a retained warning. Pictlib failures and warnings
+crate. The adapter borrows encoded bytes through the same checked cursor model
+used for GIF input, renders into a pictlib-owned bounded buffer, and copies the
+validated result into renderer-owned storage. This avoids unchecked access-type
+conversion across crate boundaries. Classic Macintosh font IDs and family names
+are mapped to discovered mono, sans-serif, serif, and symbol fonts, with
+exact-family and semantic environment overrides for installed classic fonts.
+Pictlib runs in compatible mode: drawing constructs it cannot reproduce exactly
+yield bounded, deterministic output plus a retained warning. Pictlib failures and warnings
 retain their stable identifier, source/opcode/row coordinates, expected and
 actual values, limit kind, and underlying-code fields in renderer diagnostics.
 `Terminal.App.Image_Rendering` owns decoder admission checks and the structured

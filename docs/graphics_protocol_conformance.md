@@ -138,8 +138,8 @@ The implemented and tested subset is:
 - bounded metadata, Base64 input, decoded bytes, and pixel dimensions;
 - one authoritative decode pass per inline payload; malformed or unsupported
   input is rejected without a second preview decode or fallback image;
-- borrowed native PICT input without a full encoded copy, direct rendering into
-  the retained RGBA buffer,
+- borrowed native PICT input without an encoded-input copy, rendering through a
+  type-safe pictlib output buffer followed by a bounded ownership transfer,
   structured Pictlib failure/warning diagnostics, explicit adapter buffer
   bytes, and separately reported decoder configuration limits. Pictlib applies
   a monotonic aggregate allocation-admission quota in addition to its
