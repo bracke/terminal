@@ -17,4 +17,10 @@ package Terminal.App.PTY_Write is
      (S      : in out Terminal.PTY.Backend.Session;
       Chunk  : Terminal.App.Queues.Byte_Chunk;
       Status : out Write_All_Status);
+
+   procedure Write_Remaining
+     (S      : in out Terminal.PTY.Backend.Session;
+      Chunk  : Terminal.App.Queues.Byte_Chunk;
+      Offset : in out Positive;
+      Status : out Write_All_Status);
 end Terminal.App.PTY_Write;

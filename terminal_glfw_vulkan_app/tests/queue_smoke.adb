@@ -16,11 +16,13 @@ procedure Queue_Smoke is
 
    procedure Push_PTY_Byte (Value : Byte) is
       Chunk : Q.Byte_Chunk;
+      Accepted : Boolean;
    begin
       Chunk := (others => <>);
       Chunk.Length := 1;
       Chunk.Data (1) := Value;
-      PTY.Push (Chunk);
+      PTY.Push (Chunk, Accepted);
+      Assert (Accepted, "pty queue accepts lossless input");
    end Push_PTY_Byte;
 
    procedure Push_Input_Byte (Value : Byte) is
@@ -93,19 +95,61 @@ begin
      (Q.Queue_Status_Label ("pty", PTY.Length, Q.Max_Chunks, PTY.Overflow_Count) =
       "pty queue 64/64",
       "full pty queue status label");
-   Push_PTY_Byte (16#FF#);
-   Assert (PTY.Overflow_Count = 1, "pty overflow count");
-   Assert (PTY.Length = Q.Max_Chunks, "pty drop-newest length");
+   Assert (PTY.Overflow_Count = 0, "pty queue never drops bytes");
+   Assert (PTY.Length = Q.Max_Chunks, "pty full length remains bounded");
    Assert
      (Q.Queue_Status_Label ("pty", PTY.Length, Q.Max_Chunks, PTY.Overflow_Count) =
-      "pty queue 64/64; overflows=1",
-      "overflow pty queue status label");
+      "pty queue 64/64",
+      "lossless full pty queue status label");
 
-   Assert_PTY_Byte (1, "pty first");
-   Assert_PTY_Byte (2, "pty second");
-   for I in 3 .. Q.Max_Chunks loop
+   declare
+      protected Completion is
+         procedure Mark (Accepted : Boolean);
+         function Done return Boolean;
+         function Was_Accepted return Boolean;
+      private
+         Finished : Boolean := False;
+         Accepted : Boolean := False;
+      end Completion;
+
+      protected body Completion is
+         procedure Mark (Accepted : Boolean) is
+         begin
+            Completion.Accepted := Accepted;
+            Finished := True;
+         end Mark;
+         function Done return Boolean is (Finished);
+         function Was_Accepted return Boolean is (Accepted);
+      end Completion;
+
+      task Producer;
+      task body Producer is
+         Chunk : Q.Byte_Chunk := (others => <>);
+         Accepted : Boolean;
+      begin
+         Chunk.Length := 1;
+         Chunk.Data (1) := 16#EE#;
+         PTY.Push (Chunk, Accepted);
+         Completion.Mark (Accepted);
+      end Producer;
+   begin
+      delay 0.01;
+      Assert (not Completion.Done, "full pty queue blocks its producer");
+      Assert_PTY_Byte (1, "pty first");
+      for Attempt in 1 .. 100 loop
+         exit when Completion.Done;
+         delay 0.001;
+      end loop;
+      if not Completion.Done then
+         abort Producer;
+      end if;
+      Assert (Completion.Done, "pty producer resumes after space is available");
+      Assert (Completion.Was_Accepted, "resumed pty push is accepted");
+   end;
+   for I in 2 .. Q.Max_Chunks loop
       Assert_PTY_Byte (Byte (I), "pty ordered");
    end loop;
+   Assert_PTY_Byte (16#EE#, "pty blocked producer order");
    PTY.Pop (Empty_Chunk, Available);
    Assert (not Available, "pty empty");
 
@@ -131,16 +175,26 @@ begin
    for I in 1 .. Q.Max_Chunks / 4 loop
       Assert_PTY_Byte (Byte (I), "pty overflow wrap pre-drain");
    end loop;
-   for I in Q.Max_Chunks / 2 + 1 .. Q.Max_Chunks + Q.Max_Chunks / 4 + 1 loop
+   for I in Q.Max_Chunks / 2 + 1 .. Q.Max_Chunks + Q.Max_Chunks / 4 loop
       Push_PTY_Byte (Byte (I));
    end loop;
-   Assert (PTY.Length = Q.Max_Chunks, "pty overflow wrapped length");
-   Assert (PTY.Overflow_Count = 2, "pty overflow wrapped count");
+   Assert (PTY.Length = Q.Max_Chunks, "pty full wrapped length");
+   Assert (PTY.Overflow_Count = 0, "pty wrapped queue remains lossless");
    for I in Q.Max_Chunks / 4 + 1 .. Q.Max_Chunks + Q.Max_Chunks / 4 loop
       Assert_PTY_Byte (Byte (I), "pty overflow wrapped order");
    end loop;
    PTY.Pop (Empty_Chunk, Available);
-   Assert (not Available, "pty overflow wrapped empty");
+   Assert (not Available, "pty wrapped empty");
+
+   PTY.Shut_Down;
+   declare
+      Chunk : Q.Byte_Chunk := (others => <>);
+      Accepted : Boolean;
+   begin
+      Chunk.Length := 1;
+      PTY.Push (Chunk, Accepted);
+      Assert (not Accepted, "shutdown wakes and rejects pty producers");
+   end;
 
    for I in 1 .. Q.Max_Input_Events loop
       Push_Input_Byte (Byte (I mod 256));

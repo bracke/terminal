@@ -21,10 +21,24 @@ package body Terminal.App.PTY_Write is
       Status : out Write_All_Status)
    is
       Offset : Positive := 1;
+   begin
+      Write_Remaining (S, Chunk, Offset, Status);
+   end Write_All;
+
+   procedure Write_Remaining
+     (S      : in out Terminal.PTY.Backend.Session;
+      Chunk  : Terminal.App.Queues.Byte_Chunk;
+      Offset : in out Positive;
+      Status : out Write_All_Status)
+   is
       Last   : Natural := 0;
       W      : Terminal.PTY.Backend.Write_Status;
    begin
       if Chunk.Length = 0 then
+         Offset := 1;
+         Status := Ok;
+         return;
+      elsif Offset > Chunk.Length then
          Status := Ok;
          return;
       end if;
@@ -54,5 +68,5 @@ package body Terminal.App.PTY_Write is
       end loop;
 
       Status := (if Offset > Chunk.Length then Ok else Incomplete);
-   end Write_All;
+   end Write_Remaining;
 end Terminal.App.PTY_Write;

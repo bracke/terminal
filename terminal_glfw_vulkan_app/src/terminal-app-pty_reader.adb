@@ -8,6 +8,7 @@ package body Terminal.App.PTY_Reader is
       Last   : Natural;
       Status : Terminal.PTY.Backend.Read_Status;
       Done   : Boolean := False;
+      Accepted : Boolean;
    begin
       while not Done loop
          select
@@ -24,7 +25,8 @@ package body Terminal.App.PTY_Reader is
          case Status is
             when Terminal.PTY.Backend.Ok =>
                Chunk.Length := Last;
-               Queue.Push (Chunk);
+               Queue.Push (Chunk, Accepted);
+               exit when not Accepted;
                --  Wake the main loop from its idle sleep so freshly read output
                --  is fed and drawn without waiting out the event timeout.
                GLFW_Vulkan.Events.Post_Empty_Event;

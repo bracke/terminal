@@ -43,15 +43,18 @@ package body Terminal.App.Queues is
      (if I = Queue_Index'Last then Queue_Index'First else I + 1);
 
    protected body PTY_Output_Queue is
-      procedure Push (Chunk : Byte_Chunk) is
+      entry Push (Chunk : Byte_Chunk; Accepted : out Boolean)
+        when Count < Max_Chunks or else Closed
+      is
       begin
-         if Count = Max_Chunks then
-            Overflows := Overflows + 1;
+         if Closed then
+            Accepted := False;
             return;
          end if;
          Items (Tail) := Chunk;
          Tail := Next_Chunk (Tail);
          Count := Count + 1;
+         Accepted := True;
       end Push;
 
       procedure Pop (Chunk : out Byte_Chunk; Available : out Boolean) is
@@ -66,6 +69,11 @@ package body Terminal.App.Queues is
          Count := Count - 1;
          Available := True;
       end Pop;
+
+      procedure Shut_Down is
+      begin
+         Closed := True;
+      end Shut_Down;
 
       function Overflow_Count return Natural is (Overflows);
       function Length return Natural is (Count);

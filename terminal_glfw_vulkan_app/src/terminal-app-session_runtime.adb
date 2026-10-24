@@ -42,6 +42,13 @@ package body Terminal.App.Session_Runtime is
       return Text (Text'First + 1 .. Text'Last);
    end Trim_Image;
 
+   function Feed_Rank (Status : Terminal.Core.Feed_Status) return Natural is
+     (case Status is
+         when Terminal.Core.Ok               => 0,
+         when Terminal.Core.Parser_Recovered => 1,
+         when Terminal.Core.Parser_Overflow  => 2,
+         when Terminal.Core.Invalid_State    => 3);
+
    procedure Stop_Reader (R : in out Runtime) is
    begin
       if R.Reader /= null then
@@ -57,6 +64,9 @@ package body Terminal.App.Session_Runtime is
 
    procedure Close (R : in out Runtime) is
    begin
+      if R.Q /= null then
+         R.Q.Shut_Down;
+      end if;
       if R.S /= null then
          Terminal.PTY.Backend.Close (R.S.all);
       end if;
@@ -72,6 +82,8 @@ package body Terminal.App.Session_Runtime is
          Free_Core (R.T);
       end if;
       R.Size_Known := False;
+      R.Pending_Write := (others => <>);
+      R.Pending_Write_Offset := 1;
       R.Current_State := Closed;
    end Close;
 
@@ -129,6 +141,8 @@ package body Terminal.App.Session_Runtime is
       R.Rows := Rows;
       R.Cols := Cols;
       R.Size_Known := True;
+      R.Pending_Write := (others => <>);
+      R.Pending_Write_Offset := 1;
       R.Current_State := Active;
       Status := Ok;
       R.Last_Start := Status;
@@ -167,17 +181,28 @@ package body Terminal.App.Session_Runtime is
          return;
       end if;
 
+      Flush_Write (R, Write_Status);
+      if Write_Status in
+        Terminal.App.PTY_Write.Failed | Terminal.App.PTY_Write.Session_Closed
+      then
+         return;
+      end if;
+
       loop
          R.Q.Pop (Chunk, Has_Chunk);
          exit when not Has_Chunk;
          if Chunk.Length > 0 then
             Had_Output := True;
             Terminal.Core.Feed (R.T.all, Chunk.Data (1 .. Chunk.Length), Feed);
-            Status := Feed;
+            if Feed_Rank (Feed) > Feed_Rank (Status) then
+               Status := Feed;
+            end if;
          end if;
       end loop;
 
-      while Terminal.Core.Pending_Response_Length (R.T.all) > 0 loop
+      while not Has_Pending_Write (R)
+        and then Terminal.Core.Pending_Response_Length (R.T.all) > 0
+      loop
          Chunk := (others => <>);
          Terminal.Core.Read_Response (R.T.all, Chunk.Data, Chunk.Length);
          exit when Chunk.Length = 0;
@@ -194,10 +219,35 @@ package body Terminal.App.Session_Runtime is
    begin
       if R.Current_State /= Active or else R.S = null then
          Status := Terminal.App.PTY_Write.Session_Closed;
+      elsif Has_Pending_Write (R) then
+         Status := Terminal.App.PTY_Write.Incomplete;
       else
-         Terminal.App.PTY_Write.Write_All (R.S.all, Chunk, Status);
+         R.Pending_Write := Chunk;
+         R.Pending_Write_Offset := 1;
+         Flush_Write (R, Status);
       end if;
    end Write;
+
+   procedure Flush_Write
+     (R      : in out Runtime;
+      Status : out Terminal.App.PTY_Write.Write_All_Status) is
+   begin
+      if R.Current_State /= Active or else R.S = null then
+         Status := Terminal.App.PTY_Write.Session_Closed;
+      elsif not Has_Pending_Write (R) then
+         Status := Terminal.App.PTY_Write.Ok;
+      else
+         Terminal.App.PTY_Write.Write_Remaining
+           (R.S.all, R.Pending_Write, R.Pending_Write_Offset, Status);
+         if Status = Terminal.App.PTY_Write.Ok then
+            R.Pending_Write := (others => <>);
+            R.Pending_Write_Offset := 1;
+         end if;
+      end if;
+   end Flush_Write;
+
+   function Has_Pending_Write (R : Runtime) return Boolean is
+     (R.Pending_Write.Length > 0);
 
    procedure Resize
      (R          : in out Runtime;

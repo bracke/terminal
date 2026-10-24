@@ -43,6 +43,10 @@ package Terminal.App.Session_Runtime is
      (R      : in out Runtime;
       Chunk  : Terminal.App.Queues.Byte_Chunk;
       Status : out Terminal.App.PTY_Write.Write_All_Status);
+   procedure Flush_Write
+     (R      : in out Runtime;
+      Status : out Terminal.App.PTY_Write.Write_All_Status);
+   function Has_Pending_Write (R : Runtime) return Boolean;
 
    procedure Resize
      (R          : in out Runtime;
@@ -81,5 +85,7 @@ private
       Last_Start    : Start_Status := Allocation_Failed;
       Last_Spawn    : Terminal.PTY.Backend.Spawn_Status :=
         Terminal.PTY.Backend.Fork_Failed;
+      Pending_Write : Terminal.App.Queues.Byte_Chunk := (others => <>);
+      Pending_Write_Offset : Positive := 1;
    end record;
 end Terminal.App.Session_Runtime;

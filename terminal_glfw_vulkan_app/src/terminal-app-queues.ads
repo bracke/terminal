@@ -23,8 +23,9 @@ package Terminal.App.Queues is
    type Byte_Chunk_Ring is array (Queue_Index) of Byte_Chunk;
 
    protected type PTY_Output_Queue is
-      procedure Push (Chunk : Byte_Chunk);
+      entry Push (Chunk : Byte_Chunk; Accepted : out Boolean);
       procedure Pop (Chunk : out Byte_Chunk; Available : out Boolean);
+      procedure Shut_Down;
       function Overflow_Count return Natural;
       function Length return Natural;
    private
@@ -33,6 +34,7 @@ package Terminal.App.Queues is
       Tail      : Queue_Index := Queue_Index'First;
       Count     : Natural range 0 .. Max_Chunks := 0;
       Overflows : Natural := 0;
+      Closed    : Boolean := False;
    end PTY_Output_Queue;
 
    type Input_Event_Kind is
