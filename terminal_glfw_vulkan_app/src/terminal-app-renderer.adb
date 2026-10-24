@@ -7359,6 +7359,11 @@ package body Terminal.App.Renderer is
       return (others => <>);
    end Graphics_Result;
 
+   function Graphics_Event_Processed
+     (R     : Renderer;
+      Event : Terminal.Core.Graphics_Event) return Boolean is
+     (Graphics_Event_Already_Processed (R, Event));
+
    procedure Add_Image
      (R      : in out Renderer;
       Event  : Terminal.Core.Graphics_Event;
@@ -10211,21 +10216,10 @@ package body Terminal.App.Renderer is
       R.Hovered_Link := Link;
    end Set_Hovered_Link;
 
-   procedure Commit_Graphics_Events (R : in out Renderer) is
+   procedure Clear_Graphics_Event_Tracking (R : in out Renderer) is
       Staged : Staged_Graphics_Event_Access := R.Staged_Graphics_Events;
       Staged_Next : Staged_Graphics_Event_Access;
    begin
-      --  Atlas changes remain dirty until the frame carrying them is accepted
-      --  by the presentation backend.  A fence deferral or swapchain retry can
-      --  therefore rebuild the batch without losing the required upload.
-      if R.Atlas_Dirty then
-         Textrender.Clear_Atlas_Dirty (R.Text);
-         R.Atlas_Dirty := False;
-      end if;
-      if R.Colour_Sheet_Dirty then
-         Textrender.Clear_Colour_Sheet_Dirty (R.Text);
-         R.Colour_Sheet_Dirty := False;
-      end if;
       R.Processed_Graphics_Events := (others => (others => <>));
       R.Processed_Graphics_Event_Count := 0;
       R.Graphics_Event_Tracking_Failed := False;
@@ -10238,7 +10232,28 @@ package body Terminal.App.Renderer is
          Staged := Staged_Next;
       end loop;
       R.Staged_Graphics_Events := null;
+   end Clear_Graphics_Event_Tracking;
+
+   procedure Commit_Graphics_Events (R : in out Renderer) is
+   begin
+      --  Atlas changes remain dirty until the frame carrying them is accepted
+      --  by the presentation backend.  A fence deferral or swapchain retry can
+      --  therefore rebuild the batch without losing the required upload.
+      if R.Atlas_Dirty then
+         Textrender.Clear_Atlas_Dirty (R.Text);
+         R.Atlas_Dirty := False;
+      end if;
+      if R.Colour_Sheet_Dirty then
+         Textrender.Clear_Colour_Sheet_Dirty (R.Text);
+         R.Colour_Sheet_Dirty := False;
+      end if;
+      Clear_Graphics_Event_Tracking (R);
    end Commit_Graphics_Events;
+
+   procedure Commit_Offscreen_Graphics_Events (R : in out Renderer) is
+   begin
+      Clear_Graphics_Event_Tracking (R);
+   end Commit_Offscreen_Graphics_Events;
 
    procedure Release_Graphics_Stream
      (R         : in out Renderer;

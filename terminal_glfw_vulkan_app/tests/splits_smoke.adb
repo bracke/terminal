@@ -206,4 +206,22 @@ begin
       Assert (Splits.Count (State) = 2, "close vertical pane by cell count");
       Assert (Splits.Active (State) = 2, "close vertical pane by cell active");
    end;
+
+   Splits.Initialize (State);
+   for I in 2 .. Splits.Max_Panes loop
+      Splits.Apply (State, Splits.Split_Horizontal, Status);
+      Assert (Status = Splits.Ok, "tiny layout pane setup" & Natural'Image (I));
+   end loop;
+   declare
+      Layout : constant Splits.Pane_Layout := Splits.Layout (State, 1, 1);
+   begin
+      for I in 1 .. Layout.Count loop
+         Assert
+           (Layout.Rects (I).Rows > 0 and then Layout.Rects (I).Cols > 0,
+            "tiny layout never creates a zero-sized pane");
+         Assert
+           (Layout.Rects (I).Row = 1 and then Layout.Rects (I).Col = 1,
+            "tiny layout clamps pane origins to the grid");
+      end loop;
+   end;
 end Splits_Smoke;

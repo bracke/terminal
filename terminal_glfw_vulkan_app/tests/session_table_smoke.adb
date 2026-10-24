@@ -32,11 +32,26 @@ begin
      (Runtime.State (Tables.Active_Runtime (Table).all) = Runtime.Active,
       "runtime table active runtime state");
 
-   Tables.New_Tab (Table, Tab_State, 24, 80, 100, Status);
+   Tables.New_Tab
+     (Table, Tab_State, Split_State, 24, 80, 100, Status);
    Assert (Status = Tables.Ok, "runtime table new tab");
    Assert (Tables.Count (Table) = 2, "runtime table tab session count");
    Assert (Tabs.Count (Tab_State) = 2, "runtime table tab model count");
    Assert (Tables.Active (Table) = 2, "runtime table new tab active");
+
+   Tables.Split_Pane
+     (Table,
+      Tab_State,
+      Split_State,
+      Splits.Split_Horizontal,
+      24,
+      80,
+      100,
+      Status);
+   Assert
+     (Status = Tables.Layout_Conflict,
+      "split layout is rejected while tabs are active");
+   Assert (Tables.Count (Table) = 2, "layout conflict preserves sessions");
 
    Tables.Activate (Table, 1, Status);
    Assert (Status = Tables.Ok, "runtime table activate first");
@@ -49,6 +64,7 @@ begin
 
    Tables.Split_Pane
      (Table,
+      Tab_State,
       Split_State,
       Splits.Split_Horizontal,
       24,
@@ -58,6 +74,13 @@ begin
    Assert (Status = Tables.Ok, "runtime table split pane");
    Assert (Tables.Count (Table) = 2, "runtime table split count");
    Assert (Splits.Count (Split_State) = 2, "runtime table split model count");
+
+   Tables.New_Tab
+     (Table, Tab_State, Split_State, 24, 80, 100, Status);
+   Assert
+     (Status = Tables.Layout_Conflict,
+      "tab layout is rejected while splits are active");
+   Assert (Tables.Count (Table) = 2, "reverse conflict preserves sessions");
 
    Tables.Close_Pane (Table, Split_State, Status);
    Assert (Status = Tables.Ok, "runtime table close pane");
@@ -81,6 +104,7 @@ begin
    for I in 2 .. Splits.Max_Panes loop
       Tables.Split_Pane
         (Table,
+         Tab_State,
          Split_State,
          Splits.Split_Vertical,
          24,
@@ -91,6 +115,7 @@ begin
    end loop;
    Tables.Split_Pane
      (Table,
+      Tab_State,
       Split_State,
       Splits.Split_Vertical,
       24,
@@ -103,5 +128,36 @@ begin
    Assert
      (Tables.Count (Table) = Splits.Max_Panes,
       "runtime table split capacity preserves count");
+   Tables.Close_All (Table);
+
+   Tabs.Initialize (Tab_State);
+   Splits.Initialize (Split_State);
+   Tables.Initialize (Table, 1, 1, 10, Status);
+   Assert (Status = Tables.Ok, "tiny runtime table initialize");
+   Tables.Split_Pane
+     (Table,
+      Tab_State,
+      Split_State,
+      Splits.Split_Horizontal,
+      1,
+      1,
+      10,
+      Status);
+   Assert
+     (Status = Tables.Insufficient_Space,
+      "horizontal split rejects a one-row grid");
+   Tables.Split_Pane
+     (Table,
+      Tab_State,
+      Split_State,
+      Splits.Split_Vertical,
+      1,
+      1,
+      10,
+      Status);
+   Assert
+     (Status = Tables.Insufficient_Space,
+      "vertical split rejects a one-column grid");
+   Assert (Tables.Count (Table) = 1, "tiny split guard preserves session");
    Tables.Close_All (Table);
 end Session_Table_Smoke;

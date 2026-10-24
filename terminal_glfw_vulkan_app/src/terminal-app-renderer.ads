@@ -189,6 +189,9 @@ package Terminal.App.Renderer is
    --  Forget retry guards only after the frame containing the corresponding
    --  graphics events has been accepted by the presentation backend.
    procedure Commit_Graphics_Events (R : in out Renderer);
+   --  Finish protocol processing performed for a non-visible session.  Image
+   --  atlas changes stay dirty so the next presented frame uploads them.
+   procedure Commit_Offscreen_Graphics_Events (R : in out Renderer);
    procedure Release_Graphics_Stream
      (R         : in out Renderer;
       Stream_ID : Terminal.Core.Graphics_Stream_ID);
@@ -196,6 +199,9 @@ package Terminal.App.Renderer is
      (R     : Renderer;
       Event : Terminal.Core.Graphics_Event)
       return Terminal.Core.Kitty_Graphics_Result;
+   function Graphics_Event_Processed
+     (R     : Renderer;
+      Event : Terminal.Core.Graphics_Event) return Boolean;
    procedure Finalize (R : in out Renderer);
 
    function Cell_Width (R : Renderer) return Positive;

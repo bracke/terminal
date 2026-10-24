@@ -98,7 +98,8 @@ package body Terminal.App.Splits is
                then Rows mod Count
                else Cols mod Count);
             Size : constant Natural :=
-              Base + (if Natural (I) <= Extra then 1 else 0);
+              Natural'Max
+                (1, Base + (if Natural (I) <= Extra then 1 else 0));
          begin
             if State.Layout_Axis = Horizontal then
                Result.Rects (I) :=

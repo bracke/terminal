@@ -23,6 +23,7 @@ with Terminal.App.Resize;
 with Terminal.App.Scrollback_View;
 with Terminal.App.Selection;
 with Terminal.App.Session_Runtime;
+with Terminal.App.Session_Graphics;
 with Terminal.App.Session_Table;
 with Terminal.App.Sessions;
 with Terminal.App.Splits;
@@ -75,6 +76,11 @@ package body Terminal.App.Main_Loop is
    --  only on its own toggle and does not hold the window open. ~24 = ~0.4s.
    Present_Grace_Frames : constant := 24;
    Input_Grace : Natural := 0;
+
+   function Fatal_Write
+     (Status : Terminal.App.PTY_Write.Write_All_Status) return Boolean is
+     (Status in
+        Terminal.App.PTY_Write.Failed | Terminal.App.PTY_Write.Session_Closed);
 
    procedure On_Key (Event : GLFW_Vulkan.Input.Key_Event) is
    begin
@@ -261,6 +267,10 @@ package body Terminal.App.Main_Loop is
       if Request.Pending then
          Last_Clipboard_Target := Request.Target;
          if Request.Operation = Terminal.Core.Clipboard_Query then
+            if Terminal.App.Session_Runtime.Has_Pending_Write (Runtime) then
+               Last_Write_Status := Terminal.App.PTY_Write.Incomplete;
+               return;
+            end if;
             Terminal.App.Clipboard_OSC52.Build_Query_Response
               (Request.Target,
                (if Request.Target = Terminal.Core.Clipboard_Clipboard
@@ -269,7 +279,7 @@ package body Terminal.App.Main_Loop is
                Chunk);
             Terminal.App.Session_Runtime.Write (Runtime, Chunk, Write_Stat);
             Last_Write_Status := Write_Stat;
-            Ok := Write_Stat = Terminal.App.PTY_Write.Ok;
+            Ok := not Fatal_Write (Write_Stat);
          else
             if Request.Target = Terminal.Core.Clipboard_Clipboard then
                if Request.Length = 0 then
@@ -821,9 +831,39 @@ package body Terminal.App.Main_Loop is
                         end if;
                      end if;
                   end loop;
-                  if Runtime_Write /= Terminal.App.PTY_Write.Ok then
+                  if Fatal_Write (Runtime_Write) then
                      Last_Write_Status := Runtime_Write;
                      GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                  elsif Runtime_Write = Terminal.App.PTY_Write.Incomplete then
+                     Last_Write_Status := Runtime_Write;
+                  end if;
+               end;
+               declare
+                  Graphics_Processed : Boolean;
+                  Graphics_Render : Terminal.App.Renderer.Render_Status;
+                  Graphics_Write : Terminal.App.PTY_Write.Write_All_Status;
+               begin
+                  Terminal.App.Session_Graphics.Process_Hidden
+                    (Sessions,
+                     Splits,
+                     R,
+                     Graphics_Processed,
+                     Graphics_Render,
+                     Graphics_Write);
+                  if Graphics_Processed then
+                     --  Off-screen protocol processing rebuilds the renderer
+                     --  batch.  Rebuild the visible frame before presenting.
+                     Dirty := True;
+                     Need_Redraw := True;
+                  end if;
+                  if Fatal_Write (Graphics_Write) then
+                     Last_Write_Status := Graphics_Write;
+                     GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                  elsif Graphics_Write = Terminal.App.PTY_Write.Incomplete then
+                     Last_Write_Status := Graphics_Write;
+                  end if;
+                  if Graphics_Render /= Terminal.App.Renderer.Ok then
+                     Need_Redraw := True;
                   end if;
                end;
                Scroll_Offset :=
@@ -854,6 +894,8 @@ package body Terminal.App.Main_Loop is
                end;
 
                loop
+                  exit when Terminal.App.Session_Runtime.Has_Pending_Write
+                    (Active_Runtime.all);
                   In_Q.Pop (Event, Has_Event);
                   exit when not Has_Event;
                   case Event.Kind is
@@ -876,6 +918,7 @@ package body Terminal.App.Main_Loop is
                                  Terminal.App.Session_Table.New_Tab
                                    (Sessions,
                                     Tabs,
+                                    Splits,
                                     Last_Rows,
                                     Last_Cols,
                                     App_Config.Scrollback_Limit,
@@ -944,6 +987,7 @@ package body Terminal.App.Main_Loop is
                                  | Terminal.App.Splits.Split_Vertical =>
                                  Terminal.App.Session_Table.Split_Pane
                                    (Sessions,
+                                    Tabs,
                                     Splits,
                                     Split_Command,
                                     Last_Rows,
@@ -1367,8 +1411,10 @@ package body Terminal.App.Main_Loop is
                      Terminal.App.Session_Runtime.Write
                        (Active_Runtime.all, Chunk, Write_Stat);
                      Last_Write_Status := Write_Stat;
-                     if Write_Stat /= Terminal.App.PTY_Write.Ok then
+                     if Fatal_Write (Write_Stat) then
                         GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+                     elsif Write_Stat = Terminal.App.PTY_Write.Incomplete then
+                        exit;
                      end if;
                   end if;
                end loop;
@@ -1774,8 +1820,11 @@ package body Terminal.App.Main_Loop is
                                        Snaps (I).Graphics,
                                        Terminal.App.Renderer.Graphics_Result
                                          (R, Snaps (I).Graphics));
-                                    while Terminal.Core.Pending_Response_Length
-                                      (Core.all) > 0
+                                    while not Terminal.App.Session_Runtime
+                                      .Has_Pending_Write (Response_Runtime.all)
+                                      and then
+                                        Terminal.Core.Pending_Response_Length
+                                          (Core.all) > 0
                                     loop
                                        Chunk := (others => <>);
                                        Terminal.Core.Read_Response
@@ -1788,11 +1837,13 @@ package body Terminal.App.Main_Loop is
                                           Chunk,
                                           Write_Stat);
                                        Last_Write_Status := Write_Stat;
-                                       if Write_Stat /=
-                                         Terminal.App.PTY_Write.Ok
-                                       then
+                                       if Fatal_Write (Write_Stat) then
                                           GLFW_Vulkan.Windows.Set_Should_Close
                                             (W, True);
+                                          exit;
+                                       elsif Write_Stat =
+                                         Terminal.App.PTY_Write.Incomplete
+                                       then
                                           exit;
                                        end if;
                                     end loop;

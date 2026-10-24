@@ -4,6 +4,7 @@ with AUnit.Assertions;
 with Terminal.App.PTY_Write;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Session_Graphics;
 with Terminal.App.Session_Runtime;
 with Terminal.App.Session_Table;
 with Terminal.App.Sessions;
@@ -26,6 +27,7 @@ procedure Session_Hardening_Smoke is
    use type Terminal.App.Splits.Split_Status;
    use type Terminal.App.Tabs.Tab_Count;
    use type Terminal.App.Tabs.Tab_Status;
+   use type Terminal.Common.Code_Point;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
 
@@ -103,11 +105,13 @@ procedure Session_Hardening_Smoke is
       Assert (Status = Tables.Ok, "churn table initializes");
 
       for I in 2 .. Tabs.Max_Tabs loop
-         Tables.New_Tab (Table, Tab_State, 8, 32, 32, Status);
+         Tables.New_Tab
+           (Table, Tab_State, Split_State, 8, 32, 32, Status);
          Assert (Status = Tables.Ok, "churn new tab" & Natural'Image (I));
       end loop;
       Assert (Tables.Count (Table) = Tabs.Max_Tabs, "churn reaches tab capacity");
-      Tables.New_Tab (Table, Tab_State, 8, 32, 32, Status);
+      Tables.New_Tab
+        (Table, Tab_State, Split_State, 8, 32, 32, Status);
       Assert (Status = Tables.At_Capacity, "churn tab capacity guarded");
 
       for I in 1 .. Tables.Count (Table) loop
@@ -172,6 +176,7 @@ procedure Session_Hardening_Smoke is
       for I in 2 .. Splits.Max_Panes loop
          Tables.Split_Pane
            (Table,
+            Tab_State,
             Split_State,
             Splits.Split_Vertical,
             12,
@@ -185,6 +190,7 @@ procedure Session_Hardening_Smoke is
          "churn reaches split capacity");
       Tables.Split_Pane
         (Table,
+         Tab_State,
          Split_State,
          Splits.Split_Vertical,
          12,
@@ -277,8 +283,84 @@ procedure Session_Hardening_Smoke is
 
       Terminal.App.Renderer.Finalize (R);
    end Renderer_Composition_Churn;
+
+   procedure Background_Graphics_Progress is
+      Table : Tables.Runtime_Table;
+      Tab_State : Tabs.Tab_State;
+      Split_State : Splits.Split_State;
+      Table_Status : Tables.Table_Status;
+      R : Terminal.App.Renderer.Renderer;
+      Init_Status : Terminal.App.Renderer.Init_Status;
+      Render_Status : Terminal.App.Renderer.Render_Status;
+      Write_Status : Terminal.App.PTY_Write.Write_All_Status;
+      Feed_Status : Terminal.Core.Feed_Status;
+      Processed : Boolean;
+      Hidden : access Runtime.Runtime;
+      Visible : access Runtime.Runtime;
+      Command : constant String :=
+        ASCII.ESC & "_Ga=q,f=32,i=501,s=1,v=1;/wAA/w=="
+        & ASCII.ESC & "\";
+   begin
+      Tabs.Initialize (Tab_State);
+      Splits.Initialize (Split_State);
+      Tables.Initialize (Table, 4, 12, 16, Table_Status);
+      Assert (Table_Status = Tables.Ok, "background table initialize");
+      Tables.New_Tab
+        (Table, Tab_State, Split_State, 4, 12, 16, Table_Status);
+      Assert (Table_Status = Tables.Ok, "background tab initialize");
+      Hidden := Tables.Runtime_At (Table, 1);
+      Visible := Tables.Runtime_At (Table, 2);
+      Assert (Hidden /= null and then Visible /= null, "background runtimes");
+
+      Terminal.Core.Feed
+        (Runtime.Core (Hidden.all).all, To_Bytes (Command & "Z"), Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "hidden graphics feed");
+      Terminal.Core.Feed
+        (Runtime.Core (Visible.all).all, To_Bytes (Command), Feed_Status);
+      Assert (Feed_Status = Terminal.Core.Ok, "visible graphics feed");
+
+      Terminal.App.Renderer.Initialize_Headless (R, Init_Status);
+      Assert (Init_Status = Terminal.App.Renderer.Ok, "background renderer init");
+      Terminal.App.Session_Graphics.Process_Hidden
+        (Table,
+         Split_State,
+         R,
+         Processed,
+         Render_Status,
+         Write_Status);
+      Assert (Processed, "hidden graphics command processed");
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok,
+         "hidden graphics render succeeds");
+      Assert
+        (Write_Status in
+           Terminal.App.PTY_Write.Ok | Terminal.App.PTY_Write.Incomplete,
+         "hidden graphics response is retained or written");
+      Assert
+        (Terminal.Core.Pending_Graphics_Event_Count
+           (Runtime.Core (Hidden.all).all) = 0,
+         "hidden graphics queue advances");
+      Assert
+        (Terminal.Core.Pending_Graphics_Event_Count
+           (Runtime.Core (Visible.all).all) = 1,
+         "visible graphics remains on presentation path");
+      declare
+         Snap : Terminal.Core.Render_Snapshot :=
+           Terminal.Core.Snapshot (Runtime.Core (Hidden.all).all);
+      begin
+         Assert
+           (Terminal.Core.Cell_At (Snap, 1, 1).Text.Code_Point =
+              Character'Pos ('Z'),
+            "hidden graphics completion resumes deferred terminal input");
+         Terminal.Core.Release (Snap);
+      end;
+
+      Terminal.App.Renderer.Finalize (R);
+      Tables.Close_All (Table);
+   end Background_Graphics_Progress;
 begin
    Repeated_Runtime_Start_Close;
    Runtime_Table_Churn;
    Renderer_Composition_Churn;
+   Background_Graphics_Progress;
 end Session_Hardening_Smoke;

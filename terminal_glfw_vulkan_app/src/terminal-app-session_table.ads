@@ -13,7 +13,9 @@ package Terminal.App.Session_Table is
       Start_Failed,
       At_Capacity,
       Last_Session,
-      Invalid_Index);
+      Invalid_Index,
+      Layout_Conflict,
+      Insufficient_Space);
 
    type Runtime_Table is limited private;
    type Runtime_Output_Set is
@@ -31,6 +33,7 @@ package Terminal.App.Session_Table is
    procedure New_Tab
      (Table            : in out Runtime_Table;
       Tabs             : in out Terminal.App.Tabs.Tab_State;
+      Splits           : Terminal.App.Splits.Split_State;
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural;
@@ -43,6 +46,7 @@ package Terminal.App.Session_Table is
 
    procedure Split_Pane
      (Table            : in out Runtime_Table;
+      Tabs             : Terminal.App.Tabs.Tab_State;
       Splits           : in out Terminal.App.Splits.Split_State;
       Command          : Terminal.App.Splits.Split_Command;
       Rows             : Positive;

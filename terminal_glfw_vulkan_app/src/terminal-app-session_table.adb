@@ -35,6 +35,13 @@ package body Terminal.App.Session_Table is
       return Text (Text'First + 1 .. Text'Last);
    end Trim_Image;
 
+   function Feed_Rank (Status : Terminal.Core.Feed_Status) return Natural is
+     (case Status is
+         when Terminal.Core.Ok               => 0,
+         when Terminal.Core.Parser_Recovered => 1,
+         when Terminal.Core.Parser_Overflow  => 2,
+         when Terminal.Core.Invalid_State    => 3);
+
    procedure Start_Runtime
      (Slot             : in out Runtime_Access;
       Rows             : Positive;
@@ -92,6 +99,7 @@ package body Terminal.App.Session_Table is
    procedure New_Tab
      (Table            : in out Runtime_Table;
       Tabs             : in out Terminal.App.Tabs.Tab_State;
+      Splits           : Terminal.App.Splits.Split_State;
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural;
@@ -101,6 +109,10 @@ package body Terminal.App.Session_Table is
       Tab_Status : Terminal.App.Tabs.Tab_Status;
       New_Index : Terminal.App.Sessions.Session_Index;
    begin
+      if Terminal.App.Splits.Count (Splits) > 1 then
+         Status := Layout_Conflict;
+         return;
+      end if;
       Terminal.App.Sessions.New_Session (Table.Sessions, Session_Status);
       if Session_Status /= Terminal.App.Sessions.Ok then
          Status := Convert (Session_Status);
@@ -168,6 +180,7 @@ package body Terminal.App.Session_Table is
 
    procedure Split_Pane
      (Table            : in out Runtime_Table;
+      Tabs             : Terminal.App.Tabs.Tab_State;
       Splits           : in out Terminal.App.Splits.Split_State;
       Command          : Terminal.App.Splits.Split_Command;
       Rows             : Positive;
@@ -179,10 +192,24 @@ package body Terminal.App.Session_Table is
       Split_Status : Terminal.App.Splits.Split_Status;
       New_Index : Terminal.App.Sessions.Session_Index;
    begin
+      if Terminal.App.Tabs.Count (Tabs) > 1 then
+         Status := Layout_Conflict;
+         return;
+      end if;
       if Command /= Terminal.App.Splits.Split_Horizontal
         and then Command /= Terminal.App.Splits.Split_Vertical
       then
          Status := Invalid_Index;
+         return;
+      end if;
+
+      if (Command = Terminal.App.Splits.Split_Horizontal
+          and then Rows <= Positive (Terminal.App.Splits.Count (Splits)))
+        or else
+          (Command = Terminal.App.Splits.Split_Vertical
+           and then Cols <= Positive (Terminal.App.Splits.Count (Splits)))
+      then
+         Status := Insufficient_Space;
          return;
       end if;
 
@@ -313,10 +340,19 @@ package body Terminal.App.Session_Table is
                Runtime_Write,
                Runtime_Output);
             Had_Output (I) := Runtime_Output;
-            if Runtime_Output then
+            if Runtime_Output
+              and then Feed_Rank (Runtime_Feed) > Feed_Rank (Feed_Status)
+            then
                Feed_Status := Runtime_Feed;
             end if;
-            if Runtime_Write /= Terminal.App.PTY_Write.Ok then
+            if Runtime_Write in
+              Terminal.App.PTY_Write.Failed
+                | Terminal.App.PTY_Write.Session_Closed
+            then
+               Write_Status := Runtime_Write;
+            elsif Runtime_Write = Terminal.App.PTY_Write.Incomplete
+              and then Write_Status = Terminal.App.PTY_Write.Ok
+            then
                Write_Status := Runtime_Write;
             end if;
          end if;
