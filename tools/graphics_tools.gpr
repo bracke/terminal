@@ -1,0 +1,15 @@
+project Graphics_Tools is
+   for Languages use ("Ada");
+   for Source_Dirs use (".");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Main use
+     ("external_graphics_clients_probe.adb",
+      "tmux_graphics_passthrough_probe.adb",
+      "graphics_fuzz_runner.adb",
+      "compile_shaders.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwe");
+   end Compiler;
+end Graphics_Tools;
