@@ -32,8 +32,9 @@
   Application cursor, application keypad, backarrow-key, and line-feed/new-line
   input translations expose a bounded key-mode status label for status/help UI.
 - Saved cursor state also preserves the active G-set and G0 through G3 charset
-  designations. CSI save/restore is supported as `CSI s` and `CSI u`; private
-  or parameterized variants are diagnosed.
+  designations. CSI save/restore is supported as `CSI s` and `CSI u`;
+  parameterized variants are diagnosed, and `CSI u` with a private marker is
+  the progressive keyboard enhancement protocol below.
 - CSI: cursor movement, CUP/CHA/HPA/HPR/VPA/VPR, CHT/CBT, TBC, ED, EL,
   ICH, DCH, ECH, IL, DL, REP, SU, SD, SGR, DECSET/DECRST known modes,
   SM/RM insert mode including bounded parameter lists, DECSTBM margins with at
@@ -50,6 +51,26 @@
   it is active, while app-owned local redraws such as selection and scrollback
   remain immediate. The render policy exposes bounded status labels for live,
   deferred, and local-redraw-bypass states.
+- In-band resize reports (`DECSET`/`DECRST ?2048`): while the mode is set,
+  every change of the grid, and of the cell size in pixels, is reported as
+  `CSI 48 ; rows ; columns ; height ; width t`, the last two the text area in
+  pixels. Setting the mode reports the current size at once; an unchanged
+  resize request reports nothing. The mode is queryable with DECRQM.
+- Progressive keyboard enhancement (kitty's keyboard protocol), flag 1 only
+  (disambiguate escape codes): `CSI > flags u` pushes, `CSI < n u` pops, `CSI =
+  flags ; mode u` sets, adds, or removes flags, and `CSI ? u` answers `CSI ?
+  flags u`. Flags the terminal does not implement are dropped. The main and
+  the alternate screen keep separate stacks of at most eight entries; a full
+  stack loses its oldest entry, a full reset clears both, and a soft reset
+  leaves them. The active flags are part of the mode snapshot.
+- XTVERSION (`CSI > q`) answers `DCS > | bracke-terminal <version> ST`.
+- The private identity query `OSC 7701 ; q ST` answers
+  `OSC 7701 ; v=1 ; caps=<name>,... ST`, telling a program that it runs in
+  this terminal and what it may use: `kgfx` (Kitty graphics), `kgfx-shm`
+  (shared-memory transfer, when enabled), `kbd` (keyboard enhancement),
+  `resize2048` (in-band resize), and `osc52` (clipboard). Readers ignore names
+  and keys they do not know, so the list can grow. `explore` in posix_tools
+  uses it to refuse other terminals.
 - Keyboard action mode (`CSI 2 h`/`CSI 2 l`) is tracked in mode state and
   queryable. While locked, the GLFW app drops keyboard-generated input bytes
   such as key presses, character callbacks, and paste requests. The input
@@ -518,7 +539,9 @@ surfaces.
 
 The POSIX backend inherits the parent environment, sets `TERM=xterm-256color`
 and `COLORTERM=truecolor`, and publishes the truthful
-`TERM_PROGRAM=bracke-terminal` plus `TERM_PROGRAM_VERSION=0.1.0-dev` identity.
+`TERM_PROGRAM=bracke-terminal` plus `TERM_PROGRAM_VERSION=0.1.0-dev` identity,
+both taken from `Terminal.Common.Identity`, which XTVERSION and the identity
+query answer from too.
 `$SHELL` is used when present and executable,
 otherwise `/bin/sh`. The child creates a new session, opens the PTY slave as
 the controlling terminal, duplicates it to standard input/output/error, and
@@ -652,3 +675,10 @@ modified Space is handled by the key callback for `Ctrl+Space` (`NUL`) and
 send C0 control bytes, and adding Alt prefixes the control byte with `ESC`.
 Plain Backspace sends `DEL`; `Ctrl+Backspace` sends `BS`, `Alt+Backspace`
 sends `ESC DEL`, and `Ctrl+Alt+Backspace` sends `ESC BS`.
+While keyboard enhancement flag 1 is active, Escape is sent as `CSI 27 u`, and
+keys typed with Alt, Control, or Super -- and Shift with Enter, Tab, or
+Backspace -- as `CSI code ; modifiers u`, where the code is the character the
+key types without Shift (13, 9, and 127 for Enter, Tab, and Backspace) and
+the modifiers add Super as 8 to the xterm values. The character event GLFW
+sends after such a key is suppressed. Plain keys, the keypad, and the cursor,
+editing, and function keys keep their legacy encodings.

@@ -619,4 +619,37 @@ begin
 
    IM.Encode_Focus ((Focused => False), Modes, Chunk);
    Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[O"), "focus out");
+
+   --  Progressive keyboard enhancement, disambiguate escape codes.
+   declare
+      Plain : constant Terminal.Core.Mode_Snapshot := (others => <>);
+      Kitty : constant Terminal.Core.Mode_Snapshot := (Keyboard_Flags => 1, others => <>);
+   begin
+      IM.Encode_Key (Key_Event (GI.Escape), Plain, Chunk);
+      Assert_Bytes (Chunk, (1 => 16#1B#), "legacy escape");
+      IM.Encode_Key (Key_Event (GI.Escape), Kitty, Chunk);
+      Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[27u"), "escape without ambiguity");
+      IM.Encode_Key (Key_Event (GI.A, Control => True), Kitty, Chunk);
+      Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[97;5u"), "ctrl+a");
+      IM.Encode_Key (Key_Event (GI.I, Control => True), Kitty, Chunk);
+      Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[105;5u"), "ctrl+i is not tab");
+      IM.Encode_Key (Key_Event (GI.X, Alt => True), Kitty, Chunk);
+      Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[120;3u"), "alt+x");
+      Assert
+        (IM.Suppressed_Character (Key_Event (GI.X, Alt => True), Kitty) = 'x',
+         "the character alt+x types is not sent after it");
+      IM.Encode_Key (Key_Event (GI.X, Shift => True, Alt => True), Kitty, Chunk);
+      Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[120;4u"), "shift+alt+x names the unshifted key");
+      IM.Encode_Key (Key_Event (GI.Tab, Shift => True), Kitty, Chunk);
+      Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[9;2u"), "shift+tab");
+      IM.Encode_Key (Key_Event (GI.Enter), Kitty, Chunk);
+      Assert_Bytes (Chunk, (1 => 16#0D#), "a plain enter stays legacy");
+      IM.Encode_Key (Key_Event (GI.Up), Kitty, Chunk);
+      Assert_Bytes (Chunk, To_Bytes (ASCII.ESC & "[A"), "cursor keys stay legacy");
+      IM.Encode_Key (Key_Event (GI.A), Kitty, Chunk);
+      Assert (Chunk.Length = 0, "a plain letter is left to its character event");
+      Assert
+        (IM.Suppressed_Character (Key_Event (GI.A), Kitty) = Wide_Wide_Character'Val (0),
+         "and its character is not suppressed");
+   end;
 end Input_Map_Smoke;

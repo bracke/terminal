@@ -374,6 +374,67 @@ package body Terminal.App.Input_Map is
       end case;
    end Control_Byte;
 
+   --  Bit 1 of the progressive keyboard enhancement flags: keys that the
+   --  legacy encoding sends ambiguously -- Escape, and keys typed with Alt,
+   --  Control, or Super -- are sent as CSI code ; modifiers u instead.
+   function Disambiguating (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
+     (Modes.Keyboard_Flags mod 2 = 1);
+
+   --  A key's code in that encoding: the character it types without Shift,
+   --  or the C0 code kitty gives Enter, Tab, Backspace, and Escape. Zero for
+   --  the keys that keep their legacy encoding -- the keypad, the cursor and
+   --  function keys, and keys that type nothing.
+   function Kitty_Key_Code (Event : GLFW_Vulkan.Input.Key_Event) return Natural is
+      Unshifted : GLFW_Vulkan.Input.Key_Event := Event;
+   begin
+      case Event.Key is
+         when Escape =>
+            return 27;
+         when Enter =>
+            return 13;
+         when Tab =>
+            return 9;
+         when Backspace =>
+            return 127;
+         when Kp_0 | Kp_1 | Kp_2 | Kp_3 | Kp_4 | Kp_5 | Kp_6 | Kp_7 | Kp_8 | Kp_9
+            | Kp_Decimal | Kp_Divide | Kp_Multiply | Kp_Subtract | Kp_Add | Kp_Equal | Kp_Enter
+         =>
+            return 0;
+         when others =>
+            Unshifted.Modifiers.Shift := False;
+            return Character'Pos (Alt_Printable (Unshifted));
+      end case;
+   end Kitty_Key_Code;
+
+   --  Whether the key goes out as CSI code ; modifiers u under Disambiguating.
+   function Kitty_Encoded (Event : GLFW_Vulkan.Input.Key_Event) return Boolean is
+      Code : constant Natural := Kitty_Key_Code (Event);
+      Held : constant Boolean :=
+        Event.Modifiers.Alt or else Event.Modifiers.Control or else Event.Modifiers.Super;
+   begin
+      return Code /= 0
+        and then
+          (Event.Key = Escape
+           or else Held
+           or else (Event.Modifiers.Shift and then Event.Key in Enter | Tab | Backspace));
+   end Kitty_Encoded;
+
+   procedure Append_Kitty_Key
+     (Chunk : in out Terminal.App.Queues.Byte_Chunk;
+      Event : GLFW_Vulkan.Input.Key_Event)
+   is
+      Modifier : constant Natural :=
+        Modifier_Code (Event.Modifiers) + (if Event.Modifiers.Super then 8 else 0);
+   begin
+      Append_String (Chunk, ASCII.ESC & "[");
+      Append_Natural (Chunk, Kitty_Key_Code (Event));
+      if Modifier > 1 then
+         Append (Chunk, Byte (Character'Pos (';')));
+         Append_Natural (Chunk, Modifier);
+      end if;
+      Append (Chunk, Byte (Character'Pos ('u')));
+   end Append_Kitty_Key;
+
    function Is_Paste_Shortcut
      (Event : GLFW_Vulkan.Input.Key_Event) return Boolean is
    begin
@@ -493,6 +554,14 @@ package body Terminal.App.Input_Map is
       Modes : Terminal.Core.Mode_Snapshot) return Wide_Wide_Character is
    begin
       if Event.Action /= Release
+        and then Disambiguating (Modes)
+        and then Kitty_Encoded (Event)
+        and then Alt_Printable (Event) /= ASCII.NUL
+      then
+         --  The key went out whole as CSI u; the character it typed with
+         --  it must not follow.
+         return Wide_Wide_Character'Val (Character'Pos (Alt_Printable (Event)));
+      elsif Event.Action /= Release
         and then Modes.Application_Keypad
         and then not Event.Modifiers.Control
         and then not Event.Modifiers.Super
@@ -512,6 +581,11 @@ package body Terminal.App.Input_Map is
    begin
       Chunk := (others => <>);
       if Event.Action = Release then
+         return;
+      end if;
+
+      if Disambiguating (Modes) and then Kitty_Encoded (Event) then
+         Append_Kitty_Key (Chunk, Event);
          return;
       end if;
 
