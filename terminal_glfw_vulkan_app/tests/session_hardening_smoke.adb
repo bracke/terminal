@@ -281,6 +281,50 @@ procedure Session_Hardening_Smoke is
             "composition vertical panes widen frame");
       end;
 
+      declare
+         Tiny : Terminal.Core.Terminal;
+         Tiny_Tabs : Tabs.Tab_State;
+         Tiny_Splits : Splits.Split_State;
+      begin
+         Terminal.Core.Initialize (Tiny, 1, 1, 0, Core_Status);
+         Assert (Core_Status = Terminal.Core.Ok, "tiny composition core");
+         Tabs.Initialize (Tiny_Tabs);
+         for I in 2 .. Tabs.Max_Tabs loop
+            Tabs.Apply (Tiny_Tabs, Tabs.New_Tab, Tab_Status);
+            Assert (Tab_Status = Tabs.Ok, "tiny tab fill" & Natural'Image (I));
+         end loop;
+         Splits.Initialize (Tiny_Splits);
+         declare
+            Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1) :=
+              (1 => Terminal.Core.Snapshot (Tiny));
+         begin
+            Render_Status := Terminal.App.Renderer.Invalid_Snapshot;
+            Terminal.App.Renderer.Render_App
+              (R,
+               Snaps,
+               1,
+               Tabs.Snapshot (Tiny_Tabs),
+               Splits.Snapshot (Tiny_Splits),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Ok,
+               "narrow frame safely divides a full tab bar");
+            Render_Status := Terminal.App.Renderer.Invalid_Snapshot;
+            Terminal.App.Renderer.Render_App
+              (R,
+               Snaps,
+               1,
+               (others => <>),
+               Splits.Snapshot (Tiny_Splits),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Ok,
+               "empty tab snapshot does not read an unassigned status");
+            Terminal.Core.Release (Snaps (1));
+         end;
+         Terminal.Core.Finalize (Tiny);
+      end;
+
       Terminal.App.Renderer.Finalize (R);
    end Renderer_Composition_Churn;
 

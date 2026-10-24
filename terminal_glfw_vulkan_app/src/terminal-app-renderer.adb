@@ -9968,60 +9968,74 @@ package body Terminal.App.Renderer is
       end Draw_Pane_Border;
 
       procedure Draw_Tab_Bar is
-         Count : constant Positive := Positive (Tabs.Count);
-         Base  : constant Natural := Natural'Max (Terminal.App.Tabs.Min_Tab_Width, Frame_W / Count);
-         X     : Natural := 0;
       begin
          if Tabs.Count <= 1 then
             return;
          end if;
 
-         Add_Rectangle
-           (R,
-            X      => 0.0,
-            Y      => 0.0,
-            Width  => Float (Frame_W),
-            Height => Float (Tab_Height),
-            Color  => (R => 0.08, G => 0.09, B => 0.10, A => 1.0));
+         declare
+            Count : constant Positive := Positive (Tabs.Count);
+            Base  : constant Natural := Frame_W / Count;
+            Extra : constant Natural := Frame_W mod Count;
+            X     : Natural := 0;
+         begin
+            Add_Rectangle
+              (R,
+               X      => 0.0,
+               Y      => 0.0,
+               Width  => Float (Frame_W),
+               Height => Float (Tab_Height),
+               Color  => (R => 0.08, G => 0.09, B => 0.10, A => 1.0));
 
-         for I in 1 .. Tabs.Count loop
-            declare
-               Remaining : constant Natural :=
-                 (if I = Tabs.Count then Frame_W - X else Base);
-               Col_Width : constant Natural := Natural'Max (1, Remaining / R.CW);
-               Label : constant String :=
-                 Terminal.App.Tabs.Fitted_Label (Tabs.Labels (I), Col_Width);
-               Active : constant Boolean := I = Tabs.Active;
-            begin
-               Add_Rectangle
-                 (R,
-                  X      => Float (X),
-                  Y      => 0.0,
-                  Width  => Float (Remaining),
-                  Height => Float (R.CH),
-                  Color  =>
-                    (if Active
-                     then (R => 0.18, G => 0.25, B => 0.34, A => 1.0)
-                     else (R => 0.12, G => 0.13, B => 0.15, A => 1.0)));
-               Draw_Label
-                 (R,
-                  Text   => Label,
-                  X      => Float (X + 1),
-                  Y      => 0.0,
-                  Limit  => Col_Width,
-                  Color  => R.Color_Theme.Default_FG,
-                  Status => Draw_Status);
-               if Draw_Status /= Ok then
-                  Status := Draw_Status;
-                  return;
-               end if;
-               X := X + Remaining;
-            end;
-         end loop;
+            for I in 1 .. Tabs.Count loop
+               declare
+                  Width : constant Natural :=
+                    Base + (if Natural (I) <= Extra then 1 else 0);
+                  Col_Width : constant Natural :=
+                    (if Width = 0 then 0 else Width / R.CW);
+                  Active : constant Boolean := I = Tabs.Active;
+               begin
+                  if Width > 0 then
+                     Add_Rectangle
+                       (R,
+                        X      => Float (X),
+                        Y      => 0.0,
+                        Width  => Float (Width),
+                        Height => Float (R.CH),
+                        Color  =>
+                          (if Active
+                           then (R => 0.18, G => 0.25, B => 0.34, A => 1.0)
+                           else (R => 0.12, G => 0.13, B => 0.15, A => 1.0)));
+                     if Col_Width > 0 then
+                        declare
+                           Label : constant String :=
+                             Terminal.App.Tabs.Fitted_Label
+                               (Tabs.Labels (I), Col_Width);
+                        begin
+                           Draw_Label
+                             (R,
+                              Text   => Label,
+                              X      => Float (X + 1),
+                              Y      => 0.0,
+                              Limit  => Col_Width,
+                              Color  => R.Color_Theme.Default_FG,
+                              Status => Draw_Status);
+                        end;
+                        if Draw_Status /= Ok then
+                           Status := Draw_Status;
+                           return;
+                        end if;
+                     end if;
+                  end if;
+                  X := X + Width;
+               end;
+            end loop;
+         end;
 
          Status := Ok;
       end Draw_Tab_Bar;
    begin
+      Status := Ok;
       if not R.Initialized or else not R.Text_Loaded then
          Set_Render_Status (R, Status, Not_Initialized);
          return;
