@@ -71,10 +71,11 @@
 - Cover app-owned xterm focus reporting mode, focus-in/focus-out byte
   mappings, and focus status labels with non-GUI smoke tests.
 - Preserve input byte ordering across partial PTY writes with a bounded
-  write-all helper and bounded write outcome labels used by the main loop and
-  integration smoke.
-- Cover bounded PTY/input queue ordering, drop-newest overflow, diagnostic
-  counters, and bounded queue pressure labels with a non-GUI smoke test.
+  write-all helper, runtime-owned retry suffix, and bounded write outcome labels
+  used by the main loop and integration smoke.
+- Cover bounded PTY/input queue ordering, lossless PTY backpressure and
+  shutdown, input-event drop-newest overflow, diagnostic counters, and bounded
+  queue pressure labels with a non-GUI smoke test.
 - Cover core initialization/feed outcome labels and aggregate diagnostic
   status labels with a non-GUI core smoke test.
 - Compose retained feed/write outcomes, core, queue, geometry, redraw-policy,

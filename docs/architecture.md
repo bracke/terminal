@@ -9,8 +9,8 @@
 `terminal_core` depends only on `terminal_common`.
 
 `terminal_pty` depends only on `terminal_common`. Its selected POSIX backend
-uses a local ioctl C binding; its Windows backend uses direct Ada ConPTY
-imports.
+uses a thin local C shim so host headers resolve ioctl requests, open/fcntl
+flags, and errno values; its Windows backend uses direct Ada ConPTY imports.
 
 `terminal_glfw_vulkan_app` depends on `terminal_common`, `terminal_core`,
 `terminal_pty`, `glfw_vulkan`, `textrender`, `df_vulkan`, `zlib`, `jpeglib`,
@@ -37,6 +37,10 @@ optional facilities unavailable without importing Unix symbols, so capability
 profiles never advertise a backend that cannot execute there. This internal
 package is the application layer's sole platform-media boundary and therefore
 the only app package whose interface carries native descriptors and addresses.
+The POSIX implementation likewise delegates host-varying file flags,
+descriptor-path discovery (`/proc/self/fd` on Linux and `F_GETPATH` on macOS),
+and dynamic-loader flags to a local C shim instead of embedding Linux constants
+in Ada.
 
 `Terminal.App.Vulkan_Context` owns the Vulkan instance and window surface. It
 uses GLFW-provided instance extensions, `df_vulkan` handle types, and
@@ -167,7 +171,12 @@ queue pressure preserves older events, drops the newest completed event, and
 increments `Queue_Overflow`.
 The app main loop peeks the oldest event for each visible session, renders that
 event, and discards it only after a successful presentation; another frame is
-scheduled while events remain. `Render_Snapshot.Graphics` remains a 128 KiB
+scheduled while events remain. A separate app-layer consumer also advances one
+event per non-visible session on each iteration. Its off-screen commit retains
+atlas dirty state, routes replies through the event's owning PTY, and forces the
+visible batch to be rebuilt before presentation. Thus queries, chunk barriers,
+and deferred terminal input cannot stall merely because a tab is hidden.
+`Render_Snapshot.Graphics` remains a 128 KiB
 compatibility carrier between that FIFO and the existing renderer. Each runtime
 assigns its core a stable nonzero graphics stream ID, and the core assigns every
 queued event a monotonic nonzero sequence number. The renderer retains processed
@@ -298,7 +307,9 @@ Resize handling stays in the app layer. The main loop converts framebuffer
 pixels to terminal rows/columns, resizes the core and PTY when cell dimensions
 change, and keeps terminal damage pending until a frame presents successfully.
 Both the session runtime and core reject unchanged dimensions as a successful
-no-op, preserving scrollback and avoiding redundant PTY resize calls. Input
+no-op, avoiding redundant PTY resize calls. Changed core resizes preserve the
+logical order and retained columns of the bounded scrollback ring, padding new
+columns with blank cells. Input
 grace frames reuse the last completed submission batch and its resident GPU
 buffers when terminal state is unchanged, so compositor pacing neither rebuilds
 snapshots and vertices nor remaps vertex memory or reuploads texture atlases.
@@ -386,15 +397,24 @@ GLFW and Vulkan run on the main thread. Terminal state is mutated only on the
 main thread.
 
 A background Ada task reads PTY bytes and pushes bounded chunks into a
-protected queue. The POSIX parent master is nonblocking, so the task can stop
-explicitly before the main thread closes the session. GLFW callbacks enqueue
+protected queue. When that queue is full, the producer blocks rather than
+discarding terminal bytes; shutdown opens the entry and rejects the pending
+push so teardown cannot deadlock. The POSIX parent master is nonblocking, so
+the task can stop explicitly before the main thread closes the session. GLFW callbacks enqueue
 compact input/window events. The main loop drains queues, feeds the core,
 writes PTY input through a bounded write-all helper with status labels for
-complete, incomplete, failed, and closed-session outcomes, handles resize,
-snapshots, and renders.
+complete, incomplete, failed, and closed-session outcomes, retains an unwritten
+suffix across iterations, handles resize, snapshots, and renders.
 
-Queue overflow is explicit: newest items are dropped, existing ordering is
-preserved, and overflow counters are exposed.
+Input-event overflow is explicit: newest events are dropped, existing ordering
+is preserved, and overflow counters are exposed. PTY output instead applies
+lossless backpressure.
+
+Tabs and split panes share one runtime table but are mutually exclusive layout
+modes: creating a tab while split and splitting while multiple tabs exist are
+rejected before a PTY is spawned. Split creation also rejects grids too small
+to give every pane at least one cell; layout remains total for transient tiny
+framebuffer sizes.
 
 ## Ownership
 

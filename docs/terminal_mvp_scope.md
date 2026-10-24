@@ -78,7 +78,9 @@
   Core initialization, feed outcomes, and aggregate diagnostic counters also
   expose bounded status labels for app UI and logging surfaces.
   App PTY and input queues expose bounded pressure labels with occupancy and
-  overflow counts for diagnostics/status surfaces. The GLFW app retains the
+  overflow counts for diagnostics/status surfaces. PTY output applies lossless
+  producer backpressure and has an explicit shutdown wakeup; input events retain
+  drop-newest behavior. The GLFW app retains the
   last core feed outcome and PTY write outcome, then composes feed, write,
   core, queue, geometry, redraw-policy, scrollback, selection, hyperlink,
   clipboard, tabs, splits, config/profile, input-mode, mouse-routing, cursor
@@ -428,7 +430,9 @@ block.
 Primary-screen scrollback is bounded by the initialize-time limit. The alternate
 screen has no scrollback. Full terminal reset (`ESC c`) clears the visible
 buffers and scrollback. Xterm ED 3 (`CSI 3 J`) clears the visible screen and
-primary scrollback; ED 2 clears only the visible screen. The GLFW app supports
+primary scrollback; ED 2 clears only the visible screen. Grid resize preserves
+the scrollback ring in logical oldest-to-newest order, retaining shared columns
+and blank-padding newly added columns. The GLFW app supports
 page-based scrollback viewing
 with `Shift+Page_Up` and `Shift+Page_Down`; normal typing returns to the live
 bottom. The scrollback view helper exposes a bounded status label for live,

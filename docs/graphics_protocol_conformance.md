@@ -162,6 +162,10 @@ formats as portable protocol requirements.
   prevent accidental over-advertising.
 - Each spawned PTY receives the same launch-time `TERM_FEATURES` value (`Sx` or
   `FSx`) as that configured profile, including newly created tabs and panes.
+- Graphics commands in non-visible tabs continue through protocol validation,
+  object-store updates, replies, and input-order barriers. Off-screen processing
+  does not claim an atlas upload has presented; the next visible frame performs
+  that upload before its graphics events are committed.
 - The PTY uses `TERM=xterm-256color`, `COLORTERM=truecolor`,
   `TERM_PROGRAM=bracke-terminal`, and the project version. It does not claim to
   be Kitty, iTerm2, or another emulator.
