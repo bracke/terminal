@@ -247,8 +247,8 @@ begin
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2) =
       (if Terminal.App.Image_Media.Extended_Media_Available
-       then "iTerm2 images; PNG/JPEG/GIF plus runtime media decoding"
-       else "iTerm2 images; PNG/JPEG/GIF texture rendering"),
+       then "iTerm2 images; PNG/JPEG/GIF/PICT plus runtime media decoding"
+       else "iTerm2 images; PNG/JPEG/GIF/PICT texture rendering"),
       "iTerm2 capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2)'Length <=

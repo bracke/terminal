@@ -3768,9 +3768,9 @@ package body Terminal.App.Graphics is
             return "kitty graphics; RGB/RGBA/indexed/PNG texture rendering";
          when ITerm2 =>
             if Terminal.App.Image_Media.Extended_Media_Available then
-               return "iTerm2 images; PNG/JPEG/GIF plus runtime media decoding";
+               return "iTerm2 images; PNG/JPEG/GIF/PICT plus runtime media decoding";
             else
-               return "iTerm2 images; PNG/JPEG/GIF texture rendering";
+               return "iTerm2 images; PNG/JPEG/GIF/PICT texture rendering";
             end if;
       end case;
    end Capability_Status_Label;

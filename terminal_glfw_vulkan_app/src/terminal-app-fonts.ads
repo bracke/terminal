@@ -10,8 +10,11 @@ package Terminal.App.Fonts is
 
    type Font_Path_Array is array (Positive range <>) of Font_Path;
 
+   type Font_Style is (Monospace, Sans_Serif, Serif, Symbol);
+
    function Default_Font_Path return String;
    function Fallback_Font_Paths return Font_Path_Array;
+   function Font_Path_For (Style : Font_Style) return String;
    function To_String (Path : Font_Path) return String;
    function Status_Label
      (Default_Path   : String;

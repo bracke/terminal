@@ -22,6 +22,7 @@ project App_Tests is
       "kitty_control_matrix_smoke.adb",
       "graphics_replacement_benchmark_smoke.adb",
       "image_media_smoke.adb",
+      "pict_renderer_smoke.adb",
       "iterm2_media_smoke.adb",
       "external_graphics_stream_probe.adb",
       "pty_core_integration_smoke.adb",

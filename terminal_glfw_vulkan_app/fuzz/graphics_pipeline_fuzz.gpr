@@ -2,6 +2,7 @@ with "../../glfw_vulkan/glfw_vulkan.gpr";
 with "../../../textrender/textrender.gpr";
 with "../../../jpeglib/jpeglib.gpr";
 with "../../../giflib/giflib.gpr";
+with "../../../pictlib/pictlib.gpr";
 with "df_vulkan";
 with "zlib";
 
@@ -10,6 +11,7 @@ project Graphics_Pipeline_Fuzz is
    for Source_Dirs use
      (".",
       "../src",
+      "../src/platform/posix",
       "../../terminal_core/src",
       "../../terminal_common/src",
       "../../terminal_core/fuzz");

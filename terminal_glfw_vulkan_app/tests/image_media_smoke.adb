@@ -11,6 +11,7 @@ procedure Image_Media_Smoke is
    use type Terminal.App.Graphics.Data_Decode_Status;
    use type Terminal.App.Image_Media.Decode_Status;
    use type Terminal.App.Render_Model.Image_Data_Access;
+   use type Terminal.Common.Bytes.Byte;
    use type Terminal.Common.Bytes.Byte_Array;
 
    subtype Byte is Terminal.Common.Bytes.Byte;
@@ -24,6 +25,8 @@ procedure Image_Media_Smoke is
      & "qm+v2xns5E/P56+f7yH5BAAAAAAAIf8LSW1hZ2VNYWdpY2sOZ2FtbWE9MC40NTQ1"
      & "NDUALAAAAAAJAAkAQAQuEMgQhh2tkX2OMUmIIE/5AIJADUq7LA7DdEUhASurpMKI"
      & "tIrXQlaqZRwOQucTAQA7";
+   --  Netpbm-generated indexed fixture from pictlib's independent external
+   --  conformance corpus (21 x 9, with an opaque-white first pixel).
    PICT_Base64 : constant String :=
      "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
      & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
@@ -35,10 +38,65 @@ procedure Image_Media_Smoke is
      & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
      & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
      & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAQABABEC/wwA"
-     & "//4AAABIAAAASAAAAAAAAAABAAEAAAAAAAEACgAAAAAAAQABAJoAAAD/gAQAAAAA"
-     & "AAEAAQAAAAQAAAAAAEgAAABIAAAAEAAgAAMACAAAAAAAAAAAAAAAAAAAAAAAAQAB"
-     & "AAAAAAABAAEAQAQCEjRWAAD/";
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA9AAAAAAACQAVABEC/wwA"
+     & "/////wAAAAAAAAAAABUAAAAJAAAAAAAAAAEACgAAAAAACQAVAJiAFQAAAAAACQAV"
+     & "AAAAAAAAAAAASAAAAEgAAAAAAAgAAQAIAAAAAAAAAAAAAAAAAAAAAAAAAAMAAAAA"
+     & "AAAAAAABAACAgP//AAL///////8AA///AAAAAAAAAAAACQAVAAAAAAAJABUAAALs"
+     & "AgcBAgL6A/UCDAECAvoD/gL6AQECAgwBAgL6A/4C+gEBAgIMAQIC+gP+AvoBAQIC"
+     & "DAECAvoD/gL6AQECAgf1AvoBAQICB/UC+gEBAgIE7QIAAAD/";
+   --  ImageMagick-authored PICT carrying a CompressedQuickTime JPEG.
+   QuickTime_PICT_Base64 : constant String :=
+     "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAACQAVABEC/wwA"
+     & "//4AAABIAAAASAAAAAAAAAAJABUAAAAAAAEACgAAAAAACQAVggAAAAL+AAAAAQAA"
+     & "AAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAQAAA"
+     & "AAAACQAVAAADAAAAAAAAAABWanBlZwAAAAAAAAAAAAEAAWFwcGwAAAAAAAADAAAV"
+     & "AAkASAAAAEgAAAAAAmQAAQtGb3RvIC0gSlBFRwAAAAAAAAAAAAAAAAAAAAAAAAAA"
+     & "ABj////Y/+AAEEpGSUYAAQEAAAEAAQAA/9sAQwADAgIDAgIDAwMDBAMDBAUIBQUE"
+     & "BAUKBwcGCAwKDAwLCgsLDQ4SEA0OEQ4LCxAWEBETFBUVFQwPFxgWFBgSFBUU/9sA"
+     & "QwEDBAQFBAUJBQUJFA0LDRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU"
+     & "FBQUFBQUFBQUFBQUFBQUFBQU/8AAEQgACQAVAwERAAIRAQMRAf/EABcAAQADAAAA"
+     & "AAAAAAAAAAAAAAcABgn/xAApEAAABQMCBAcBAAAAAAAAAAABAgMEEQUGBwAIEhQh"
+     & "IgkTFSMxR4XE/8QAGAEAAwEBAAAAAAAAAAAAAAAAAAQIBgf/xAAmEQABAgYCAgEF"
+     & "AAAAAAAAAAABAhEAAwQFEiEGQQcxIhMyQlFh/9oADAMBAAIRAxEAPwBz3IYv3H3D"
+     & "me4qhYTy4krUW5bkiMbmI0RCGyRVOFIVyiX3APPaEjI9ZkcTcaW6TKpaqYqw0zKb"
+     & "oPpx3FP8MvnA6Ow08i9IlGoGWWUgrO1qKXV9NT/Fuyw11Fj3AZUyPhbG2I2bWsrU"
+     & "2vuKSKVaM4Ii8UVcpItgMJlFAPxGA51JMA9wjMj01QXjuxUd2kTk3OXmpAl/koMS"
+     & "FZfaQ/r+xGHk6+zKC6rm2VYRJmTJpSyQBhkChgpPxAB0GDem1CXs/wAk3HlDGtTq"
+     & "tz1H1N+jV1WpFvITShMEUTAWEylD5OYZieuk+bWqjtFxRIokYpKAWcneSh2SfQEL"
+     & "8QuVVdKBc6sXkoLIdgNMk9Afsw5a5/G4iaIIyr8dH6S/b/g0QR//2QCaAAAA/4BU"
+     & "AAAAAAAJABUAAAAEAAAAAABIAAAASAAAABAAIAADAAgAAAAAAAAAAAAAAAAAAAAA"
+     & "AAkAFQAAAAAACQAVAEACrQACrQACrQACrQACrQACrQACrQACrQACrQAAAP8=";
+
+   function W (Value : Integer) return Byte_Array is
+      Raw : constant Natural :=
+        (if Value < 0 then Value + 16#1_0000# else Value);
+   begin
+      return [Byte (Raw / 256), Byte (Raw mod 256)];
+   end W;
+
+   function L (Value : Natural) return Byte_Array is
+     (W (Value / 16#1_0000#) & W (Value mod 16#1_0000#));
+
+   function Rect (Top, Left, Bottom, Right : Integer) return Byte_Array is
+     (W (Top) & W (Left) & W (Bottom) & W (Right));
+
+   function V2_Picture
+     (Width, Height : Positive;
+      Body_Bytes : Byte_Array) return Byte_Array is
+     (W (0) & Rect (0, 0, Height, Width)
+      & W (16#0011#) & W (16#02FF#) & W (16#0C00#) & W (-2) & W (0)
+      & L (72 * 16#1_0000#) & L (72 * 16#1_0000#)
+      & Rect (0, 0, Height, Width) & L (0) & Body_Bytes & W (16#00FF#));
    PDF_Base64 : constant String :=
      "JVBERi0xLjMgCjEgMCBvYmoKPDwKL1BhZ2VzIDIgMCBSCi9UeXBlIC9DYXRhbG9n"
      & "Cj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9UeXBlIC9QYWdlcwovS2lkcyBbIDMgMCBS"
@@ -86,7 +144,9 @@ procedure Image_Media_Smoke is
       Expected_Green : Natural;
       Expected_Blue : Natural;
       Animated      : Boolean;
-      Label_Text    : String)
+      Label_Text    : String;
+      Expected_Width : Positive := 1;
+      Expected_Height : Positive := 1)
    is
       Blob : Terminal.App.Render_Model.Image_Data_Access := null;
       Blob_Length : Natural := 0;
@@ -115,9 +175,9 @@ procedure Image_Media_Smoke is
       Terminal.App.Graphics.Release (Holder);
       Assert (Status = Terminal.App.Image_Media.Decode_Ok, Label_Text & " decode");
       Assert
-        (Image.Pixel_Width = 1
-         and then Image.Pixel_Height = 1
-         and then Image.Frame_Bytes = 4
+        (Image.Pixel_Width = Expected_Width
+         and then Image.Pixel_Height = Expected_Height
+         and then Image.Frame_Bytes = Expected_Width * Expected_Height * 4
          and then Image.Bytes /= null,
          Label_Text & " geometry");
       Assert
@@ -126,6 +186,11 @@ procedure Image_Media_Smoke is
          and then Natural (Image.Bytes (3)) = Expected_Blue
          and then Natural (Image.Bytes (4)) = 255,
          Label_Text & " first frame pixel");
+      if Label_Text = "PICT" or else Label_Text = "PICT QuickTime JPEG" then
+         Assert
+           (Image.Peak_Working_Bytes = Image.Frame_Bytes,
+            Label_Text & " uses one adapter-owned RGBA allocation");
+      end if;
       if Animated then
          Assert
            (Image.Frame_Count = 2
@@ -433,6 +498,120 @@ procedure Image_Media_Smoke is
          and then Image.Frame_Count = 0,
          "GIF rejects frame 257 without publishing pixels");
    end Check_GIF_Frame_Boundary;
+
+   procedure Check_PICT_Vector_And_Text is
+      Vector : constant Byte_Array :=
+        V2_Picture (6, 4, W (16#31#) & Rect (1, 2, 3, 5));
+      Text_Picture : constant Byte_Array :=
+        V2_Picture
+          (48, 24,
+           W (16#03#) & W (21)
+           & W (16#0D#) & W (12)
+           & W (16#28#) & W (15) & W (2)
+           & [Byte (2), Byte (Character'Pos ('H')),
+              Byte (Character'Pos ('i')), Byte (0)]);
+      Image : Terminal.App.Image_Media.Decoded_Image;
+      Status : Terminal.App.Image_Media.Decode_Status;
+      Ink_Found : Boolean := False;
+      Vector_Pixel : constant Natural := (1 * 6 + 2) * 4 + 1;
+   begin
+      Terminal.App.Image_Media.Decode
+        (Vector, Vector'Length, 1_048_576, 4_096, Image, Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Ok
+         and then Image.Pixel_Width = 6
+         and then Image.Pixel_Height = 4
+         and then Image.Bytes /= null
+         and then Image.Bytes (Vector_Pixel) = 0
+         and then Image.Bytes (Vector_Pixel + 1) = 0
+         and then Image.Bytes (Vector_Pixel + 2) = 0
+         and then Image.Bytes (Vector_Pixel + 3) = 255,
+         "PICT QuickDraw vector paint is rasterized");
+      Terminal.App.Image_Media.Release (Image);
+
+      Terminal.App.Image_Media.Decode
+        (Text_Picture,
+         Text_Picture'Length,
+         1_048_576,
+         4_096,
+         Image,
+         Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Ok
+         and then Image.Bytes /= null,
+         "PICT QuickDraw text and classic Helvetica mapping decode");
+      for I in 0 .. Image.Pixel_Width * Image.Pixel_Height - 1 loop
+         declare
+            First : constant Positive := Image.Bytes'First + I * 4;
+         begin
+            if Image.Bytes (First) < 250
+              or else Image.Bytes (First + 1) < 250
+              or else Image.Bytes (First + 2) < 250
+            then
+               Ink_Found := True;
+               exit;
+            end if;
+         end;
+      end loop;
+      Assert (Ink_Found, "PICT QuickDraw text produces visible glyph pixels");
+      Terminal.App.Image_Media.Release (Image);
+   end Check_PICT_Vector_And_Text;
+
+   procedure Check_PICT_Bounds_And_Headers is
+      Blob : Terminal.App.Render_Model.Image_Data_Access := null;
+      Blob_Length : Natural := 0;
+      Base64_Status : Terminal.App.Graphics.Data_Decode_Status;
+      Holder : Terminal.App.Graphics.Graphics_Data_Preview;
+      Image : Terminal.App.Image_Media.Decoded_Image;
+      Status : Terminal.App.Image_Media.Decode_Status;
+   begin
+      Terminal.App.Graphics.Decode_Base64_Data
+        (PICT_Base64, 1_048_576, Blob, Blob_Length, Base64_Status);
+      Assert
+        (Base64_Status = Terminal.App.Graphics.Decode_Ok and then Blob /= null,
+         "PICT bounds fixture decode");
+
+      Terminal.App.Image_Media.Decode
+        (Blob.all, Blob_Length, 4, 4_096, Image, Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Too_Large
+         and then Image.Bytes = null,
+         "PICT canvas obeys the decoded-byte limit");
+
+      Terminal.App.Image_Media.Decode
+        (Blob.all (Blob.all'First + 512 .. Blob.all'First + Blob_Length - 1),
+         Blob_Length - 512,
+         1_048_576,
+         4_096,
+         Image,
+         Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Ok
+         and then Image.Pixel_Width = 21
+         and then Image.Pixel_Height = 9,
+         "headerless PICT is decoded natively");
+      Terminal.App.Image_Media.Release (Image);
+
+      Terminal.App.Image_Media.Decode
+        (Blob.all (Blob.all'First .. Blob.all'First + 521),
+         522,
+         1_048_576,
+         4_096,
+         Image,
+         Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Invalid
+         and then Image.Bytes = null
+         and then Image.Diagnostic.Present
+         and then Image.Diagnostic.Identifier_Length > 0
+         and then Terminal.App.Image_Media.Diagnostic_Identifier
+           (Image.Diagnostic)'Length > 0,
+         "truncated headered PICT fails without fallback pixels");
+
+      Holder.Bytes := Blob;
+      Blob := null;
+      Terminal.App.Graphics.Release (Holder);
+   end Check_PICT_Bounds_And_Headers;
 begin
    Assert
      (Terminal.App.Image_Media.Available,
@@ -444,11 +623,30 @@ begin
    Check_GIF87a_Still;
    Check_Transparent_Initial_Canvas;
    Check_GIF_Frame_Boundary;
+   Check
+     (PICT_Base64,
+      255,
+      255,
+      255,
+      False,
+      "PICT",
+      Expected_Width => 21,
+      Expected_Height => 9);
+   Check_PICT_Bounds_And_Headers;
+   Check_PICT_Vector_And_Text;
+   Check
+     (QuickTime_PICT_Base64,
+      251,
+      255,
+      255,
+      False,
+      "PICT QuickTime JPEG",
+      Expected_Width => 21,
+      Expected_Height => 9);
    if not Terminal.App.Image_Media.Extended_Media_Available then
       Ada.Text_IO.Put_Line
-        ("image_media_smoke: optional PDF/PICT checks skipped: no MagickWand runtime");
+        ("image_media_smoke: optional PDF check skipped: no MagickWand runtime");
       return;
    end if;
-   Check (PICT_Base64, 4, 2, 18, False, "PICT");
    Check (PDF_Base64, 101, 67, 33, False, "PDF");
 end Image_Media_Smoke;

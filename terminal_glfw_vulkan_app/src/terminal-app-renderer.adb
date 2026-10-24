@@ -5911,6 +5911,9 @@ package body Terminal.App.Renderer is
                         R.Graphics_Limits.Pixel_Dimension,
                         Media,
                         Media_Status);
+                     R.Last_Media_Diagnostic := Media.Diagnostic;
+                     R.Last_Media_Peak_Working_Bytes :=
+                       Media.Peak_Working_Bytes;
                      Free_Image_Data (Blob);
                      if Media_Status = Terminal.App.Image_Media.Decode_Ok
                        and then Media.Bytes /= null
@@ -5932,13 +5935,22 @@ package body Terminal.App.Renderer is
                            Decode_Complete => True,
                            Decode_Status => Terminal.App.Graphics.Decode_Ok,
                            Bytes => null);
-                        Image_Bytes :=
-                          new Terminal.Common.Bytes.Byte_Array
-                            (1 .. Media.Frame_Bytes);
-                        Image_Bytes.all :=
-                          Media.Bytes
-                            (Media.Bytes'First
-                             .. Media.Bytes'First + Media.Frame_Bytes - 1);
+                        if Media.Frame_Count = 1 then
+                           --  Static native media already has the exact buffer
+                           --  layout the image store owns. Transfer it instead
+                           --  of briefly retaining a second full RGBA copy.
+                           Image_Bytes := Media.Bytes;
+                           Media.Bytes := null;
+                        else
+                           Image_Bytes :=
+                             new Terminal.Common.Bytes.Byte_Array
+                               (1 .. Media.Frame_Bytes);
+                           Image_Bytes.all :=
+                             Media.Bytes
+                               (Media.Bytes'First
+                                .. Media.Bytes'First
+                                  + Media.Frame_Bytes - 1);
+                        end if;
                         Image_Bytes_Owned := True;
                         Media_Used := True;
                         Copy_Image_Preview
@@ -10493,6 +10505,8 @@ package body Terminal.App.Renderer is
          Last_Image_Decode_Status =>
            (if Has_Image then R.Images (R.Image_Count).Decode_Status
             else RM.Image_Decode_Not_Attempted),
+         Last_Media_Diagnostic => R.Last_Media_Diagnostic,
+         Last_Media_Peak_Working_Bytes => R.Last_Media_Peak_Working_Bytes,
          Last_Image_Placeholder =>
            Has_Image and then R.Images (R.Image_Count).Placeholder,
          Image_Object_Count => R.Image_Object_Count,

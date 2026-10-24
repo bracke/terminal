@@ -139,6 +139,19 @@ begin
 
    Assert (Default_Path /= "", "default font path should resolve");
    Assert
+     (Fonts.Font_Path_For (Fonts.Monospace) = Default_Path,
+      "monospace semantic font should use the terminal primary");
+   for Style in Fonts.Sans_Serif .. Fonts.Symbol loop
+      declare
+         Path : constant String := Fonts.Font_Path_For (Style);
+      begin
+         Assert
+           (Path /= "" and then Ada.Directories.Exists (Path),
+            "semantic PICT font path should resolve for "
+            & Fonts.Font_Style'Image (Style));
+      end;
+   end loop;
+   Assert
      (Fallbacks'Length <= Fonts.Max_Fallback_Fonts,
       "fallback list should fit configured bound");
    Assert

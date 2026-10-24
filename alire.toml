@@ -15,6 +15,7 @@ textrender = "*"
 zlib = "*"
 jpeglib = "*"
 giflib = "*"
+pictlib = "*"
 
 [[pins]]
 terminal_common = { path = "terminal_common" }
@@ -25,3 +26,4 @@ textrender = { path = "../textrender" }
 zlib = { path = "../zlib" }
 jpeglib = { path = "../jpeglib" }
 giflib = { path = "../giflib" }
+pictlib = { path = "../pictlib" }

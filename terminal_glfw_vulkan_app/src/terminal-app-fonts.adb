@@ -17,6 +17,9 @@ package body Terminal.App.Fonts is
    Noto_Old_Mono : aliased constant String := "/usr/share/fonts/truetype/noto/NotoMono-Regular.ttf";
    DejaVu_Sans   : aliased constant String := "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
    Noto_Sans     : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf";
+   DejaVu_Serif  : aliased constant String := "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
+   Liberation_Serif : aliased constant String := "/usr/share/fonts/truetype/liberation2/LiberationSerif-Regular.ttf";
+   Liberation_Sans  : aliased constant String := "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf";
    Noto_Symbols  : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSymbols-Regular.ttf";
    Noto_Symbols2 : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansSymbols2-Regular.ttf";
    Noto_Arabic   : aliased constant String := "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf";
@@ -445,4 +448,33 @@ package body Terminal.App.Fonts is
       end if;
       return Result (1 .. Count);
    end Fallback_Font_Paths;
+
+   function Font_Path_For (Style : Font_Style) return String is
+      type Style_Candidate_Array is array (Positive range <>) of access constant String;
+      Serif_Candidates : constant Style_Candidate_Array :=
+        [DejaVu_Serif'Access, Liberation_Serif'Access];
+      Sans_Candidates : constant Style_Candidate_Array :=
+        [DejaVu_Sans'Access, Noto_Sans'Access, Liberation_Sans'Access];
+      Symbol_Candidates : constant Style_Candidate_Array :=
+        [Noto_Symbols'Access, Noto_Symbols2'Access, DejaVu_Sans'Access];
+   begin
+      if Style = Monospace then
+         return Default_Font_Path;
+      end if;
+      declare
+         Candidates : constant Style_Candidate_Array :=
+           (case Style is
+               when Sans_Serif => Sans_Candidates,
+               when Serif      => Serif_Candidates,
+               when Symbol     => Symbol_Candidates,
+               when Monospace  => [Noto_Mono'Access]);
+      begin
+         for Candidate of Candidates loop
+            if Is_Loadable_Font (Candidate.all) then
+               return Candidate.all;
+            end if;
+         end loop;
+      end;
+      return Default_Font_Path;
+   end Font_Path_For;
 end Terminal.App.Fonts;

@@ -9,6 +9,8 @@ same protocol one byte at a time. Other first bytes exercise raw terminal input.
 The target applies small core and renderer quotas, drains the ordered graphics
 event and response queues, renders retained state, and verifies that object,
 placement, frame, and byte accounting remain within those quotas.
+The seed corpus includes native GIF and PICT iTerm2 payloads so their path-pinned
+Ada decoders remain in the coverage surface.
 
 Build and execute the checked-in corpus with the pinned Alire toolchain:
 

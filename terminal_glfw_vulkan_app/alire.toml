@@ -11,7 +11,9 @@ glfw_vulkan = "*"
 df_vulkan = "*"
 textrender = "*"
 zlib = "*"
+jpeglib = "*"
 giflib = "*"
+pictlib = "*"
 aunit = "*"
 
 [[pins]]
@@ -21,4 +23,6 @@ terminal_pty = { path = "../terminal_pty" }
 glfw_vulkan = { path = "../glfw_vulkan" }
 textrender = { path = "../../textrender" }
 zlib = { path = "../../zlib" }
+jpeglib = { path = "../../jpeglib" }
 giflib = { path = "../../giflib" }
+pictlib = { path = "../../pictlib" }

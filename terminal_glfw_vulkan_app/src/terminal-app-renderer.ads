@@ -5,6 +5,7 @@ with Terminal.Core;
 with Terminal.App.Graphics;
 with Terminal.App.Graphics_Transport;
 with Terminal.App.ITerm2_Files;
+with Terminal.App.Image_Media;
 with Terminal.App.Render_Model;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
@@ -92,6 +93,8 @@ package Terminal.App.Renderer is
       Last_Image_Decode_Status :
         Terminal.App.Render_Model.Image_Decode_Status :=
           Terminal.App.Render_Model.Image_Decode_Not_Attempted;
+      Last_Media_Diagnostic : Terminal.App.Image_Media.Decode_Diagnostic;
+      Last_Media_Peak_Working_Bytes : Natural := 0;
       Last_Image_Placeholder : Boolean := False;
       Image_Object_Count : Natural := 0;
       Image_Object_Bytes : Natural := 0;
@@ -474,6 +477,8 @@ private
       Allocation_Failure_Count : Interfaces.Unsigned_64 := 0;
       Animation_Advance_Count : Interfaces.Unsigned_64 := 0;
       Chunk_Cancel_Count : Interfaces.Unsigned_64 := 0;
+      Last_Media_Diagnostic : Terminal.App.Image_Media.Decode_Diagnostic;
+      Last_Media_Peak_Working_Bytes : Natural := 0;
       Virtual_Placements : Virtual_Placement_Access := null;
       Conventional_Placements : Conventional_Placement_Access := null;
       Kitty_Placement_Count : Natural range 0 .. Max_Kitty_Placements := 0;
