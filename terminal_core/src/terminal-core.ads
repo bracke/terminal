@@ -106,6 +106,10 @@ package Terminal.Core is
       Kitty_Indexed_RGB        : Boolean := False;
       Kitty_Indexed_RGBA       : Boolean := False;
       Kitty_Direct_PNG         : Boolean := False;
+      --  The private transmit formats f=1001 (JPEG) and f=1002 (GIF), which
+      --  the identity answer advertises as kgfx-jpeg and kgfx-gif.
+      Kitty_Direct_JPEG        : Boolean := False;
+      Kitty_Direct_GIF         : Boolean := False;
       Kitty_Zlib_Compression   : Boolean := False;
       Kitty_File_Transfer      : Boolean := False;
       Kitty_Temporary_Transfer : Boolean := False;

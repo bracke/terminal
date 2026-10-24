@@ -97,6 +97,8 @@ begin
              Kitty_Indexed_RGB        => True,
              Kitty_Indexed_RGBA       => True,
              Kitty_Direct_PNG         => True,
+             Kitty_Direct_JPEG        => True,
+             Kitty_Direct_GIF         => True,
              Kitty_Zlib_Compression   => True,
              Kitty_File_Transfer      => False,
              Kitty_Temporary_Transfer => False,

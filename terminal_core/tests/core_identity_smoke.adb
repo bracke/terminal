@@ -72,6 +72,13 @@ begin
       ESC & "]7701;v=1;caps=kgfx,kgfx-shm,kbd,resize2048,osc52" & ST,
       "identity answers with its version and capabilities");
    Expect (ESC & "]7701;x" & ST, "", "only the query is answered");
+   Terminal.Core.Set_Graphics_Capabilities
+     (T,
+      (Kitty_Direct_PNG => True, Kitty_Direct_JPEG => True, Kitty_Direct_GIF => True, others => False));
+   Expect
+     (ESC & "]7701;q" & ST,
+      ESC & "]7701;v=1;caps=kgfx,kgfx-jpeg,kgfx-gif,kbd,resize2048,osc52" & ST,
+      "the private JPEG and GIF formats are advertised");
    Expect
      (CSI & ">q",
       ESC & "P>|" & Terminal.Common.Identity.Program_Name & " "

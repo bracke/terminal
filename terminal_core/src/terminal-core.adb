@@ -1737,6 +1737,8 @@ package body Terminal.Core is
         ("kgfx",
          T.Graphics_Capabilities.Kitty_Direct_RGBA or else T.Graphics_Capabilities.Kitty_Direct_PNG);
       Capability ("kgfx-shm", T.Graphics_Capabilities.Kitty_Shared_Memory);
+      Capability ("kgfx-jpeg", T.Graphics_Capabilities.Kitty_Direct_JPEG);
+      Capability ("kgfx-gif", T.Graphics_Capabilities.Kitty_Direct_GIF);
       Capability ("kbd", True);
       Capability ("resize2048", True);
       Capability ("osc52", True);

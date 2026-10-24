@@ -1194,6 +1194,43 @@ begin
          Set_Preview
            (Kitty_JPEG,
             "Gf=100,a=T,c=1,r=1;" & JPEG_Base64);
+
+         --  The private formats f=1001 and f=1002 carry JPEG and GIF files,
+         --  and only those.
+         declare
+            GIF_Base64 : constant String :=
+              "R0lGODlhAQABAPAAAP8AAAAAACH5BAAFAAAALAAAAAABAAEAAAICRAEAIfkEAAcA"
+              & "AAAsAAAAAAEAAQCAAAD/AAAAAgJEAQA7";
+            Private_JPEG : Graphics.Graphics_Data_Preview :=
+              Graphics.Data_Preview_Text
+                (Terminal.Core.Kitty_Graphics, "Gf=1001,a=T,c=1,r=1;" & JPEG_Base64);
+            Private_GIF : Graphics.Graphics_Data_Preview :=
+              Graphics.Data_Preview_Text
+                (Terminal.Core.Kitty_Graphics, "Gf=1002,a=T,c=1,r=1;" & GIF_Base64);
+            Mislabelled : Graphics.Graphics_Data_Preview :=
+              Graphics.Data_Preview_Text
+                (Terminal.Core.Kitty_Graphics, "Gf=1002,a=T,c=1,r=1;" & JPEG_Base64);
+         begin
+            Assert
+              (Private_JPEG.Decode_Complete
+               and then Private_JPEG.Raw_Format = 32
+               and then Private_JPEG.Pixel_Width = 1
+               and then Private_JPEG.Pixel_Height = 1,
+               "Kitty f=1001 decodes JPEG");
+            Assert
+              (Private_GIF.Decode_Complete
+               and then Private_GIF.Raw_Format = 32
+               and then Private_GIF.Pixel_Width = 1
+               and then Private_GIF.Pixel_Height = 1,
+               "Kitty f=1002 decodes GIF");
+            Assert
+              (not Mislabelled.Decode_Complete
+               and then Mislabelled.Decode_Status = Graphics.Decode_Unsupported_Format,
+               "Kitty f=1002 rejects a JPEG");
+            Graphics.Release (Private_JPEG);
+            Graphics.Release (Private_GIF);
+            Graphics.Release (Mislabelled);
+         end;
       end;
       Set_Preview
         (ITerm2_Gray_PNG,

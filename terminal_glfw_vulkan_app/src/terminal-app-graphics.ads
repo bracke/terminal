@@ -8,6 +8,12 @@ package Terminal.App.Graphics is
      Terminal.App.Render_Model.Max_Image_Decoded_Data_Length;
    Max_Sixel_Pixel_Dimension : constant := 16_384;
 
+   --  Private Kitty transmit formats: the payload is a JPEG or GIF file,
+   --  decoded here as the iTerm2 inline images are. Kitty's own formats are
+   --  8, 16, 24, 32, and 100 (PNG); these sit far from them.
+   Kitty_JPEG_Format : constant := 1001;
+   Kitty_GIF_Format  : constant := 1002;
+
    type Graphics_Protocol is
      (Sixel,
       Kitty,

@@ -4474,6 +4474,42 @@ package body Terminal.App.Graphics is
                   Free_Image_Data (PNG);
                end;
             end if;
+            if H.Kitty_Format in Kitty_JPEG_Format | Kitty_GIF_Format
+              and then Result.Decode_Complete
+              and then Result.Bytes /= null
+            then
+               declare
+                  Encoded : Terminal.App.Render_Model.Image_Data_Access := Result.Bytes;
+                  Length  : constant Natural := Result.Decoded_Length;
+
+                  function Byte (Index : Positive) return Natural is
+                    (if Index <= Length then Natural (Encoded (Encoded'First + Index - 1)) else 256);
+
+                  --  The payload must be what its format code says: a JPEG
+                  --  starts FF D8 FF, a GIF with GIF8.
+                  Matches : constant Boolean :=
+                    (if H.Kitty_Format = Kitty_JPEG_Format
+                     then Byte (1) = 16#FF# and then Byte (2) = 16#D8# and then Byte (3) = 16#FF#
+                     else Byte (1) = Character'Pos ('G') and then Byte (2) = Character'Pos ('I')
+                       and then Byte (3) = Character'Pos ('F') and then Byte (4) = Character'Pos ('8'));
+               begin
+                  Result.Bytes := null;
+                  Result.Decoded_Length := 0;
+                  Result.Decoded_Row_Stride_Bytes := 0;
+                  Result.Raw_Format := 0;
+                  Result.Pixel_Width := 0;
+                  Result.Pixel_Height := 0;
+
+                  if Matches then
+                     Decode_Image_RGBA_Data (Encoded.all, Length, Result);
+                  else
+                     Result.Decode_Status := Decode_Unsupported_Format;
+                     Result.Decode_Complete := False;
+                  end if;
+
+                  Free_Image_Data (Encoded);
+               end;
+            end if;
          when Terminal.Core.ITerm2_Graphics =>
             Decode_Base64_Preview (Text (From .. Text'Last), Result);
             if Result.Decode_Complete and then Result.Bytes /= null then

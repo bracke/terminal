@@ -4962,6 +4962,7 @@ package body Terminal.App.Renderer is
 
       if not Header.Has_Data
         or else Header.Kitty_Format not in 8 | 16 | 24 | 32 | 100
+             | Terminal.App.Graphics.Kitty_JPEG_Format | Terminal.App.Graphics.Kitty_GIF_Format
         or else Header.Kitty_Compression not in ASCII.NUL | 'z'
       then
          Terminal.App.Graphics.Release (Data);
@@ -7614,6 +7615,7 @@ package body Terminal.App.Renderer is
          elsif not Header.Kitty_Transmission_Valid
            or else not Header.Kitty_Compression_Valid
            or else Header.Kitty_Format not in 8 | 16 | 24 | 32 | 100
+             | Terminal.App.Graphics.Kitty_JPEG_Format | Terminal.App.Graphics.Kitty_GIF_Format
          then
             Result.Code := Terminal.Core.Kitty_ENOTSUP;
          elsif not Header.Kitty_Control_Data_Valid

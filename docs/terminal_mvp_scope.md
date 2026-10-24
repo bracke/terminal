@@ -67,10 +67,16 @@
 - The private identity query `OSC 7701 ; q ST` answers
   `OSC 7701 ; v=1 ; caps=<name>,... ST`, telling a program that it runs in
   this terminal and what it may use: `kgfx` (Kitty graphics), `kgfx-shm`
-  (shared-memory transfer, when enabled), `kbd` (keyboard enhancement),
+  (shared-memory transfer, when enabled), `kgfx-jpeg` and `kgfx-gif` (the
+  private Kitty transmit formats below), `kbd` (keyboard enhancement),
   `resize2048` (in-band resize), and `osc52` (clipboard). Readers ignore names
   and keys they do not know, so the list can grow. `explore` in posix_tools
   uses it to refuse other terminals.
+- Kitty graphics accepts two private transmit formats besides Kitty's own:
+  `f=1001`, whose payload is a JPEG file, and `f=1002`, a GIF file, sent
+  directly and uncompressed. They are decoded as iTerm2 inline images are,
+  and a payload that is not what its code says is rejected as an unsupported
+  format. Kitty's `f=100` remains PNG only.
 - Keyboard action mode (`CSI 2 h`/`CSI 2 l`) is tracked in mode state and
   queryable. While locked, the GLFW app drops keyboard-generated input bytes
   such as key presses, character callbacks, and paste requests. The input
