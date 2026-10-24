@@ -5,60 +5,67 @@ package body Terminal.App.Platform_Media is
 
    use type C.int;
 
-   function C_Shm_Open
-     (Name  : CS.chars_ptr;
-      Flags : C.int;
-      Mode  : C.unsigned) return C.int
-   with Import, Convention => C, External_Name => "shm_open";
+   function C_Local_Available return C.int
+   with Import, Convention => C,
+        External_Name => "terminal_media_local_file_transfers_available";
+
+   function C_Shm_Open (Name : CS.chars_ptr) return C.int
+   with Import, Convention => C,
+        External_Name => "terminal_media_shared_memory_open";
 
    function C_Shm_Unlink (Name : CS.chars_ptr) return C.int
-   with Import, Convention => C, External_Name => "shm_unlink";
+   with Import, Convention => C,
+        External_Name => "terminal_media_shared_memory_unlink";
 
-   function C_Open
-     (Path  : CS.chars_ptr;
-      Flags : C.int) return C.int
-   with Import, Convention => C, External_Name => "open";
+   function C_Open_Read (Path : CS.chars_ptr) return C.int
+   with Import, Convention => C,
+        External_Name => "terminal_media_open_read_no_follow";
 
-   function C_Openat
+   function C_Descriptor_Path
+     (FD       : C.int;
+      Buffer   : System.Address;
+      Capacity : C.size_t) return C.int
+   with Import, Convention => C,
+        External_Name => "terminal_media_descriptor_path";
+
+   function C_Open_Directory (Path : CS.chars_ptr) return C.int
+   with Import, Convention => C,
+        External_Name => "terminal_media_open_directory_no_follow";
+
+   function C_Create_File_At
      (Directory : C.int;
       Path      : CS.chars_ptr;
-      Flags     : C.int;
       Mode      : C.unsigned) return C.int
-   with Import, Convention => C, External_Name => "openat";
+   with Import, Convention => C,
+        External_Name => "terminal_media_create_file_at";
 
    function C_Write
      (FD     : C.int;
       Buffer : System.Address;
       Count  : C.size_t) return C.long
-   with Import, Convention => C, External_Name => "write";
+   with Import, Convention => C, External_Name => "terminal_media_write";
 
    function C_Close (FD : C.int) return C.int
-   with Import, Convention => C, External_Name => "close";
+   with Import, Convention => C, External_Name => "terminal_media_close";
 
-   function C_Unlinkat
+   function C_Delete_File_At
      (Directory : C.int;
-      Path      : CS.chars_ptr;
-      Flags     : C.int) return C.int
-   with Import, Convention => C, External_Name => "unlinkat";
+      Path      : CS.chars_ptr) return C.int
+   with Import, Convention => C,
+        External_Name => "terminal_media_delete_file_at";
 
-   function Dlopen (Name : CS.chars_ptr; Flags : C.int) return System.Address
-   with Import, Convention => C, External_Name => "dlopen";
+   function Dlopen (Name : CS.chars_ptr) return System.Address
+   with Import, Convention => C,
+        External_Name => "terminal_media_open_dynamic_library";
 
    function Dlsym
      (Handle : System.Address;
       Name   : CS.chars_ptr) return System.Address
-   with Import, Convention => C, External_Name => "dlsym";
+   with Import, Convention => C,
+        External_Name => "terminal_media_dynamic_symbol";
 
-   O_RDONLY   : constant C.int := 0;
-   O_WRONLY   : constant C.int := 1;
-   O_CREAT    : constant C.int := 64;
-   O_EXCL     : constant C.int := 128;
-   O_DIRECTORY : constant C.int := 65_536;
-   O_NOFOLLOW : constant C.int := 131_072;
-   O_CLOEXEC  : constant C.int := 524_288;
-   RTLD_LAZY  : constant C.int := 1;
-
-   function Local_File_Transfers_Available return Boolean is (True);
+   function Local_File_Transfers_Available return Boolean is
+     (C_Local_Available /= 0);
    function Shared_Memory_Transfers_Available return Boolean is (True);
    function File_Downloads_Available return Boolean is (True);
 
@@ -66,7 +73,7 @@ package body Terminal.App.Platform_Media is
       Name : CS.chars_ptr := CS.New_String (Path);
       Raw  : C.int;
    begin
-      Raw := C_Open (Name, O_RDONLY + O_NOFOLLOW + O_CLOEXEC);
+      Raw := C_Open_Read (Name);
       CS.Free (Name);
       return (if Raw < 0 then OS.Invalid_FD else OS.File_Descriptor (Raw));
    exception
@@ -76,16 +83,22 @@ package body Terminal.App.Platform_Media is
    end Open_Read_No_Follow;
 
    function Descriptor_Path (FD : OS.File_Descriptor) return String is
-      Image : constant String := OS.File_Descriptor'Image (FD);
+      Buffer : aliased String (1 .. 4_096) := (others => ASCII.NUL);
+      Length : C.int;
    begin
-      return "/proc/self/fd/" & Image (Image'First + 1 .. Image'Last);
+      Length := C_Descriptor_Path
+        (C.int (FD), Buffer (Buffer'First)'Address, C.size_t (Buffer'Length));
+      if Length <= 0 or else Length > C.int (Buffer'Length) then
+         return "";
+      end if;
+      return Buffer (1 .. Natural (Length));
    end Descriptor_Path;
 
    function Shared_Memory_Open (Name : String) return OS.File_Descriptor is
       C_Name : CS.chars_ptr := CS.New_String (Name);
       Raw    : C.int;
    begin
-      Raw := C_Shm_Open (C_Name, O_RDONLY, 0);
+      Raw := C_Shm_Open (C_Name);
       CS.Free (C_Name);
       return (if Raw < 0 then OS.Invalid_FD else OS.File_Descriptor (Raw));
    exception
@@ -111,7 +124,7 @@ package body Terminal.App.Platform_Media is
       Name : CS.chars_ptr := CS.New_String (Path);
       Result : C.int;
    begin
-      Result := C_Open (Name, O_DIRECTORY + O_NOFOLLOW + O_CLOEXEC);
+      Result := C_Open_Directory (Name);
       CS.Free (Name);
       return Result;
    exception
@@ -128,10 +141,9 @@ package body Terminal.App.Platform_Media is
       C_Name : CS.chars_ptr := CS.New_String (Name);
       Result : C.int;
    begin
-      Result := C_Openat
+      Result := C_Create_File_At
         (Directory,
          C_Name,
-         O_WRONLY + O_CREAT + O_EXCL + O_NOFOLLOW + O_CLOEXEC,
          Mode);
       CS.Free (C_Name);
       return Result;
@@ -156,7 +168,7 @@ package body Terminal.App.Platform_Media is
       C_Name : CS.chars_ptr := CS.New_String (Name);
       Result : C.int;
    begin
-      Result := C_Unlinkat (Directory, C_Name, 0);
+      Result := C_Delete_File_At (Directory, C_Name);
       CS.Free (C_Name);
       return Result = 0;
    exception
@@ -169,7 +181,7 @@ package body Terminal.App.Platform_Media is
       C_Name : CS.chars_ptr := CS.New_String (Name);
       Result : System.Address;
    begin
-      Result := Dlopen (C_Name, RTLD_LAZY);
+      Result := Dlopen (C_Name);
       CS.Free (C_Name);
       return Result;
    exception
