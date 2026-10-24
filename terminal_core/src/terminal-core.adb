@@ -1,4 +1,5 @@
 with Ada.Unchecked_Deallocation;
+with Terminal.Common.Identity;
 with Terminal.Core.Parser;
 
 package body Terminal.Core is
@@ -1143,6 +1144,16 @@ package body Terminal.Core is
       Text : String);
    procedure Begin_Response (T : in out Terminal);
    procedure End_Response (T : in out Terminal);
+   procedure Append_Response_Natural
+     (T : in out Terminal;
+      N : Natural);
+
+   --  Make Current_Modes.Keyboard_Flags the top of the active screen's
+   --  keyboard stack.
+   procedure Refresh_Keyboard_Flags (T : in out Terminal);
+
+   --  CSI 48 ; rows ; cols ; height ; width t, the in-band size report.
+   procedure Queue_Resize_Report (T : in out Terminal);
 
    procedure Mark_Dirty (T : in out Terminal; Row : Positive) is
    begin
@@ -1341,8 +1352,9 @@ package body Terminal.Core is
          Linefeed_New_Line        => False,
          Sixel_Display_Mode       => False,
          Sixel_Private_Colors     => True,
-         Sixel_Scrolls_Right      => False);
-
+         Sixel_Scrolls_Right      => False,
+         In_Band_Resize           => False,
+         Keyboard_Flags           => 0);
    end Default_Modes;
 
    procedure Reset_Terminal (T : in out Terminal) is
@@ -1366,6 +1378,7 @@ package body Terminal.Core is
       Reset_Graphics_Scroll (T, True);
       T.Active := Primary;
       T.Current_Modes := Default_Modes;
+      T.Keyboard_Stacks := (others => <>);
       T.Cursor_Row := 1;
       T.Cursor_Col := 1;
       T.Current_Cursor_Shape := Cursor_Block;
@@ -1691,6 +1704,41 @@ package body Terminal.Core is
          T.State := OSC_Overflow;
    end Append_OSC_Byte;
 
+   --  The private identity exchange that tells a program it runs in this
+   --  terminal: asked with OSC 7701 ; q ST, answered with
+   --  OSC 7701 ; v=<version> ; caps=<name>,... ST.
+   Private_Identity_OSC : constant := 7701;
+
+   procedure Queue_Identity_Report (T : in out Terminal) is
+      First : Boolean := True;
+
+      procedure Capability (Name : String; Present : Boolean) is
+      begin
+         if Present then
+            if not First then
+               Append_Response_Char (T, ',');
+            end if;
+
+            Append_Response_String (T, Name);
+            First := False;
+         end if;
+      end Capability;
+   begin
+      Begin_Response (T);
+      Append_Response_String (T, ASCII.ESC & "]7701;v=");
+      Append_Response_Natural (T, Common.Identity.Identity_Protocol_Version);
+      Append_Response_String (T, ";caps=");
+      Capability
+        ("kgfx",
+         T.Graphics_Capabilities.Kitty_Direct_RGBA or else T.Graphics_Capabilities.Kitty_Direct_PNG);
+      Capability ("kgfx-shm", T.Graphics_Capabilities.Kitty_Shared_Memory);
+      Capability ("kbd", True);
+      Capability ("resize2048", True);
+      Capability ("osc52", True);
+      Append_Response_String (T, ASCII.ESC & "\");
+      End_Response (T);
+   end Queue_Identity_Report;
+
    procedure Finish_OSC (T : in out Terminal) is
       Command : Natural := 0;
       Payload_First : Natural := 0;
@@ -1985,6 +2033,11 @@ package body Terminal.Core is
          for I in 1 .. Title_Length loop
             T.Window_Title.Text (I) := T.OSC_Data (Payload_First + I - 1);
          end loop;
+      elsif Command = Private_Identity_OSC
+        and then T.OSC_Count - Payload_First + 1 = 1
+        and then T.OSC_Data (Payload_First) = 'q'
+      then
+         Queue_Identity_Report (T);
       elsif Command = 8 then
          Decode_OSC8 (Payload_First, T.OSC_Count);
       elsif Command = 52 then
@@ -3895,6 +3948,8 @@ package body Terminal.Core is
                return (if T.Current_Modes.Bracketed_Paste then 1 else 2);
             when 2026 =>
                return (if T.Current_Modes.Synchronized_Update then 1 else 2);
+            when 2048 =>
+               return (if T.Current_Modes.In_Band_Resize then 1 else 2);
             when others =>
                return 0;
          end case;
@@ -4131,9 +4186,18 @@ package body Terminal.Core is
             T.Current_Modes.Synchronized_Update := Enable;
          when 8452 =>
             T.Current_Modes.Sixel_Scrolls_Right := Enable;
+         when 2048 =>
+            T.Current_Modes.In_Band_Resize := Enable;
+            --  A program turning the reports on is told the size at once.
+            if Enable then
+               Queue_Resize_Report (T);
+            end if;
          when others =>
             T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
       end case;
+
+      --  Switching screens switches keyboard stacks.
+      Refresh_Keyboard_Flags (T);
    end Set_Mode;
 
    procedure Apply_SGR (T : in out Terminal) is
@@ -4313,8 +4377,97 @@ package body Terminal.Core is
       T.Bottom_Margin := T.Rows;
       T.Last_Printable := 0;
       T.Has_Last_Printable := False;
+      Refresh_Keyboard_Flags (T);
       Mark_Cursor_Move (T, Old_Row);
    end Soft_Reset;
+
+   --  The progressive keyboard enhancement controls: CSI > flags u pushes,
+   --  CSI < n u pops n, CSI = flags ; mode u sets (1), adds (2), or removes
+   --  (3) flags, and CSI ? u asks for the current ones.
+   procedure Apply_Keyboard_Protocol (T : in out Terminal) is
+      Stack : Keyboard_Stack renames T.Keyboard_Stacks (T.Current_Modes.Alternate_Screen);
+      Flags : constant Natural := Natural'Min (Param (T, 1, 0), 31) mod (Supported_Keyboard_Flags + 1);
+   begin
+      case T.CSI_Private is
+         when '>' =>
+            if Stack.Depth = Max_Keyboard_Stack_Depth then
+               --  A full stack loses its oldest entry, as kitty's does.
+               Stack.Flags (1 .. Max_Keyboard_Stack_Depth - 1) := Stack.Flags (2 .. Max_Keyboard_Stack_Depth);
+            else
+               Stack.Depth := Stack.Depth + 1;
+            end if;
+            Stack.Flags (Stack.Depth) := Flags;
+         when '<' =>
+            Stack.Depth := Stack.Depth - Natural'Min (Stack.Depth, Natural'Max (1, Param (T, 1, 1)));
+         when '=' =>
+            if Stack.Depth = 0 then
+               Stack.Depth := 1;
+               Stack.Flags (1) := 0;
+            end if;
+
+            case Param (T, 2, 1) is
+               when 1 =>
+                  Stack.Flags (Stack.Depth) := Flags;
+               when 2 =>
+                  Stack.Flags (Stack.Depth) :=
+                    (if Flags mod 2 = 1 or else Stack.Flags (Stack.Depth) mod 2 = 1 then 1 else 0);
+               when 3 =>
+                  Stack.Flags (Stack.Depth) :=
+                    (if Flags mod 2 = 1 then 0 else Stack.Flags (Stack.Depth) mod 2);
+               when others =>
+                  T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            end case;
+         when '?' =>
+            Begin_Response (T);
+            Append_Response_String (T, ASCII.ESC & "[?");
+            Append_Response_Natural (T, T.Current_Modes.Keyboard_Flags);
+            Append_Response_Char (T, 'u');
+            End_Response (T);
+         when others =>
+            T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+      end case;
+
+      Refresh_Keyboard_Flags (T);
+   end Apply_Keyboard_Protocol;
+
+   --  XTVERSION: DCS > | name version ST.
+   procedure Queue_Version_Report (T : in out Terminal) is
+   begin
+      if T.CSI_Count > 1 or else Param (T, 1, 0) /= 0 then
+         T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+         return;
+      end if;
+
+      Begin_Response (T);
+      Append_Response_String
+        (T,
+         ASCII.ESC & "P>|" & Common.Identity.Program_Name & " "
+         & Common.Identity.Program_Version & ASCII.ESC & "\");
+      End_Response (T);
+   end Queue_Version_Report;
+
+   procedure Queue_Resize_Report (T : in out Terminal) is
+   begin
+      Begin_Response (T);
+      Append_Response_String (T, ASCII.ESC & "[48;");
+      Append_Response_Natural (T, T.Rows);
+      Append_Response_Char (T, ';');
+      Append_Response_Natural (T, T.Cols);
+      Append_Response_Char (T, ';');
+      Append_Response_Natural (T, Natural'Min (T.Rows, Natural'Last / Positive'Max (1, T.Cell_Pixel_Height))
+                                  * T.Cell_Pixel_Height);
+      Append_Response_Char (T, ';');
+      Append_Response_Natural (T, Natural'Min (T.Cols, Natural'Last / Positive'Max (1, T.Cell_Pixel_Width))
+                                  * T.Cell_Pixel_Width);
+      Append_Response_Char (T, 't');
+      End_Response (T);
+   end Queue_Resize_Report;
+
+   procedure Refresh_Keyboard_Flags (T : in out Terminal) is
+      Stack : Keyboard_Stack renames T.Keyboard_Stacks (T.Current_Modes.Alternate_Screen);
+   begin
+      T.Current_Modes.Keyboard_Flags := (if Stack.Depth = 0 then 0 else Stack.Flags (Stack.Depth));
+   end Refresh_Keyboard_Flags;
 
    procedure Execute_CSI (T : in out Terminal; Final : Standard.Character) is
       N : Natural;
@@ -4331,6 +4484,14 @@ package body Terminal.Core is
          return (if T.Current_Modes.Origin_Mode then T.Bottom_Margin else T.Rows);
       end Max_Row;
    begin
+      if Final = 'u' and then T.CSI_Private /= ASCII.NUL and then T.CSI_Intermediate_Count = 0 then
+         Apply_Keyboard_Protocol (T);
+         return;
+      elsif Final = 'q' and then T.CSI_Private = '>' and then T.CSI_Intermediate_Count = 0 then
+         Queue_Version_Report (T);
+         return;
+      end if;
+
       if T.CSI_Private = '<' or else T.CSI_Private = '=' then
          T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
          return;
@@ -5560,6 +5721,10 @@ package body Terminal.Core is
       T.Bottom_Margin := Rows;
       Mark_All_Dirty (T);
       Status := Ok;
+
+      if T.Current_Modes.In_Band_Resize then
+         Queue_Resize_Report (T);
+      end if;
    exception
       when Storage_Error | Constraint_Error =>
          if New_Primary /= null then
@@ -5721,9 +5886,15 @@ package body Terminal.Core is
       Width  : Positive;
       Height : Positive)
    is
+      Changed : constant Boolean := Width /= T.Cell_Pixel_Width or else Height /= T.Cell_Pixel_Height;
    begin
       T.Cell_Pixel_Width := Width;
       T.Cell_Pixel_Height := Height;
+
+      --  The size in pixels changes with the font even when the grid does not.
+      if Changed and then T.Initialized and then T.Current_Modes.In_Band_Resize then
+         Queue_Resize_Report (T);
+      end if;
    end Set_Cell_Pixel_Size;
 
    procedure Set_Window_Pixel_Size

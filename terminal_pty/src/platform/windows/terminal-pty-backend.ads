@@ -1,4 +1,5 @@
 with Terminal.Common.Bytes;
+with Terminal.Common.Identity;
 
 with System;
 
@@ -18,8 +19,8 @@ package Terminal.PTY.Backend is
    --  answer on every host.
    Term_Name : constant String := "xterm-256color";
    Color_Term : constant String := "truecolor";
-   Term_Program : constant String := "bracke-terminal";
-   Term_Program_Version : constant String := "0.1.0-dev";
+   Term_Program : constant String := Terminal.Common.Identity.Program_Name;
+   Term_Program_Version : constant String := Terminal.Common.Identity.Program_Version;
    Term_Features : constant String := "Sx";
 
    type Backend_Capabilities is record

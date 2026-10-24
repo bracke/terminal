@@ -1,3 +1,4 @@
+with Terminal.Common.Identity;
 with Terminal.Core;
 
 package Terminal.App is
@@ -6,8 +7,8 @@ package Terminal.App is
 
    Term_Name : constant String := "xterm-256color";
    Color_Term : constant String := "truecolor";
-   Term_Program : constant String := "bracke-terminal";
-   Term_Program_Version : constant String := "0.1.0-dev";
+   Term_Program : constant String := Terminal.Common.Identity.Program_Name;
+   Term_Program_Version : constant String := Terminal.Common.Identity.Program_Version;
 
    type Terminal_Profile is record
       Bracketed_Paste       : Boolean := True;

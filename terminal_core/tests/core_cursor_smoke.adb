@@ -166,8 +166,13 @@ begin
       Assert_Cursor
         (4, 8,
          "malformed CSI save/restore should not save or restore cursor");
+      --  CSI ? u is not a malformed restore but the keyboard enhancement
+      --  query, answered rather than diagnosed.
       Assert
-        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 4,
+        (Terminal.Core.Diagnostics (T).Unsupported_Sequence = Before + 3,
          "malformed CSI save/restore should be diagnosed");
+      Assert
+        (Terminal.Core.Pending_Response_Length (T) = 5,
+         "CSI ? u should answer with the keyboard enhancement flags");
    end;
 end Core_Cursor_Smoke;

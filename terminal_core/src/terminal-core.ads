@@ -188,7 +188,16 @@ package Terminal.Core is
       Sixel_Display_Mode : Boolean := False;
       Sixel_Private_Colors : Boolean := True;
       Sixel_Scrolls_Right : Boolean := False;
+      --  DEC private mode 2048: report the size whenever it changes.
+      In_Band_Resize     : Boolean := False;
+      --  The active progressive keyboard enhancement flags, as the top of
+      --  the active screen's stack holds them. Only bit 1, disambiguate
+      --  escape codes, is supported.
+      Keyboard_Flags     : Natural range 0 .. 31 := 0;
    end record;
+
+   --  The keyboard enhancement flags this terminal implements.
+   Supported_Keyboard_Flags : constant := 1;
 
    type Ignored_Graphics_Protocol is
      (No_Graphics,
@@ -526,6 +535,19 @@ private
       Next           : Graphics_Event_Node_Access := null;
    end record;
 
+   Max_Keyboard_Stack_Depth : constant := 8;
+
+   type Keyboard_Flag_Array is array (1 .. Max_Keyboard_Stack_Depth) of Natural range 0 .. 31;
+
+   --  Pushed keyboard flags, the last pushed in Flags (Depth).
+   type Keyboard_Stack is record
+      Flags : Keyboard_Flag_Array := (others => 0);
+      Depth : Natural range 0 .. Max_Keyboard_Stack_Depth := 0;
+   end record;
+
+   --  The main and the alternate screen keep stacks of their own.
+   type Keyboard_Stack_Pair is array (Boolean) of Keyboard_Stack;
+
    type Terminal is limited record
       Initialized      : Boolean := False;
       Rows             : Positive := 1;
@@ -566,6 +588,8 @@ private
       Bottom_Margin : Positive := 1;
       Current_Style : Style;
       Current_Modes : Mode_Snapshot;
+      --  Indexed by whether the alternate screen is active.
+      Keyboard_Stacks : Keyboard_Stack_Pair;
       G0_Charset    : Charset_Kind := ASCII_Charset;
       G1_Charset    : Charset_Kind := ASCII_Charset;
       G2_Charset    : Charset_Kind := ASCII_Charset;
