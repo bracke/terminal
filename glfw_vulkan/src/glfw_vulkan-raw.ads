@@ -192,6 +192,7 @@ package GLFW_Vulkan.Raw is
    function Create_Window_Surface
      (Instance : System.Address;
       Window   : GLFW_Window_Handle;
+      Allocator : System.Address;
       Surface  : System.Address) return Interfaces.C.int
-     with Import, Convention => C, External_Name => "glfw_vulkan_create_window_surface";
+     with Import, Convention => C, External_Name => "glfwCreateWindowSurface";
 end GLFW_Vulkan.Raw;

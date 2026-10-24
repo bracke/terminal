@@ -276,9 +276,9 @@ package body Terminal.PTY.Backend is
    --  The cost is that they are set on this process too. For a terminal emulator
    --  whose purpose is to host that child, describing its terminal in its own
    --  environment as well is a small and honest side effect.
-   procedure Publish_Terminal_Environment;
+   procedure Publish_Terminal_Environment (Features : String);
 
-   procedure Publish_Terminal_Environment is
+   procedure Publish_Terminal_Environment (Features : String) is
       function Set_Environment_Variable
         (Name : Interfaces.C.Strings.chars_ptr;
          Value : Interfaces.C.Strings.chars_ptr) return BOOL
@@ -300,13 +300,17 @@ package body Terminal.PTY.Backend is
    begin
       Publish ("TERM", Term_Name);
       Publish ("COLORTERM", Color_Term);
+      Publish ("TERM_PROGRAM", Term_Program);
+      Publish ("TERM_PROGRAM_VERSION", Term_Program_Version);
+      Publish ("TERM_FEATURES", Features);
    end Publish_Terminal_Environment;
 
    procedure Spawn_Default_Shell
      (S      : out Session;
       Rows   : Positive;
       Cols   : Positive;
-      Status : out Spawn_Status)
+      Status : out Spawn_Status;
+      Features : String := Term_Features)
    is
       Input_Read   : aliased HANDLE := System.Null_Address;
       Input_Write  : aliased HANDLE := System.Null_Address;
@@ -343,7 +347,7 @@ package body Terminal.PTY.Backend is
          Interfaces.C.Strings.Free (Command);
       end Abandon;
    begin
-      Publish_Terminal_Environment;
+      Publish_Terminal_Environment (Features);
       Trace := (others => <>);
 
       S.Console := System.Null_Address;

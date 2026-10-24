@@ -4,10 +4,10 @@ library project Terminal_PTY is
    --  One backend per host, chosen here rather than by the caller: the app names
    --  Terminal.PTY.Backend and gets whichever one this host has.
    --
-   --  The POSIX side carries a small C shim (terminal_pty_sys.c) so the platform
-   --  headers can resolve facilities whose values differ across Linux and
-   --  macOS/BSD -- errno's accessor symbol and the TIOCSWINSZ/TIOCSCTTY ioctl
-   --  request numbers. The Windows side is ConPTY and needs no shim.
+   --  The POSIX side carries a small C shim (terminal_pty_sys.c) so platform
+   --  headers can resolve the TIOCSWINSZ/TIOCSCTTY ioctl request numbers, which
+   --  differ across Linux and macOS/BSD. The Windows side is ConPTY and needs
+   --  no shim.
    --  Which backend to build.
    --
    --  A scenario variable rather than Alire's generated Alire_Host_OS, because

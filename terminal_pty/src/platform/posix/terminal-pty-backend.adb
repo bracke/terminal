@@ -1,5 +1,6 @@
 with Interfaces.C;
 with Interfaces.C.Strings;
+with GNAT.OS_Lib;
 with System;
 
 package body Terminal.PTY.Backend is
@@ -78,9 +79,6 @@ package body Terminal.PTY.Backend is
      with Import, Convention => C, External_Name => "execv";
    procedure c_exit (Status : int)
      with Import, Convention => C, External_Name => "_exit";
-   function C_Last_Errno return int
-     with Import, Convention => C, External_Name => "terminal_pty_last_errno";
-
    procedure Close_FD (FD : int) is
       Ignored : int;
       pragma Unreferenced (Ignored);
@@ -90,7 +88,7 @@ package body Terminal.PTY.Backend is
 
    function Last_Errno return int is
    begin
-      return C_Last_Errno;
+      return int (GNAT.OS_Lib.Errno);
    end Last_Errno;
 
    Trace : Spawn_Trace;
@@ -190,7 +188,8 @@ package body Terminal.PTY.Backend is
      (S      : out Session;
       Rows   : Positive;
       Cols   : Positive;
-      Status : out Spawn_Status)
+      Status : out Spawn_Status;
+      Features : String := Term_Features)
    is
       Master : int;
       Slave_Name : Interfaces.C.Strings.chars_ptr;
@@ -242,6 +241,20 @@ package body Terminal.PTY.Backend is
             Color_Name : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String ("COLORTERM");
             Color_Value : Interfaces.C.Strings.chars_ptr :=
               Interfaces.C.Strings.New_String (Terminal.PTY.Backend.Color_Term);
+            Program_Name : Interfaces.C.Strings.chars_ptr :=
+              Interfaces.C.Strings.New_String ("TERM_PROGRAM");
+            Program_Value : Interfaces.C.Strings.chars_ptr :=
+              Interfaces.C.Strings.New_String
+                (Terminal.PTY.Backend.Term_Program);
+            Program_Version_Name : Interfaces.C.Strings.chars_ptr :=
+              Interfaces.C.Strings.New_String ("TERM_PROGRAM_VERSION");
+            Program_Version_Value : Interfaces.C.Strings.chars_ptr :=
+              Interfaces.C.Strings.New_String
+                (Terminal.PTY.Backend.Term_Program_Version);
+            Features_Name : Interfaces.C.Strings.chars_ptr :=
+              Interfaces.C.Strings.New_String ("TERM_FEATURES");
+            Features_Value : Interfaces.C.Strings.chars_ptr :=
+              Interfaces.C.Strings.New_String (Features);
             Args : aliased Argv_Array :=
               (1 => Shell,
                2 => Interfaces.C.Strings.Null_Ptr);
@@ -266,6 +279,10 @@ package body Terminal.PTY.Backend is
             end if;
             Ignored := setenv (Term_Name, Term_Value, 1);
             Ignored := setenv (Color_Name, Color_Value, 1);
+            Ignored := setenv (Program_Name, Program_Value, 1);
+            Ignored := setenv
+              (Program_Version_Name, Program_Version_Value, 1);
+            Ignored := setenv (Features_Name, Features_Value, 1);
             Ignored := execv (Shell, Args'Address);
             c_exit (127);
          end;

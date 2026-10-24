@@ -18,6 +18,14 @@ procedure PTY_Env_Smoke is
      "__TERM=" & Terminal.PTY.Backend.Term_Name & "__";
    Color_Marker : constant String :=
      "__COLORTERM=" & Terminal.PTY.Backend.Color_Term & "__";
+   Program_Marker : constant String :=
+     "__TERM_PROGRAM=" & Terminal.PTY.Backend.Term_Program & "__";
+   Version_Marker : constant String :=
+     "__TERM_PROGRAM_VERSION="
+     & Terminal.PTY.Backend.Term_Program_Version & "__";
+   Requested_Features : constant String := "FSx";
+   Features_Marker : constant String :=
+     "__TERM_FEATURES=" & Requested_Features & "__";
    --  Asked in the shell the host actually runs. The backend spawns sh on POSIX
    --  and cmd.exe on Windows, and neither understands the other's syntax; what
    --  is under test is that the child was given the variables, not how it is
@@ -35,9 +43,16 @@ procedure PTY_Env_Smoke is
         --  up lets the console paint, which is also what a terminal does with a
         --  real one. Close ends it afterwards.
         "echo __TERM=%TERM%__& echo __COLORTERM=%COLORTERM%__"
+             & "& echo __TERM_PROGRAM=%TERM_PROGRAM%__"
+             & "& echo __TERM_PROGRAM_VERSION=%TERM_PROGRAM_VERSION%__"
+             & "& echo __TERM_FEATURES=%TERM_FEATURES%__"
              & Character'Val (13)
       else "printf '__TERM=%s__\n' ""$TERM""; "
-             & "printf '__COLORTERM=%s__\n' ""$COLORTERM""; exit"
+             & "printf '__COLORTERM=%s__\n' ""$COLORTERM""; "
+             & "printf '__TERM_PROGRAM=%s__\n' ""$TERM_PROGRAM""; "
+             & "printf '__TERM_PROGRAM_VERSION=%s__\n' "
+             & """$TERM_PROGRAM_VERSION""; "
+             & "printf '__TERM_FEATURES=%s__\n' ""$TERM_FEATURES""; exit"
              & Character'Val (13));
 
    S            : Terminal.PTY.Backend.Session;
@@ -117,8 +132,13 @@ begin
    Assert
      (Terminal.PTY.Backend.Color_Term = "truecolor",
       "PTY COLORTERM constant");
+   Assert
+     (Terminal.PTY.Backend.Term_Program = "bracke-terminal"
+      and then Terminal.PTY.Backend.Term_Program_Version = "0.1.0-dev",
+      "PTY terminal program identity");
 
-   Terminal.PTY.Backend.Spawn_Default_Shell (S, Rows, Cols, Spawn_Status);
+   Terminal.PTY.Backend.Spawn_Default_Shell
+     (S, Rows, Cols, Spawn_Status, Requested_Features);
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
 
    --  Was it still there when we spoke to it? This splits what is left in two:
@@ -173,7 +193,11 @@ begin
             exit;
       end case;
 
-      exit when Contains (Term_Marker) and then Contains (Color_Marker);
+      exit when Contains (Term_Marker)
+        and then Contains (Color_Marker)
+        and then Contains (Program_Marker)
+        and then Contains (Version_Marker)
+        and then Contains (Features_Marker);
    end loop;
 
    --  Say what came back when it is not what was wanted. A bare assertion here
@@ -181,7 +205,13 @@ begin
    --  what the shell said instead -- which, when the only machine that can run
    --  this is a build runner, is the difference between a diagnosis and another
    --  round trip.
-   if not (Contains (Term_Marker) and then Contains (Color_Marker)) then
+   if not
+     (Contains (Term_Marker)
+      and then Contains (Color_Marker)
+      and then Contains (Program_Marker)
+      and then Contains (Version_Marker)
+      and then Contains (Features_Marker))
+   then
       --  Enough to tell a child that died at once from a read that never
       --  worked: the first shows as not alive with nothing to read, the second
       --  as alive with the loop giving up.
@@ -253,4 +283,7 @@ begin
    Assert
      (Contains (Color_Marker),
       "child shell should see COLORTERM=truecolor");
+   Assert
+     (Contains (Features_Marker),
+      "child shell should see truthful graphics TERM_FEATURES");
 end PTY_Env_Smoke;

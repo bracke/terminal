@@ -18,6 +18,9 @@ package Terminal.PTY.Backend is
    --  answer on every host.
    Term_Name : constant String := "xterm-256color";
    Color_Term : constant String := "truecolor";
+   Term_Program : constant String := "bracke-terminal";
+   Term_Program_Version : constant String := "0.1.0-dev";
+   Term_Features : constant String := "Sx";
 
    type Backend_Capabilities is record
       POSIX_PTY        : Boolean := False;
@@ -55,7 +58,8 @@ package Terminal.PTY.Backend is
      (S      : out Session;
       Rows   : Positive;
       Cols   : Positive;
-      Status : out Spawn_Status);
+      Status : out Spawn_Status;
+      Features : String := Term_Features);
 
    type Read_Status is
      (Ok,

@@ -1,5 +1,5 @@
 name = "terminal_pty"
-description = "Linux POSIX PTY backend for the Ada terminal"
+description = "POSIX PTY and Windows ConPTY backends for the Ada terminal"
 version = "0.1.0-dev"
 licenses = "MIT"
 

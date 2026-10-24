@@ -84,6 +84,7 @@ package body GLFW_Vulkan.Surfaces is
       Result := Raw.Create_Window_Surface
         (Instance,
          GLFW_Vulkan.Windows.Internal.Handle (Window),
+         System.Null_Address,
          Local_Surface'Address);
       Surface := Local_Surface;
       Status := (if Result = 0 then Ok else Create_Surface_Failed);
