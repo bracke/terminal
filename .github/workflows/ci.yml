@@ -5,15 +5,16 @@ on:
   pull_request:
   workflow_dispatch:
 
-# terminal is a GLFW/Vulkan terminal emulator. Its only external dependency is
-# textrender (the terminal_common/core/pty_posix/glfw_vulkan crates are nested in
-# this repo; aunit and df_vulkan come from the Alire community index). Each nested
-# crate's smoke suite is a gpr that "with"s aunit and is built from that crate's
-# directory via `alr exec -- gprbuild` (per README).
+# terminal is a GLFW/Vulkan terminal emulator. Its external source dependencies
+# include the sibling textrender, zlib, jpeglib, and giflib crates (the
+# terminal_common/core/pty/glfw_vulkan crates are nested in this repo; aunit and
+# df_vulkan come from the Alire community index). Each nested crate's smoke suite
+# is a gpr that "with"s aunit and is built from that crate's directory via
+# `alr exec -- gprbuild` (per README).
 #
-# Windows has no PTY backend yet (terminal_pty is POSIX-only), so its job is
-# allowed to fail: it tracks the gap and will go green on its own once a ConPTY
-# backend lands.
+# `terminal_pty` selects POSIX on Linux/macOS and ConPTY on Windows. The Windows
+# job is blocking and exercises real shell spawn, I/O, resize, and close rather
+# than serving as a compile-only portability check.
 
 jobs:
   linux:
@@ -52,6 +53,11 @@ jobs:
             libglfw3-dev \
             mesa-vulkan-drivers \
             xvfb \
+            xauth \
+            chafa \
+            libsixel-bin \
+            tmux \
+            util-linux \
             fonts-dejavu-core \
             libxcursor-dev \
             libxxf86vm-dev \
@@ -61,6 +67,9 @@ jobs:
       - name: Build terminal
         working-directory: terminal
         run: alr --non-interactive build
+      - name: Build Ada graphics probe tools
+        working-directory: terminal
+        run: alr --non-interactive exec -- gprbuild -p -P tools/graphics_tools.gpr
 
       - name: Core smoke suite
         working-directory: terminal/terminal_core
@@ -76,9 +85,29 @@ jobs:
         working-directory: terminal/terminal_glfw_vulkan_app
         env:
           VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+          TERMINAL_REQUIRE_GUI_PRESENT: "1"
         run: |
           alr --non-interactive exec -- gprbuild -p -P tests/app_tests.gpr
           xvfb-run -a bash -c 'for t in tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done'
+      - name: Graphics pipeline corpus and instrumentation smoke
+        working-directory: terminal/terminal_glfw_vulkan_app
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P fuzz/graphics_pipeline_fuzz.gpr
+          fuzz/bin/afl_coverage_smoke \
+            fuzz/bin/graphics_pipeline_fuzz_target \
+            fuzz/corpus/kitty_rgba fuzz/corpus/kitty_png
+          fuzz/bin/graphics_pipeline_fuzz_target fuzz/corpus/iterm_gif
+          fuzz/bin/graphics_pipeline_fuzz_target fuzz/corpus/sixel
+      - name: Released client and tmux interoperability probes
+        working-directory: terminal
+        env:
+          VK_ICD_FILENAMES: /usr/share/vulkan/icd.d/lvp_icd.json
+        run: |
+          ( cd terminal_core && alr --non-interactive exec -- \
+              gprbuild -p -P fuzz/core_graphics_fuzz.gpr )
+          tools/bin/external_graphics_clients_probe
+          tools/bin/tmux_graphics_passthrough_probe
+          xvfb-run -a tools/bin/tmux_graphics_passthrough_probe --present
 
   macos:
     name: macOS build + tests
@@ -107,6 +136,9 @@ jobs:
       - name: Install system libraries (macOS)
         run: |
           brew update
+          # The Intel image can still have openssl@1.1 linked. Harfbuzz pulls an
+          # openssl@3 upgrade, whose link step otherwise collides with it.
+          brew unlink openssl@1.1 || true
           # MoltenVK provides the Vulkan loader/ICD on macOS; glfw is linked by
           # the glfw_vulkan crate.
           brew install vulkan-headers vulkan-loader molten-vk glfw harfbuzz
@@ -164,11 +196,9 @@ jobs:
           # Alire's gnat_native is mingw-w64, so its linker needs mingw import
           # libraries. Take vulkan and glfw from the runner's MSYS2.
           #
-          # vulkan-headers as well as the loader: the loader carries the import
-          # library, but glfw3.h includes vulkan/vulkan.h, and the C shim in
-          # glfw_vulkan includes glfw3.h. Without the headers the build died on a
-          # missing vulkan/vulkan.h -- which is what this job had been failing on,
-          # unnoticed, because it is allowed to fail. macOS installs both already.
+          # Keep vulkan-headers alongside the loader for dependency builds and
+          # Vulkan tooling. Window-surface creation itself now uses a direct Ada
+          # import instead of compiling a GLFW C shim. macOS installs both too.
           pacman() { /c/msys64/usr/bin/pacman "$@"; }
           pacman-key() { /c/msys64/usr/bin/pacman-key "$@"; }
           pacman-key --init || true
