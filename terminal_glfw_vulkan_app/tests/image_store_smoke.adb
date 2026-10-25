@@ -14,6 +14,8 @@ procedure Image_Store_Smoke is
    use type Terminal.Common.Bytes.Byte_Array;
    use type Terminal.App.Image_Store.Image_Frame_Access;
    use type Terminal.App.Image_Store.Theme_Operation_Access;
+   use type Terminal.App.Image_Store.Animation_Playback_State;
+   use type Terminal.App.Image_Animation.Control_Result;
 
    package Store renames Terminal.App.Image_Store;
 
@@ -185,6 +187,47 @@ begin
 
    declare
       Data : Terminal.App.Render_Model.Image_Data_Access :=
+        new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#31#);
+      Operation : Store.Theme_Operation_Access;
+      Transaction : Store.Theme_Append_Transaction;
+   begin
+      Store.Create_Theme_Operation
+        ((Target_Frame => 1, others => <>), Data, Operation);
+      Store.Begin_Theme_Append
+        (Container, Original, Operation, Transaction);
+      Assert
+        (Operation = null
+         and then Store.Theme_Operation_Count_Of (Original) = 1
+         and then Store.Byte_Count (Container) = 8,
+         "theme append transaction publishes provisional accounting");
+      Store.Rollback_Theme_Append (Container, Transaction);
+      Assert
+        (Store.Theme_Operation_Count_Of (Original) = 0
+         and then Store.Byte_Count (Container) = 4,
+         "theme append rollback restores ownership and accounting");
+   end;
+
+   declare
+      Data : Terminal.App.Render_Model.Image_Data_Access :=
+        new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#32#);
+      Operation : Store.Theme_Operation_Access;
+      Transaction : Store.Theme_Append_Transaction;
+   begin
+      Store.Create_Theme_Operation
+        ((Target_Frame => 1, others => <>), Data, Operation);
+      Store.Begin_Theme_Append
+        (Container, Original, Operation, Transaction);
+      Store.Commit (Transaction);
+      Store.Rollback_Theme_Append (Container, Transaction);
+      Assert
+        (Store.Theme_Operation_Count_Of (Original) = 1
+         and then Store.Byte_Count (Container) = 8,
+         "committed theme append is not rolled back by cleanup");
+      Store.Clear_Theme_Operations (Container, Original);
+   end;
+
+   declare
+      Data : Terminal.App.Render_Model.Image_Data_Access :=
         new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#7F#);
       Frame : Store.Image_Frame_Access;
    begin
@@ -251,6 +294,26 @@ begin
       Store.Release_Unowned_Frames (Head);
       Store.Delete_Object (Other, Item);
    end;
+   Store.Set_Playback (Original, Store.Animation_Running);
+   Store.Set_Loop_Count (Original, 1);
+   Store.Set_Loops_Completed (Original, Natural'Last);
+   Store.Set_Current_Frame (Original, 2);
+   Store.Set_Deadline (Original, True);
+   Store.Set_Next_Frame_At (Original, Ada.Real_Time.Time_First);
+   Assert
+     (Terminal.App.Image_Animation.Apply_Control
+        (Original,
+         (Frame_Number => 2,
+          Frame_Gap    => 25,
+          Start_Frame  => 2,
+          Loop_Count   => 3,
+          State        => Terminal.App.Image_Animation.Running)) =
+        Terminal.App.Image_Animation.Control_Ok
+      and then Store.Frame_Gap (Original, 2) = 25
+      and then Store.Current_Frame (Original.all) = 2
+      and then Store.Loop_Count (Original.all) = 3
+      and then Store.Playback (Original.all) = Store.Animation_Running,
+      "protocol-neutral animation controls update store playback state");
    Store.Set_Playback (Original, Store.Animation_Running);
    Store.Set_Loop_Count (Original, 1);
    Store.Set_Loops_Completed (Original, Natural'Last);

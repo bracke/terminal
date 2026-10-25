@@ -197,6 +197,25 @@ begin
       end;
    end;
 
+   declare
+      Before : Terminal.Common.Bytes.Byte_Array (1 .. 4) :=
+        Terminal.App.Renderer.Testing.Last_Frame (R).Images (1)
+          .Decoded_Bytes (1 .. 4);
+      After : Terminal.Common.Bytes.Byte_Array (1 .. 4);
+   begin
+      Terminal.App.Renderer.Testing.Fail_Image_Allocation_After (R, 1);
+      Process
+        ("Gq=2,a=f,i=230,f=8,r=2,s=1,v=1;Aw==",
+         "indexed animation edit commit rejection",
+         Terminal.Core.Kitty_ENOMEM);
+      Render_Retained ("indexed animation after rejected edit");
+      After := Terminal.App.Renderer.Testing.Last_Frame (R).Images (1)
+        .Decoded_Bytes (1 .. 4);
+      Assert
+        (After = Before,
+         "failed replay-history append cannot publish animation pixels");
+   end;
+
    Process
      ("Gq=2,a=f,i=230,f=8,r=1,s=1,v=1;Ag==",
       "indexed animation root edit",

@@ -1,3 +1,6 @@
+with Ada.Containers;
+with Ada.Containers.Hashed_Sets;
+
 separate (Terminal.App.Renderer)
 procedure Set_Theme
   (R      : in out Renderer;
@@ -21,6 +24,13 @@ is
    Outcome : Theme_Update_Status := Theme_Ok;
    Theme_Changed : Boolean := False;
    Rollback_Failed : Boolean := False;
+
+   function Hash_Frame (Value : Positive) return Ada.Containers.Hash_Type is
+     (Ada.Containers.Hash_Type'Mod (Value));
+   package Frame_Sets is new Ada.Containers.Hashed_Sets
+     (Element_Type        => Positive,
+      Hash                => Hash_Frame,
+      Equivalent_Elements => "=");
 
    function Is_Theme_Sensitive (Item : Image_Object_Access) return Boolean is
      (Item /= null
@@ -70,47 +80,16 @@ is
                Pixel_Count : Natural;
                Canvas_Bytes : Natural;
                Working_Bytes : Natural := 0;
-
-               function References
-                 (Operation : Theme_Operation_Access;
-                  Frame     : Positive) return Boolean
-               is
-               begin
-                  return Operation.Target_Frame = Frame
-                    or else
-                      (Operation.Is_Composition
-                       and then Operation.Source_Frame = Frame)
-                    or else
-                      (Operation.New_Frame
-                       and then Operation.Base_Frame = Frame);
-               end References;
-
-               function Seen_Before
-                 (Stop  : Theme_Operation_Access;
-                  Frame : Positive) return Boolean
-               is
-                  Previous : Theme_Operation_Access :=
-                    Terminal.App.Image_Store.First_Theme_Operation (Item);
-               begin
-                  while Previous /= null and then Previous /= Stop loop
-                     if References (Previous, Frame) then
-                        return True;
-                     end if;
-                     Previous :=
-                       Terminal.App.Image_Store.Next_Theme_Operation
-                         (Previous);
-                  end loop;
-                  return False;
-               end Seen_Before;
+               Seen : Frame_Sets.Set;
 
                procedure Charge_If_First
-                 (Operation : Theme_Operation_Access;
-                  Frame     : Natural)
+                 (Frame : Natural)
                is
                begin
                   if Frame > 0
-                    and then not Seen_Before (Operation, Positive (Frame))
+                    and then not Seen.Contains (Positive (Frame))
                   then
+                     Seen.Insert (Positive (Frame));
                      Add_Bounded (Working_Bytes, Canvas_Bytes);
                   end if;
                end Charge_If_First;
@@ -140,14 +119,11 @@ is
                   Operation :=
                     Terminal.App.Image_Store.First_Theme_Operation (Item);
                   while Operation /= null loop
-                     Charge_If_First
-                       (Operation, Operation.Target_Frame);
+                     Charge_If_First (Operation.Target_Frame);
                      if Operation.Is_Composition then
-                        Charge_If_First
-                          (Operation, Operation.Source_Frame);
+                        Charge_If_First (Operation.Source_Frame);
                      elsif Operation.New_Frame then
-                        Charge_If_First
-                          (Operation, Operation.Base_Frame);
+                        Charge_If_First (Operation.Base_Frame);
                      end if;
                      Operation :=
                        Terminal.App.Image_Store.Next_Theme_Operation

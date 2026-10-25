@@ -262,6 +262,21 @@ package Terminal.App.Image_Store is
      (Container : in out Store;
       Object    : Image_Object_Access;
       Operation : in out Theme_Operation_Access);
+
+   --  A theme append may need to precede the corresponding pixel mutation so
+   --  allocation failure cannot publish pixels without replay history.  The
+   --  transaction owns the appended operation until Commit and removes it on
+   --  Rollback.
+   type Theme_Append_Transaction is limited private;
+   procedure Begin_Theme_Append
+     (Container   : in out Store;
+      Object      : Image_Object_Access;
+      Operation   : in out Theme_Operation_Access;
+      Transaction : in out Theme_Append_Transaction);
+   procedure Commit (Transaction : in out Theme_Append_Transaction);
+   procedure Rollback_Theme_Append
+     (Container   : in out Store;
+      Transaction : in out Theme_Append_Transaction);
    procedure Clear_Theme_Operations
      (Container : in out Store;
       Object    : Image_Object_Access);
@@ -409,5 +424,11 @@ private
 
    type Install_Transaction is limited record
       Storage_Order : Interfaces.Unsigned_64 := 0;
+   end record;
+
+   type Theme_Append_Transaction is limited record
+      Object        : Image_Object_Access := null;
+      Previous_Tail : Theme_Operation_Access := null;
+      Operation     : Theme_Operation_Access := null;
    end record;
 end Terminal.App.Image_Store;

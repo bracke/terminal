@@ -19,7 +19,9 @@ with Terminal.App.Image_Placements;
 with Terminal.App.Image_Rendering;
 with Terminal.App.ITerm2_Files;
 with Terminal.App.Hyperlinks;
+with Terminal.App.Placeholder_Index;
 with Terminal.App.Render_Model;
+with Terminal.App.Size_Arithmetic;
 with Terminal.App.Text_Shaper;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Submit;
@@ -679,45 +681,6 @@ package body Terminal.App.Renderer is
       end loop;
       return null;
    end Find_Addressed_Virtual_Placement;
-
-   function Find_Virtual_Placement_For_Cell
-     (R            : Renderer;
-      Stream_ID    : Terminal.Core.Graphics_Stream_ID;
-      Alternate_Screen : Boolean;
-      Screen_Generation : Terminal.Core.Graphics_Screen_Generation;
-      Image_ID     : Terminal.Core.Graphics_ID;
-      Placement_ID : Terminal.Core.Graphics_ID)
-      return Virtual_Placement_Access
-   is
-      Current : Virtual_Placement_Access;
-   begin
-      if Placement_ID /= 0 then
-         return Find_Virtual_Placement
-           (R,
-            Stream_ID,
-            Alternate_Screen,
-            Screen_Generation,
-            Image_ID,
-            Placement_ID);
-      end if;
-
-      --  Kitty permits an omitted/zero underline color on a Unicode image
-      --  placeholder. In that case any virtual placement belonging to the
-      --  selected image is suitable. New placements are linked at the head,
-      --  which also makes the choice deterministic.
-      Current := R.Virtual_Placements;
-      while Current /= null loop
-         if Current.Stream_ID = Stream_ID
-           and then Current.Alternate_Screen = Alternate_Screen
-           and then Current.Screen_Generation = Screen_Generation
-           and then Current.Image_ID = Image_ID
-         then
-            return Current;
-         end if;
-         Current := Current.Next;
-      end loop;
-      return null;
-   end Find_Virtual_Placement_For_Cell;
 
    function Has_Virtual_Placement
      (R        : Renderer;
@@ -2636,18 +2599,6 @@ package body Terminal.App.Renderer is
         (R.Image_Objects, Object, Max_Theme_Operations);
    end Archive_Root_Theme_Operations;
 
-   procedure Append_Theme_Operation
-     (R         : in out Renderer;
-      Object    : Image_Object_Access;
-      Operation : in out Theme_Operation_Access)
-   is
-   begin
-      if Object /= null and then Operation /= null then
-         Terminal.App.Image_Store.Append_Theme_Operation
-           (R.Image_Objects, Object, Operation);
-      end if;
-   end Append_Theme_Operation;
-
    function Reserve_Theme_Operation_Bytes
      (R          : in out Renderer;
       Object     : Image_Object_Access;
@@ -2753,9 +2704,33 @@ package body Terminal.App.Renderer is
    is
       Object : constant Image_Object_Access :=
         Find_Image_Object (R, Event.Stream_ID, Header.Kitty_ID);
+      Control : Terminal.App.Image_Animation.Animation_Control;
+      Result  : Terminal.App.Image_Animation.Control_Result;
    begin
+      if Header.Kitty_Animation_State > 3 then
+         R.Last_Animation_Result := Terminal.Core.Kitty_EINVAL;
+         return;
+      end if;
+      Control :=
+        (Frame_Number => Header.Kitty_Frame_Number,
+         Frame_Gap    => Header.Kitty_Frame_Gap,
+         Start_Frame  => Header.Kitty_Base_Frame,
+         Loop_Count   => Header.Kitty_Loop_Count,
+         State        =>
+           (case Header.Kitty_Animation_State is
+               when 1 => Terminal.App.Image_Animation.Stopped,
+               when 2 => Terminal.App.Image_Animation.Loading,
+               when 3 => Terminal.App.Image_Animation.Running,
+               when others => Terminal.App.Image_Animation.Unchanged));
+      Result := Terminal.App.Image_Animation.Apply_Control (Object, Control);
       R.Last_Animation_Result :=
-        Terminal.App.Image_Animation.Apply_Control (Object, Header);
+        (case Result is
+            when Terminal.App.Image_Animation.Control_Ok =>
+              Terminal.Core.Kitty_OK,
+            when Terminal.App.Image_Animation.Control_Invalid =>
+              Terminal.Core.Kitty_EINVAL,
+            when Terminal.App.Image_Animation.Control_Not_Found =>
+              Terminal.Core.Kitty_ENOENT);
       if R.Last_Animation_Result = Terminal.Core.Kitty_OK then
          Touch_Image_Object (R, Object);
       end if;
@@ -4023,19 +3998,27 @@ package body Terminal.App.Renderer is
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot)
    is
-      Cached_Image_ID : Terminal.Core.Graphics_ID := 0;
-      Cached_Placement_ID : Terminal.Core.Graphics_ID := 0;
-      Cached_Placement : Virtual_Placement_Access := null;
-      Cached_Placement_Checked : Boolean := False;
-      Cached_Object_Storage_Order : Interfaces.Unsigned_64 := 0;
-      Cached_Object : Image_Object_Access := null;
-      Cached_Object_Checked : Boolean := False;
+      Index : Terminal.App.Placeholder_Index.Index;
    begin
       if Frame_Image_Commands (R) = null
         or else Snapshot.Image_Cell_Count = 0
       then
          return;
       end if;
+
+      begin
+         Terminal.App.Placeholder_Index.Build
+           (Index,
+            R.Virtual_Placements,
+            R.Image_Objects,
+            Snapshot.Graphics_Stream,
+            Snapshot.Alternate_Screen,
+            Snapshot.Screen_Generation);
+      exception
+         when Storage_Error =>
+            R.Graphics_Event_Tracking_Failed := True;
+            return;
+      end;
 
       for Row in 1 .. Snapshot.Rows loop
          for Col in 1 .. Snapshot.Cols loop
@@ -4055,41 +4038,14 @@ package body Terminal.App.Renderer is
                      Placement : Virtual_Placement_Access;
                      Object : Image_Object_Access;
                   begin
-                     if not Cached_Placement_Checked
-                       or else Cached_Image_ID /= Image_ID
-                       or else Cached_Placement_ID /= Placement_ID
-                     then
-                        Cached_Image_ID := Image_ID;
-                        Cached_Placement_ID := Placement_ID;
-                        Cached_Placement :=
-                          Find_Virtual_Placement_For_Cell
-                            (R,
-                             Snapshot.Graphics_Stream,
-                             Snapshot.Alternate_Screen,
-                             Snapshot.Screen_Generation,
-                             Image_ID,
-                             Placement_ID);
-                        Cached_Placement_Checked := True;
-                     end if;
-                     Placement := Cached_Placement;
+                     Placement := Terminal.App.Placeholder_Index.Find_Placement
+                       (Index, Image_ID, Placement_ID);
 
                      if Placement = null then
                         Object := null;
                      else
-                        if not Cached_Object_Checked
-                          or else Cached_Object_Storage_Order /=
-                            Placement.Image_Storage_Order
-                        then
-                           Cached_Object_Storage_Order :=
-                             Placement.Image_Storage_Order;
-                           Cached_Object :=
-                             Find_Image_Object_By_Storage_Order
-                               (R,
-                                Snapshot.Graphics_Stream,
-                                Placement.Image_Storage_Order);
-                           Cached_Object_Checked := True;
-                        end if;
-                        Object := Cached_Object;
+                        Object := Terminal.App.Placeholder_Index.Find_Object
+                          (Index, Placement.Image_Storage_Order);
                      end if;
                      if Placement /= null
                        and then Object /= null
@@ -5293,6 +5249,10 @@ package body Terminal.App.Renderer is
         (R, Snapshot, Snapshot.Graphics_Scroll_Current);
       Add_Conventional_Images (R, Snapshot);
       Add_Placeholder_Images (R, Snapshot);
+      if R.Graphics_Event_Tracking_Failed then
+         Status := Allocation_Failed;
+         return;
+      end if;
 
       if Show_Overlay then
          Add_Link_Overlay (R, Snapshot, Status);
@@ -5463,281 +5423,7 @@ package body Terminal.App.Renderer is
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
       Status   : out Render_Status)
-   is
-      Cell_Count     : Natural;
-      Rect_Max       : Natural;
-      Content_Width  : Natural;
-      Content_Height : Natural;
-      Capacity_Ok    : Boolean;
-   begin
-      if not R.Initialized or else not R.Text_Loaded then
-         Set_Render_Status (R, Status, Not_Initialized);
-         return;
-      elsif Snapshot.Rows = 0 or else Snapshot.Cols = 0 then
-         Set_Render_Status (R, Status, Invalid_Snapshot);
-         return;
-      end if;
-
-      Reset_Frame (R);
-      R.Graphics_Event_Tracking_Failed := False;
-      R.Missing_Glyph_Count := 0;
-      R.Shaped_Glyph_Count := 0;
-      R.Shaping_Fallback_Count := 0;
-      R.Text_Fallback_Run_Count := 0;
-      R.Color_Glyph_Count := 0;
-      R.Color_Emoji_Fallback_Count := 0;
-      R.Paragraph_Bidi_Fallback_Count := 0;
-
-      Cell_Count := Snapshot.Rows * Snapshot.Cols;
-      Rect_Max := Cell_Count * 4 + 3;
-      Ensure_Frame_Capacity
-        (R,
-         Rectangle_Count => Positive (Rect_Max),
-         Glyph_Count => Positive
-           (Cell_Count
-            * Natural'Max
-                (Terminal.Core.Max_Cluster_Attachments + 1,
-                 RM.Max_Shaped_Glyphs_Per_Run)
-            * 2
-            + Max_Link_Overlay_Chars),
-         --  One tile per cell is the most a frame can ask for, and emoji are
-         --  rare enough that a smaller cap would be a cliff rather than a saving.
-         Colour_Count => Positive (Cell_Count),
-         Image_Count => Positive (Cell_Count + 1),
-         Text_Run_Count => Positive (Cell_Count),
-         Success => Capacity_Ok);
-      if not Capacity_Ok then
-         Release_Frame (R);
-         Set_Render_Status (R, Status, Allocation_Failed);
-         return;
-      end if;
-      R.Last_Cell_Count := Cell_Count;
-      Content_Width := Snapshot.Cols * R.CW + Content_Margin * 2;
-      Content_Height := Snapshot.Rows * R.CH + Content_Margin * 2;
-      R.Last_Frame_Width := Natural'Max (Content_Width, R.Target_Frame_Width);
-      R.Last_Frame_Height := Natural'Max (Content_Height, R.Target_Frame_Height);
-
-      if Snapshot.Dirty /= null then
-         for Row in 1 .. Snapshot.Rows loop
-            if Snapshot.Dirty (Row) then
-               R.Last_Dirty_Rows := R.Last_Dirty_Rows + 1;
-            end if;
-         end loop;
-      end if;
-
-      Add_Rectangle
-        (R,
-         X      => 0.0,
-         Y      => 0.0,
-         Width  => Float (R.Last_Frame_Width),
-         Height => Float (R.Last_Frame_Height),
-         Color  => R.Color_Theme.Default_BG,
-         Layer  => RM.Rectangle_Base_Background);
-
-      Build_Text_Runs (R, Snapshot);
-      Build_Shaped_Run_Map (R, Snapshot, 1);
-
-      for Row in 1 .. Snapshot.Rows loop
-         for Col in 1 .. Snapshot.Cols loop
-            declare
-               Cell : constant Terminal.Core.Cell :=
-                 Terminal.Core.Cell_At (Snapshot, Row, Col);
-               X    : constant Float :=
-                 Float (Origin_X (R) + (Col - 1) * R.CW);
-               Y    : constant Float :=
-                 Float (Origin_Y (R) + (Row - 1) * R.CH);
-               Cell_W : constant Positive :=
-                 (if Cell.Text.Width = Terminal.Core.Width_Two then R.CW * 2 else R.CW);
-               Cursor_Cell : constant Boolean := Is_Cursor_Cell (Snapshot, Row, Col);
-               Block_Cursor : constant Boolean :=
-                 Is_Block_Cursor (Snapshot, Row, Col);
-               FG : constant RM.Pixel_Color :=
-                 (if Block_Cursor
-                  then R.Color_Theme.Cursor_FG
-                  else Foreground (R, Cell));
-               BG : constant RM.Pixel_Color := Background (R, Cell);
-            begin
-               if Cell.Kind /= Terminal.Core.Wide_Continuation then
-                  Add_Rectangle
-                    (R,
-                     X      => X,
-                     Y      => Y,
-                     Width  => Float (Cell_W),
-                     Height => Float (R.CH),
-                     Color  => BG,
-                     Layer  =>
-                       (if Has_Non_Default_Background (Cell)
-                        then RM.Rectangle_Cell_Background
-                        else RM.Rectangle_Base_Background));
-                  if Cursor_Cell then
-                     case Snapshot.Cursor.Shape is
-                        when Terminal.Core.Cursor_Block =>
-                           Add_Rectangle
-                             (R,
-                              X      => X,
-                              Y      => Cursor_Block_Y (R, Y),
-                              Width  => Float (Cell_W),
-                              Height => Float (Cursor_Block_Height (R)),
-                              Color  => R.Color_Theme.Cursor_BG);
-                        when Terminal.Core.Cursor_Underline =>
-                           Add_Rectangle
-                             (R,
-                              X      => X,
-                              Y      =>
-                                Y + Float (R.CH - Cursor_Underline_Height (R)),
-                              Width  => Float (Cell_W),
-                              Height => Float (Cursor_Underline_Height (R)),
-                              Color  => R.Color_Theme.Cursor_BG);
-                        when Terminal.Core.Cursor_Bar =>
-                           Add_Rectangle
-                             (R,
-                              X      => X,
-                              Y      => Cursor_Block_Y (R, Y),
-                              Width  => Float (Cursor_Bar_Width (R)),
-                              Height => Float (Cursor_Block_Height (R)),
-                              Color  => R.Color_Theme.Cursor_BG);
-                     end case;
-                  end if;
-               end if;
-
-               if Is_Drawable (Cell) and then not Cell.Style.Conceal then
-                  declare
-                     Glyph_Render_Status : Render_Status;
-                     Run_Entry           : constant Shaped_Run_Map_Entry :=
-                       Shaped_Run_At (R, Snapshot.Cols, Row, Col);
-                  begin
-                     if Run_Entry.Starts_Here then
-                        if not Draw_Emoji_Run_Color
-                          (R, R.Text_Runs (Run_Entry.Run_Index))
-                        then
-                           Draw_Shaped_Run
-                             (R,
-                              Run    => R.Text_Runs (Run_Entry.Run_Index),
-                              Status => Glyph_Render_Status);
-                           if Glyph_Render_Status /= Ok then
-                              Set_Render_Status (R, Status, Glyph_Render_Status);
-                              return;
-                           end if;
-                        end if;
-                     elsif Run_Entry.Run_Index = 0 then
-                        Draw_Glyph
-                          (R,
-                           Codepoint => Cell.Text.Code_Point,
-                           X         => X,
-                           Y         => Y,
-                           Color     => FG,
-                           Bold      => Cell.Style.Bold,
-                           Italic    => Cell.Style.Italic,
-                           Status    => Glyph_Render_Status);
-                        if Glyph_Render_Status /= Ok then
-                           Set_Render_Status (R, Status, Glyph_Render_Status);
-                           return;
-                        end if;
-
-                        for I in 1 .. Cell.Text.Attachment_Count loop
-                           if Terminal.Core.Is_Renderable_Attachment
-                             (Cell.Text.Attachments (I))
-                           then
-                              Draw_Glyph
-                                (R,
-                                 Codepoint => Cell.Text.Attachments (I),
-                                 X         => X,
-                                 Y         => Y,
-                                 Color     => FG,
-                                 Bold      => Cell.Style.Bold,
-                                 Italic    => Cell.Style.Italic,
-                                 Status    => Glyph_Render_Status);
-                              if Glyph_Render_Status /= Ok then
-                                 Set_Render_Status
-                                   (R, Status, Glyph_Render_Status);
-                                 return;
-                              end if;
-                           end if;
-                        end loop;
-                     end if;
-                  end;
-
-                  if Cell.Style.Overline then
-                     Add_Rectangle
-                       (R,
-                        X      => X,
-                        Y      => Y,
-                        Width  => Float (Cell_W),
-                        Height => 1.0,
-                        Color  => FG);
-                  end if;
-
-                  if Cell.Style.Underline or else Is_Hovered_Link_Cell (R, Cell) then
-                     Add_Underline
-                       (R,
-                        (if Cell.Style.Underline
-                         then Cell.Style.Underline_Kind
-                         else Terminal.Core.Underline_Single),
-                        X,
-                        Y,
-                        Float (Cell_W),
-                        Underline_Color (R, Cell, FG));
-                  end if;
-
-                  if Cell.Style.Strikethrough then
-                     Add_Rectangle
-                       (R,
-                        X      => X,
-                        Y      => Y + Float (R.CH) / 2.0,
-                        Width  => Float (Cell_W),
-                        Height => 1.0,
-                        Color  => FG);
-                  end if;
-               end if;
-            end;
-         end loop;
-      end loop;
-
-      Synchronize_Graphics_Screen (R, Snapshot);
-      if Snapshot.Graphics.Pending then
-         Synchronize_Graphics_Scroll
-           (R, Snapshot, Snapshot.Graphics.Scroll_Sequence);
-      end if;
-      Add_Image (R, Snapshot.Graphics, Snapshot);
-      if R.Graphics_Event_Tracking_Failed then
-         Release_Frame (R);
-         Set_Render_Status (R, Status, Allocation_Failed);
-         return;
-      end if;
-      Advance_Animations (R);
-      Synchronize_Graphics_Screen (R, Snapshot);
-      Synchronize_Graphics_Scroll
-        (R, Snapshot, Snapshot.Graphics_Scroll_Current);
-      Add_Conventional_Images (R, Snapshot);
-      Add_Placeholder_Images (R, Snapshot);
-
-      Add_Link_Overlay (R, Snapshot, Status);
-      if Status /= Ok then
-         Set_Render_Status (R, Status, Status);
-         return;
-      end if;
-
-      R.Atlas_Dirty := R.Atlas_Dirty or else Textrender.Atlas_Dirty (R.Text);
-      R.Colour_Sheet_Dirty :=
-        R.Colour_Sheet_Dirty or else Textrender.Colour_Sheet_Dirty (R.Text);
-
-      declare
-         Batch_Status : VS.Build_Status;
-      begin
-         VS.Build (Last_Frame (R), R.Batch, Batch_Status);
-         if Batch_Status /= VS.Ok then
-            Set_Render_Status (R, Status, Batch_Build_Failed);
-            return;
-         end if;
-         R.Vertex_Count := VS.Vertex_Count (R.Batch);
-      end;
-
-      --  The single-snapshot entry point has no separate presentation phase;
-      --  a successful build is its commit boundary. The GUI uses Render_App
-      --  and commits only after the presenter accepts the frame.
-      Commit_Graphics_Events (R);
-      Set_Render_Status (R, Status, Ok);
-   end Render;
+   is separate;
 
    procedure Render_App
      (R              : in out Renderer;
@@ -5746,273 +5432,7 @@ package body Terminal.App.Renderer is
       Tabs           : Terminal.App.Tabs.Tab_Snapshot;
       Splits         : Terminal.App.Splits.Split_Snapshot;
       Status         : out Render_Status)
-   is
-      Cell_Count : Natural := 0;
-      Rect_Max   : Natural;
-      Glyph_Max  : Natural;
-      Text_Run_Max : Natural := 0;
-      Colour_Max : Natural := 0;
-      Image_Max  : Natural := Natural'Max (1, Snapshots'Length);
-      Tab_Height : constant Natural :=
-        (if Tabs.Count > 1 then R.CH + Pane_Border_Pixels else 0);
-      Frame_W : Natural := 0;
-      Frame_H : Natural := Tab_Height;
-      Pane_X  : Natural := 0;
-      Pane_Y  : Natural := Tab_Height;
-      Draw_Status : Render_Status;
-      Capacity_Ok : Boolean;
-
-      function Pane_Width (S : Terminal.Core.Render_Snapshot) return Natural is
-        (S.Cols * R.CW + Content_Margin * 2);
-
-      function Pane_Height (S : Terminal.Core.Render_Snapshot) return Natural is
-        (S.Rows * R.CH + Content_Margin * 2);
-
-      procedure Draw_Pane_Border
-        (X      : Natural;
-         Y      : Natural;
-         Width  : Natural;
-         Height : Natural;
-         Active : Boolean)
-      is
-         Color : constant RM.Pixel_Color :=
-           (if Active then R.Color_Theme.Cursor_BG else
-              (R => 0.22, G => 0.24, B => 0.27, A => 1.0));
-         Thickness : constant Float := Float (Pane_Border_Pixels);
-      begin
-         if Width = 0 or else Height = 0 then
-            return;
-         end if;
-         Add_Rectangle (R, Float (X), Float (Y), Float (Width), Thickness, Color);
-         Add_Rectangle
-           (R,
-            Float (X),
-            Float (Y + Height - Pane_Border_Pixels),
-            Float (Width),
-            Thickness,
-            Color);
-         Add_Rectangle (R, Float (X), Float (Y), Thickness, Float (Height), Color);
-         Add_Rectangle
-           (R,
-            Float (X + Width - Pane_Border_Pixels),
-            Float (Y),
-            Thickness,
-            Float (Height),
-            Color);
-      end Draw_Pane_Border;
-
-      procedure Draw_Tab_Bar is
-      begin
-         if Tabs.Count <= 1 then
-            return;
-         end if;
-
-         declare
-            Count : constant Positive := Positive (Tabs.Count);
-            Base  : constant Natural := Frame_W / Count;
-            Extra : constant Natural := Frame_W mod Count;
-            X     : Natural := 0;
-         begin
-            Add_Rectangle
-              (R,
-               X      => 0.0,
-               Y      => 0.0,
-               Width  => Float (Frame_W),
-               Height => Float (Tab_Height),
-               Color  => (R => 0.08, G => 0.09, B => 0.10, A => 1.0));
-
-            for I in 1 .. Tabs.Count loop
-               declare
-                  Width : constant Natural :=
-                    Base + (if Natural (I) <= Extra then 1 else 0);
-                  Col_Width : constant Natural :=
-                    (if Width = 0 then 0 else Width / R.CW);
-                  Active : constant Boolean := I = Tabs.Active;
-               begin
-                  if Width > 0 then
-                     Add_Rectangle
-                       (R,
-                        X      => Float (X),
-                        Y      => 0.0,
-                        Width  => Float (Width),
-                        Height => Float (R.CH),
-                        Color  =>
-                          (if Active
-                           then (R => 0.18, G => 0.25, B => 0.34, A => 1.0)
-                           else (R => 0.12, G => 0.13, B => 0.15, A => 1.0)));
-                     if Col_Width > 0 then
-                        declare
-                           Label : constant String :=
-                             Terminal.App.Tabs.Fitted_Label
-                               (Tabs.Labels (I), Col_Width);
-                        begin
-                           Draw_Label
-                             (R,
-                              Text   => Label,
-                              X      => Float (X + 1),
-                              Y      => 0.0,
-                              Limit  => Col_Width,
-                              Color  => R.Color_Theme.Default_FG,
-                              Status => Draw_Status);
-                        end;
-                        if Draw_Status /= Ok then
-                           Status := Draw_Status;
-                           return;
-                        end if;
-                     end if;
-                  end if;
-                  X := X + Width;
-               end;
-            end loop;
-         end;
-
-         Status := Ok;
-      end Draw_Tab_Bar;
-   begin
-      Status := Ok;
-      if not R.Initialized or else not R.Text_Loaded then
-         Set_Render_Status (R, Status, Not_Initialized);
-         return;
-      elsif Snapshots'Length = 0
-        or else Active_Index < Snapshots'First
-        or else Active_Index > Snapshots'Last
-      then
-         Set_Render_Status (R, Status, Invalid_Snapshot);
-         return;
-      end if;
-
-      for I in Snapshots'Range loop
-         if Snapshots (I).Rows = 0 or else Snapshots (I).Cols = 0 then
-            Set_Render_Status (R, Status, Invalid_Snapshot);
-            return;
-         end if;
-         Cell_Count := Cell_Count + Snapshots (I).Rows * Snapshots (I).Cols;
-         Image_Max := Image_Max + Snapshots (I).Rows * Snapshots (I).Cols;
-         Text_Run_Max := Text_Run_Max + Snapshots (I).Rows * Snapshots (I).Cols;
-         Colour_Max := Colour_Max + Snapshots (I).Rows * Snapshots (I).Cols;
-
-         if Splits.Orientation = Terminal.App.Splits.Vertical
-           and then Snapshots'Length > 1
-         then
-            Frame_W := Frame_W + Pane_Width (Snapshots (I));
-            Frame_H := Natural'Max (Frame_H, Tab_Height + Pane_Height (Snapshots (I)));
-         else
-            Frame_W := Natural'Max (Frame_W, Pane_Width (Snapshots (I)));
-            Frame_H := Frame_H + Pane_Height (Snapshots (I));
-         end if;
-      end loop;
-
-      Frame_W := Natural'Max (Frame_W, R.Target_Frame_Width);
-      Frame_H := Natural'Max (Frame_H, R.Target_Frame_Height);
-
-      Reset_Frame (R);
-      R.Graphics_Event_Tracking_Failed := False;
-      R.Missing_Glyph_Count := 0;
-      R.Shaped_Glyph_Count := 0;
-      R.Shaping_Fallback_Count := 0;
-      R.Text_Fallback_Run_Count := 0;
-      R.Color_Glyph_Count := 0;
-      R.Color_Emoji_Fallback_Count := 0;
-      R.Paragraph_Bidi_Fallback_Count := 0;
-      R.Last_Cell_Count := Cell_Count;
-      R.Last_Frame_Width := Frame_W;
-      R.Last_Frame_Height := Frame_H;
-
-      Rect_Max := Cell_Count * 4 + Snapshots'Length * 8 + Tabs.Count + 8;
-      Glyph_Max :=
-        Cell_Count
-        * Natural'Max
-            (Terminal.Core.Max_Cluster_Attachments + 1,
-             RM.Max_Shaped_Glyphs_Per_Run)
-        * 2
-        + Max_Link_Overlay_Chars
-        + Terminal.App.Tabs.Max_Tab_Label_Length * Natural (Tabs.Count);
-      Ensure_Frame_Capacity
-        (R,
-         Rectangle_Count => Positive (Natural'Max (1, Rect_Max)),
-         Glyph_Count => Positive (Natural'Max (1, Glyph_Max)),
-         Colour_Count => Positive (Natural'Max (1, Colour_Max)),
-         Image_Count => Positive (Image_Max),
-         Text_Run_Count => Positive (Natural'Max (1, Text_Run_Max)),
-         Success => Capacity_Ok);
-      if not Capacity_Ok then
-         Release_Frame (R);
-         Set_Render_Status (R, Status, Allocation_Failed);
-         return;
-      end if;
-
-      Advance_Animations (R);
-
-      Add_Rectangle
-        (R,
-         X      => 0.0,
-         Y      => 0.0,
-         Width  => Float (R.Last_Frame_Width),
-         Height => Float (R.Last_Frame_Height),
-         Color  => R.Color_Theme.Default_BG,
-         Layer  => RM.Rectangle_Base_Background);
-
-      Draw_Tab_Bar;
-      if Status /= Ok then
-         Set_Render_Status (R, Status, Status);
-         return;
-      end if;
-
-      for I in Snapshots'Range loop
-         declare
-            W : constant Natural := Pane_Width (Snapshots (I));
-            H : constant Natural := Pane_Height (Snapshots (I));
-         begin
-            Draw_Pane_Border
-              (Pane_X,
-               Pane_Y,
-               W,
-               H,
-               Active_Index = I);
-            R.Draw_Offset_X := Pane_X;
-            R.Draw_Offset_Y := Pane_Y;
-            Draw_Snapshot_Into
-              (R,
-               Snapshots (I),
-               Show_Overlay => Active_Index = I,
-               Status       => Draw_Status);
-            if Draw_Status /= Ok then
-               R.Draw_Offset_X := 0;
-               R.Draw_Offset_Y := 0;
-               Set_Render_Status (R, Status, Draw_Status);
-               return;
-            end if;
-
-            if Splits.Orientation = Terminal.App.Splits.Vertical
-              and then Snapshots'Length > 1
-            then
-               Pane_X := Pane_X + W;
-            else
-               Pane_Y := Pane_Y + H;
-            end if;
-         end;
-      end loop;
-
-      R.Draw_Offset_X := 0;
-      R.Draw_Offset_Y := 0;
-
-      R.Atlas_Dirty := R.Atlas_Dirty or else Textrender.Atlas_Dirty (R.Text);
-      R.Colour_Sheet_Dirty :=
-        R.Colour_Sheet_Dirty or else Textrender.Colour_Sheet_Dirty (R.Text);
-
-      declare
-         Batch_Status : VS.Build_Status;
-      begin
-         VS.Build (Last_Frame (R), R.Batch, Batch_Status);
-         if Batch_Status /= VS.Ok then
-            Set_Render_Status (R, Status, Batch_Build_Failed);
-            return;
-         end if;
-         R.Vertex_Count := VS.Vertex_Count (R.Batch);
-      end;
-
-      Set_Render_Status (R, Status, Ok);
-   end Render_App;
+   is separate;
 
    procedure Set_Framebuffer_Size
      (R      : in out Renderer;

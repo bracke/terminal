@@ -10,6 +10,7 @@ with Terminal.App.Image_Staging;
 with Terminal.App.Image_Upload_Layout;
 with Terminal.App.Shaders;
 with Terminal.App.Status_Labels;
+with Terminal.App.Vulkan_Retirement;
 
 package body Terminal.App.Vulkan_Device is
    use type Interfaces.Unsigned_32;
@@ -292,7 +293,9 @@ package body Terminal.App.Vulkan_Device is
    procedure Destroy_Atlas_Image (Device : in out Logical_Device);
    procedure Destroy_Image_Texture (Device : in out Logical_Device);
    procedure Destroy_Colour_Sheet (Device : in out Logical_Device);
-   procedure Destroy_Deferred_Upload (Device : in out Logical_Device);
+   procedure Destroy_Deferred_Upload
+     (Device  : in out Logical_Device;
+      Success : out Boolean);
 
    procedure Defer_Upload_Resources
      (Device         : in out Logical_Device;
@@ -2225,6 +2228,7 @@ package body Terminal.App.Vulkan_Device is
    end Create_Logical_Device;
 
    overriding procedure Finalize (Device : in out Logical_Device) is
+      Deferred_Cleanup_Succeeded : Boolean;
       generic
          type Handle_Type is private;
          Null_Handle : Handle_Type;
@@ -2293,7 +2297,7 @@ package body Terminal.App.Vulkan_Device is
             when others => null;
          end;
 
-         Destroy_Deferred_Upload (Device);
+         Destroy_Deferred_Upload (Device, Deferred_Cleanup_Succeeded);
          Destroy_Fence (Device.Upload_Fence);
          for I in Device.In_Flight'Range loop
             Destroy_Fence (Device.In_Flight (I));
@@ -2568,8 +2572,16 @@ package body Terminal.App.Vulkan_Device is
       end if;
    end Destroy_Image_Texture;
 
-   procedure Destroy_Deferred_Upload (Device : in out Logical_Device) is
+   procedure Destroy_Deferred_Upload
+     (Device  : in out Logical_Device;
+      Success : out Boolean)
+   is
+      procedure Note_Failure is
+      begin
+         Success := False;
+      end Note_Failure;
    begin
+      Success := True;
       if Device.Deferred_Upload_View /= System.Null_Address then
          begin
             Vk.Destroy_Image_View
@@ -2577,7 +2589,7 @@ package body Terminal.App.Vulkan_Device is
                Device.Deferred_Upload_View,
                System.Null_Address);
          exception
-            when others => null;
+            when others => Note_Failure;
          end;
       end if;
       Device.Deferred_Upload_View := System.Null_Address;
@@ -2588,7 +2600,7 @@ package body Terminal.App.Vulkan_Device is
                Device.Deferred_Upload_Image,
                System.Null_Address);
          exception
-            when others => null;
+            when others => Note_Failure;
          end;
       end if;
       Device.Deferred_Upload_Image := System.Null_Address;
@@ -2599,7 +2611,7 @@ package body Terminal.App.Vulkan_Device is
                Device.Deferred_Upload_Image_Memory,
                System.Null_Address);
          exception
-            when others => null;
+            when others => Note_Failure;
          end;
       end if;
       Device.Deferred_Upload_Image_Memory := System.Null_Address;
@@ -2610,7 +2622,7 @@ package body Terminal.App.Vulkan_Device is
                Device.Deferred_Upload_Buffer,
                System.Null_Address);
          exception
-            when others => null;
+            when others => Note_Failure;
          end;
       end if;
       Device.Deferred_Upload_Buffer := System.Null_Address;
@@ -2621,7 +2633,7 @@ package body Terminal.App.Vulkan_Device is
                Device.Deferred_Upload_Memory,
                System.Null_Address);
          exception
-            when others => null;
+            when others => Note_Failure;
          end;
       end if;
       Device.Deferred_Upload_Memory := System.Null_Address;
@@ -2658,6 +2670,9 @@ package body Terminal.App.Vulkan_Device is
       Status : out Create_Status)
    is
       Result : Vk.Result_T;
+      Cleanup_Succeeded : Boolean := True;
+      Fence : Terminal.App.Vulkan_Retirement.Fence_Outcome;
+      Outcome : Terminal.App.Vulkan_Retirement.Retirement_Outcome;
    begin
       Ready := True;
       Status := Ok;
@@ -2670,18 +2685,33 @@ package body Terminal.App.Vulkan_Device is
       end if;
       Result := Vk.Get_Fence_Status (Device.Device, Device.Upload_Fence);
       if Result = Vk.SUCCESS then
-         Destroy_Deferred_Upload (Device);
+         Fence := Terminal.App.Vulkan_Retirement.Fence_Ready;
+         Destroy_Deferred_Upload (Device, Cleanup_Succeeded);
       elsif Result = Vk.ERROR_DEVICE_LOST then
-         Destroy_Deferred_Upload (Device);
-         Ready := False;
-         Status := Device_Lost;
+         Fence := Terminal.App.Vulkan_Retirement.Fence_Device_Lost;
+         Destroy_Deferred_Upload (Device, Cleanup_Succeeded);
+      elsif Result = Vk.NOT_READY then
+         Fence := Terminal.App.Vulkan_Retirement.Fence_In_Flight;
       else
-         Ready := False;
-         Status :=
-           (if Result = Vk.NOT_READY
-            then Resources_In_Flight
-            else Copy_Atlas_Failed);
+         Fence := Terminal.App.Vulkan_Retirement.Fence_Failed;
       end if;
+
+      Outcome := Terminal.App.Vulkan_Retirement.Evaluate
+        (Fence, Cleanup_Succeeded);
+      case Outcome is
+         when Terminal.App.Vulkan_Retirement.Retired =>
+            null;
+         when Terminal.App.Vulkan_Retirement.Still_In_Flight =>
+            Ready := False;
+            Status := Resources_In_Flight;
+         when Terminal.App.Vulkan_Retirement.Device_Lost =>
+            Ready := False;
+            Status := Device_Lost;
+         when Terminal.App.Vulkan_Retirement.Cleanup_Failed
+            | Terminal.App.Vulkan_Retirement.Fence_Failed =>
+            Ready := False;
+            Status := Copy_Atlas_Failed;
+      end case;
    end Reap_Deferred_Upload;
 
    procedure Restore_Upload_Fence (Device : in out Logical_Device) is

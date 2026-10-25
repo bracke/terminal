@@ -28,6 +28,7 @@ is
       Row_Quota_Failed : Boolean := False;
       Row_Allocation_Failed : Boolean := False;
       Prepared_Operation : Theme_Operation_Access := null;
+      Theme_Transaction : Terminal.App.Image_Store.Theme_Append_Transaction;
 
       function Data_Start return Natural is
       begin
@@ -102,6 +103,8 @@ is
 
       procedure Release_Local is
       begin
+         Terminal.App.Image_Store.Rollback_Theme_Append
+           (R.Image_Objects, Theme_Transaction);
          Terminal.App.Graphics.Release (Data);
          if Canvas /= null and then Canvas_Owned then
             Free_Image_Data (Canvas);
@@ -110,6 +113,22 @@ is
          Terminal.App.Image_Store.Release_Unowned_Theme_Operations
            (Prepared_Operation);
       end Release_Local;
+
+      procedure Begin_Theme_Transaction is
+      begin
+         if Prepared_Operation /= null then
+            if not Terminal.App.Image_Store.Allocation_Allowed
+              (R.Image_Allocation_Control)
+            then
+               raise Storage_Error with "theme append allocation rejected";
+            end if;
+            Terminal.App.Image_Store.Begin_Theme_Append
+              (R.Image_Objects,
+               Object,
+               Prepared_Operation,
+               Theme_Transaction);
+         end if;
+      end Begin_Theme_Transaction;
    begin
       R.Last_Animation_Result := Terminal.Core.Kitty_EINVAL;
       if Header.Kitty_Format in 8 | 16 | 24 | 32 then
@@ -470,6 +489,7 @@ is
                Release_Local;
                return;
             end if;
+            Begin_Theme_Transaction;
             Terminal.App.Image_Store.Replace_Root_RGBA
               (R.Image_Objects, Object, Canvas);
             Canvas_Owned := False;
@@ -494,6 +514,7 @@ is
                then 1
                else Header.Kitty_Usage_Hint);
          begin
+            Begin_Theme_Transaction;
             Terminal.App.Image_Store.Create_Frame
               (Positive (Target_Number),
                (if Header.Kitty_Frame_Gap = 0
@@ -508,6 +529,7 @@ is
             Canvas_Owned := False;
          end;
       else
+         Begin_Theme_Transaction;
          Terminal.App.Image_Store.Replace_Frame_Data
            (R.Image_Objects, Object, Positive (Target_Number), Canvas);
          Canvas_Owned := False;
@@ -522,7 +544,7 @@ is
             Terminal.App.Image_Store.Set_Usage_Hint (Existing, 1);
          end if;
       end if;
-      Append_Theme_Operation (R, Object, Prepared_Operation);
+      Terminal.App.Image_Store.Commit (Theme_Transaction);
       Touch_Image_Object (R, Object);
       R.Last_Animation_Result := Terminal.Core.Kitty_OK;
       Release_Local;

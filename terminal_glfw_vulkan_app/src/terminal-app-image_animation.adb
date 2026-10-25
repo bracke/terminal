@@ -17,61 +17,58 @@ package body Terminal.App.Image_Animation is
 
    function Apply_Control
      (Object : Store.Image_Object_Access;
-      Header : Terminal.App.Graphics.Graphics_Header)
-      return Terminal.Core.Kitty_Graphics_Result_Code
+      Control : Animation_Control) return Control_Result
    is
    begin
       if Object = null then
-         return Terminal.Core.Kitty_ENOENT;
-      elsif Header.Kitty_Animation_State > 3 then
-         return Terminal.Core.Kitty_EINVAL;
-      elsif Header.Kitty_Frame_Number > 0
-        and then not Store.Frame_Exists (Object, Header.Kitty_Frame_Number)
+         return Control_Not_Found;
+      elsif Control.Frame_Number > 0
+        and then not Store.Frame_Exists (Object, Control.Frame_Number)
       then
-         return Terminal.Core.Kitty_ENOENT;
-      elsif Header.Kitty_Base_Frame > 0
-        and then not Store.Frame_Exists (Object, Header.Kitty_Base_Frame)
+         return Control_Not_Found;
+      elsif Control.Start_Frame > 0
+        and then not Store.Frame_Exists (Object, Control.Start_Frame)
       then
-         return Terminal.Core.Kitty_ENOENT;
+         return Control_Not_Found;
       end if;
 
-      if Header.Kitty_Frame_Number > 0
-        and then Header.Kitty_Frame_Gap /= 0
+      if Control.Frame_Number > 0
+        and then Control.Frame_Gap /= 0
         and then not Store.Set_Frame_Gap
           (Object,
-           Positive (Header.Kitty_Frame_Number),
-           Header.Kitty_Frame_Gap)
+           Positive (Control.Frame_Number),
+           Control.Frame_Gap)
       then
-         return Terminal.Core.Kitty_ENOENT;
+         return Control_Not_Found;
       end if;
-      if Header.Kitty_Base_Frame > 0 then
+      if Control.Start_Frame > 0 then
          Store.Set_Current_Frame
-           (Object, Positive (Header.Kitty_Base_Frame));
+           (Object, Positive (Control.Start_Frame));
          Store.Set_Deadline (Object, False);
       end if;
-      if Header.Kitty_Loop_Count > 0 then
+      if Control.Loop_Count > 0 then
          Store.Set_Loop_Count
-           (Object, Positive (Header.Kitty_Loop_Count));
+           (Object, Positive (Control.Loop_Count));
          Store.Set_Loops_Completed (Object, 0);
       end if;
-      case Header.Kitty_Animation_State is
-         when 1 =>
+      case Control.State is
+         when Stopped =>
             Store.Set_Playback (Object, Store.Animation_Stopped);
             Store.Set_Loops_Completed (Object, 0);
             Store.Set_Deadline (Object, False);
-         when 2 =>
+         when Loading =>
             Store.Set_Playback (Object, Store.Animation_Loading);
             Store.Set_Deadline (Object, False);
-         when 3 =>
+         when Running =>
             Store.Set_Playback (Object, Store.Animation_Running);
             Store.Set_Deadline (Object, False);
-         when others =>
+         when Unchanged =>
             null;
       end case;
-      return Terminal.Core.Kitty_OK;
+      return Control_Ok;
    exception
       when Constraint_Error =>
-         return Terminal.Core.Kitty_EINVAL;
+         return Control_Invalid;
    end Apply_Control;
 
    procedure Adopt_Decoded_Frames

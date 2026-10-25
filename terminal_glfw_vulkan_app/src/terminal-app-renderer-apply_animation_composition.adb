@@ -15,14 +15,33 @@ is
       Source_Frame : Positive := 1;
       Target_Frame : Positive := 1;
       Prepared_Operation : Theme_Operation_Access := null;
+      Theme_Transaction : Terminal.App.Image_Store.Theme_Append_Transaction;
 
       procedure Release_Local is
       begin
+         Terminal.App.Image_Store.Rollback_Theme_Append
+           (R.Image_Objects, Theme_Transaction);
          Free_Image_Data (Source);
          Free_Image_Data (Target);
          Terminal.App.Image_Store.Release_Unowned_Theme_Operations
            (Prepared_Operation);
       end Release_Local;
+
+      procedure Begin_Theme_Transaction is
+      begin
+         if Prepared_Operation /= null then
+            if not Terminal.App.Image_Store.Allocation_Allowed
+              (R.Image_Allocation_Control)
+            then
+               raise Storage_Error with "theme append allocation rejected";
+            end if;
+            Terminal.App.Image_Store.Begin_Theme_Append
+              (R.Image_Objects,
+               Object,
+               Prepared_Operation,
+               Theme_Transaction);
+         end if;
+      end Begin_Theme_Transaction;
    begin
       R.Last_Animation_Result := Terminal.Core.Kitty_EINVAL;
       if Object = null then
@@ -151,6 +170,7 @@ is
                R.Last_Animation_Result := Terminal.Core.Kitty_ENOSPC;
                return;
             end if;
+            Begin_Theme_Transaction;
             Terminal.App.Image_Store.Replace_Root_RGBA
               (R.Image_Objects, Object, Target);
             if Source_Frame = 1 then
@@ -164,6 +184,7 @@ is
             Frame : constant Image_Frame_Access :=
               Find_Image_Frame (Object, Target_Frame);
          begin
+            Begin_Theme_Transaction;
             Terminal.App.Image_Store.Replace_Frame_Data
               (R.Image_Objects, Object, Target_Frame, Target);
             if Frame.Usage_Hint = 1
@@ -176,7 +197,7 @@ is
             end if;
          end;
       end if;
-      Append_Theme_Operation (R, Object, Prepared_Operation);
+      Terminal.App.Image_Store.Commit (Theme_Transaction);
       Touch_Image_Object (R, Object);
       Release_Local;
       R.Last_Animation_Result := Terminal.Core.Kitty_OK;

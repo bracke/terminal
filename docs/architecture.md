@@ -194,9 +194,11 @@ store operations. Accounting totals are cached from the actual owned buffers
 and cached frame/theme-history totals, and therefore
 remain constant-time for quota checks; replacement transactions retain an exact
 pointer to the object being superseded. `Terminal.App.Image_Animation` owns
-bounded playback timing, Kitty control-state transitions, and loop semantics,
-and builds decoded animation frames before transferring the complete list to
-the store atomically.
+bounded playback timing, protocol-neutral control-state transitions, and loop
+semantics, and builds decoded animation frames before transferring the complete
+list to the store atomically. The renderer translates Kitty headers and result
+codes at the protocol boundary; the animation engine does not depend on parser
+or core response types.
 `Terminal.App.Image_Colors` owns xterm/Kitty palette
 resolution and indexed-pixel expansion. `Terminal.App.Image_Staging` decodes
 encoded render commands into bounded row or RGBA byte sinks; Vulkan owns only
@@ -219,15 +221,29 @@ frames. Rollback consumes each
 backup node exactly once and releases the unconsumed tail if restoration itself
 raises. Callers receive an explicit update status for resource or replay
 failures; invariant exceptions are not converted into silent theme failures.
+Palette-sensitive animation edits append their replay operation provisionally
+before publishing changed pixels or frames. The store transaction rolls that
+append back if the subsequent mutation fails, so an allocation failure cannot
+leave live image data and replay history out of sync.
 Theme-history
 archiving uses a heap-backed operation vector and a hashed frame dependency
 set, making pruning linear in retained history rather than quadratic and
 avoiding a maximum-sized stack allocation.
 `Terminal.App.Image_Upload_Layout` computes and validates source, staging,
-upload, and Vulkan row-pitch extents without Vulkan handles. The graphics-event
-adapter, theme baseline/preparation/replay operations, and the Vulkan
-staging-resource transaction are Ada subunits of their owning packages,
-reducing the primary bodies without weakening private-state boundaries. Every
+upload, and Vulkan row-pitch extents without Vulkan handles.
+Renderer frame-capacity and pane-dimension products use the shared checked
+operations in `Terminal.App.Size_Arithmetic`; overflow is reported as an
+invalid snapshot before any frame allocation or coordinate calculation.
+`Terminal.App.Vulkan_Retirement` independently classifies fence and deferred
+cleanup outcomes. A destructor exception during live upload retirement is
+therefore surfaced as a copy failure instead of being reported as success;
+device loss remains the primary status when both conditions occur.
+The graphics-event adapter, theme baseline/preparation/replay operations, and
+the Vulkan staging-resource transaction are Ada subunits of their owning
+packages, as are the renderer's single-pane/multi-pane frame entry points and
+the main-loop runtime controller. This keeps callback wiring, frame
+orchestration, and the long-running event loop independently navigable without
+weakening private-state boundaries. Every
 fallible placement allocation is completed
 before a combined
 Kitty transmission replaces an object. The prior object remains owned until its
@@ -438,9 +454,11 @@ for every coalescing candidate; full records are built only for emitted runs.
 After shaping, the renderer builds a retained cell-to-run map once per pane.
 Glyph emission uses constant-time map lookups instead of scanning every shaped
 run twice for each drawable cell, keeping the pass linear in cells plus runs.
-Image emission keeps frame-local placement and object lookup caches. Consecutive
-Unicode placeholder cells belonging to one placement resolve their linked-list
-metadata once, rather than repeating both searches for every image-bearing cell.
+`Terminal.App.Placeholder_Index` builds frame-local hashed indexes for visible
+virtual placements and their image objects. Every Unicode placeholder cell therefore performs
+constant-time identity and storage-order lookups, including interleaved cells;
+the pass is linear in placements, objects, and cells rather than multiplying
+the cell count by retained linked-list lengths.
 Core snapshots count placeholder cells while copying their retained cell array.
 Frames without placeholders therefore skip the renderer's additional image-cell
 scan, while scrollback views refresh the count during their existing row copy.

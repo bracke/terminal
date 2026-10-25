@@ -32,8 +32,9 @@ owned allocations; synchronization and allocation release are private store
 operations. `Terminal.App.Image_Upload_Layout` validates overflow-safe source,
 staging, and Vulkan row-pitch extents independently of Vulkan handles.
 Transactional replacements name the exact prior object, and
-`Terminal.App.Image_Animation` owns bounded playback timing, Kitty control
-state transitions, and loop semantics. Image commands contain copy-safe
+`Terminal.App.Image_Animation` owns bounded playback timing,
+protocol-neutral control state transitions, and loop semantics; the renderer
+maps Kitty wire fields and response codes at its boundary. Image commands contain copy-safe
 borrowed byte views. The
 renderer delegates command/owner synchronization, alias-safe release, and
 rollback truncation to `Terminal.App.Frame_Image_Storage`; every frame reset
@@ -50,7 +51,9 @@ The large graphics-event adapter, animation frame/composition transactions,
 streaming PNG row decoder, theme history/replay operations, and Vulkan staging
 resource transaction are separate Ada subunits. This keeps the primary
 graphics, renderer, and device bodies navigable while preserving private-state
-access and crate boundaries. Frame reset, capacity growth, release, and immutable frame
+access and crate boundaries. The single-pane/multi-pane renderer entry points
+and the main-loop runtime controller are subunits for the same reason. Frame
+reset, capacity growth, release, and immutable frame
 view publication are likewise isolated as renderer subunits; image command
 ownership remains centralized in `Terminal.App.Frame_Image_Storage` through an
 atomic command-and-buffer append API.

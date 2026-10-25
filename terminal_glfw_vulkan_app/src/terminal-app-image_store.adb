@@ -1249,6 +1249,64 @@ package body Terminal.App.Image_Store is
       Operation := null;
    end Append_Theme_Operation;
 
+   procedure Begin_Theme_Append
+     (Container   : in out Store;
+      Object      : Image_Object_Access;
+      Operation   : in out Theme_Operation_Access;
+      Transaction : in out Theme_Append_Transaction)
+   is
+      Previous : constant Theme_Operation_Access :=
+        (if Object = null then null else Object.Theme_Operations_Tail);
+   begin
+      if Transaction.Operation /= null then
+         raise Program_Error with "theme append transaction is already active";
+      end if;
+      Append_Theme_Operation (Container, Object, Operation);
+      Transaction.Object := Object;
+      Transaction.Previous_Tail := Previous;
+      Transaction.Operation := Object.Theme_Operations_Tail;
+   end Begin_Theme_Append;
+
+   procedure Commit (Transaction : in out Theme_Append_Transaction) is
+   begin
+      Transaction.Object := null;
+      Transaction.Previous_Tail := null;
+      Transaction.Operation := null;
+   end Commit;
+
+   procedure Rollback_Theme_Append
+     (Container   : in out Store;
+      Transaction : in out Theme_Append_Transaction)
+   is
+      Object : constant Image_Object_Access := Transaction.Object;
+      Operation : Theme_Operation_Access := Transaction.Operation;
+   begin
+      if Operation = null then
+         return;
+      elsif not Is_Owned (Container, Object)
+        or else Object.Theme_Operations_Tail /= Operation
+        or else Operation.Next /= null
+      then
+         raise Program_Error with "theme append transaction invariant violated";
+      end if;
+
+      if Transaction.Previous_Tail = null then
+         Object.Theme_Operations := null;
+      else
+         Transaction.Previous_Tail.Next := null;
+      end if;
+      Object.Theme_Operations_Tail := Transaction.Previous_Tail;
+      Object.Theme_Operation_Count := Object.Theme_Operation_Count - 1;
+      Object.Theme_Operation_Bytes :=
+        Object.Theme_Operation_Bytes - Operation.Length;
+      if Operation.Bytes /= null then
+         Object.Theme_Addresses.Delete (Operation.Bytes.all'Address);
+      end if;
+      Synchronize (Container, Object);
+      Commit (Transaction);
+      Release_Theme_Operation_List (Operation);
+   end Rollback_Theme_Append;
+
    procedure Clear_Theme_Operations
      (Container : in out Store;
       Object    : Image_Object_Access)

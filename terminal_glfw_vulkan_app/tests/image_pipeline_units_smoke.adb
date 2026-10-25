@@ -12,6 +12,8 @@ with Terminal.App.Image_Staging;
 with Terminal.App.Image_Upload_Layout;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Size_Arithmetic;
+with Terminal.App.Vulkan_Retirement;
 with Terminal.App.Image_Store;
 with Terminal.App.Image_Store.Testing;
 with Terminal.Common.Bytes;
@@ -26,6 +28,7 @@ procedure Image_Pipeline_Units_Smoke is
    use type Terminal.App.Image_Upload_Layout.Layout_Status;
    use type Terminal.Core.Kitty_Graphics_Result_Code;
    use type Interfaces.Unsigned_64;
+   use type Terminal.App.Vulkan_Retirement.Retirement_Outcome;
 
    package Ingestion renames Terminal.App.Image_Ingestion;
    package Rendering renames Terminal.App.Image_Rendering;
@@ -50,6 +53,44 @@ procedure Image_Pipeline_Units_Smoke is
       Continue := False;
    end Ignore_Row;
 begin
+   declare
+      Result : Natural;
+   begin
+      Assert
+        (Terminal.App.Size_Arithmetic.Try_Add
+           (Natural'Last - 1, 1, Result)
+         and then Result = Natural'Last,
+         "checked addition accepts the representable boundary");
+      Assert
+        (not Terminal.App.Size_Arithmetic.Try_Add
+           (Natural'Last, 1, Result)
+         and then Result = 0,
+         "checked addition rejects overflow deterministically");
+      Assert
+        (Terminal.App.Size_Arithmetic.Try_Multiply
+           (Natural'Last, 1, Result)
+         and then Result = Natural'Last,
+         "checked multiplication accepts the representable boundary");
+      Assert
+        (not Terminal.App.Size_Arithmetic.Try_Multiply
+           (Natural'Last, 2, Result)
+         and then Result = 0,
+         "checked multiplication rejects overflow deterministically");
+   end;
+
+   Assert
+     (Terminal.App.Vulkan_Retirement.Evaluate
+        (Terminal.App.Vulkan_Retirement.Fence_Ready,
+         Cleanup_Succeeded => False) =
+        Terminal.App.Vulkan_Retirement.Cleanup_Failed,
+      "failed deferred cleanup cannot report successful retirement");
+   Assert
+     (Terminal.App.Vulkan_Retirement.Evaluate
+        (Terminal.App.Vulkan_Retirement.Fence_Device_Lost,
+         Cleanup_Succeeded => False) =
+        Terminal.App.Vulkan_Retirement.Device_Lost,
+      "device loss remains the primary retirement failure");
+
    declare
       Layout : Terminal.App.Image_Upload_Layout.Layout;
       Status : Terminal.App.Image_Upload_Layout.Layout_Status;
