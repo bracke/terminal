@@ -1,3 +1,4 @@
+with Ada.Exceptions;
 with Ada.Unchecked_Deallocation;
 with Terminal.App.PTY_Write;
 
@@ -26,6 +27,32 @@ package body Terminal.App.Session_Table is
          Free_Runtime (Slot);
       end if;
    end Release_Runtime;
+
+   procedure Close_All_Internal
+     (Table        : in out Runtime_Table;
+      Raise_Errors : Boolean)
+   is
+      First_Error : Ada.Exceptions.Exception_Occurrence;
+      Failed      : Boolean := False;
+   begin
+      for I in Table.Runtimes'Range loop
+         if Table.Runtimes (I) /= null then
+            begin
+               Release_Runtime (Table.Runtimes (I));
+            exception
+               when Error : others =>
+                  if not Failed then
+                     Ada.Exceptions.Save_Occurrence (First_Error, Error);
+                     Failed := True;
+                  end if;
+            end;
+         end if;
+      end loop;
+      Terminal.App.Sessions.Initialize (Table.Sessions);
+      if Failed and then Raise_Errors then
+         Ada.Exceptions.Reraise_Occurrence (First_Error);
+      end if;
+   end Close_All_Internal;
 
    function Convert
      (Status : Terminal.App.Sessions.Session_Status) return Table_Status is
@@ -381,25 +408,16 @@ package body Terminal.App.Session_Table is
    end Status_Label;
 
    procedure Close_All (Table : in out Runtime_Table) is
-      Cleanup_Failed : Boolean := False;
    begin
-      for I in Table.Runtimes'Range loop
-         if Table.Runtimes (I) /= null then
-            begin
-               Release_Runtime (Table.Runtimes (I));
-            exception
-               when others => Cleanup_Failed := True;
-            end;
-         end if;
-      end loop;
-      if Cleanup_Failed then
-         raise Program_Error with "one or more session runtimes remain owned";
-      end if;
-      Terminal.App.Sessions.Initialize (Table.Sessions);
+      Close_All_Internal (Table, Raise_Errors => True);
    end Close_All;
 
    overriding procedure Finalize (Table : in out Runtime_Table) is
    begin
-      Close_All (Table);
+      Close_All_Internal (Table, Raise_Errors => False);
+   exception
+      --  A finalizer is a last-resort cleanup path and must not mask the
+      --  exception that caused its enclosing scope to unwind.
+      when others => null;
    end Finalize;
 end Terminal.App.Session_Table;

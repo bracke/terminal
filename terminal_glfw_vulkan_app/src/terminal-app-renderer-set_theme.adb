@@ -35,7 +35,7 @@ is
    function Is_Theme_Sensitive (Item : Image_Object_Access) return Boolean is
      (Item /= null
       and then
-        (Terminal.App.Image_Store.First_Theme_Operation (Item) /= null
+        (Themes.First (Item) /= null
          or else
            (Terminal.App.Image_Store.Indexed_Data_Format (Item) in 8 | 16
             and then Terminal.App.Image_Store.Indexed_Data (Item) /= null
@@ -106,7 +106,7 @@ is
                end if;
                Pixel_Count := Item.Pixel_Width * Item.Pixel_Height;
                Canvas_Bytes := Pixel_Count * 4;
-               if Terminal.App.Image_Store.First_Theme_Operation (Item) = null
+               if Themes.First (Item) = null
                then
                   Working_Bytes := Canvas_Bytes;
                else
@@ -117,7 +117,7 @@ is
                   Add_Bounded (Working_Bytes, Canvas_Bytes);
                   Add_Bounded (Working_Bytes, Canvas_Bytes);
                   Operation :=
-                    Terminal.App.Image_Store.First_Theme_Operation (Item);
+                    Themes.First (Item);
                   while Operation /= null loop
                      Charge_If_First (Operation.Target_Frame);
                      if Operation.Is_Composition then
@@ -126,7 +126,7 @@ is
                         Charge_If_First (Operation.Base_Frame);
                      end if;
                      Operation :=
-                       Terminal.App.Image_Store.Next_Theme_Operation
+                       Themes.Next
                          (Operation);
                   end loop;
                end if;
@@ -301,7 +301,7 @@ begin
    while Object /= null and then Outcome = Theme_Ok loop
       if Is_Theme_Sensitive (Object) then
          Outcome :=
-           (if Terminal.App.Image_Store.First_Theme_Operation (Object) /= null
+           (if Themes.First (Object) /= null
             then (if Replay_Theme_Operations (R, Object)
                   then Theme_Ok
                   else Theme_Replay_Failed)

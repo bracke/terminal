@@ -30,23 +30,7 @@ is
    Encoded_Source : RM.Image_Data_Access := null;
    Encoded_Source_Owned : Boolean := False;
    Borrowed_From_Object : Boolean := False;
-   type Install_Guard is new Ada.Finalization.Limited_Controlled with record
-      Storage_Order : Interfaces.Unsigned_64 := 0;
-   end record;
-   overriding procedure Finalize (Guard : in out Install_Guard);
-   procedure Rollback (Guard : in out Install_Guard) is
-      Order : constant Interfaces.Unsigned_64 := Guard.Storage_Order;
-   begin
-      if Order /= 0 then
-         Delete_Image_Object_By_Storage_Order (R, Item.Stream_ID, Order);
-      end if;
-      Guard.Storage_Order := 0;
-   end Rollback;
-   overriding procedure Finalize (Guard : in out Install_Guard) is
-   begin
-      Rollback (Guard);
-   end Finalize;
-   Install : Install_Guard;
+   Install : Install_Guard (Item.Stream_ID);
    Store_Decoded : constant Boolean :=
      Item.Protocol = Terminal.Core.ITerm2_Graphics
      or else
@@ -71,7 +55,6 @@ is
 
    procedure Release_Local is
    begin
-      Rollback (Install);
       if Image_Bytes /= null and then Image_Bytes_Owned then
          Free_Image_Data (Image_Bytes);
          Image_Bytes := null;
@@ -88,6 +71,7 @@ is
       end if;
       Terminal.App.Image_Media.Release (Media);
       Terminal.App.Graphics.Release (Data);
+      Rollback (Install);
    end Release_Local;
 
    procedure Capture_PNG_Row
@@ -382,7 +366,7 @@ begin
             Bytes          => Image_Bytes,
             Stored_Bytes   => Stored_Bytes);
          if Stored_Bytes /= null then
-            Install.Storage_Order := R.Last_Stored_Image_Order;
+            Arm (Install, R.Last_Stored_Image_Order);
             Image_View := Stored_Bytes;
             Image_Bytes_Owned := False;
             Borrowed_From_Object := True;
@@ -415,7 +399,7 @@ begin
             Release_Local;
             return Emit_Rejected;
          end if;
-         Install.Storage_Order := R.Last_Stored_Image_Order;
+         Arm (Install, R.Last_Stored_Image_Order);
          Image_View := Stored_Bytes;
          Image_Bytes_Owned := False;
          Borrowed_From_Object := True;
@@ -660,7 +644,7 @@ begin
    end;
    Image_Bytes_Owned := False;
    Encoded_Source_Owned := False;
-   Install.Storage_Order := 0;
+   Commit (Install);
 
    Terminal.App.Image_Media.Release (Media);
    Terminal.App.Graphics.Release (Data);

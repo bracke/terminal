@@ -20,23 +20,7 @@ is
    Image_Bytes_Owned : Boolean := False;
    Encoded_Source : RM.Image_Data_Access := null;
    Encoded_Source_Owned : Boolean := False;
-   type Install_Guard is new Ada.Finalization.Limited_Controlled with record
-      Storage_Order : Interfaces.Unsigned_64 := 0;
-   end record;
-   overriding procedure Finalize (Guard : in out Install_Guard);
-   procedure Rollback (Guard : in out Install_Guard) is
-      Order : constant Interfaces.Unsigned_64 := Guard.Storage_Order;
-   begin
-      if Order /= 0 then
-         Delete_Image_Object_By_Storage_Order (R, Item.Stream_ID, Order);
-      end if;
-      Guard.Storage_Order := 0;
-   end Rollback;
-   overriding procedure Finalize (Guard : in out Install_Guard) is
-   begin
-      Rollback (Guard);
-   end Finalize;
-   Install : Install_Guard;
+   Install : Install_Guard (Item.Stream_ID);
    Row_Copy_Failed : Boolean := False;
    Preview_Length : Natural := 0;
    Preview_Bytes : Terminal.Common.Bytes.Byte_Array
@@ -57,7 +41,6 @@ is
 
    procedure Release_Local is
    begin
-      Rollback (Install);
       if Image_Bytes /= null and then Image_Bytes_Owned then
          Free_Image_Data (Image_Bytes);
          Image_Bytes := null;
@@ -69,6 +52,7 @@ is
          Encoded_Source_Owned := False;
       end if;
       Terminal.App.Graphics.Release (Data);
+      Rollback (Install);
    end Release_Local;
 
    procedure Capture_Sixel_Row
@@ -171,7 +155,7 @@ begin
          Bytes          => Image_Bytes,
          Stored_Bytes   => Stored_Bytes);
       Stored_Order := R.Last_Stored_Image_Order;
-      Install.Storage_Order := Stored_Order;
+      Arm (Install, Stored_Order);
       if Stored_Bytes = null
         or else not Store_Auxiliary_Placement
           (R,
@@ -183,7 +167,7 @@ begin
          if Stored_Order /= 0 then
             Delete_Image_Object_By_Storage_Order
               (R, Item.Stream_ID, Stored_Order);
-            Install.Storage_Order := 0;
+            Commit (Install);
          end if;
          Release_Local;
          return False;
@@ -244,7 +228,7 @@ begin
    end;
    Image_Bytes_Owned := False;
    Encoded_Source_Owned := False;
-   Install.Storage_Order := 0;
+   Commit (Install);
 
    Terminal.App.Graphics.Release (Data);
    return True;

@@ -168,7 +168,7 @@ is
    end Composite_Pixel;
 begin
    if Object = null
-     or else Terminal.App.Image_Store.First_Theme_Operation (Object) = null
+     or else Themes.First (Object) = null
    then
       return True;
    elsif Object.Pixel_Width = 0
@@ -181,7 +181,7 @@ begin
    Canvas_Length := Object.Pixel_Width * Object.Pixel_Height * 4;
    Canvas_A := new Terminal.Common.Bytes.Byte_Array (1 .. Canvas_Length);
    Canvas_B := new Terminal.Common.Bytes.Byte_Array (1 .. Canvas_Length);
-   Operation := Terminal.App.Image_Store.First_Theme_Operation (Object);
+   Operation := Themes.First (Object);
    while Operation /= null loop
       if Operation.Is_Composition then
          declare
@@ -367,7 +367,7 @@ begin
             end if;
          end;
       end if;
-      Operation := Terminal.App.Image_Store.Next_Theme_Operation (Operation);
+      Operation := Themes.Next (Operation);
    end loop;
    --  Replay uses private working copies.  Publish them only after every
    --  operation has succeeded, so a failed recolor cannot partially mutate

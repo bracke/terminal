@@ -64,6 +64,47 @@ package body Terminal.App.Diagnostics is
       Kind     : Runtime_Status_Kind) return String is
      (Statuses (Kind).Text (1 .. Statuses (Kind).Length));
 
+   subtype Grid_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Resize.Max_Status_Label_Length;
+   subtype Policy_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Render_Policy.Max_Status_Label_Length;
+   subtype Scrollback_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Scrollback_View.Max_Status_Label_Length;
+   subtype Selection_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Selection.Max_Status_Label_Length;
+   subtype Link_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Hyperlinks.Max_Status_Label_Length;
+   subtype Clipboard_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Clipboard_OSC52.Max_Status_Label_Length;
+   subtype Tab_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Tabs.Max_Status_Label_Length;
+   subtype Split_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Splits.Max_Status_Label_Length;
+   subtype Config_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Config.Max_Status_Label_Length;
+   subtype Profile_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Max_Status_Label_Length;
+   subtype Input_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Input_Map.Max_Input_Status_Label_Length;
+   subtype Mouse_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Input_Map.Max_Mouse_Status_Label_Length;
+   subtype Cursor_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Cursor_Blink.Max_Status_Label_Length;
+   subtype Text_Blink_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Text_Blink.Max_Status_Label_Length;
+   subtype Theme_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Theme.Max_Status_Label_Length;
+   subtype Font_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Fonts.Max_Status_Label_Length;
+   subtype PTY_Backend_Status_Length_Range is
+     Natural range 0 .. Terminal.PTY.Backend.Max_Status_Label_Length;
+   subtype Multiplexer_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Max_Status_Label_Length;
+   subtype Graphics_Header_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Graphics.Max_Status_Label_Length;
+   subtype Graphics_Data_Status_Length_Range is
+     Natural range 0 .. Terminal.App.Graphics.Max_Status_Label_Length;
+
    function Bounded_Length (Text : String) return Grid_Status_Length_Range is
      (Grid_Status_Length_Range'Min
         (Text'Length, Terminal.App.Resize.Max_Status_Label_Length));
@@ -173,33 +214,33 @@ package body Terminal.App.Diagnostics is
       Statuses : Runtime_Statuses := (others => <>))
       return Snapshot
    is
-      Grid_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (0));
-      Policy_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (1));
-      Scrollback_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (2));
-      Selection_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (3));
-      Link_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (4));
+      Grid_Status : constant String := Value (Statuses, Diagnostics.Grid_Status);
+      Policy_Status : constant String := Value (Statuses, Diagnostics.Policy_Status);
+      Scrollback_Status : constant String := Value (Statuses, Diagnostics.Scrollback_Status);
+      Selection_Status : constant String := Value (Statuses, Diagnostics.Selection_Status);
+      Link_Status : constant String := Value (Statuses, Diagnostics.Link_Status);
       Link_Activation_Status : constant String :=
-        Value (Statuses, Runtime_Status_Kind'Val (5));
-      Clipboard_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (6));
-      Tab_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (7));
-      Split_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (8));
-      Config_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (9));
-      Profile_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (10));
-      Input_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (11));
-      Mouse_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (12));
-      Cursor_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (13));
-      Text_Blink_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (14));
-      Theme_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (15));
-      Font_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (16));
+        Value (Statuses, Diagnostics.Link_Activation_Status);
+      Clipboard_Status : constant String := Value (Statuses, Diagnostics.Clipboard_Status);
+      Tab_Status : constant String := Value (Statuses, Diagnostics.Tab_Status);
+      Split_Status : constant String := Value (Statuses, Diagnostics.Split_Status);
+      Config_Status : constant String := Value (Statuses, Diagnostics.Config_Status);
+      Profile_Status : constant String := Value (Statuses, Diagnostics.Profile_Status);
+      Input_Status : constant String := Value (Statuses, Diagnostics.Input_Status);
+      Mouse_Status : constant String := Value (Statuses, Diagnostics.Mouse_Status);
+      Cursor_Status : constant String := Value (Statuses, Diagnostics.Cursor_Status);
+      Text_Blink_Status : constant String := Value (Statuses, Diagnostics.Text_Blink_Status);
+      Theme_Status : constant String := Value (Statuses, Diagnostics.Theme_Status);
+      Font_Status : constant String := Value (Statuses, Diagnostics.Font_Status);
       PTY_Backend_Status : constant String :=
-        Value (Statuses, Runtime_Status_Kind'Val (17));
-      ConPTY_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (18));
+        Value (Statuses, Diagnostics.PTY_Backend_Status);
+      ConPTY_Status : constant String := Value (Statuses, Diagnostics.ConPTY_Status);
       Multiplexer_Status : constant String :=
-        Value (Statuses, Runtime_Status_Kind'Val (19));
+        Value (Statuses, Diagnostics.Multiplexer_Status);
       Graphics_Header_Status : constant String :=
-        Value (Statuses, Runtime_Status_Kind'Val (20));
+        Value (Statuses, Diagnostics.Graphics_Header_Status);
       Graphics_Data_Status : constant String :=
-        Value (Statuses, Runtime_Status_Kind'Val (21));
+        Value (Statuses, Diagnostics.Graphics_Data_Status);
       Grid_Length : constant Grid_Status_Length_Range :=
         Bounded_Length (Grid_Status);
       Grid_Text : String (1 .. Terminal.App.Resize.Max_Status_Label_Length) :=
@@ -384,50 +425,7 @@ package body Terminal.App.Diagnostics is
         (Core            => Terminal.Core.Diagnostics (Core),
          Last_Feed_Status => Last_Feed_Status,
          Last_Write_Status => Last_Write_Status,
-         Grid_Status_Length => Grid_Length,
-         Grid_Status => Grid_Text,
-         Policy_Status_Length => Policy_Length,
-         Policy_Status => Policy_Text,
-         Scrollback_Status_Length => Scrollback_Length,
-         Scrollback_Status => Scrollback_Text,
-         Selection_Status_Length => Selection_Length,
-         Selection_Status => Selection_Text,
-         Link_Status_Length => Link_Length,
-         Link_Status => Link_Text,
-         Link_Activation_Status_Length => Link_Activation_Length,
-         Link_Activation_Status => Link_Activation_Text,
-         Clipboard_Status_Length => Clipboard_Length,
-         Clipboard_Status => Clipboard_Text,
-         Tab_Status_Length => Tab_Length,
-         Tab_Status => Tab_Text,
-         Split_Status_Length => Split_Length,
-         Split_Status => Split_Text,
-         Config_Status_Length => Config_Length,
-         Config_Status => Config_Text,
-         Profile_Status_Length => Profile_Length,
-         Profile_Status => Profile_Text,
-         Input_Status_Length => Input_Length,
-         Input_Status => Input_Text,
-         Mouse_Status_Length => Mouse_Length,
-         Mouse_Status => Mouse_Text,
-         Cursor_Status_Length => Cursor_Length,
-         Cursor_Status => Cursor_Text,
-         Text_Blink_Status_Length => Text_Blink_Length,
-         Text_Blink_Status => Text_Blink_Text,
-         Theme_Status_Length => Theme_Length,
-         Theme_Status => Theme_Text,
-         Font_Status_Length => Font_Length,
-         Font_Status => Font_Text,
-         PTY_Backend_Status_Length => PTY_Backend_Length,
-         PTY_Backend_Status => PTY_Backend_Text,
-         ConPTY_Status_Length => ConPTY_Length,
-         ConPTY_Status => ConPTY_Text,
-         Multiplexer_Status_Length => Multiplexer_Length,
-         Multiplexer_Status => Multiplexer_Text,
-         Graphics_Header_Status_Length => Graphics_Header_Length,
-         Graphics_Header_Status => Graphics_Header_Text,
-         Graphics_Data_Status_Length => Graphics_Data_Length,
-         Graphics_Data_Status => Graphics_Data_Text,
+         Statuses        => Statuses,
          PTY_Length      => PTY.Length,
          PTY_Overflows   => PTY.Overflow_Count,
          Input_Length    => Input.Length,
@@ -447,66 +445,7 @@ package body Terminal.App.Diagnostics is
    begin
       return S.Last_Feed_Status /= Last_Snapshot.Last_Feed_Status
         or else S.Last_Write_Status /= Last_Snapshot.Last_Write_Status
-        or else S.Grid_Status_Length /= Last_Snapshot.Grid_Status_Length
-        or else S.Grid_Status /= Last_Snapshot.Grid_Status
-        or else S.Policy_Status_Length /= Last_Snapshot.Policy_Status_Length
-        or else S.Policy_Status /= Last_Snapshot.Policy_Status
-        or else
-          S.Scrollback_Status_Length /= Last_Snapshot.Scrollback_Status_Length
-        or else S.Scrollback_Status /= Last_Snapshot.Scrollback_Status
-        or else
-          S.Selection_Status_Length /= Last_Snapshot.Selection_Status_Length
-        or else S.Selection_Status /= Last_Snapshot.Selection_Status
-        or else S.Link_Status_Length /= Last_Snapshot.Link_Status_Length
-        or else S.Link_Status /= Last_Snapshot.Link_Status
-        or else
-          S.Link_Activation_Status_Length /=
-            Last_Snapshot.Link_Activation_Status_Length
-        or else S.Link_Activation_Status /=
-          Last_Snapshot.Link_Activation_Status
-        or else
-          S.Clipboard_Status_Length /= Last_Snapshot.Clipboard_Status_Length
-        or else S.Clipboard_Status /= Last_Snapshot.Clipboard_Status
-        or else S.Tab_Status_Length /= Last_Snapshot.Tab_Status_Length
-        or else S.Tab_Status /= Last_Snapshot.Tab_Status
-        or else S.Split_Status_Length /= Last_Snapshot.Split_Status_Length
-        or else S.Split_Status /= Last_Snapshot.Split_Status
-        or else S.Config_Status_Length /= Last_Snapshot.Config_Status_Length
-        or else S.Config_Status /= Last_Snapshot.Config_Status
-        or else S.Profile_Status_Length /= Last_Snapshot.Profile_Status_Length
-        or else S.Profile_Status /= Last_Snapshot.Profile_Status
-        or else S.Input_Status_Length /= Last_Snapshot.Input_Status_Length
-        or else S.Input_Status /= Last_Snapshot.Input_Status
-        or else S.Mouse_Status_Length /= Last_Snapshot.Mouse_Status_Length
-        or else S.Mouse_Status /= Last_Snapshot.Mouse_Status
-        or else S.Cursor_Status_Length /= Last_Snapshot.Cursor_Status_Length
-        or else S.Cursor_Status /= Last_Snapshot.Cursor_Status
-        or else
-          S.Text_Blink_Status_Length /= Last_Snapshot.Text_Blink_Status_Length
-        or else S.Text_Blink_Status /= Last_Snapshot.Text_Blink_Status
-        or else S.Theme_Status_Length /= Last_Snapshot.Theme_Status_Length
-        or else S.Theme_Status /= Last_Snapshot.Theme_Status
-        or else S.Font_Status_Length /= Last_Snapshot.Font_Status_Length
-        or else S.Font_Status /= Last_Snapshot.Font_Status
-        or else
-          S.PTY_Backend_Status_Length /=
-            Last_Snapshot.PTY_Backend_Status_Length
-        or else S.PTY_Backend_Status /= Last_Snapshot.PTY_Backend_Status
-        or else S.ConPTY_Status_Length /= Last_Snapshot.ConPTY_Status_Length
-        or else S.ConPTY_Status /= Last_Snapshot.ConPTY_Status
-        or else
-          S.Multiplexer_Status_Length /=
-            Last_Snapshot.Multiplexer_Status_Length
-        or else S.Multiplexer_Status /= Last_Snapshot.Multiplexer_Status
-        or else
-          S.Graphics_Header_Status_Length /=
-            Last_Snapshot.Graphics_Header_Status_Length
-        or else S.Graphics_Header_Status /=
-          Last_Snapshot.Graphics_Header_Status
-        or else
-          S.Graphics_Data_Status_Length /=
-            Last_Snapshot.Graphics_Data_Status_Length
-        or else S.Graphics_Data_Status /= Last_Snapshot.Graphics_Data_Status
+        or else S.Statuses /= Last_Snapshot.Statuses
         or else S.Core /= Last_Snapshot.Core;
    end Core_Changed;
 
@@ -655,6 +594,15 @@ package body Terminal.App.Diagnostics is
    end Image_Texture_Pipeline_Status_Label;
 
    function Status_Line (S : Snapshot) return String is
+      function Field
+        (Label : String;
+         Kind  : Runtime_Status_Kind) return String
+      is
+         Text : constant String := Value (S.Statuses, Kind);
+      begin
+         return (if Text'Length = 0 then "" else " " & Label & "=" & Text);
+      end Field;
+
       Core_Status : constant String :=
         Terminal.Core.Diagnostics_Status_Label (S.Core);
       Feed_Status : constant String :=
@@ -722,119 +670,28 @@ package body Terminal.App.Diagnostics is
          & " input_queue_status=" & Input_Queue_Status
          & " feed_status=" & Feed_Status
          & " write_status=" & Write_Status
-         & (if S.Grid_Status_Length = 0
-            then ""
-            else
-              " grid_status=" &
-                S.Grid_Status (1 .. S.Grid_Status_Length))
-         & (if S.Policy_Status_Length = 0
-            then ""
-            else
-              " render_policy=" &
-                S.Policy_Status (1 .. S.Policy_Status_Length))
-         & (if S.Scrollback_Status_Length = 0
-            then ""
-            else
-              " scrollback_status=" &
-                S.Scrollback_Status (1 .. S.Scrollback_Status_Length))
-         & (if S.Selection_Status_Length = 0
-            then ""
-            else
-              " selection_status=" &
-                S.Selection_Status (1 .. S.Selection_Status_Length))
-         & (if S.Link_Status_Length = 0
-            then ""
-            else
-              " link_status=" &
-                S.Link_Status (1 .. S.Link_Status_Length))
-         & (if S.Link_Activation_Status_Length = 0
-            then ""
-            else
-              " link_activation=" &
-                S.Link_Activation_Status
-                  (1 .. S.Link_Activation_Status_Length))
-         & (if S.Clipboard_Status_Length = 0
-            then ""
-            else
-              " clipboard_status=" &
-                S.Clipboard_Status (1 .. S.Clipboard_Status_Length))
-         & (if S.Tab_Status_Length = 0
-            then ""
-            else
-              " tab_status=" &
-                S.Tab_Status (1 .. S.Tab_Status_Length))
-         & (if S.Split_Status_Length = 0
-            then ""
-            else
-              " split_status=" &
-                S.Split_Status (1 .. S.Split_Status_Length))
-         & (if S.Config_Status_Length = 0
-            then ""
-            else
-              " config_status=" &
-                S.Config_Status (1 .. S.Config_Status_Length))
-         & (if S.Profile_Status_Length = 0
-            then ""
-            else
-              " profile_status=" &
-                S.Profile_Status (1 .. S.Profile_Status_Length))
-         & (if S.Input_Status_Length = 0
-            then ""
-            else
-              " input_status=" &
-                S.Input_Status (1 .. S.Input_Status_Length))
-         & (if S.Mouse_Status_Length = 0
-            then ""
-            else
-              " mouse_status=" &
-                S.Mouse_Status (1 .. S.Mouse_Status_Length))
-         & (if S.Cursor_Status_Length = 0
-            then ""
-            else
-              " cursor_status=" &
-                S.Cursor_Status (1 .. S.Cursor_Status_Length))
-         & (if S.Text_Blink_Status_Length = 0
-            then ""
-            else
-              " text_blink_status=" &
-                S.Text_Blink_Status (1 .. S.Text_Blink_Status_Length))
-         & (if S.Theme_Status_Length = 0
-            then ""
-            else
-              " theme_status=" &
-                S.Theme_Status (1 .. S.Theme_Status_Length))
-         & (if S.Font_Status_Length = 0
-            then ""
-            else
-              " font_status=" &
-                S.Font_Status (1 .. S.Font_Status_Length))
-         & (if S.PTY_Backend_Status_Length = 0
-            then ""
-            else
-              " pty_backend_status=" &
-                S.PTY_Backend_Status (1 .. S.PTY_Backend_Status_Length))
-         & (if S.ConPTY_Status_Length = 0
-            then ""
-            else
-              " conpty_status=" &
-                S.ConPTY_Status (1 .. S.ConPTY_Status_Length))
-         & (if S.Multiplexer_Status_Length = 0
-            then ""
-            else
-              " multiplexer_status=" &
-                S.Multiplexer_Status (1 .. S.Multiplexer_Status_Length))
-         & (if S.Graphics_Header_Status_Length = 0
-            then ""
-            else
-              " graphics_header_status=" &
-                S.Graphics_Header_Status
-                  (1 .. S.Graphics_Header_Status_Length))
-         & (if S.Graphics_Data_Status_Length = 0
-            then ""
-            else
-              " graphics_data_status=" &
-                S.Graphics_Data_Status
-                  (1 .. S.Graphics_Data_Status_Length))
+         & Field ("grid_status", Grid_Status)
+         & Field ("render_policy", Policy_Status)
+         & Field ("scrollback_status", Scrollback_Status)
+         & Field ("selection_status", Selection_Status)
+         & Field ("link_status", Link_Status)
+         & Field ("link_activation", Link_Activation_Status)
+         & Field ("clipboard_status", Clipboard_Status)
+         & Field ("tab_status", Tab_Status)
+         & Field ("split_status", Split_Status)
+         & Field ("config_status", Config_Status)
+         & Field ("profile_status", Profile_Status)
+         & Field ("input_status", Input_Status)
+         & Field ("mouse_status", Mouse_Status)
+         & Field ("cursor_status", Cursor_Status)
+         & Field ("text_blink_status", Text_Blink_Status)
+         & Field ("theme_status", Theme_Status)
+         & Field ("font_status", Font_Status)
+         & Field ("pty_backend_status", PTY_Backend_Status)
+         & Field ("conpty_status", ConPTY_Status)
+         & Field ("multiplexer_status", Multiplexer_Status)
+         & Field ("graphics_header_status", Graphics_Header_Status)
+         & Field ("graphics_data_status", Graphics_Data_Status)
          & " core_status=" & Core_Status
          & " utf8_bad=" & Natural'Image (S.Core.Malformed_UTF8)
          & " parser_overflow=" & Natural'Image (S.Core.Parser_Overflow)

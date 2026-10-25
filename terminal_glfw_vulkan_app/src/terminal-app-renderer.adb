@@ -16,6 +16,7 @@ with Terminal.App.Image_Colors;
 with Terminal.App.Image_Ingestion;
 with Terminal.App.Image_Media;
 with Terminal.App.Image_Store;
+with Terminal.App.Image_Store.Themes;
 with Terminal.App.Image_Placements;
 with Terminal.App.Image_Rendering;
 with Terminal.App.ITerm2_Files;
@@ -31,6 +32,8 @@ package body Terminal.App.Renderer is
    package RM renames Terminal.App.Render_Model;
    package VS renames Terminal.App.Vulkan_Submit;
    package FIS renames Terminal.App.Frame_Image_Storage;
+   package Themes renames Terminal.App.Image_Store.Themes;
+   use Terminal.App.Image_Store.Themes;
 
    use type Terminal.Core.Cell_Kind;
    use type Terminal.App.ITerm2_Files.Save_Status;
@@ -1401,7 +1404,7 @@ package body Terminal.App.Renderer is
      (Head : in out Theme_Operation_Access)
    is
    begin
-      Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Head);
+      Themes.Release_Unowned (Head);
    end Release_Theme_Operation_List;
 
    procedure Clear_Theme_Operations
@@ -1411,7 +1414,7 @@ package body Terminal.App.Renderer is
       if Object = null then
          return;
       end if;
-      Terminal.App.Image_Store.Clear_Theme_Operations
+      Themes.Clear
         (R.Image_Objects, Object);
    end Clear_Theme_Operations;
 
@@ -1421,11 +1424,11 @@ package body Terminal.App.Renderer is
    is
    begin
       if Object = null
-        or else Terminal.App.Image_Store.First_Theme_Operation (Object) = null
+        or else Themes.First (Object) = null
       then
          return;
       end if;
-      Terminal.App.Image_Store.Archive_Root_Theme_Operations
+      Themes.Archive_Root
         (R.Image_Objects, Object, Max_Theme_Operations);
    end Archive_Root_Theme_Operations;
 
@@ -1440,7 +1443,7 @@ package body Terminal.App.Renderer is
       if Object = null
         or else Op_Count > Max_Theme_Operations -
           Natural'Min
-            (Terminal.App.Image_Store.Theme_Operation_Count_Of (Object),
+            (Themes.Count (Object),
              Max_Theme_Operations)
       then
          return False;

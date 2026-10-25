@@ -11,6 +11,16 @@ separate (Terminal.App.Main_Loop.Run)
       procedure Handle_Input_Event (Stop : out Boolean) is separate;
       procedure Poll_Backends is separate;
       procedure Resize_Surface is separate;
+      procedure Log_Frame_Diagnostics
+        (Snaps               : Terminal.App.Renderer.Snapshot_Array;
+         Active_Render_Index : Positive;
+         Render_Policy_Status : String) is separate;
+      procedure Complete_Frame_Graphics
+        (Snaps               : Terminal.App.Renderer.Snapshot_Array;
+         Active_Render_Index : Positive;
+         Render_Status       : Terminal.App.Renderer.Render_Status;
+         Present_Status      : Terminal.App.Vulkan_Presenter.Present_Status)
+      is separate;
 
       procedure Handle_Present_Status
         (Status : Terminal.App.Vulkan_Presenter.Present_Status) is
@@ -303,245 +313,10 @@ separate (Terminal.App.Main_Loop.Run)
                Render_Status := Terminal.App.Renderer.Not_Initialized;
             end if;
             Handle_Present_Status (Present_Status);
-            declare
-               Grid_Status : constant String :=
-                 Terminal.App.Resize.Grid_Status_Label
-                   (FB_Width,
-                    FB_Height,
-                    Terminal.App.Renderer.Cell_Width (R),
-                    Terminal.App.Renderer.Cell_Height (R),
-                    Terminal.App.Renderer.Content_Margin);
-               Scrollback_Status : constant String :=
-                 Terminal.App.Scrollback_View.Status_Label
-                   (Active_Core.all, Scroll_Offset);
-               Selection_Status : constant String :=
-                 Terminal.App.Selection.Status_Label (Selection);
-               Link_Status : constant String :=
-                 Terminal.App.Hyperlinks.Status_Label (Hovered_Link);
-               Link_Activation_Status : constant String :=
-                 Terminal.App.Hyperlinks.Activation_Status_Label
-                   (if Has_Link_Activation
-                    then Link_Activation
-                    else Terminal.App.Hyperlinks.No_Link);
-               Clipboard_Status : constant String :=
-                 Terminal.App.Clipboard_OSC52.Status_Label
-                   (Last_Clipboard_Target);
-               Tab_Status : constant String :=
-                 Terminal.App.Tabs.Status_Label (Tabs);
-               Split_Status : constant String :=
-                 Terminal.App.Splits.Status_Label (Splits);
-               Config_Status : constant String :=
-                 Terminal.App.Config.Status_Label (App_Config);
-               Profile_Status : constant String :=
-                 Terminal.App.Profile_Status_Label
-                   (Terminal.App.Profile);
-               Input_Status : constant String :=
-                 Terminal.App.Input_Map.Input_Status_Label
-                   (Terminal.Core.Modes (Active_Core.all));
-               Mouse_Status : constant String :=
-                 Terminal.App.Input_Map.Mouse_Status_Label
-                   (Terminal.Core.Modes (Active_Core.all));
-               Cursor_Status : constant String :=
-                 Terminal.App.Cursor_Blink.Status_Label
-                   (Snaps (Active_Render_Index).Cursor,
-                    Current_Blink_Tick);
-               Text_Blink_Status : constant String :=
-                 Terminal.App.Text_Blink.Status_Label
-                   (Snaps (Active_Render_Index), Current_Blink_Tick);
-               Theme_Status : constant String :=
-                 Terminal.App.Theme.Status_Label
-                   (App_Config.Color_Theme);
-               Graphics_Header_Status : constant String :=
-                 Terminal.App.Graphics.Header_Status_Label
-                   (Snaps (Active_Render_Index).Graphics);
-               Graphics_Data_Status : constant String :=
-                 Terminal.App.Graphics.Data_Status_Label
-                   (Snaps (Active_Render_Index).Graphics);
-               Statuses : Terminal.App.Diagnostics.Runtime_Statuses :=
-                 (others => <>);
-               Diag : Terminal.App.Diagnostics.Snapshot;
-            begin
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Grid_Status, Grid_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Policy_Status,
-                  Render_Policy_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Scrollback_Status,
-                  Scrollback_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Selection_Status,
-                  Selection_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Link_Status, Link_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Link_Activation_Status,
-                  Link_Activation_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Clipboard_Status,
-                  Clipboard_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Tab_Status, Tab_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Split_Status,
-                  Split_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Config_Status,
-                  Config_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Profile_Status,
-                  Profile_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Input_Status,
-                  Input_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Mouse_Status,
-                  Mouse_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Cursor_Status,
-                  Cursor_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Text_Blink_Status,
-                  Text_Blink_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Theme_Status,
-                  Theme_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Font_Status,
-                  Runtime_Font_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.PTY_Backend_Status,
-                  Runtime_PTY_Backend_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.ConPTY_Status,
-                  Runtime_ConPTY_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Multiplexer_Status,
-                  Runtime_Multiplexer_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Graphics_Header_Status,
-                  Graphics_Header_Status);
-               Terminal.App.Diagnostics.Set
-                 (Statuses, Terminal.App.Diagnostics.Graphics_Data_Status,
-                  Graphics_Data_Status);
-               Diag := Terminal.App.Diagnostics.Collect
-                 (Active_Core.all,
-                  Active_PTY_Queue.all,
-                  In_Q,
-                  R,
-                  Presenter,
-                  Last_Feed_Status,
-                  Last_Write_Status,
-                  Statuses);
-               Terminal.App.Diagnostics.Log_If_Changed (Diag);
-            end;
-            if Render_Status = Terminal.App.Renderer.Ok
-              and then
-                (Present_Status = Terminal.App.Vulkan_Presenter.Ok
-                 or else Present_Status =
-                   Terminal.App.Vulkan_Presenter.Validated_Not_Presented)
-            then
-               declare
-                  More_Graphics : Boolean := False;
-               begin
-                  for I in Snaps'Range loop
-                     declare
-                        Runtime : constant access
-                          Terminal.App.Session_Runtime.Runtime :=
-                            (if Visible_Count = 1
-                             then Active_Runtime
-                             else Terminal.App.Session_Table.Runtime_At
-                               (Sessions,
-                                Terminal.App.Sessions.Session_Index
-                                  (I)));
-                        Core : constant access Terminal.Core.Terminal :=
-                          (if Runtime = null
-                           then Active_Core
-                           else Terminal.App.Session_Runtime.Core
-                             (Runtime.all));
-                        Response_Runtime : constant access
-                          Terminal.App.Session_Runtime.Runtime :=
-                            (if Runtime = null
-                             then Active_Runtime
-                             else Runtime);
-                     begin
-                        if (I /= Active_Render_Index
-                            or else Scroll_Offset = 0)
-                        then
-                           Terminal.Core.Complete_Graphics_Event
-                             (Core.all,
-                              Snaps (I).Graphics,
-                              Terminal.App.Renderer.Graphics_Result
-                                (R, Snaps (I).Graphics));
-                           while not Terminal.App.Session_Runtime
-                             .Has_Pending_Write (Response_Runtime.all)
-                             and then
-                               Terminal.Core.Pending_Response_Length
-                                 (Core.all) > 0
-                           loop
-                              Chunk := (others => <>);
-                              Terminal.Core.Read_Response
-                                (Core.all,
-                                 Chunk.Data,
-                                 Chunk.Length);
-                              exit when Chunk.Length = 0;
-                              Terminal.App.Session_Runtime.Write
-                                (Response_Runtime.all,
-                                 Chunk,
-                                 Write_Stat);
-                              Last_Write_Status := Write_Stat;
-                              if Fatal_Write (Write_Stat) then
-                                 if Terminal.App.Session_Table.Count
-                                   (Sessions) = 1
-                                 then
-                                    GLFW_Vulkan.Windows.Set_Should_Close
-                                      (W, True);
-                                 end if;
-                                 exit;
-                              elsif Write_Stat =
-                                Terminal.App.PTY_Write.Incomplete
-                              then
-                                 exit;
-                              end if;
-                           end loop;
-                        end if;
-                        --  The active pane's graphics queue is
-                        --  intentionally suspended while displaying
-                        --  scrollback.  Do not turn that suspended
-                        --  work into an immediate redraw request: it
-                        --  would spin continuously without consuming
-                        --  the event.  Returning to the live view is
-                        --  itself a redraw request and resumes it.
-                        if I /= Active_Render_Index
-                          or else Scroll_Offset = 0
-                        then
-                           More_Graphics := More_Graphics
-                             or else
-                               Terminal.Core
-                                 .Pending_Graphics_Event_Count
-                                   (Core.all) > 0;
-                        end if;
-                     end;
-                  end loop;
-                  Terminal.App.Renderer.Commit_Graphics_Events (R);
-                  Need_Redraw := More_Graphics;
-               end;
-               Terminal.Core.Clear_Damage (Active_Core.all);
-            elsif Present_Status not in
-              Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
-                | Terminal.App.Vulkan_Presenter.Device_Lost
-                | Terminal.App.Vulkan_Presenter.Resources_In_Flight
-            then
-               Need_Redraw :=
-                 Terminal.App.Vulkan_Recovery.Is_Pending
-                   (Vulkan_Recovery);
-            elsif Present_Status =
-              Terminal.App.Vulkan_Presenter.Resources_In_Flight
-            then
-               --  A submitted frame still owns the shared descriptor
-               --  or vertex resources. Retry after its fence signals.
-               Need_Redraw := True;
-            end if;
+            Log_Frame_Diagnostics
+              (Snaps, Active_Render_Index, Render_Policy_Status);
+            Complete_Frame_Graphics
+              (Snaps, Active_Render_Index, Render_Status, Present_Status);
          end;
       end if;
       end;

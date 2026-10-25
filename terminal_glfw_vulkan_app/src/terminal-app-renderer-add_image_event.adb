@@ -26,6 +26,41 @@ is
       return Complete_Event_Text (R, Item);
    end Event_Text;
 
+   type Install_Guard
+     (Stream_ID : Terminal.Core.Graphics_Stream_ID) is
+     new Ada.Finalization.Limited_Controlled with record
+      Storage_Order : Interfaces.Unsigned_64 := 0;
+   end record;
+   overriding procedure Finalize (Guard : in out Install_Guard);
+
+   procedure Arm
+     (Guard : in out Install_Guard;
+      Order : Interfaces.Unsigned_64) is
+   begin
+      Guard.Storage_Order := Order;
+   end Arm;
+
+   procedure Commit (Guard : in out Install_Guard) is
+   begin
+      Guard.Storage_Order := 0;
+   end Commit;
+
+   procedure Rollback (Guard : in out Install_Guard) is
+      Order : constant Interfaces.Unsigned_64 := Guard.Storage_Order;
+   begin
+      if Order /= 0 then
+         Delete_Image_Object_By_Storage_Order (R, Guard.Stream_ID, Order);
+      end if;
+      Guard.Storage_Order := 0;
+   end Rollback;
+
+   overriding procedure Finalize (Guard : in out Install_Guard) is
+   begin
+      Rollback (Guard);
+   exception
+      when others => null;
+   end Finalize;
+
    function Emit_Raw_Kitty
      (Item       : Terminal.Core.Graphics_Event;
       Header     : Terminal.App.Graphics.Graphics_Header;

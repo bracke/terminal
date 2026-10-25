@@ -940,90 +940,7 @@ package body Terminal.App.Image_Store is
    procedure Adopt_Frames
      (Container : in out Store;
       Object    : Image_Object_Access;
-      Head      : in out Image_Frame_Access)
-   is
-      Slow : Image_Frame_Access := Head;
-      Fast : Image_Frame_Access := Head;
-      Current : Image_Frame_Access := Head;
-      Tail : Image_Frame_Access := null;
-      Count : Natural := 0;
-      Bytes : Natural := 0;
-      Seen : Address_Sets.Set;
-
-      procedure Register
-        (Data : Terminal.App.Render_Model.Image_Data_Access)
-      is
-         Address : System.Address;
-      begin
-         if Data = null then
-            return;
-         end if;
-         Address := Data.all'Address;
-         if Seen.Contains (Address) then
-            raise Program_Error with "image frames share owned storage";
-         end if;
-         Seen.Insert (Address);
-      end Register;
-   begin
-      if not Is_Owned (Container, Object) then
-         raise Program_Error with "image object is not owned by this store";
-      elsif Object.Frames /= null then
-         raise Program_Error with "image object already has animation frames";
-      end if;
-      Register (Object.Bytes);
-      Register (Object.Indexed_Bytes);
-      declare
-         Operation : Theme_Operation_Access := Object.Theme_Operations;
-      begin
-         while Operation /= null loop
-            Register (Operation.Bytes);
-            Operation := Operation.Next;
-         end loop;
-      end;
-      while Fast /= null and then Fast.Next /= null loop
-         Slow := Slow.Next;
-         Fast := Fast.Next.Next;
-         if Slow = Fast then
-            raise Program_Error with "image frame list is cyclic";
-         end if;
-      end loop;
-      while Current /= null loop
-         if Current.Bytes = null
-           or else Current.Length /= Current.Bytes'Length
-         then
-            raise Constraint_Error with "image frame length does not match data";
-         end if;
-         Register (Current.Bytes);
-         if Count >= Positive'Last - 1 then
-            raise Storage_Error with "image frame accounting overflow";
-         end if;
-         if Current.Number /= Count + 2 then
-            raise Constraint_Error with "image frame numbers must be contiguous";
-         end if;
-         if Current.Length > Natural'Last - Bytes then
-            raise Storage_Error with "image frame accounting overflow";
-         end if;
-         Count := Count + 1;
-         Bytes := Bytes + Current.Length;
-         Tail := Current;
-         Current := Current.Next;
-      end loop;
-      Object.Frames := Head;
-      Object.Frames_Tail := Tail;
-      Object.Frame_Count := Positive (Count + 1);
-      Object.Frame_Bytes := Bytes;
-      begin
-         Synchronize (Container, Object);
-      exception
-         when others =>
-            Object.Frames := null;
-            Object.Frames_Tail := null;
-            Object.Frame_Count := 1;
-            Object.Frame_Bytes := 0;
-            raise;
-      end;
-      Head := null;
-   end Adopt_Frames;
+      Head      : in out Image_Frame_Access) is separate;
 
    procedure Replace_Frame_Data
      (Container : in out Store;
@@ -1107,83 +1024,73 @@ package body Terminal.App.Image_Store is
       Operation : in out Theme_Operation_Access) is separate;
 
    procedure Begin_Theme_Append
-     (Container   : aliased in out Store;
+     (Transaction : in out Theme_Append_Transaction;
       Object      : Image_Object_Access;
-      Operation   : in out Theme_Operation_Access;
-      Transaction : in out Theme_Append_Transaction)
+      Operation   : in out Theme_Operation_Access)
    is
       Previous : constant Theme_Operation_Access :=
         (if Object = null then null else Object.Theme_Operations_Tail);
    begin
-      if Transaction.Guard.Operation /= null then
+      if Transaction.Operation /= null then
          raise Program_Error with "theme append transaction is already active";
       end if;
-      Append_Theme_Operation (Container, Object, Operation);
-      --  The transaction is nested inside the caller's operation and is
-      --  finalized before the store it protects.
-      Transaction.Guard.Container := Container'Unchecked_Access;
-      Transaction.Guard.Object := Object;
-      Transaction.Guard.Previous_Tail := Previous;
-      Transaction.Guard.Operation := Object.Theme_Operations_Tail;
+      Append_Theme_Operation (Transaction.Container.all, Object, Operation);
+      Transaction.Object := Object;
+      Transaction.Previous_Tail := Previous;
+      Transaction.Operation := Object.Theme_Operations_Tail;
    end Begin_Theme_Append;
 
    procedure Commit (Transaction : in out Theme_Append_Transaction) is
    begin
-      Transaction.Guard.Container := null;
-      Transaction.Guard.Object := null;
-      Transaction.Guard.Previous_Tail := null;
-      Transaction.Guard.Operation := null;
+      Transaction.Object := null;
+      Transaction.Previous_Tail := null;
+      Transaction.Operation := null;
    end Commit;
 
-   procedure Rollback_Theme_Guard
-     (Guard : in out Theme_Rollback_Guard)
+   procedure Rollback_Theme_Append
+     (Transaction : in out Theme_Append_Transaction)
    is
-      Container : constant Store_Access := Guard.Container;
-      Object : constant Image_Object_Access := Guard.Object;
-      Operation : Theme_Operation_Access := Guard.Operation;
+      Object : constant Image_Object_Access := Transaction.Object;
+      Operation : Theme_Operation_Access := Transaction.Operation;
    begin
       if Operation = null then
          return;
-      elsif Container = null
-        or else not Is_Owned (Container.all, Object)
+      elsif not Is_Owned (Transaction.Container.all, Object)
         or else Object.Theme_Operations_Tail /= Operation
         or else Operation.Next /= null
       then
          raise Program_Error with "theme append transaction invariant violated";
       end if;
 
-      if Guard.Previous_Tail = null then
+      if Transaction.Previous_Tail = null then
          Object.Theme_Operations := null;
       else
-         Guard.Previous_Tail.Next := null;
+         Transaction.Previous_Tail.Next := null;
       end if;
-      Object.Theme_Operations_Tail := Guard.Previous_Tail;
+      Object.Theme_Operations_Tail := Transaction.Previous_Tail;
       Object.Theme_Operation_Count := Object.Theme_Operation_Count - 1;
       Object.Theme_Operation_Bytes :=
         Object.Theme_Operation_Bytes - Operation.Length;
       if Operation.Bytes /= null then
          Object.Theme_Addresses.Delete (Operation.Bytes.all'Address);
       end if;
-      Synchronize (Container.all, Object);
-      Guard.Container := null;
-      Guard.Object := null;
-      Guard.Previous_Tail := null;
-      Guard.Operation := null;
+      Synchronize (Transaction.Container.all, Object);
+      Transaction.Object := null;
+      Transaction.Previous_Tail := null;
+      Transaction.Operation := null;
       Release_Theme_Operation_List (Operation);
-   end Rollback_Theme_Guard;
-
-   procedure Rollback_Theme_Append
-     (Transaction : in out Theme_Append_Transaction) is
-   begin
-      Rollback_Theme_Guard (Transaction.Guard);
    end Rollback_Theme_Append;
 
    overriding procedure Finalize
-     (Guard : in out Theme_Rollback_Guard) is
+     (Transaction : in out Theme_Append_Transaction) is
    begin
-      if Guard.Operation /= null then
-         Rollback_Theme_Guard (Guard);
+      if Transaction.Operation /= null then
+         Rollback_Theme_Append (Transaction);
       end if;
+   exception
+      --  Explicit rollback reports invariant failures.  Finalization runs
+      --  during exception propagation and must not replace the root cause.
+      when others => null;
    end Finalize;
 
    procedure Clear_Theme_Operations
@@ -1208,110 +1115,7 @@ package body Terminal.App.Image_Store is
    procedure Archive_Root_Theme_Operations
      (Container      : in out Store;
       Object         : Image_Object_Access;
-      Max_Operations : Positive)
-   is
-      type Archive_Entry is record
-         Operation : Theme_Operation_Access := null;
-         Keep      : Boolean := False;
-      end record;
-      package Archive_Vectors is new Ada.Containers.Vectors
-        (Index_Type => Positive, Element_Type => Archive_Entry);
-      function Hash_Frame (Value : Positive) return Ada.Containers.Hash_Type is
-        (Ada.Containers.Hash_Type'Mod (Value));
-      package Frame_Sets is new Ada.Containers.Hashed_Sets
-        (Element_Type        => Positive,
-         Hash                => Hash_Frame,
-         Equivalent_Elements => "=");
-   begin
-      if not Is_Owned (Container, Object) then
-         raise Program_Error with "image object is not owned by this store";
-      elsif Object.Theme_Operations = null then
-         return;
-      elsif Object.Theme_Operation_Count > Max_Operations then
-         raise Program_Error with "theme operation limit invariant violated";
-      end if;
-
-      declare
-         Operation_Count : constant Positive :=
-           Positive (Object.Theme_Operation_Count);
-         Entries : Archive_Vectors.Vector;
-         Needed : Frame_Sets.Set;
-         Current : Theme_Operation_Access := Object.Theme_Operations;
-         New_Head : Theme_Operation_Access := null;
-         New_Tail : Theme_Operation_Access := null;
-         New_Count : Natural := 0;
-         New_Bytes : Natural := 0;
-         New_Addresses : Address_Sets.Set;
-      begin
-         Entries.Reserve_Capacity (Ada.Containers.Count_Type (Operation_Count));
-         for I in 1 .. Operation_Count loop
-            if Current = null then
-               raise Program_Error with
-                 "theme operation count invariant violated";
-            end if;
-            Entries.Append
-              (Archive_Entry'(Operation => Current, Keep => False));
-            Current := Current.Next;
-         end loop;
-         if Current /= null then
-            raise Program_Error with
-              "theme operation count invariant violated";
-         end if;
-
-         Needed.Include (1);
-         for I in reverse Entries.First_Index .. Entries.Last_Index loop
-            Current := Entries (I).Operation;
-            if Needed.Contains (Current.Target_Frame) then
-               Entries.Replace_Element
-                 (I, (Operation => Current, Keep => True));
-               if Current.Is_Composition then
-                  if Current.Source_Frame > 0 then
-                     Needed.Include (Positive (Current.Source_Frame));
-                  end if;
-               elsif Current.New_Frame then
-                  Needed.Exclude (Current.Target_Frame);
-                  if Current.Base_Frame > 0 then
-                     Needed.Include (Positive (Current.Base_Frame));
-                  end if;
-               end if;
-            end if;
-         end loop;
-         for I in Entries.First_Index .. Entries.Last_Index loop
-            if Entries (I).Keep then
-               New_Count := New_Count + 1;
-               New_Bytes := Checked_Total
-                 (New_Bytes, Entries (I).Operation.Length);
-               if Entries (I).Operation.Bytes /= null then
-                  New_Addresses.Insert
-                    (Entries (I).Operation.Bytes.all'Address);
-               end if;
-            end if;
-         end loop;
-         for I in Entries.First_Index .. Entries.Last_Index loop
-            Current := Entries (I).Operation;
-            Current.Next := null;
-            if Entries (I).Keep then
-               Current.Archived_Frames := True;
-               if New_Tail = null then
-                  New_Head := Current;
-               else
-                  New_Tail.Next := Current;
-               end if;
-               New_Tail := Current;
-            else
-               Free_Image_Data (Current.Bytes);
-               Free_Theme_Operation (Current);
-            end if;
-         end loop;
-         Object.Theme_Operations := New_Head;
-         Object.Theme_Operations_Tail := New_Tail;
-         Object.Theme_Operation_Count := New_Count;
-         Object.Theme_Operation_Bytes := New_Bytes;
-         Address_Sets.Move
-           (Target => Object.Theme_Addresses, Source => New_Addresses);
-         Synchronize (Container, Object);
-      end;
-   end Archive_Root_Theme_Operations;
+      Max_Operations : Positive) is separate;
 
    procedure Install_Root
      (Container        : in out Store;
@@ -1327,54 +1131,7 @@ package body Terminal.App.Image_Store is
       Row_Stride       : Natural;
       Usage_Hint       : Natural;
       Data             : in out Terminal.App.Render_Model.Image_Data_Access)
-   is
-      Storage_Order : Interfaces.Unsigned_64;
-      Content_Serial : Interfaces.Unsigned_64;
-   begin
-      if Data = null then
-         raise Constraint_Error with "cannot install null image data";
-      elsif not Is_Owned (Container, Object) then
-         raise Program_Error with "image object is not owned by this store";
-      elsif Owns_Data (Object, Data) then
-         raise Program_Error with "root image data aliases owned storage";
-      end if;
-      if Decoded_Length /= Data'Length then
-         raise Constraint_Error with "decoded length does not match image data";
-      end if;
-      Validate_Pixel_Data
-        (Raw_Format, Pixel_Width, Pixel_Height, Row_Stride, Data'Length);
-
-      --  Account removal before installing the replacement.  This makes a
-      --  failed new accounting operation leave the store/object pair empty
-      --  and consistent while ownership of Data remains with the caller.
-      Release_Contents (Object.all);
-      Synchronize (Container, Object);
-      Storage_Order := Allocate_Storage_Order (Container);
-      Content_Serial := Allocate_Content_Serial (Container);
-      Object.Stream_ID := Stream_ID;
-      Object.ID := ID;
-      Object.Number := Number;
-      Object.Protocol := Protocol;
-      Object.Raw_Format := Raw_Format;
-      Object.Pixel_Width := Pixel_Width;
-      Object.Pixel_Height := Pixel_Height;
-      Object.Decoded_Length := Decoded_Length;
-      Object.Decoded_Row_Stride_Bytes := Row_Stride;
-      Object.Usage_Hint := Usage_Hint;
-      Object.Storage_Order := Storage_Order;
-      Object.Content_Serial := Content_Serial;
-      Object.Bytes := Data;
-      begin
-         Synchronize (Container, Object);
-      exception
-         when others =>
-            Object.Bytes := null;
-            Release_Contents (Object.all);
-            Synchronize (Container, Object);
-            raise;
-      end;
-      Data := null;
-   end Install_Root;
+   is separate;
 
    procedure Link_New
      (Container : in out Store;

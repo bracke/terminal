@@ -57,6 +57,9 @@ package Terminal.App.Image_Store is
       Composition_Mode : Natural := 0;
       Background_Color : Terminal.Core.Graphics_ID := 0;
    end record;
+   --  Read-only operation access remains primitive so clients can use Ada's
+   --  prefixed notation.  Construction, linking, archival, and release live
+   --  in the cohesive Image_Store.Themes child API.
    function Descriptor
      (Operation : Theme_Operation) return Theme_Operation_Descriptor;
    function Bytes
@@ -82,16 +85,6 @@ package Terminal.App.Image_Store is
    function Composition_Mode (Operation : Theme_Operation) return Natural;
    function Background_Color
      (Operation : Theme_Operation) return Terminal.Core.Graphics_ID;
-   procedure Create_Theme_Operation
-     (Description : Theme_Operation_Descriptor;
-      Data        : in out Terminal.App.Render_Model.Image_Data_Access;
-      Operation   : out Theme_Operation_Access);
-   procedure Append_Unowned_Theme_Operation
-     (Head, Tail : in out Theme_Operation_Access;
-      Operation  : in out Theme_Operation_Access);
-   procedure Release_Unowned_Theme_Operations
-     (Head : in out Theme_Operation_Access);
-
    type Image_Object is tagged private;
    type Image_Object_Access is access Image_Object;
    type Store is new Ada.Finalization.Limited_Controlled with private;
@@ -169,13 +162,6 @@ package Terminal.App.Image_Store is
      (Object : Image_Object_Access) return Image_Frame_Access;
    function Next_Frame (Frame : Image_Frame_Access) return Image_Frame_Access;
    function Frame_Count_Of (Object : Image_Object_Access) return Positive;
-   function First_Theme_Operation
-     (Object : Image_Object_Access) return Theme_Operation_Access;
-   function Next_Theme_Operation
-     (Operation : Theme_Operation_Access) return Theme_Operation_Access;
-   function Theme_Operation_Count_Of
-     (Object : Image_Object_Access) return Natural;
-
    function Find_Frame
      (Object : Image_Object_Access;
       Number : Positive) return Image_Frame_Access;
@@ -254,35 +240,19 @@ package Terminal.App.Image_Store is
    procedure Clear_Frames
      (Container : in out Store;
       Object    : Image_Object_Access);
-   procedure Adopt_Theme_Operations
-     (Container : in out Store;
-      Object    : Image_Object_Access;
-      Head      : in out Theme_Operation_Access);
-   procedure Append_Theme_Operation
-     (Container : in out Store;
-      Object    : Image_Object_Access;
-      Operation : in out Theme_Operation_Access);
-
    --  A theme append may need to precede the corresponding pixel mutation so
    --  allocation failure cannot publish pixels without replay history.  The
    --  transaction owns the appended operation until Commit and removes it on
    --  Rollback.
-   type Theme_Append_Transaction is limited private;
+   type Theme_Append_Transaction
+     (Container : not null access Store) is limited private;
    procedure Begin_Theme_Append
-     (Container   : aliased in out Store;
+     (Transaction : in out Theme_Append_Transaction;
       Object      : Image_Object_Access;
-      Operation   : in out Theme_Operation_Access;
-      Transaction : in out Theme_Append_Transaction);
+      Operation   : in out Theme_Operation_Access);
    procedure Commit (Transaction : in out Theme_Append_Transaction);
    procedure Rollback_Theme_Append
      (Transaction : in out Theme_Append_Transaction);
-   procedure Clear_Theme_Operations
-     (Container : in out Store;
-      Object    : Image_Object_Access);
-   procedure Archive_Root_Theme_Operations
-     (Container      : in out Store;
-      Object         : Image_Object_Access;
-      Max_Operations : Positive);
    procedure Delete_Object
      (Container : in out Store;
       Object    : in out Image_Object_Access);
@@ -308,6 +278,37 @@ package Terminal.App.Image_Store is
      (Control : in out Allocation_Control) return Boolean;
 
 private
+   procedure Create_Theme_Operation
+     (Description : Theme_Operation_Descriptor;
+      Data        : in out Terminal.App.Render_Model.Image_Data_Access;
+      Operation   : out Theme_Operation_Access);
+   procedure Append_Unowned_Theme_Operation
+     (Head, Tail : in out Theme_Operation_Access;
+      Operation  : in out Theme_Operation_Access);
+   procedure Release_Unowned_Theme_Operations
+     (Head : in out Theme_Operation_Access);
+   function First_Theme_Operation
+     (Object : Image_Object_Access) return Theme_Operation_Access;
+   function Next_Theme_Operation
+     (Operation : Theme_Operation_Access) return Theme_Operation_Access;
+   function Theme_Operation_Count_Of
+     (Object : Image_Object_Access) return Natural;
+   procedure Adopt_Theme_Operations
+     (Container : in out Store;
+      Object    : Image_Object_Access;
+      Head      : in out Theme_Operation_Access);
+   procedure Append_Theme_Operation
+     (Container : in out Store;
+      Object    : Image_Object_Access;
+      Operation : in out Theme_Operation_Access);
+   procedure Clear_Theme_Operations
+     (Container : in out Store;
+      Object    : Image_Object_Access);
+   procedure Archive_Root_Theme_Operations
+     (Container      : in out Store;
+      Object         : Image_Object_Access;
+      Max_Operations : Positive);
+
    type Image_Frame is tagged record
       Number     : Positive := 2;
       Gap_MS     : Integer := 40;
@@ -411,17 +412,13 @@ private
       Remaining_Attempts : Natural := 0;
    end record;
 
-   type Store_Access is access all Store;
-   type Theme_Rollback_Guard is
+   type Theme_Append_Transaction
+     (Container : not null access Store) is
      new Ada.Finalization.Limited_Controlled with record
-      Container     : Store_Access := null;
       Object        : Image_Object_Access := null;
       Previous_Tail : Theme_Operation_Access := null;
       Operation     : Theme_Operation_Access := null;
    end record;
    overriding procedure Finalize
-     (Guard : in out Theme_Rollback_Guard);
-   type Theme_Append_Transaction is limited record
-      Guard : Theme_Rollback_Guard;
-   end record;
+     (Transaction : in out Theme_Append_Transaction);
 end Terminal.App.Image_Store;

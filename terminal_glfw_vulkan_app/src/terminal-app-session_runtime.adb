@@ -136,9 +136,11 @@ package body Terminal.App.Session_Runtime is
    overriding procedure Finalize (R : in out Runtime) is
    begin
       Close (R);
-      if R.Current_State /= Closed then
-         raise Program_Error with "session runtime finalization is incomplete";
-      end if;
+   exception
+      --  Finalization must never replace an active exception during scope
+      --  unwinding.  Explicit Close leaves Cleanup_Pending observable to
+      --  callers that need to report an incomplete teardown.
+      when others => null;
    end Finalize;
 
    procedure Start

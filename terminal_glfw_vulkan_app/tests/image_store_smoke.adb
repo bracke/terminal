@@ -2,6 +2,7 @@ with Ada.Real_Time;
 with AUnit.Assertions;
 
 with Terminal.App.Image_Store;
+with Terminal.App.Image_Store.Themes;
 with Terminal.App.Image_Animation;
 with Terminal.App.Render_Model;
 with Terminal.Common.Bytes;
@@ -18,6 +19,7 @@ procedure Image_Store_Smoke is
    use type Terminal.App.Image_Animation.Control_Result;
 
    package Store renames Terminal.App.Image_Store;
+   package Themes renames Terminal.App.Image_Store.Themes;
 
    Container : aliased Store.Store;
    Original : Store.Image_Object_Access := null;
@@ -154,23 +156,23 @@ begin
         new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 1);
       Operation : Store.Theme_Operation_Access;
    begin
-      Store.Create_Theme_Operation
+      Themes.Create
         ((Target_Frame => 1, others => <>), Data, Operation);
-      Store.Adopt_Theme_Operations (Container, Original, Operation);
+      Themes.Adopt (Container, Original, Operation);
       Assert
         (Operation = null
-         and then Store.Theme_Operation_Count_Of (Original) = 1
+         and then Themes.Count (Original) = 1
          and then Store.Byte_Count (Container) = 8,
          "theme history adoption transfers ownership and accounting");
    end;
    declare
       First : constant Store.Theme_Operation_Access :=
-        Store.First_Theme_Operation (Original);
+        Themes.First (Original);
       Duplicate : Store.Theme_Operation_Access := First;
       Rejected : Boolean := False;
    begin
       begin
-         Store.Append_Theme_Operation (Container, Original, Duplicate);
+         Themes.Append (Container, Original, Duplicate);
       exception
          when Program_Error =>
             Rejected := True;
@@ -179,9 +181,9 @@ begin
         (Rejected and then Duplicate = First,
          "theme history rejects an already-owned operation node");
    end;
-   Store.Clear_Theme_Operations (Container, Original);
+   Themes.Clear (Container, Original);
    Assert
-     (Store.Theme_Operation_Count_Of (Original) = 0
+     (Themes.Count (Original) = 0
       and then Store.Byte_Count (Container) = 4,
       "clearing theme history restores accounting");
 
@@ -189,20 +191,19 @@ begin
       Data : Terminal.App.Render_Model.Image_Data_Access :=
         new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#31#);
       Operation : Store.Theme_Operation_Access;
-      Transaction : Store.Theme_Append_Transaction;
+      Transaction : Store.Theme_Append_Transaction (Container'Access);
    begin
-      Store.Create_Theme_Operation
+      Themes.Create
         ((Target_Frame => 1, others => <>), Data, Operation);
-      Store.Begin_Theme_Append
-        (Container, Original, Operation, Transaction);
+      Store.Begin_Theme_Append (Transaction, Original, Operation);
       Assert
         (Operation = null
-         and then Store.Theme_Operation_Count_Of (Original) = 1
+         and then Themes.Count (Original) = 1
          and then Store.Byte_Count (Container) = 8,
          "theme append transaction publishes provisional accounting");
       Store.Rollback_Theme_Append (Transaction);
       Assert
-        (Store.Theme_Operation_Count_Of (Original) = 0
+        (Themes.Count (Original) = 0
          and then Store.Byte_Count (Container) = 4,
          "theme append rollback restores ownership and accounting");
    end;
@@ -211,19 +212,18 @@ begin
       Data : Terminal.App.Render_Model.Image_Data_Access :=
         new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#32#);
       Operation : Store.Theme_Operation_Access;
-      Transaction : Store.Theme_Append_Transaction;
+      Transaction : Store.Theme_Append_Transaction (Container'Access);
    begin
-      Store.Create_Theme_Operation
+      Themes.Create
         ((Target_Frame => 1, others => <>), Data, Operation);
-      Store.Begin_Theme_Append
-        (Container, Original, Operation, Transaction);
+      Store.Begin_Theme_Append (Transaction, Original, Operation);
       Store.Commit (Transaction);
       Store.Rollback_Theme_Append (Transaction);
       Assert
-        (Store.Theme_Operation_Count_Of (Original) = 1
+        (Themes.Count (Original) = 1
          and then Store.Byte_Count (Container) = 8,
          "committed theme append is not rolled back by cleanup");
-      Store.Clear_Theme_Operations (Container, Original);
+      Themes.Clear (Container, Original);
    end;
 
    declare
@@ -233,18 +233,17 @@ begin
          Data : Terminal.App.Render_Model.Image_Data_Access :=
            new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#33#);
          Operation : Store.Theme_Operation_Access;
-         Transaction : Store.Theme_Append_Transaction;
+         Transaction : Store.Theme_Append_Transaction (Container'Access);
       begin
-         Store.Create_Theme_Operation
+         Themes.Create
            ((Target_Frame => 1, others => <>), Data, Operation);
-         Store.Begin_Theme_Append
-           (Container, Original, Operation, Transaction);
+         Store.Begin_Theme_Append (Transaction, Original, Operation);
          Assert
-           (Store.Theme_Operation_Count_Of (Original) = 1,
+           (Themes.Count (Original) = 1,
             "uncommitted theme append is provisionally visible");
       end;
       Assert
-        (Store.Theme_Operation_Count_Of (Original) = 0
+        (Themes.Count (Original) = 0
          and then Store.Byte_Count (Container) = Before_Bytes,
          "theme append finalizer automatically rolls back");
    end;

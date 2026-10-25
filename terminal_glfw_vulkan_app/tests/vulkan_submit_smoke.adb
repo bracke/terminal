@@ -897,6 +897,36 @@ begin
    VS.Release (Batch);
    VS.Set_Image_Atlas_Limits (Batch, VS.Default_Image_Atlas_Limits);
 
+   declare
+      Invalid : RM.Frame_Commands :=
+        (Width           => 10,
+         Height          => 10,
+         Rectangles      => Rects'Unchecked_Access,
+         Rectangle_Count => Rects'Length + 1,
+         others          => <>);
+   begin
+      VS.Build (Invalid, Batch, Status);
+      Assert
+        (Status = VS.Invalid_Frame,
+         "command count beyond a borrowed view should be rejected");
+      Invalid.Rectangles := null;
+      Invalid.Rectangle_Count := 0;
+      Invalid.Colour_Glyph_Count := 1;
+      VS.Build (Invalid, Batch, Status);
+      Assert
+        (Status = VS.Invalid_Frame,
+         "missing colour glyph view should be rejected");
+      Invalid.Colour_Glyph_Count := 0;
+      Invalid.Images := Images'Unchecked_Access;
+      Invalid.Image_Count := 1;
+      Images (1).Width := -1.0;
+      VS.Build (Invalid, Batch, Status);
+      Assert
+        (Status = VS.Invalid_Frame,
+         "invalid image geometry should be rejected without an exception");
+      Images (1).Width := 12.0;
+   end;
+
    Frame.Width := 0;
    VS.Build (Frame, Batch, Status);
    Assert (Status = VS.Invalid_Frame, "zero-width frame should be rejected");

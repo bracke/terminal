@@ -396,19 +396,133 @@ package body Terminal.App.Vulkan_Submit is
    is
       Max_Vertices : Natural;
 
+      function Geometry_Valid (Image : RM.Image_Command) return Boolean is
+        (Image.Width >= 0.0
+         and then Image.Width <= Float (Natural'Last)
+         and then Image.Height >= 0.0
+         and then Image.Height <= Float (Natural'Last));
+
+      function Command_Count_Valid return Boolean is
+        ((Frame.Rectangle_Count = 0
+          or else
+            (Frame.Rectangles /= null
+             and then Frame.Rectangles'First = 1
+             and then Frame.Rectangle_Count <= Frame.Rectangles'Length))
+         and then
+           (Frame.Glyph_Count = 0
+            or else
+              (Frame.Glyphs /= null
+               and then Frame.Glyphs'First = 1
+               and then Frame.Glyph_Count <= Frame.Glyphs'Length))
+         and then
+           (Frame.Colour_Glyph_Count = 0
+            or else
+              (Frame.Colour_Glyphs /= null
+               and then Frame.Colour_Glyphs'First = 1
+               and then
+                 Frame.Colour_Glyph_Count <= Frame.Colour_Glyphs'Length))
+         and then
+           (Frame.Image_Count = 0
+            or else
+              (Frame.Images /= null
+               and then Frame.Images'First = 1
+               and then Frame.Image_Count <= Frame.Images'Length))
+         and then
+           (Frame.Text_Run_Count = 0
+            or else
+              (Frame.Text_Runs /= null
+               and then Frame.Text_Runs'First = 1
+               and then Frame.Text_Run_Count <= Frame.Text_Runs'Length)));
+
+      function Vertex_Capacity_Valid return Boolean is
+         Total : Natural := Frame.Rectangle_Count;
+      begin
+         if Frame.Glyph_Count > Natural'Last - Total then
+            return False;
+         end if;
+         Total := Total + Frame.Glyph_Count;
+         if Frame.Image_Count > Natural'Last - Total then
+            return False;
+         end if;
+         Total := Total + Frame.Image_Count;
+         if Frame.Colour_Glyph_Count > Natural'Last - Total then
+            return False;
+         end if;
+         Total := Total + Frame.Colour_Glyph_Count;
+         return Total <= Natural'Last / 6;
+      end Vertex_Capacity_Valid;
+
+      function Image_Geometry_Valid return Boolean is
+      begin
+         for I in 1 .. Frame.Image_Count loop
+            if not Geometry_Valid (Frame.Images (I)) then
+               return False;
+            end if;
+         end loop;
+         return True;
+      end Image_Geometry_Valid;
+
+      function Colour_Atlas_Size_Valid return Boolean is
+        (Frame.Colour_Sheet_Pixels = System.Null_Address
+         or else
+           (Frame.Colour_Sheet_Width > 0
+            and then Frame.Colour_Sheet_Height > 0
+            and then Frame.Colour_Sheet_Width <= Natural'Last / 4
+            and then Frame.Colour_Sheet_Height <=
+              Natural'Last / (Frame.Colour_Sheet_Width * 4)));
+
+      procedure Copy_Text_Runs is
+      begin
+         if Frame.Text_Run_Count = 0 then
+            return;
+         end if;
+         if Batch.Text_Runs = null
+           or else Batch.Text_Runs'Length < Frame.Text_Run_Count
+         then
+            declare
+               Replacement : RM.Text_Run_Array_Access :=
+                 new RM.Text_Run_Array
+                   (1 .. Grown_Capacity
+                     ((if Batch.Text_Runs = null
+                       then 0
+                       else Batch.Text_Runs'Length),
+                      Positive (Frame.Text_Run_Count)));
+            begin
+               if Batch.Text_Runs /= null then
+                  Free_Text_Runs (Batch.Text_Runs);
+               end if;
+               Batch.Text_Runs := Replacement;
+            end;
+         end if;
+         for I in 1 .. Frame.Text_Run_Count loop
+            Batch.Text_Runs (I) := Frame.Text_Runs (I);
+            if Natural (Frame.Text_Runs (I).Shaped_Glyph_Count) >
+              Natural'Last - Batch.Shaped_Glyph_Total
+            then
+               raise Constraint_Error with "shaped glyph count overflow";
+            end if;
+            Batch.Shaped_Glyph_Total :=
+              Batch.Shaped_Glyph_Total
+              + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
+         end loop;
+         Batch.Text_Run_Total := Frame.Text_Run_Count;
+      end Copy_Text_Runs;
+
       procedure Append_Image_Command (Image : RM.Image_Command) is
          Before : constant Natural := Batch.Count;
          Bytes_Per_Pixel : constant Natural :=
            (if Image.Raw_Format = 24 then 3
             elsif Image.Raw_Format = 32 then 4
             else 0);
-         Row_Bytes : constant Natural := Image.Pixel_Width * Bytes_Per_Pixel;
+         Row_Bytes : constant Natural :=
+           (if Bytes_Per_Pixel > 0
+              and then Image.Pixel_Width <= Natural'Last / Bytes_Per_Pixel
+            then Image.Pixel_Width * Bytes_Per_Pixel
+            else 0);
          Row_Stride_Bytes : constant Natural :=
            (if Image.Decoded_Row_Stride_Bytes > 0
             then Image.Decoded_Row_Stride_Bytes
             else Row_Bytes);
-         Required_Decoded_Bytes : constant Natural :=
-           RM.Image_Decoded_Source_Bytes (Image);
          Atlas_Index : constant Natural := Atlas_Source_Index (Batch, Image);
          Image_Texture_Eligible : constant Boolean :=
            Texture_Eligible (Image) and then Atlas_Index > 0;
@@ -617,10 +731,10 @@ package body Terminal.App.Vulkan_Submit is
 
       if Frame.Width = 0
         or else Frame.Height = 0
-        or else (Frame.Rectangle_Count > 0 and then Frame.Rectangles = null)
-        or else (Frame.Glyph_Count > 0 and then Frame.Glyphs = null)
-        or else (Frame.Image_Count > 0 and then Frame.Images = null)
-        or else (Frame.Text_Run_Count > 0 and then Frame.Text_Runs = null)
+        or else not Command_Count_Valid
+        or else not Vertex_Capacity_Valid
+        or else not Image_Geometry_Valid
+        or else not Colour_Atlas_Size_Valid
       then
          Status := Invalid_Frame;
          return;
@@ -637,33 +751,7 @@ package body Terminal.App.Vulkan_Submit is
          Batch.Text_Atlas_Pixels := Frame.Atlas_Pixels;
          Batch.Text_Atlas_Bytes := Frame.Atlas_Bytes;
          Batch.Dirty_Atlas := Frame.Atlas_Dirty;
-         if Frame.Text_Run_Count > 0 then
-            if Batch.Text_Runs = null
-              or else Batch.Text_Runs'Length < Frame.Text_Run_Count
-            then
-               declare
-                  Replacement : RM.Text_Run_Array_Access :=
-                    new RM.Text_Run_Array
-                      (1 .. Grown_Capacity
-                        ((if Batch.Text_Runs = null
-                          then 0
-                          else Batch.Text_Runs'Length),
-                         Positive (Frame.Text_Run_Count)));
-               begin
-                  if Batch.Text_Runs /= null then
-                     Free_Text_Runs (Batch.Text_Runs);
-                  end if;
-                  Batch.Text_Runs := Replacement;
-               end;
-            end if;
-            for I in 1 .. Frame.Text_Run_Count loop
-               Batch.Text_Runs (I) := Frame.Text_Runs (I);
-               Batch.Shaped_Glyph_Total :=
-                 Batch.Shaped_Glyph_Total
-                 + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
-            end loop;
-            Batch.Text_Run_Total := Frame.Text_Run_Count;
-         end if;
+         Copy_Text_Runs;
          Status := Ok;
          return;
       end if;
@@ -682,33 +770,7 @@ package body Terminal.App.Vulkan_Submit is
             Batch.Items := Replacement;
          end;
       end if;
-      if Frame.Text_Run_Count > 0 then
-         if Batch.Text_Runs = null
-           or else Batch.Text_Runs'Length < Frame.Text_Run_Count
-         then
-            declare
-               Replacement : RM.Text_Run_Array_Access :=
-                 new RM.Text_Run_Array
-                   (1 .. Grown_Capacity
-                     ((if Batch.Text_Runs = null
-                       then 0
-                       else Batch.Text_Runs'Length),
-                      Positive (Frame.Text_Run_Count)));
-            begin
-               if Batch.Text_Runs /= null then
-                  Free_Text_Runs (Batch.Text_Runs);
-               end if;
-               Batch.Text_Runs := Replacement;
-            end;
-         end if;
-         for I in 1 .. Frame.Text_Run_Count loop
-            Batch.Text_Runs (I) := Frame.Text_Runs (I);
-            Batch.Shaped_Glyph_Total :=
-              Batch.Shaped_Glyph_Total
-              + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
-         end loop;
-         Batch.Text_Run_Total := Frame.Text_Run_Count;
-      end if;
+      Copy_Text_Runs;
       Batch.Frame_Width := Frame.Width;
       Batch.Frame_Height := Frame.Height;
       Batch.Text_Atlas_Width := Frame.Atlas_Width;
@@ -791,6 +853,9 @@ package body Terminal.App.Vulkan_Submit is
       when Storage_Error =>
          Release (Batch);
          Status := Allocation_Failed;
+      when Constraint_Error =>
+         Release (Batch);
+         Status := Invalid_Frame;
    end Build;
 
    function Vertices (Batch : Submission_Batch) return Vertex_Array_Access is

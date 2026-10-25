@@ -26,7 +26,7 @@ begin
    Operation := null;
    if Object = null
      or else
-       (Terminal.App.Image_Store.First_Theme_Operation (Object) = null
+       (Themes.First (Object) = null
         and then Terminal.App.Image_Store.Indexed_Data (Object) = null)
    then
       return True;
@@ -36,14 +36,14 @@ begin
    then
       return False;
    end if;
-   Terminal.App.Image_Store.Create_Theme_Operation
+   Themes.Create
      (Description, Data, Operation);
    return True;
 exception
    when Storage_Error =>
-      Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Operation);
+      Themes.Release_Unowned (Operation);
       raise;
    when Constraint_Error =>
-      Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Operation);
+      Themes.Release_Unowned (Operation);
       return False;
 end Prepare_Theme_Composition_Operation;

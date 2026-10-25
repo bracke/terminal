@@ -34,20 +34,20 @@ is
    begin
       Copy := new Terminal.Common.Bytes.Byte_Array (1 .. Length);
       Copy.all := Source (Source'First .. Source'First + Length - 1);
-      Terminal.App.Image_Store.Create_Theme_Operation
+      Themes.Create
         (Description, Copy, Op);
-      Terminal.App.Image_Store.Append_Unowned_Theme_Operation
+      Themes.Append_Unowned
         (Head, Tail, Op);
    exception
       when others =>
          Free_Image_Data (Copy);
-         Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Op);
+         Themes.Release_Unowned (Op);
          raise;
    end Add_Baseline;
 begin
    if Object = null then
       return False;
-   elsif Terminal.App.Image_Store.First_Theme_Operation (Object) /= null then
+   elsif Themes.First (Object) /= null then
       return True;
    elsif Terminal.App.Image_Store.Root_Data (Object) = null then
       return False;
@@ -99,7 +99,7 @@ begin
       Frame := Terminal.App.Image_Store.Next_Frame (Frame);
    end loop;
 
-   Terminal.App.Image_Store.Adopt_Theme_Operations
+   Themes.Adopt
      (R.Image_Objects, Object, Head);
    return True;
 exception

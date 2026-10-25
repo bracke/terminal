@@ -28,7 +28,7 @@ begin
    Operation := null;
    if Object = null
      or else
-       (Terminal.App.Image_Store.First_Theme_Operation (Object) = null
+       (Themes.First (Object) = null
         and then Terminal.App.Image_Store.Indexed_Data (Object) = null
         and then Data.Raw_Format not in 8 | 16)
    then
@@ -42,16 +42,16 @@ begin
    end if;
    Copy := new Terminal.Common.Bytes.Byte_Array (1 .. Length);
    Copy.all := Data.Bytes.all;
-   Terminal.App.Image_Store.Create_Theme_Operation
+   Themes.Create
      (Description, Copy, Operation);
    return True;
 exception
    when Storage_Error =>
       Free_Image_Data (Copy);
-      Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Operation);
+      Themes.Release_Unowned (Operation);
       raise;
    when Constraint_Error =>
       Free_Image_Data (Copy);
-      Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Operation);
+      Themes.Release_Unowned (Operation);
       return False;
 end Prepare_Theme_Frame_Operation;

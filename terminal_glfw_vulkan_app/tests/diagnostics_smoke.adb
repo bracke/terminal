@@ -38,6 +38,13 @@ procedure Diagnostics_Smoke is
    Splits : Terminal.App.Splits.Split_State;
    Config : Terminal.App.Config.Config;
    Snapshot : Terminal.Core.Render_Snapshot;
+
+   procedure Set_Status
+     (Kind : Terminal.App.Diagnostics.Runtime_Status_Kind;
+      Text : String) is
+   begin
+      Terminal.App.Diagnostics.Set (S.Statuses, Kind, Text);
+   end Set_Status;
 begin
    Terminal.App.Tabs.Initialize (Tabs);
    Terminal.App.Splits.Initialize (Splits);
@@ -115,46 +122,30 @@ begin
          Graphics_Data_Length := Label'Length;
          Graphics_Data_Status (1 .. Graphics_Data_Length) := Label;
       end;
-      S.Policy_Status_Length := Policy'Length;
-      S.Policy_Status (1 .. Policy'Length) := Policy;
-      S.Selection_Status_Length := Selection'Length;
-      S.Selection_Status (1 .. Selection'Length) := Selection;
-      S.Link_Activation_Status_Length := Activation'Length;
-      S.Link_Activation_Status (1 .. Activation'Length) := Activation;
-      S.Tab_Status_Length := Tab_Status'Length;
-      S.Tab_Status (1 .. Tab_Status'Length) := Tab_Status;
-      S.Split_Status_Length := Split_Status'Length;
-      S.Split_Status (1 .. Split_Status'Length) := Split_Status;
-      S.Config_Status_Length := Config_Status'Length;
-      S.Config_Status (1 .. Config_Status'Length) := Config_Status;
-      S.Profile_Status_Length := Profile_Status'Length;
-      S.Profile_Status (1 .. Profile_Status'Length) := Profile_Status;
-      S.Input_Status_Length := Input_Status'Length;
-      S.Input_Status (1 .. Input_Status'Length) := Input_Status;
-      S.Mouse_Status_Length := Mouse_Status'Length;
-      S.Mouse_Status (1 .. Mouse_Status'Length) := Mouse_Status;
-      S.Cursor_Status_Length := Cursor_Status'Length;
-      S.Cursor_Status (1 .. Cursor_Status'Length) := Cursor_Status;
-      S.Text_Blink_Status_Length := Text_Blink_Status'Length;
-      S.Text_Blink_Status (1 .. Text_Blink_Status'Length) := Text_Blink_Status;
-      S.Theme_Status_Length := Theme_Status'Length;
-      S.Theme_Status (1 .. Theme_Status'Length) := Theme_Status;
-      S.Font_Status_Length := Font_Status'Length;
-      S.Font_Status (1 .. Font_Status'Length) := Font_Status;
-      S.PTY_Backend_Status_Length := PTY_Backend_Status'Length;
-      S.PTY_Backend_Status (1 .. PTY_Backend_Status'Length) :=
-        PTY_Backend_Status;
-      S.ConPTY_Status_Length := ConPTY_Status'Length;
-      S.ConPTY_Status (1 .. ConPTY_Status'Length) := ConPTY_Status;
-      S.Multiplexer_Status_Length := Multiplexer_Status'Length;
-      S.Multiplexer_Status (1 .. Multiplexer_Status'Length) :=
-        Multiplexer_Status;
-      S.Graphics_Header_Status_Length := Graphics_Header_Length;
-      S.Graphics_Header_Status (1 .. Graphics_Header_Length) :=
-        Graphics_Header_Status (1 .. Graphics_Header_Length);
-      S.Graphics_Data_Status_Length := Graphics_Data_Length;
-      S.Graphics_Data_Status (1 .. Graphics_Data_Length) :=
-        Graphics_Data_Status (1 .. Graphics_Data_Length);
+      Set_Status (Terminal.App.Diagnostics.Policy_Status, Policy);
+      Set_Status (Terminal.App.Diagnostics.Selection_Status, Selection);
+      Set_Status (Terminal.App.Diagnostics.Link_Activation_Status, Activation);
+      Set_Status (Terminal.App.Diagnostics.Tab_Status, Tab_Status);
+      Set_Status (Terminal.App.Diagnostics.Split_Status, Split_Status);
+      Set_Status (Terminal.App.Diagnostics.Config_Status, Config_Status);
+      Set_Status (Terminal.App.Diagnostics.Profile_Status, Profile_Status);
+      Set_Status (Terminal.App.Diagnostics.Input_Status, Input_Status);
+      Set_Status (Terminal.App.Diagnostics.Mouse_Status, Mouse_Status);
+      Set_Status (Terminal.App.Diagnostics.Cursor_Status, Cursor_Status);
+      Set_Status (Terminal.App.Diagnostics.Text_Blink_Status, Text_Blink_Status);
+      Set_Status (Terminal.App.Diagnostics.Theme_Status, Theme_Status);
+      Set_Status (Terminal.App.Diagnostics.Font_Status, Font_Status);
+      Set_Status
+        (Terminal.App.Diagnostics.PTY_Backend_Status, PTY_Backend_Status);
+      Set_Status (Terminal.App.Diagnostics.ConPTY_Status, ConPTY_Status);
+      Set_Status
+        (Terminal.App.Diagnostics.Multiplexer_Status, Multiplexer_Status);
+      Set_Status
+        (Terminal.App.Diagnostics.Graphics_Header_Status,
+         Graphics_Header_Status (1 .. Graphics_Header_Length));
+      Set_Status
+        (Terminal.App.Diagnostics.Graphics_Data_Status,
+         Graphics_Data_Status (1 .. Graphics_Data_Length));
       S.Renderer.Last_Image_Count := 1;
       S.Renderer.Last_Image_Protocol := Terminal.App.Render_Model.Image_Kitty;
       S.Renderer.Last_Image_Width := 30;
@@ -484,18 +475,14 @@ begin
          Link_Length := Label'Length;
          Link_Status (1 .. Link_Length) := Label;
       end;
-      S.Grid_Status_Length := Grid'Length;
-      S.Grid_Status (1 .. Grid'Length) := Grid;
-      S.Policy_Status_Length := Policy'Length;
-      S.Policy_Status (1 .. Policy'Length) := Policy;
-      S.Scrollback_Status_Length := Scrollback'Length;
-      S.Scrollback_Status (1 .. Scrollback'Length) := Scrollback;
-      S.Link_Status_Length := Link_Length;
-      S.Link_Status (1 .. Link_Length) := Link_Status (1 .. Link_Length);
-      S.Link_Activation_Status_Length := Activation'Length;
-      S.Link_Activation_Status (1 .. Activation'Length) := Activation;
-      S.Clipboard_Status_Length := Clipboard'Length;
-      S.Clipboard_Status (1 .. Clipboard'Length) := Clipboard;
+      Set_Status (Terminal.App.Diagnostics.Grid_Status, Grid);
+      Set_Status (Terminal.App.Diagnostics.Policy_Status, Policy);
+      Set_Status (Terminal.App.Diagnostics.Scrollback_Status, Scrollback);
+      Set_Status
+        (Terminal.App.Diagnostics.Link_Status,
+         Link_Status (1 .. Link_Length));
+      Set_Status (Terminal.App.Diagnostics.Link_Activation_Status, Activation);
+      Set_Status (Terminal.App.Diagnostics.Clipboard_Status, Clipboard);
    end;
    S.Core.Malformed_UTF8 := 1;
    S.Core.Ignored_Escape := 2;
