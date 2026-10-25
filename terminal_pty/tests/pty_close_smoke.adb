@@ -59,6 +59,28 @@ procedure PTY_Close_Smoke is
          end if;
       end loop;
    end Send;
+
+   --  A shell that sets up its line editor can throw away what was typed
+   --  before it was ready, as zsh does on macOS; so wait for it to say
+   --  something, its prompt or banner, and for that to settle.
+   procedure Wait_For_Output is
+      Quiet : Natural := 0;
+      Heard : Boolean := False;
+   begin
+      for Attempt in 1 .. 1000 loop
+         Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
+         if Read_Status = Terminal.PTY.Backend.Ok and then Last >= Buffer'First then
+            Heard := True;
+            Quiet := 0;
+         else
+            exit when Read_Status not in
+              Terminal.PTY.Backend.Would_Block | Terminal.PTY.Backend.Interrupted;
+            Quiet := Quiet + 1;
+            exit when Heard and then Quiet >= 20;
+            delay 0.01;
+         end if;
+      end loop;
+   end Wait_For_Output;
 begin
    Terminal.PTY.Backend.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
@@ -80,9 +102,13 @@ begin
 
    Terminal.PTY.Backend.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "exit-status spawn failed");
+   Wait_For_Output;
    Send ("exit 7" & ASCII.CR);
+   --  Keep reading the echo while waiting: a BSD tty, as on macOS, holds
+   --  a closing child until what it wrote has been drained.
    for Attempt in 1 .. 500 loop
       exit when not Terminal.PTY.Backend.Is_Alive (S);
+      Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
       delay 0.01;
    end loop;
    Assert (not Terminal.PTY.Backend.Is_Alive (S), "exited shell is detected");
@@ -113,6 +139,7 @@ begin
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "stubborn-shell spawn failed");
    --  cmd has no hangup to ignore; Close still has to end it.
    if not On_Windows then
+      Wait_For_Output;
       Send ("trap '' HUP; while :; do sleep 1; done" & ASCII.CR);
    end if;
    delay 0.05;
