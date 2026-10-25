@@ -22,6 +22,14 @@ The terminal core has no GLFW, Vulkan, POSIX, Windows, file descriptor, window,
 surface, or renderer types in its public API. It consumes byte arrays and
 produces renderer-neutral snapshots.
 
+`Terminal.Core` keeps its terminal state and public API in the parent package,
+while its implementation is partitioned into Ada subunits around complete state
+transitions. Lifecycle/reset, byte feeding, Kitty APC and ignored-string
+graphics handling, OSC and CSI completion, mode/SGR application, Unicode cell
+updates, resizing, snapshot construction, and graphics-event ownership each
+have a named subunit. Supporting invariants remain private to the parent body,
+so this split does not add dependencies or expose mutable parser state.
+
 `glfw_vulkan` is reusable for non-terminal Vulkan applications and contains no
 terminal emulation, text rendering, or input semantics.
 
@@ -50,6 +58,12 @@ init outcomes expose bounded labels for startup/status UI. Context, presenter,
 and logical-device objects are limited controlled resource owners, so exception
 unwinding invokes their idempotent teardown even when the main loop does not
 reach its explicit orderly-shutdown path.
+
+Session runtimes and the runtime table are also limited controlled owners. A
+runtime closes its queue, PTY, reader task, and terminal core independently so
+one failed cleanup step cannot prevent the remaining releases. Table teardown
+continues across every live session and is safe to invoke explicitly before the
+automatic finalization performed during scope unwinding.
 
 The app render pipeline is staged:
 
@@ -110,6 +124,14 @@ this path disabled and allocates no readback resources.
 The Vulkan device creates a descriptor-backed 1x1 fallback atlas during
 initialization so the shader sampler binding is always valid. Dirty
 `textrender` atlas batches replace that image through a bounded staging upload.
+Atlas-resource upload and per-frame image-atlas construction are separate Ada
+subunits, keeping their staging and rollback transactions out of the device
+orchestration body.
+
+The main-loop input dispatcher delegates key, character, mouse-button,
+cursor-motion, and scroll events to nested Ada subunits. The dispatcher owns
+only event routing and the final PTY write, while each handler owns the state
+transitions specific to its event kind.
 
 The visible Vulkan draw path renders glyph quads generated from `textrender`.
 `Terminal.App.Text_Shaper` classifies each text run and uses a HarfBuzz-backed

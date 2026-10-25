@@ -39,23 +39,6 @@ procedure Diagnostics_Smoke is
    Config : Terminal.App.Config.Config;
    Snapshot : Terminal.Core.Render_Snapshot;
 begin
-   declare
-      Short : constant Terminal.App.Diagnostics.Runtime_Status_Text :=
-        Terminal.App.Diagnostics.To_Runtime_Status ("ready");
-      Long_Text : constant String
-        (1 .. Terminal.App.Diagnostics.Max_Runtime_Status_Length + 8) :=
-          (others => 'x');
-      Truncated : constant Terminal.App.Diagnostics.Runtime_Status_Text :=
-        Terminal.App.Diagnostics.To_Runtime_Status (Long_Text);
-   begin
-      Assert
-        (Short.Length = 5 and then Short.Text (1 .. 5) = "ready",
-         "runtime diagnostic status preserves its valid prefix");
-      Assert
-        (Truncated.Length = Terminal.App.Diagnostics.Max_Runtime_Status_Length,
-         "runtime diagnostic status is bounded");
-   end;
-
    Terminal.App.Tabs.Initialize (Tabs);
    Terminal.App.Splits.Initialize (Splits);
    declare

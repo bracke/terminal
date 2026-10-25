@@ -14,6 +14,15 @@ package body Terminal.App.Session_Table is
      (Terminal.App.Session_Runtime.Runtime,
       Runtime_Access);
 
+   procedure Release_Runtime (Slot : in out Runtime_Access) is
+   begin
+      if Slot /= null then
+         --  Runtime is controlled; deallocation invokes its exception-safe
+         --  finalizer exactly once before reclaiming the allocation.
+         Free_Runtime (Slot);
+      end if;
+   end Release_Runtime;
+
    function Convert
      (Status : Terminal.App.Sessions.Session_Status) return Table_Status is
    begin
@@ -64,8 +73,7 @@ package body Terminal.App.Session_Table is
          Status := Ok;
       else
          Status := Start_Failed;
-         Terminal.App.Session_Runtime.Close (Slot.all);
-         Free_Runtime (Slot);
+         Release_Runtime (Slot);
       end if;
    exception
       when Storage_Error =>
@@ -135,8 +143,7 @@ package body Terminal.App.Session_Table is
 
       Terminal.App.Tabs.Apply (Tabs, Terminal.App.Tabs.New_Tab, Tab_Status);
       if Tab_Status /= Terminal.App.Tabs.Ok then
-         Terminal.App.Session_Runtime.Close (Table.Runtimes (New_Index).all);
-         Free_Runtime (Table.Runtimes (New_Index));
+         Release_Runtime (Table.Runtimes (New_Index));
          Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
          Status := Invalid_Index;
       end if;
@@ -158,8 +165,7 @@ package body Terminal.App.Session_Table is
       end if;
 
       if Table.Runtimes (Index) /= null then
-         Terminal.App.Session_Runtime.Close (Table.Runtimes (Index).all);
-         Free_Runtime (Table.Runtimes (Index));
+         Release_Runtime (Table.Runtimes (Index));
       end if;
 
       Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
@@ -240,8 +246,7 @@ package body Terminal.App.Session_Table is
 
       Terminal.App.Splits.Apply (Splits, Command, Split_Status);
       if Split_Status /= Terminal.App.Splits.Ok then
-         Terminal.App.Session_Runtime.Close (Table.Runtimes (New_Index).all);
-         Free_Runtime (Table.Runtimes (New_Index));
+         Release_Runtime (Table.Runtimes (New_Index));
          Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
          Status := Invalid_Index;
       end if;
@@ -263,8 +268,7 @@ package body Terminal.App.Session_Table is
       end if;
 
       if Table.Runtimes (Index) /= null then
-         Terminal.App.Session_Runtime.Close (Table.Runtimes (Index).all);
-         Free_Runtime (Table.Runtimes (Index));
+         Release_Runtime (Table.Runtimes (Index));
       end if;
 
       Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
@@ -376,10 +380,20 @@ package body Terminal.App.Session_Table is
    begin
       for I in Table.Runtimes'Range loop
          if Table.Runtimes (I) /= null then
-            Terminal.App.Session_Runtime.Close (Table.Runtimes (I).all);
-            Free_Runtime (Table.Runtimes (I));
+            begin
+               Release_Runtime (Table.Runtimes (I));
+            exception
+               when others => null;
+            end;
          end if;
       end loop;
       Terminal.App.Sessions.Initialize (Table.Sessions);
    end Close_All;
+
+   overriding procedure Finalize (Table : in out Runtime_Table) is
+   begin
+      Close_All (Table);
+   exception
+      when others => null;
+   end Finalize;
 end Terminal.App.Session_Table;

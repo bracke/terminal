@@ -58,34 +58,74 @@ package body Terminal.App.Session_Runtime is
             when Tasking_Error =>
                null;
          end;
-         Free_Reader (R.Reader);
+         begin
+            Free_Reader (R.Reader);
+         exception
+            when others => null;
+         end;
       end if;
    end Stop_Reader;
 
    procedure Close (R : in out Runtime) is
    begin
       if R.Q /= null then
-         R.Q.Shut_Down;
+         begin
+            R.Q.Shut_Down;
+         exception
+            when others => null;
+         end;
       end if;
       if R.S /= null then
-         Terminal.PTY.Backend.Close (R.S.all);
+         begin
+            Terminal.PTY.Backend.Close (R.S.all);
+         exception
+            when others => null;
+         end;
       end if;
-      Stop_Reader (R);
+      begin
+         Stop_Reader (R);
+      exception
+         when others => null;
+      end;
       if R.S /= null then
-         Free_Session (R.S);
+         begin
+            Free_Session (R.S);
+         exception
+            when others => null;
+         end;
       end if;
       if R.Q /= null then
-         Free_Queue (R.Q);
+         begin
+            Free_Queue (R.Q);
+         exception
+            when others => null;
+         end;
       end if;
       if R.T /= null then
-         Terminal.Core.Finalize (R.T.all);
-         Free_Core (R.T);
+         begin
+            Terminal.Core.Finalize (R.T.all);
+         exception
+            when others => null;
+         end;
+         begin
+            Free_Core (R.T);
+         exception
+            when others => null;
+         end;
       end if;
       R.Size_Known := False;
       R.Pending_Write := (others => <>);
       R.Pending_Write_Offset := 1;
       R.Current_State := Closed;
    end Close;
+
+   overriding procedure Finalize (R : in out Runtime) is
+   begin
+      Close (R);
+   exception
+      when others =>
+         R.Current_State := Closed;
+   end Finalize;
 
    procedure Start
      (R                : in out Runtime;

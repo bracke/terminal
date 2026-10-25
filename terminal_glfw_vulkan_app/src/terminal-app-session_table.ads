@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Terminal.App.PTY_Write;
 with Terminal.App.Session_Runtime;
 with Terminal.App.Sessions;
@@ -87,7 +88,7 @@ private
    type Runtime_Array is
      array (Terminal.App.Sessions.Session_Index) of Runtime_Access;
 
-   type Runtime_Table is limited record
+   type Runtime_Table is new Ada.Finalization.Limited_Controlled with record
       Sessions : Terminal.App.Sessions.Session_Table;
       Runtimes : Runtime_Array := (others => null);
       Graphics_Profile : Terminal.Core.Graphics_Capability_Profile :=
@@ -95,4 +96,6 @@ private
       Last_Start : Terminal.App.Session_Runtime.Start_Status :=
         Terminal.App.Session_Runtime.Allocation_Failed;
    end record;
+
+   overriding procedure Finalize (Table : in out Runtime_Table);
 end Terminal.App.Session_Table;

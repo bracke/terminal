@@ -483,60 +483,28 @@ separate (Terminal.App.Main_Loop.Run)
                     Presenter,
                     Last_Feed_Status,
                     Last_Write_Status,
-                          Statuses =>
-                            (Grid => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Grid_Status),
-                             Policy => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Render_Policy_Status),
-                             Scrollback =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Scrollback_Status),
-                             Selection =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Selection_Status),
-                             Link => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Link_Status),
-                             Link_Activation =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Link_Activation_Status),
-                             Clipboard =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Clipboard_Status),
-                             Tab => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Tab_Status),
-                             Split => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Split_Status),
-                             Config => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Config_Status),
-                             Profile => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Profile_Status),
-                             Input => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Input_Status),
-                             Mouse => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Mouse_Status),
-                             Cursor => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Cursor_Status),
-                             Text_Blink =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Text_Blink_Status),
-                             Theme => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Theme_Status),
-                             Font => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Runtime_Font_Status),
-                             PTY_Backend =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Runtime_PTY_Backend_Status),
-                             ConPTY => Terminal.App.Diagnostics.To_Runtime_Status
-                               (Runtime_ConPTY_Status),
-                             Multiplexer =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Runtime_Multiplexer_Status),
-                             Graphics_Header =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Graphics_Header_Status),
-                             Graphics_Data =>
-                               Terminal.App.Diagnostics.To_Runtime_Status
-                                 (Graphics_Data_Status)));
+                    Grid_Status => Grid_Status,
+                    Policy_Status => Render_Policy_Status,
+                    Scrollback_Status => Scrollback_Status,
+                    Selection_Status => Selection_Status,
+                    Link_Status => Link_Status,
+                    Link_Activation_Status => Link_Activation_Status,
+                    Clipboard_Status => Clipboard_Status,
+                    Tab_Status => Tab_Status,
+                    Split_Status => Split_Status,
+                    Config_Status => Config_Status,
+                    Profile_Status => Profile_Status,
+                    Input_Status => Input_Status,
+                    Mouse_Status => Mouse_Status,
+                    Cursor_Status => Cursor_Status,
+                    Text_Blink_Status => Text_Blink_Status,
+                    Theme_Status => Theme_Status,
+                    Font_Status => Runtime_Font_Status,
+                    PTY_Backend_Status => Runtime_PTY_Backend_Status,
+                    ConPTY_Status => Runtime_ConPTY_Status,
+                    Multiplexer_Status => Runtime_Multiplexer_Status,
+                    Graphics_Header_Status => Graphics_Header_Status,
+                    Graphics_Data_Status => Graphics_Data_Status);
             begin
                Terminal.App.Diagnostics.Log_If_Changed (Diag);
             end;

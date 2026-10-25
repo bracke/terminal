@@ -122,6 +122,11 @@ package body Terminal.App.Image_Animation is
          exception
             when others =>
                Free_Image_Data (Data);
+               begin
+                  Store.Release_Unowned_Frames (Frame);
+               exception
+                  when others => null;
+               end;
                raise;
          end;
       end loop;

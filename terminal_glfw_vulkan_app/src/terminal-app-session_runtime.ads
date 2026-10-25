@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Terminal.App.PTY_Reader;
 with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
@@ -73,7 +74,7 @@ private
    type PTY_Queue_Access is access all Terminal.App.Queues.PTY_Output_Queue;
    type Reader_Access is access Terminal.App.PTY_Reader.Reader;
 
-   type Runtime is limited record
+   type Runtime is new Ada.Finalization.Limited_Controlled with record
       Current_State : Runtime_Status := Inactive;
       T             : Core_Access := null;
       S             : Session_Access := null;
@@ -89,4 +90,6 @@ private
       Pending_Write : Terminal.App.Queues.Byte_Chunk := (others => <>);
       Pending_Write_Offset : Positive := 1;
    end record;
+
+   overriding procedure Finalize (R : in out Runtime);
 end Terminal.App.Session_Runtime;

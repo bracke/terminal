@@ -28,26 +28,13 @@ package body Terminal.App.Diagnostics is
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Renderer.Renderer_Diagnostics;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
    use type Interfaces.Unsigned_64;
 
    function Natural_Label (Value : Natural) return String is
      (Ada.Strings.Fixed.Trim (Natural'Image (Value), Ada.Strings.Left));
-
-   function To_Runtime_Status (Text : String) return Runtime_Status_Text is
-      Result : Runtime_Status_Text;
-   begin
-      Result.Length := Runtime_Status_Length'Min
-        (Text'Length, Max_Runtime_Status_Length);
-      for I in 1 .. Result.Length loop
-         Result.Text (I) := Text (Text'First + I - 1);
-      end loop;
-      return Result;
-   end To_Runtime_Status;
-
-   function Value (Item : Runtime_Status_Text) return String is
-     (if Item.Length = 0 then "" else Item.Text (1 .. Item.Length));
 
    Last_Initialized : Boolean := False;
    Last_Snapshot : Snapshot;
@@ -164,33 +151,30 @@ package body Terminal.App.Diagnostics is
       Last_Feed_Status : Terminal.Core.Feed_Status := Terminal.Core.Ok;
       Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
         Terminal.App.PTY_Write.Ok;
-      Statuses : Runtime_Statuses := (others => <>))
+      Grid_Status : String := "";
+      Policy_Status : String := "";
+      Scrollback_Status : String := "";
+      Selection_Status : String := "";
+      Link_Status : String := "";
+      Link_Activation_Status : String := "";
+      Clipboard_Status : String := "";
+      Tab_Status : String := "";
+      Split_Status : String := "";
+      Config_Status : String := "";
+      Profile_Status : String := "";
+      Input_Status : String := "";
+      Mouse_Status : String := "";
+      Cursor_Status : String := "";
+      Text_Blink_Status : String := "";
+      Theme_Status : String := "";
+      Font_Status : String := "";
+      PTY_Backend_Status : String := "";
+      ConPTY_Status : String := "";
+      Multiplexer_Status : String := "";
+      Graphics_Header_Status : String := "";
+      Graphics_Data_Status : String := "")
       return Snapshot
    is
-      Grid_Status : constant String := Value (Statuses.Grid);
-      Policy_Status : constant String := Value (Statuses.Policy);
-      Scrollback_Status : constant String := Value (Statuses.Scrollback);
-      Selection_Status : constant String := Value (Statuses.Selection);
-      Link_Status : constant String := Value (Statuses.Link);
-      Link_Activation_Status : constant String :=
-        Value (Statuses.Link_Activation);
-      Clipboard_Status : constant String := Value (Statuses.Clipboard);
-      Tab_Status : constant String := Value (Statuses.Tab);
-      Split_Status : constant String := Value (Statuses.Split);
-      Config_Status : constant String := Value (Statuses.Config);
-      Profile_Status : constant String := Value (Statuses.Profile);
-      Input_Status : constant String := Value (Statuses.Input);
-      Mouse_Status : constant String := Value (Statuses.Mouse);
-      Cursor_Status : constant String := Value (Statuses.Cursor);
-      Text_Blink_Status : constant String := Value (Statuses.Text_Blink);
-      Theme_Status : constant String := Value (Statuses.Theme);
-      Font_Status : constant String := Value (Statuses.Font);
-      PTY_Backend_Status : constant String := Value (Statuses.PTY_Backend);
-      ConPTY_Status : constant String := Value (Statuses.ConPTY);
-      Multiplexer_Status : constant String := Value (Statuses.Multiplexer);
-      Graphics_Header_Status : constant String :=
-        Value (Statuses.Graphics_Header);
-      Graphics_Data_Status : constant String := Value (Statuses.Graphics_Data);
       Grid_Length : constant Grid_Status_Length_Range :=
         Bounded_Length (Grid_Status);
       Grid_Text : String (1 .. Terminal.App.Resize.Max_Status_Label_Length) :=
@@ -512,133 +496,38 @@ package body Terminal.App.Diagnostics is
       return S.Renderer /= Last_Snapshot.Renderer;
    end Renderer_Changed;
 
-   function Presenter_Changed (S : Snapshot) return Boolean is
+   function Presenter_Change_State
+     (Value : Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot)
+      return Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot
+   is
+      Result : Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot := Value;
    begin
-      return S.Presenter.Last_Status /= Last_Snapshot.Presenter.Last_Status
-        or else S.Presenter.Rejected_Frames /= Last_Snapshot.Presenter.Rejected_Frames
-        or else
-          S.Presenter.Last_Image_Command_Count /= Last_Snapshot.Presenter.Last_Image_Command_Count
-        or else
-          S.Presenter.Last_Image_Vertex_Count /=
-            Last_Snapshot.Presenter.Last_Image_Vertex_Count
-        or else
-          S.Presenter.Last_Image_Texture_Vertex_Count /=
-            Last_Snapshot.Presenter.Last_Image_Texture_Vertex_Count
-        or else
-          S.Presenter.Last_Image_Protocol /= Last_Snapshot.Presenter.Last_Image_Protocol
-        or else
-          S.Presenter.Last_Image_Width /= Last_Snapshot.Presenter.Last_Image_Width
-        or else
-          S.Presenter.Last_Image_Height /= Last_Snapshot.Presenter.Last_Image_Height
-        or else
-          S.Presenter.Last_Image_Raw_Format /=
-            Last_Snapshot.Presenter.Last_Image_Raw_Format
-        or else
-          S.Presenter.Last_Image_Pixel_Width /=
-            Last_Snapshot.Presenter.Last_Image_Pixel_Width
-        or else
-          S.Presenter.Last_Image_Pixel_Height /=
-            Last_Snapshot.Presenter.Last_Image_Pixel_Height
-        or else
-          S.Presenter.Last_Image_Payload_Length /=
-            Last_Snapshot.Presenter.Last_Image_Payload_Length
-        or else
-          S.Presenter.Last_Image_Payload_Preview_Complete /=
-            Last_Snapshot.Presenter.Last_Image_Payload_Preview_Complete
-        or else
-          S.Presenter.Last_Image_Encoded_Preview_Length /=
-            Last_Snapshot.Presenter.Last_Image_Encoded_Preview_Length
-        or else
-          S.Presenter.Last_Image_Decoded_Preview_Length /=
-            Last_Snapshot.Presenter.Last_Image_Decoded_Preview_Length
-        or else
-          S.Presenter.Last_Image_Decoded_Preview_Bytes /=
-            Last_Snapshot.Presenter.Last_Image_Decoded_Preview_Bytes
-        or else
-          S.Presenter.Last_Image_Preview_Decode_Complete /=
-            Last_Snapshot.Presenter.Last_Image_Preview_Decode_Complete
-        or else
-          S.Presenter.Last_Image_Decode_Status /=
-            Last_Snapshot.Presenter.Last_Image_Decode_Status
-        or else
-          S.Presenter.Last_Image_Placeholder /=
-            Last_Snapshot.Presenter.Last_Image_Placeholder
-        or else
-          S.Presenter.Last_Image_Texture_Downgraded /=
-            Last_Snapshot.Presenter.Last_Image_Texture_Downgraded
-        or else
-          S.Presenter.Last_Image_Texture_Source /=
-            Last_Snapshot.Presenter.Last_Image_Texture_Source
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Command_Count /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Command_Count
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Vertex_Count /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Vertex_Count
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Texture_Vertex_Count /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Texture_Vertex_Count
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Protocol /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Protocol
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Width /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Width
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Height /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Height
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Raw_Format /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Raw_Format
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Pixel_Width /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Pixel_Width
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Pixel_Height /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Pixel_Height
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Payload_Length /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Payload_Length
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Payload_Preview_Complete /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Payload_Preview_Complete
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Encoded_Preview_Length /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Encoded_Preview_Length
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Length /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Length
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Bytes /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Bytes
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Preview_Decode_Complete /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Preview_Decode_Complete
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Decode_Status /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Decode_Status
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Placeholder /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Placeholder
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Texture_Downgraded /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Texture_Downgraded
-        or else
-          S.Presenter.Logical_Device.Uploaded_Image_Texture_Source /=
-            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Texture_Source
-        or else
-          S.Presenter.Logical_Device.Image_Texture_Descriptor_Capacity /=
-            Last_Snapshot.Presenter.Logical_Device.Image_Texture_Descriptor_Capacity
-        or else
-          S.Presenter.Logical_Device.Image_Texture_Descriptor_Bound_Count /=
-            Last_Snapshot.Presenter.Logical_Device.Image_Texture_Descriptor_Bound_Count
-        or else
-          S.Presenter.Logical_Device.Atlas_Upload_Count /=
-            Last_Snapshot.Presenter.Logical_Device.Atlas_Upload_Count
-        or else
-          S.Presenter.Logical_Device.Image_Texture_Upload_Count /=
-            Last_Snapshot.Presenter.Logical_Device.Image_Texture_Upload_Count;
-   end Presenter_Changed;
+      --  Ignore only counters and transient frame measurements that advance
+      --  during healthy presentation.  Newly added fields remain observable
+      --  by default because Result starts as a complete record copy.
+      Result.Accepted_Frames := 0;
+      Result.Last_Vertex_Count := 0;
+      Result.Last_Text_Run_Count := 0;
+      Result.Last_Shaped_Glyph_Count := 0;
+      Result.Last_Frame_Width := 0;
+      Result.Last_Frame_Height := 0;
+      Result.Last_Atlas_Bytes := 0;
+      Result.Atlas_Dirty := False;
+      Result.Logical_Device.Uploaded_Vertex_Count := 0;
+      Result.Logical_Device.Uploaded_Text_Run_Count := 0;
+      Result.Logical_Device.Uploaded_Shaped_Glyph_Count := 0;
+      Result.Logical_Device.Rendered_Frame_Count := 0;
+      Result.Logical_Device.Image_Texture_Cache_Hit_Count := 0;
+      Result.Logical_Device.Atlas_Width := 0;
+      Result.Logical_Device.Atlas_Height := 0;
+      Result.Logical_Device.Atlas_Bytes := 0;
+      Result.Logical_Device.Fence_Deferred_Upload_Count := 0;
+      return Result;
+   end Presenter_Change_State;
+
+   function Presenter_Changed (S : Snapshot) return Boolean is
+     (Presenter_Change_State (S.Presenter) /=
+        Presenter_Change_State (Last_Snapshot.Presenter));
 
    procedure Remember (S : Snapshot) is
    begin
