@@ -2271,8 +2271,12 @@ begin
             and then Frame.Images (1).Pixel_Width = 1
             and then Frame.Images (1).Pixel_Height = 1
             and then Frame.Images (1).Decoded_Row_Stride_Bytes = 4
-            and then Frame.Images (1).Width = 12.0
-            and then Frame.Images (1).Height = 20.0,
+            --  The 20x20 px box of a square image, clipped to the one-cell
+            --  viewport, whose size comes from whatever font the host has.
+            and then Frame.Images (1).Width =
+              Float'Min (20.0, Float (Terminal.App.Renderer.Cell_Width (R)))
+            and then Frame.Images (1).Height =
+              Float'Min (20.0, Float (Terminal.App.Renderer.Cell_Height (R))),
             "iTerm2 PNG retained command is clipped to the viewport");
          Assert
            (Frame.Images (1).Decoded_Bytes /= null
