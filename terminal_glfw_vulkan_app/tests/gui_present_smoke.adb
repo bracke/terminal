@@ -37,6 +37,18 @@ procedure GUI_Present_Smoke is
    use type Terminal.Core.Initialize_Status;
    use type Terminal.Core.Kitty_Graphics_Result_Code;
 
+   --  AUnit's Assert outside a test case raises with no word of what
+   --  failed; say it on standard error first, so a CI log names the check.
+   procedure Assert (Condition : Boolean; Message : String);
+
+   procedure Assert (Condition : Boolean; Message : String) is
+   begin
+      if not Condition then
+         Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, "FAILED: " & Message);
+         AUnit.Assertions.Assert (False, Message);
+      end if;
+   end Assert;
+
    Ctx : GLFW_Vulkan.Context;
    W   : GLFW_Vulkan.Windows.Window;
    Init : GLFW_Vulkan.Init_Status;
