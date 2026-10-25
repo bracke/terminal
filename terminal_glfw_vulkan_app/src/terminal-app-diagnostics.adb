@@ -21,6 +21,7 @@ with Terminal.PTY.Backend;
 package body Terminal.App.Diagnostics is
    use type Terminal.Core.Ignored_Graphics_Protocol;
    use type Terminal.Core.Feed_Status;
+   use type Terminal.Core.Diagnostic_Snapshot;
    use type Terminal.Common.Bytes.Byte_Array;
    use type Terminal.App.PTY_Write.Write_All_Status;
    use type Terminal.App.Render_Model.Image_Decode_Status;
@@ -34,167 +35,22 @@ package body Terminal.App.Diagnostics is
    function Natural_Label (Value : Natural) return String is
      (Ada.Strings.Fixed.Trim (Natural'Image (Value), Ada.Strings.Left));
 
+   function To_Runtime_Status (Text : String) return Runtime_Status_Text is
+      Result : Runtime_Status_Text;
+   begin
+      Result.Length := Runtime_Status_Length'Min
+        (Text'Length, Max_Runtime_Status_Length);
+      for I in 1 .. Result.Length loop
+         Result.Text (I) := Text (Text'First + I - 1);
+      end loop;
+      return Result;
+   end To_Runtime_Status;
+
+   function Value (Item : Runtime_Status_Text) return String is
+     (if Item.Length = 0 then "" else Item.Text (1 .. Item.Length));
+
    Last_Initialized : Boolean := False;
-   Last_Core : Terminal.Core.Diagnostic_Snapshot;
-   Last_Feed_Status : Terminal.Core.Feed_Status := Terminal.Core.Ok;
-   Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
-     Terminal.App.PTY_Write.Ok;
-   Last_Grid_Status_Length : Grid_Status_Length_Range := 0;
-   Last_Grid_Status :
-     String (1 .. Terminal.App.Resize.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Policy_Status_Length : Policy_Status_Length_Range := 0;
-   Last_Policy_Status :
-     String (1 .. Terminal.App.Render_Policy.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Scrollback_Status_Length : Scrollback_Status_Length_Range := 0;
-   Last_Scrollback_Status :
-     String (1 .. Terminal.App.Scrollback_View.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Selection_Status_Length : Selection_Status_Length_Range := 0;
-   Last_Selection_Status :
-     String (1 .. Terminal.App.Selection.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Link_Status_Length : Link_Status_Length_Range := 0;
-   Last_Link_Status :
-     String (1 .. Terminal.App.Hyperlinks.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Link_Activation_Status_Length : Link_Status_Length_Range := 0;
-   Last_Link_Activation_Status :
-     String (1 .. Terminal.App.Hyperlinks.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Clipboard_Status_Length : Clipboard_Status_Length_Range := 0;
-   Last_Clipboard_Status :
-     String (1 .. Terminal.App.Clipboard_OSC52.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Tab_Status_Length : Tab_Status_Length_Range := 0;
-   Last_Tab_Status :
-     String (1 .. Terminal.App.Tabs.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Split_Status_Length : Split_Status_Length_Range := 0;
-   Last_Split_Status :
-     String (1 .. Terminal.App.Splits.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Config_Status_Length : Config_Status_Length_Range := 0;
-   Last_Config_Status :
-     String (1 .. Terminal.App.Config.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Profile_Status_Length : Profile_Status_Length_Range := 0;
-   Last_Profile_Status :
-     String (1 .. Terminal.App.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Input_Status_Length : Input_Status_Length_Range := 0;
-   Last_Input_Status :
-     String (1 .. Terminal.App.Input_Map.Max_Input_Status_Label_Length) :=
-       (others => ' ');
-   Last_Mouse_Status_Length : Mouse_Status_Length_Range := 0;
-   Last_Mouse_Status :
-     String (1 .. Terminal.App.Input_Map.Max_Mouse_Status_Label_Length) :=
-       (others => ' ');
-   Last_Cursor_Status_Length : Cursor_Status_Length_Range := 0;
-   Last_Cursor_Status :
-     String (1 .. Terminal.App.Cursor_Blink.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Text_Blink_Status_Length : Text_Blink_Status_Length_Range := 0;
-   Last_Text_Blink_Status :
-     String (1 .. Terminal.App.Text_Blink.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Theme_Status_Length : Theme_Status_Length_Range := 0;
-   Last_Theme_Status :
-     String (1 .. Terminal.App.Theme.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Font_Status_Length : Font_Status_Length_Range := 0;
-   Last_Font_Status :
-     String (1 .. Terminal.App.Fonts.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_PTY_Backend_Status_Length : PTY_Backend_Status_Length_Range := 0;
-   Last_PTY_Backend_Status :
-     String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_ConPTY_Status_Length : PTY_Backend_Status_Length_Range := 0;
-   Last_ConPTY_Status :
-     String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Multiplexer_Status_Length : Multiplexer_Status_Length_Range := 0;
-   Last_Multiplexer_Status :
-     String (1 .. Terminal.App.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Graphics_Header_Status_Length :
-     Graphics_Header_Status_Length_Range := 0;
-   Last_Graphics_Header_Status :
-     String (1 .. Terminal.App.Graphics.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_Graphics_Data_Status_Length :
-     Graphics_Data_Status_Length_Range := 0;
-   Last_Graphics_Data_Status :
-     String (1 .. Terminal.App.Graphics.Max_Status_Label_Length) :=
-       (others => ' ');
-   Last_PTY_Overflows : Natural := 0;
-   Last_Input_Overflows : Natural := 0;
-   Last_Renderer : Terminal.App.Renderer.Renderer_Diagnostics;
-   Last_Presenter_Status : Terminal.App.Vulkan_Presenter.Present_Status :=
-     Terminal.App.Vulkan_Presenter.Not_Initialized;
-   Last_Accepted_Frames : Natural := 0;
-   Last_Rejected_Frames : Natural := 0;
-   Last_Presenter_Image_Count : Natural := 0;
-   Last_Presenter_Image_Vertex_Count : Natural := 0;
-   Last_Presenter_Image_Texture_Vertex_Count : Natural := 0;
-   Last_Presenter_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
-     Terminal.App.Render_Model.Image_Sixel;
-   Last_Presenter_Image_Width : Natural := 0;
-   Last_Presenter_Image_Height : Natural := 0;
-   Last_Presenter_Image_Raw_Format : Natural := 0;
-   Last_Presenter_Image_Pixel_Width : Natural := 0;
-   Last_Presenter_Image_Pixel_Height : Natural := 0;
-   Last_Presenter_Image_Payload_Length : Natural := 0;
-   Last_Presenter_Image_Payload_Preview_Complete : Boolean := False;
-   Last_Presenter_Image_Encoded_Preview_Length : Natural := 0;
-   Last_Presenter_Image_Decoded_Preview_Length : Natural := 0;
-   Last_Presenter_Image_Decoded_Preview_Bytes :
-     Terminal.Common.Bytes.Byte_Array
-       (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
-         (others => 0);
-   Last_Presenter_Image_Preview_Decode_Complete : Boolean := False;
-   Last_Presenter_Image_Decode_Status :
-     Terminal.App.Render_Model.Image_Decode_Status :=
-       Terminal.App.Render_Model.Image_Decode_Not_Attempted;
-   Last_Presenter_Image_Placeholder : Boolean := False;
-   Last_Presenter_Image_Texture_Downgraded : Boolean := False;
-   Last_Presenter_Image_Texture_Source :
-     Terminal.App.Vulkan_Submit.Texture_Source :=
-       Terminal.App.Vulkan_Submit.Texture_None;
-   Last_Device_Image_Count : Natural := 0;
-   Last_Device_Image_Vertex_Count : Natural := 0;
-   Last_Device_Image_Texture_Vertex_Count : Natural := 0;
-   Last_Device_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
-     Terminal.App.Render_Model.Image_Sixel;
-   Last_Device_Image_Width : Natural := 0;
-   Last_Device_Image_Height : Natural := 0;
-   Last_Device_Image_Raw_Format : Natural := 0;
-   Last_Device_Image_Pixel_Width : Natural := 0;
-   Last_Device_Image_Pixel_Height : Natural := 0;
-   Last_Device_Image_Payload_Length : Natural := 0;
-   Last_Device_Image_Payload_Preview_Complete : Boolean := False;
-   Last_Device_Image_Encoded_Preview_Length : Natural := 0;
-   Last_Device_Image_Decoded_Preview_Length : Natural := 0;
-   Last_Device_Image_Decoded_Preview_Bytes :
-     Terminal.Common.Bytes.Byte_Array
-       (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
-         (others => 0);
-   Last_Device_Image_Preview_Decode_Complete : Boolean := False;
-   Last_Device_Image_Decode_Status :
-     Terminal.App.Render_Model.Image_Decode_Status :=
-       Terminal.App.Render_Model.Image_Decode_Not_Attempted;
-   Last_Device_Image_Placeholder : Boolean := False;
-   Last_Device_Image_Texture_Downgraded : Boolean := False;
-   Last_Device_Image_Texture_Source :
-     Terminal.App.Vulkan_Submit.Texture_Source :=
-       Terminal.App.Vulkan_Submit.Texture_None;
-   Last_Device_Image_Texture_Descriptor_Capacity : Natural := 0;
-   Last_Device_Image_Texture_Descriptor_Bound_Count : Natural := 0;
-   Last_Atlas_Upload_Count : Natural := 0;
-   Last_Image_Texture_Upload_Count : Natural := 0;
-   Last_Image_Texture_Cache_Hit_Count : Natural := 0;
+   Last_Snapshot : Snapshot;
 
    procedure Put (Message : String) is
    begin
@@ -299,240 +155,6 @@ package body Terminal.App.Diagnostics is
      (Graphics_Data_Status_Length_Range'Min
         (Text'Length, Terminal.App.Graphics.Max_Status_Label_Length));
 
-   function Same_Text
-     (Current_Length : Natural;
-      Current        : String;
-      Last_Length    : Natural;
-      Last           : String) return Boolean
-   is
-   begin
-      if Current_Length /= Last_Length then
-         return False;
-      end if;
-
-      for I in 1 .. Current_Length loop
-         if Current (I) /= Last (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Text;
-
-   function Same_Grid_Status (S : Snapshot) return Boolean is
-   begin
-      if S.Grid_Status_Length /= Last_Grid_Status_Length then
-         return False;
-      end if;
-
-      for I in 1 .. S.Grid_Status_Length loop
-         if S.Grid_Status (I) /= Last_Grid_Status (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Grid_Status;
-
-   function Same_Policy_Status (S : Snapshot) return Boolean is
-   begin
-      if S.Policy_Status_Length /= Last_Policy_Status_Length then
-         return False;
-      end if;
-
-      for I in 1 .. S.Policy_Status_Length loop
-         if S.Policy_Status (I) /= Last_Policy_Status (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Policy_Status;
-
-   function Same_Scrollback_Status (S : Snapshot) return Boolean is
-   begin
-      if S.Scrollback_Status_Length /= Last_Scrollback_Status_Length then
-         return False;
-      end if;
-
-      for I in 1 .. S.Scrollback_Status_Length loop
-         if S.Scrollback_Status (I) /= Last_Scrollback_Status (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Scrollback_Status;
-
-   function Same_Selection_Status (S : Snapshot) return Boolean is
-   begin
-      if S.Selection_Status_Length /= Last_Selection_Status_Length then
-         return False;
-      end if;
-
-      for I in 1 .. S.Selection_Status_Length loop
-         if S.Selection_Status (I) /= Last_Selection_Status (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Selection_Status;
-
-   function Same_Link_Status (S : Snapshot) return Boolean is
-   begin
-      if S.Link_Status_Length /= Last_Link_Status_Length then
-         return False;
-      end if;
-
-      for I in 1 .. S.Link_Status_Length loop
-         if S.Link_Status (I) /= Last_Link_Status (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Link_Status;
-
-   function Same_Link_Activation_Status (S : Snapshot) return Boolean is
-   begin
-      if S.Link_Activation_Status_Length /=
-        Last_Link_Activation_Status_Length
-      then
-         return False;
-      end if;
-
-      for I in 1 .. S.Link_Activation_Status_Length loop
-         if S.Link_Activation_Status (I) /=
-           Last_Link_Activation_Status (I)
-         then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Link_Activation_Status;
-
-   function Same_Clipboard_Status (S : Snapshot) return Boolean is
-   begin
-      if S.Clipboard_Status_Length /= Last_Clipboard_Status_Length then
-         return False;
-      end if;
-
-      for I in 1 .. S.Clipboard_Status_Length loop
-         if S.Clipboard_Status (I) /= Last_Clipboard_Status (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Clipboard_Status;
-
-   function Same_Tab_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Tab_Status_Length,
-         S.Tab_Status,
-         Last_Tab_Status_Length,
-         Last_Tab_Status));
-
-   function Same_Split_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Split_Status_Length,
-         S.Split_Status,
-         Last_Split_Status_Length,
-         Last_Split_Status));
-
-   function Same_Config_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Config_Status_Length,
-         S.Config_Status,
-         Last_Config_Status_Length,
-         Last_Config_Status));
-
-   function Same_Profile_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Profile_Status_Length,
-         S.Profile_Status,
-         Last_Profile_Status_Length,
-         Last_Profile_Status));
-
-   function Same_Input_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Input_Status_Length,
-         S.Input_Status,
-         Last_Input_Status_Length,
-         Last_Input_Status));
-
-   function Same_Mouse_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Mouse_Status_Length,
-         S.Mouse_Status,
-         Last_Mouse_Status_Length,
-         Last_Mouse_Status));
-
-   function Same_Cursor_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Cursor_Status_Length,
-         S.Cursor_Status,
-         Last_Cursor_Status_Length,
-         Last_Cursor_Status));
-
-   function Same_Text_Blink_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Text_Blink_Status_Length,
-         S.Text_Blink_Status,
-         Last_Text_Blink_Status_Length,
-         Last_Text_Blink_Status));
-
-   function Same_Theme_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Theme_Status_Length,
-         S.Theme_Status,
-         Last_Theme_Status_Length,
-         Last_Theme_Status));
-
-   function Same_Font_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Font_Status_Length,
-         S.Font_Status,
-         Last_Font_Status_Length,
-         Last_Font_Status));
-
-   function Same_PTY_Backend_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.PTY_Backend_Status_Length,
-         S.PTY_Backend_Status,
-         Last_PTY_Backend_Status_Length,
-         Last_PTY_Backend_Status));
-
-   function Same_ConPTY_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.ConPTY_Status_Length,
-         S.ConPTY_Status,
-         Last_ConPTY_Status_Length,
-         Last_ConPTY_Status));
-
-   function Same_Multiplexer_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Multiplexer_Status_Length,
-         S.Multiplexer_Status,
-         Last_Multiplexer_Status_Length,
-         Last_Multiplexer_Status));
-
-   function Same_Graphics_Header_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Graphics_Header_Status_Length,
-         S.Graphics_Header_Status,
-         Last_Graphics_Header_Status_Length,
-         Last_Graphics_Header_Status));
-
-   function Same_Graphics_Data_Status (S : Snapshot) return Boolean is
-     (Same_Text
-        (S.Graphics_Data_Status_Length,
-         S.Graphics_Data_Status,
-         Last_Graphics_Data_Status_Length,
-         Last_Graphics_Data_Status));
-
    function Collect
      (Core     : Terminal.Core.Terminal;
       PTY      : Terminal.App.Queues.PTY_Output_Queue;
@@ -542,30 +164,33 @@ package body Terminal.App.Diagnostics is
       Last_Feed_Status : Terminal.Core.Feed_Status := Terminal.Core.Ok;
       Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
         Terminal.App.PTY_Write.Ok;
-      Grid_Status : String := "";
-      Policy_Status : String := "";
-      Scrollback_Status : String := "";
-      Selection_Status : String := "";
-      Link_Status : String := "";
-      Link_Activation_Status : String := "";
-      Clipboard_Status : String := "";
-      Tab_Status : String := "";
-      Split_Status : String := "";
-      Config_Status : String := "";
-      Profile_Status : String := "";
-      Input_Status : String := "";
-      Mouse_Status : String := "";
-      Cursor_Status : String := "";
-      Text_Blink_Status : String := "";
-      Theme_Status : String := "";
-      Font_Status : String := "";
-      PTY_Backend_Status : String := "";
-      ConPTY_Status : String := "";
-      Multiplexer_Status : String := "";
-      Graphics_Header_Status : String := "";
-      Graphics_Data_Status : String := "")
+      Statuses : Runtime_Statuses := (others => <>))
       return Snapshot
    is
+      Grid_Status : constant String := Value (Statuses.Grid);
+      Policy_Status : constant String := Value (Statuses.Policy);
+      Scrollback_Status : constant String := Value (Statuses.Scrollback);
+      Selection_Status : constant String := Value (Statuses.Selection);
+      Link_Status : constant String := Value (Statuses.Link);
+      Link_Activation_Status : constant String :=
+        Value (Statuses.Link_Activation);
+      Clipboard_Status : constant String := Value (Statuses.Clipboard);
+      Tab_Status : constant String := Value (Statuses.Tab);
+      Split_Status : constant String := Value (Statuses.Split);
+      Config_Status : constant String := Value (Statuses.Config);
+      Profile_Status : constant String := Value (Statuses.Profile);
+      Input_Status : constant String := Value (Statuses.Input);
+      Mouse_Status : constant String := Value (Statuses.Mouse);
+      Cursor_Status : constant String := Value (Statuses.Cursor);
+      Text_Blink_Status : constant String := Value (Statuses.Text_Blink);
+      Theme_Status : constant String := Value (Statuses.Theme);
+      Font_Status : constant String := Value (Statuses.Font);
+      PTY_Backend_Status : constant String := Value (Statuses.PTY_Backend);
+      ConPTY_Status : constant String := Value (Statuses.ConPTY);
+      Multiplexer_Status : constant String := Value (Statuses.Multiplexer);
+      Graphics_Header_Status : constant String :=
+        Value (Statuses.Graphics_Header);
+      Graphics_Data_Status : constant String := Value (Statuses.Graphics_Data);
       Grid_Length : constant Grid_Status_Length_Range :=
         Bounded_Length (Grid_Status);
       Grid_Text : String (1 .. Terminal.App.Resize.Max_Status_Label_Length) :=
@@ -811,326 +436,214 @@ package body Terminal.App.Diagnostics is
 
    function Core_Changed (S : Snapshot) return Boolean is
    begin
-      return S.Last_Feed_Status /= Last_Feed_Status
-        or else S.Last_Write_Status /= Last_Write_Status
-        or else not Same_Grid_Status (S)
-        or else not Same_Policy_Status (S)
-        or else not Same_Scrollback_Status (S)
-        or else not Same_Selection_Status (S)
-        or else not Same_Link_Status (S)
-        or else not Same_Link_Activation_Status (S)
-        or else not Same_Clipboard_Status (S)
-        or else not Same_Tab_Status (S)
-        or else not Same_Split_Status (S)
-        or else not Same_Config_Status (S)
-        or else not Same_Profile_Status (S)
-        or else not Same_Input_Status (S)
-        or else not Same_Mouse_Status (S)
-        or else not Same_Cursor_Status (S)
-        or else not Same_Text_Blink_Status (S)
-        or else not Same_Theme_Status (S)
-        or else not Same_Font_Status (S)
-        or else not Same_PTY_Backend_Status (S)
-        or else not Same_ConPTY_Status (S)
-        or else not Same_Multiplexer_Status (S)
-        or else not Same_Graphics_Header_Status (S)
-        or else not Same_Graphics_Data_Status (S)
-        or else S.Core.Malformed_UTF8 /= Last_Core.Malformed_UTF8
-        or else S.Core.Ignored_Escape /= Last_Core.Ignored_Escape
-        or else S.Core.Parser_Overflow /= Last_Core.Parser_Overflow
-        or else S.Core.Queue_Overflow /= Last_Core.Queue_Overflow
-        or else S.Core.Unsupported_Sequence /= Last_Core.Unsupported_Sequence
+      return S.Last_Feed_Status /= Last_Snapshot.Last_Feed_Status
+        or else S.Last_Write_Status /= Last_Snapshot.Last_Write_Status
+        or else S.Grid_Status_Length /= Last_Snapshot.Grid_Status_Length
+        or else S.Grid_Status /= Last_Snapshot.Grid_Status
+        or else S.Policy_Status_Length /= Last_Snapshot.Policy_Status_Length
+        or else S.Policy_Status /= Last_Snapshot.Policy_Status
         or else
-          S.Core.Text_Cluster_Overflow /= Last_Core.Text_Cluster_Overflow
+          S.Scrollback_Status_Length /= Last_Snapshot.Scrollback_Status_Length
+        or else S.Scrollback_Status /= Last_Snapshot.Scrollback_Status
         or else
-          S.Core.Graphics_Protocol_Ignored /=
-            Last_Core.Graphics_Protocol_Ignored
-        or else S.Core.Sixel_Ignored /= Last_Core.Sixel_Ignored
+          S.Selection_Status_Length /= Last_Snapshot.Selection_Status_Length
+        or else S.Selection_Status /= Last_Snapshot.Selection_Status
+        or else S.Link_Status_Length /= Last_Snapshot.Link_Status_Length
+        or else S.Link_Status /= Last_Snapshot.Link_Status
         or else
-          S.Core.Kitty_Graphics_Ignored /= Last_Core.Kitty_Graphics_Ignored
+          S.Link_Activation_Status_Length /=
+            Last_Snapshot.Link_Activation_Status_Length
+        or else S.Link_Activation_Status /=
+          Last_Snapshot.Link_Activation_Status
         or else
-          S.Core.ITerm2_Image_Ignored /= Last_Core.ITerm2_Image_Ignored
+          S.Clipboard_Status_Length /= Last_Snapshot.Clipboard_Status_Length
+        or else S.Clipboard_Status /= Last_Snapshot.Clipboard_Status
+        or else S.Tab_Status_Length /= Last_Snapshot.Tab_Status_Length
+        or else S.Tab_Status /= Last_Snapshot.Tab_Status
+        or else S.Split_Status_Length /= Last_Snapshot.Split_Status_Length
+        or else S.Split_Status /= Last_Snapshot.Split_Status
+        or else S.Config_Status_Length /= Last_Snapshot.Config_Status_Length
+        or else S.Config_Status /= Last_Snapshot.Config_Status
+        or else S.Profile_Status_Length /= Last_Snapshot.Profile_Status_Length
+        or else S.Profile_Status /= Last_Snapshot.Profile_Status
+        or else S.Input_Status_Length /= Last_Snapshot.Input_Status_Length
+        or else S.Input_Status /= Last_Snapshot.Input_Status
+        or else S.Mouse_Status_Length /= Last_Snapshot.Mouse_Status_Length
+        or else S.Mouse_Status /= Last_Snapshot.Mouse_Status
+        or else S.Cursor_Status_Length /= Last_Snapshot.Cursor_Status_Length
+        or else S.Cursor_Status /= Last_Snapshot.Cursor_Status
         or else
-          S.Core.Multiplexer_Passthrough /= Last_Core.Multiplexer_Passthrough
+          S.Text_Blink_Status_Length /= Last_Snapshot.Text_Blink_Status_Length
+        or else S.Text_Blink_Status /= Last_Snapshot.Text_Blink_Status
+        or else S.Theme_Status_Length /= Last_Snapshot.Theme_Status_Length
+        or else S.Theme_Status /= Last_Snapshot.Theme_Status
+        or else S.Font_Status_Length /= Last_Snapshot.Font_Status_Length
+        or else S.Font_Status /= Last_Snapshot.Font_Status
         or else
-          S.Core.Last_Graphics_Protocol /= Last_Core.Last_Graphics_Protocol
+          S.PTY_Backend_Status_Length /=
+            Last_Snapshot.PTY_Backend_Status_Length
+        or else S.PTY_Backend_Status /= Last_Snapshot.PTY_Backend_Status
+        or else S.ConPTY_Status_Length /= Last_Snapshot.ConPTY_Status_Length
+        or else S.ConPTY_Status /= Last_Snapshot.ConPTY_Status
         or else
-          S.Core.Last_Graphics_Payload_Length /=
-            Last_Core.Last_Graphics_Payload_Length;
+          S.Multiplexer_Status_Length /=
+            Last_Snapshot.Multiplexer_Status_Length
+        or else S.Multiplexer_Status /= Last_Snapshot.Multiplexer_Status
+        or else
+          S.Graphics_Header_Status_Length /=
+            Last_Snapshot.Graphics_Header_Status_Length
+        or else S.Graphics_Header_Status /=
+          Last_Snapshot.Graphics_Header_Status
+        or else
+          S.Graphics_Data_Status_Length /=
+            Last_Snapshot.Graphics_Data_Status_Length
+        or else S.Graphics_Data_Status /= Last_Snapshot.Graphics_Data_Status
+        or else S.Core /= Last_Snapshot.Core;
    end Core_Changed;
 
    function Queue_Changed (S : Snapshot) return Boolean is
    begin
-      return S.PTY_Overflows /= Last_PTY_Overflows
-        or else S.Input_Overflows /= Last_Input_Overflows;
+      return S.PTY_Overflows /= Last_Snapshot.PTY_Overflows
+        or else S.Input_Overflows /= Last_Snapshot.Input_Overflows;
    end Queue_Changed;
 
    function Renderer_Changed (S : Snapshot) return Boolean is
    begin
-      return S.Renderer /= Last_Renderer;
+      return S.Renderer /= Last_Snapshot.Renderer;
    end Renderer_Changed;
 
    function Presenter_Changed (S : Snapshot) return Boolean is
    begin
-      return S.Presenter.Last_Status /= Last_Presenter_Status
-        or else S.Presenter.Rejected_Frames /= Last_Rejected_Frames
+      return S.Presenter.Last_Status /= Last_Snapshot.Presenter.Last_Status
+        or else S.Presenter.Rejected_Frames /= Last_Snapshot.Presenter.Rejected_Frames
         or else
-          S.Presenter.Last_Image_Command_Count /= Last_Presenter_Image_Count
+          S.Presenter.Last_Image_Command_Count /= Last_Snapshot.Presenter.Last_Image_Command_Count
         or else
           S.Presenter.Last_Image_Vertex_Count /=
-            Last_Presenter_Image_Vertex_Count
+            Last_Snapshot.Presenter.Last_Image_Vertex_Count
         or else
           S.Presenter.Last_Image_Texture_Vertex_Count /=
-            Last_Presenter_Image_Texture_Vertex_Count
+            Last_Snapshot.Presenter.Last_Image_Texture_Vertex_Count
         or else
-          S.Presenter.Last_Image_Protocol /= Last_Presenter_Image_Protocol
+          S.Presenter.Last_Image_Protocol /= Last_Snapshot.Presenter.Last_Image_Protocol
         or else
-          S.Presenter.Last_Image_Width /= Last_Presenter_Image_Width
+          S.Presenter.Last_Image_Width /= Last_Snapshot.Presenter.Last_Image_Width
         or else
-          S.Presenter.Last_Image_Height /= Last_Presenter_Image_Height
+          S.Presenter.Last_Image_Height /= Last_Snapshot.Presenter.Last_Image_Height
         or else
           S.Presenter.Last_Image_Raw_Format /=
-            Last_Presenter_Image_Raw_Format
+            Last_Snapshot.Presenter.Last_Image_Raw_Format
         or else
           S.Presenter.Last_Image_Pixel_Width /=
-            Last_Presenter_Image_Pixel_Width
+            Last_Snapshot.Presenter.Last_Image_Pixel_Width
         or else
           S.Presenter.Last_Image_Pixel_Height /=
-            Last_Presenter_Image_Pixel_Height
+            Last_Snapshot.Presenter.Last_Image_Pixel_Height
         or else
           S.Presenter.Last_Image_Payload_Length /=
-            Last_Presenter_Image_Payload_Length
+            Last_Snapshot.Presenter.Last_Image_Payload_Length
         or else
           S.Presenter.Last_Image_Payload_Preview_Complete /=
-            Last_Presenter_Image_Payload_Preview_Complete
+            Last_Snapshot.Presenter.Last_Image_Payload_Preview_Complete
         or else
           S.Presenter.Last_Image_Encoded_Preview_Length /=
-            Last_Presenter_Image_Encoded_Preview_Length
+            Last_Snapshot.Presenter.Last_Image_Encoded_Preview_Length
         or else
           S.Presenter.Last_Image_Decoded_Preview_Length /=
-            Last_Presenter_Image_Decoded_Preview_Length
+            Last_Snapshot.Presenter.Last_Image_Decoded_Preview_Length
         or else
           S.Presenter.Last_Image_Decoded_Preview_Bytes /=
-            Last_Presenter_Image_Decoded_Preview_Bytes
+            Last_Snapshot.Presenter.Last_Image_Decoded_Preview_Bytes
         or else
           S.Presenter.Last_Image_Preview_Decode_Complete /=
-            Last_Presenter_Image_Preview_Decode_Complete
+            Last_Snapshot.Presenter.Last_Image_Preview_Decode_Complete
         or else
           S.Presenter.Last_Image_Decode_Status /=
-            Last_Presenter_Image_Decode_Status
+            Last_Snapshot.Presenter.Last_Image_Decode_Status
         or else
           S.Presenter.Last_Image_Placeholder /=
-            Last_Presenter_Image_Placeholder
+            Last_Snapshot.Presenter.Last_Image_Placeholder
         or else
           S.Presenter.Last_Image_Texture_Downgraded /=
-            Last_Presenter_Image_Texture_Downgraded
+            Last_Snapshot.Presenter.Last_Image_Texture_Downgraded
         or else
           S.Presenter.Last_Image_Texture_Source /=
-            Last_Presenter_Image_Texture_Source
+            Last_Snapshot.Presenter.Last_Image_Texture_Source
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Command_Count /=
-            Last_Device_Image_Count
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Command_Count
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Vertex_Count /=
-            Last_Device_Image_Vertex_Count
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Vertex_Count
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Texture_Vertex_Count /=
-            Last_Device_Image_Texture_Vertex_Count
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Texture_Vertex_Count
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Protocol /=
-            Last_Device_Image_Protocol
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Protocol
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Width /=
-            Last_Device_Image_Width
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Width
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Height /=
-            Last_Device_Image_Height
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Height
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Raw_Format /=
-            Last_Device_Image_Raw_Format
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Raw_Format
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Pixel_Width /=
-            Last_Device_Image_Pixel_Width
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Pixel_Width
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Pixel_Height /=
-            Last_Device_Image_Pixel_Height
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Pixel_Height
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Payload_Length /=
-            Last_Device_Image_Payload_Length
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Payload_Length
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Payload_Preview_Complete /=
-            Last_Device_Image_Payload_Preview_Complete
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Payload_Preview_Complete
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Encoded_Preview_Length /=
-            Last_Device_Image_Encoded_Preview_Length
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Encoded_Preview_Length
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Length /=
-            Last_Device_Image_Decoded_Preview_Length
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Length
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Bytes /=
-            Last_Device_Image_Decoded_Preview_Bytes
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Bytes
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Preview_Decode_Complete /=
-            Last_Device_Image_Preview_Decode_Complete
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Preview_Decode_Complete
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Decode_Status /=
-            Last_Device_Image_Decode_Status
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Decode_Status
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Placeholder /=
-            Last_Device_Image_Placeholder
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Placeholder
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Texture_Downgraded /=
-            Last_Device_Image_Texture_Downgraded
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Texture_Downgraded
         or else
           S.Presenter.Logical_Device.Uploaded_Image_Texture_Source /=
-            Last_Device_Image_Texture_Source
+            Last_Snapshot.Presenter.Logical_Device.Uploaded_Image_Texture_Source
         or else
           S.Presenter.Logical_Device.Image_Texture_Descriptor_Capacity /=
-            Last_Device_Image_Texture_Descriptor_Capacity
+            Last_Snapshot.Presenter.Logical_Device.Image_Texture_Descriptor_Capacity
         or else
           S.Presenter.Logical_Device.Image_Texture_Descriptor_Bound_Count /=
-            Last_Device_Image_Texture_Descriptor_Bound_Count
+            Last_Snapshot.Presenter.Logical_Device.Image_Texture_Descriptor_Bound_Count
         or else
           S.Presenter.Logical_Device.Atlas_Upload_Count /=
-            Last_Atlas_Upload_Count
+            Last_Snapshot.Presenter.Logical_Device.Atlas_Upload_Count
         or else
           S.Presenter.Logical_Device.Image_Texture_Upload_Count /=
-            Last_Image_Texture_Upload_Count;
+            Last_Snapshot.Presenter.Logical_Device.Image_Texture_Upload_Count;
    end Presenter_Changed;
 
    procedure Remember (S : Snapshot) is
    begin
       Last_Initialized := True;
-      Last_Core := S.Core;
-      Last_Feed_Status := S.Last_Feed_Status;
-      Last_Write_Status := S.Last_Write_Status;
-      Last_Grid_Status_Length := S.Grid_Status_Length;
-      Last_Grid_Status := S.Grid_Status;
-      Last_Policy_Status_Length := S.Policy_Status_Length;
-      Last_Policy_Status := S.Policy_Status;
-      Last_Scrollback_Status_Length := S.Scrollback_Status_Length;
-      Last_Scrollback_Status := S.Scrollback_Status;
-      Last_Selection_Status_Length := S.Selection_Status_Length;
-      Last_Selection_Status := S.Selection_Status;
-      Last_Link_Status_Length := S.Link_Status_Length;
-      Last_Link_Status := S.Link_Status;
-      Last_Link_Activation_Status_Length := S.Link_Activation_Status_Length;
-      Last_Link_Activation_Status := S.Link_Activation_Status;
-      Last_Clipboard_Status_Length := S.Clipboard_Status_Length;
-      Last_Clipboard_Status := S.Clipboard_Status;
-      Last_Tab_Status_Length := S.Tab_Status_Length;
-      Last_Tab_Status := S.Tab_Status;
-      Last_Split_Status_Length := S.Split_Status_Length;
-      Last_Split_Status := S.Split_Status;
-      Last_Config_Status_Length := S.Config_Status_Length;
-      Last_Config_Status := S.Config_Status;
-      Last_Profile_Status_Length := S.Profile_Status_Length;
-      Last_Profile_Status := S.Profile_Status;
-      Last_Input_Status_Length := S.Input_Status_Length;
-      Last_Input_Status := S.Input_Status;
-      Last_Mouse_Status_Length := S.Mouse_Status_Length;
-      Last_Mouse_Status := S.Mouse_Status;
-      Last_Cursor_Status_Length := S.Cursor_Status_Length;
-      Last_Cursor_Status := S.Cursor_Status;
-      Last_Text_Blink_Status_Length := S.Text_Blink_Status_Length;
-      Last_Text_Blink_Status := S.Text_Blink_Status;
-      Last_Theme_Status_Length := S.Theme_Status_Length;
-      Last_Theme_Status := S.Theme_Status;
-      Last_Font_Status_Length := S.Font_Status_Length;
-      Last_Font_Status := S.Font_Status;
-      Last_PTY_Backend_Status_Length := S.PTY_Backend_Status_Length;
-      Last_PTY_Backend_Status := S.PTY_Backend_Status;
-      Last_ConPTY_Status_Length := S.ConPTY_Status_Length;
-      Last_ConPTY_Status := S.ConPTY_Status;
-      Last_Multiplexer_Status_Length := S.Multiplexer_Status_Length;
-      Last_Multiplexer_Status := S.Multiplexer_Status;
-      Last_Graphics_Header_Status_Length := S.Graphics_Header_Status_Length;
-      Last_Graphics_Header_Status := S.Graphics_Header_Status;
-      Last_Graphics_Data_Status_Length := S.Graphics_Data_Status_Length;
-      Last_Graphics_Data_Status := S.Graphics_Data_Status;
-      Last_PTY_Overflows := S.PTY_Overflows;
-      Last_Input_Overflows := S.Input_Overflows;
-      Last_Renderer := S.Renderer;
-      Last_Presenter_Status := S.Presenter.Last_Status;
-      Last_Accepted_Frames := S.Presenter.Accepted_Frames;
-      Last_Rejected_Frames := S.Presenter.Rejected_Frames;
-      Last_Presenter_Image_Count := S.Presenter.Last_Image_Command_Count;
-      Last_Presenter_Image_Vertex_Count := S.Presenter.Last_Image_Vertex_Count;
-      Last_Presenter_Image_Texture_Vertex_Count :=
-        S.Presenter.Last_Image_Texture_Vertex_Count;
-      Last_Presenter_Image_Protocol := S.Presenter.Last_Image_Protocol;
-      Last_Presenter_Image_Width := S.Presenter.Last_Image_Width;
-      Last_Presenter_Image_Height := S.Presenter.Last_Image_Height;
-      Last_Presenter_Image_Raw_Format := S.Presenter.Last_Image_Raw_Format;
-      Last_Presenter_Image_Pixel_Width := S.Presenter.Last_Image_Pixel_Width;
-      Last_Presenter_Image_Pixel_Height := S.Presenter.Last_Image_Pixel_Height;
-      Last_Presenter_Image_Payload_Length :=
-        S.Presenter.Last_Image_Payload_Length;
-      Last_Presenter_Image_Payload_Preview_Complete :=
-        S.Presenter.Last_Image_Payload_Preview_Complete;
-      Last_Presenter_Image_Encoded_Preview_Length :=
-        S.Presenter.Last_Image_Encoded_Preview_Length;
-      Last_Presenter_Image_Decoded_Preview_Length :=
-        S.Presenter.Last_Image_Decoded_Preview_Length;
-      Last_Presenter_Image_Decoded_Preview_Bytes :=
-        S.Presenter.Last_Image_Decoded_Preview_Bytes;
-      Last_Presenter_Image_Preview_Decode_Complete :=
-        S.Presenter.Last_Image_Preview_Decode_Complete;
-      Last_Presenter_Image_Decode_Status :=
-        S.Presenter.Last_Image_Decode_Status;
-      Last_Presenter_Image_Placeholder := S.Presenter.Last_Image_Placeholder;
-      Last_Presenter_Image_Texture_Downgraded :=
-        S.Presenter.Last_Image_Texture_Downgraded;
-      Last_Presenter_Image_Texture_Source :=
-        S.Presenter.Last_Image_Texture_Source;
-      Last_Device_Image_Count :=
-        S.Presenter.Logical_Device.Uploaded_Image_Command_Count;
-      Last_Device_Image_Vertex_Count :=
-        S.Presenter.Logical_Device.Uploaded_Image_Vertex_Count;
-      Last_Device_Image_Texture_Vertex_Count :=
-        S.Presenter.Logical_Device.Uploaded_Image_Texture_Vertex_Count;
-      Last_Device_Image_Protocol :=
-        S.Presenter.Logical_Device.Uploaded_Image_Protocol;
-      Last_Device_Image_Width :=
-        S.Presenter.Logical_Device.Uploaded_Image_Width;
-      Last_Device_Image_Height :=
-        S.Presenter.Logical_Device.Uploaded_Image_Height;
-      Last_Device_Image_Raw_Format :=
-        S.Presenter.Logical_Device.Uploaded_Image_Raw_Format;
-      Last_Device_Image_Pixel_Width :=
-        S.Presenter.Logical_Device.Uploaded_Image_Pixel_Width;
-      Last_Device_Image_Pixel_Height :=
-        S.Presenter.Logical_Device.Uploaded_Image_Pixel_Height;
-      Last_Device_Image_Payload_Length :=
-        S.Presenter.Logical_Device.Uploaded_Image_Payload_Length;
-      Last_Device_Image_Payload_Preview_Complete :=
-        S.Presenter.Logical_Device.Uploaded_Image_Payload_Preview_Complete;
-      Last_Device_Image_Encoded_Preview_Length :=
-        S.Presenter.Logical_Device.Uploaded_Image_Encoded_Preview_Length;
-      Last_Device_Image_Decoded_Preview_Length :=
-        S.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Length;
-      Last_Device_Image_Decoded_Preview_Bytes :=
-        S.Presenter.Logical_Device.Uploaded_Image_Decoded_Preview_Bytes;
-      Last_Device_Image_Preview_Decode_Complete :=
-        S.Presenter.Logical_Device.Uploaded_Image_Preview_Decode_Complete;
-      Last_Device_Image_Decode_Status :=
-        S.Presenter.Logical_Device.Uploaded_Image_Decode_Status;
-      Last_Device_Image_Placeholder :=
-        S.Presenter.Logical_Device.Uploaded_Image_Placeholder;
-      Last_Device_Image_Texture_Downgraded :=
-        S.Presenter.Logical_Device.Uploaded_Image_Texture_Downgraded;
-      Last_Device_Image_Texture_Source :=
-        S.Presenter.Logical_Device.Uploaded_Image_Texture_Source;
-      Last_Device_Image_Texture_Descriptor_Capacity :=
-        S.Presenter.Logical_Device.Image_Texture_Descriptor_Capacity;
-      Last_Device_Image_Texture_Descriptor_Bound_Count :=
-        S.Presenter.Logical_Device.Image_Texture_Descriptor_Bound_Count;
-      Last_Atlas_Upload_Count :=
-        S.Presenter.Logical_Device.Atlas_Upload_Count;
-      Last_Image_Texture_Upload_Count :=
-        S.Presenter.Logical_Device.Image_Texture_Upload_Count;
-      Last_Image_Texture_Cache_Hit_Count :=
-        S.Presenter.Logical_Device.Image_Texture_Cache_Hit_Count;
+      Last_Snapshot := S;
    end Remember;
 
    function Image_Texture_Pipeline_Status_Label (S : Snapshot) return String is

@@ -12,6 +12,9 @@ is
    Image_Count_Before : constant Natural := Frame_Image_Count (R);
    Prepared_Virtual : Virtual_Placement_Access := null;
    Prepared_Conventional : Conventional_Placement_Access := null;
+   Object_Count_Before : constant Natural :=
+     Terminal.App.Image_Store.Object_Count (R.Image_Objects);
+   Placement_Count_Before : constant Natural := R.Kitty_Placement_Count;
 
    procedure Release_Prepared_Placement is
    begin
@@ -52,10 +55,6 @@ is
    procedure Apply_Deletion is separate;
 begin
    Placement_Status := Placement_Not_Requested;
-   --  Every accepted graphics event may replace an object or mutate a
-   --  placement.  Rebuild the renderer's lookup index once, immediately
-   --  before retained images are emitted.
-   R.Placement_Index_Dirty := True;
    --  These fields describe only the event currently being applied.  Clear
    --  them before any validation so exception cleanup can never roll back
    --  an object installed by an earlier command.
@@ -63,34 +62,6 @@ begin
    R.Last_Stored_Image_Content_Serial := 0;
    R.Replaced_Image_Order := 0;
    R.Transactional_Image_Install := False;
-   if Event.Protocol = Terminal.Core.Kitty_Graphics
-     and then Header.Recognized
-     and then Header.Kitty_ID > 0
-     and then Header.Kitty_Image_Number > 0
-   then
-      --  The protocol makes i= and I= mutually exclusive for every
-      --  command. Do not let an invalid command mutate either store.
-      return;
-   end if;
-
-   if Event.Protocol = Terminal.Core.Kitty_Graphics
-     and then Header.Recognized
-     and then
-       (not Header.Kitty_Control_Data_Valid
-        or else not Header.Kitty_Action_Controls_Valid
-        or else not Header.Kitty_Transmission_Valid
-        or else not Header.Kitty_Compression_Valid
-        or else
-          (Header.Kitty_Transmission in 'f' | 't' | 's'
-           and then
-             (not Header.Kitty_Data_Size_Valid
-              or else not Header.Kitty_Data_Offset_Valid
-              or else Header.Kitty_More_Specified)))
-   then
-      Truncate_Image_Commands (R, Image_Count_Before);
-      return;
-   end if;
-
    if Event.Protocol = Terminal.Core.Kitty_Graphics
      and then Header.Recognized
      and then Header.Kitty_Image_Number > 0
@@ -125,6 +96,15 @@ begin
       --  Lowercase selectors retain reusable data; uppercase selectors
       --  may release it once no retained placement references it.
       Apply_Deletion;
+      --  Animation-frame deletion changes image content but not any indexed
+      --  object or placement identity.  Rebuild only when deletion actually
+      --  changed the indexed topology.
+      if Terminal.App.Image_Store.Object_Count (R.Image_Objects) /=
+           Object_Count_Before
+        or else R.Kitty_Placement_Count /= Placement_Count_Before
+      then
+         R.Placement_Index_Dirty := True;
+      end if;
       Truncate_Image_Commands (R, Image_Count_Before);
       return;
    end if;
@@ -252,6 +232,11 @@ begin
       Resolved_Image_ID     => Header.Kitty_ID,
       Resolved_Image_Number => Header.Kitty_Image_Number);
    R.Transactional_Image_Install := False;
+   if R.Last_Stored_Image_Order /= 0 then
+      --  Installation and replacement can change the object address retained
+      --  in the lookup map even when the total object count is unchanged.
+      R.Placement_Index_Dirty := True;
+   end if;
 
    if Event.Protocol in
      Terminal.Core.Sixel_Graphics | Terminal.Core.ITerm2_Graphics
@@ -292,6 +277,9 @@ begin
          else
             Placement_Status := Store_Conventional_Placement
               (R, Event, Header, Prepared_Conventional);
+         end if;
+         if Placement_Status = Placement_Stored then
+            R.Placement_Index_Dirty := True;
          end if;
       elsif Header.Kitty_ID > 0 then
          --  An addressed combined command must not leave a transient

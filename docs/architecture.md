@@ -247,11 +247,15 @@ cleanup outcomes. A destructor exception during live upload retirement is
 therefore surfaced as a copy failure instead of being reported as success;
 device loss remains the primary status when both conditions occur.
 The graphics-event adapter, theme baseline/preparation/replay operations, and
-the Vulkan staging-resource transaction are Ada subunits of their owning
-packages, as are the renderer's single-pane/multi-pane frame entry points and
-the main-loop runtime controller. This keeps callback wiring, frame
-orchestration, and the long-running event loop independently navigable without
-weakening private-state boundaries. Every
+the Vulkan creation, upload, readback, render, and staging transactions are Ada
+subunits of their owning packages. Logical-device construction is divided into
+named acquisition stages and every failed stage enters the controlled device's
+single reverse-order finalization path. The renderer's single-pane/multi-pane
+frame entry points and the main-loop runtime controller are likewise separated.
+The main loop groups native owners in one runtime record, centralizes shutdown,
+and keeps lifecycle, per-frame orchestration, and input-event dispatch in named
+subunits. This preserves private-state boundaries while making each transition
+independently navigable. Every
 fallible placement allocation is completed
 before a combined
 Kitty transmission replaces an object. The prior object remains owned until its
@@ -378,8 +382,10 @@ before output allocation; PNG validates chunk bounds, CRCs, ordering, critical
 chunks, IEND termination, and trailing data. PNG and Sixel decode through
 bounded row sinks whose potentially large working rows are heap-backed and
 automatically released.
-The large streaming PNG row state machine is an Ada subunit of the graphics
-package, separate from header parsing and transport orchestration.
+Header parsing, Sixel decoding, Base64 decoding, zlib expansion, and the large
+streaming PNG and raw-row state machines are separate Ada subunits of the
+graphics package. The parent remains the public protocol/codec facade while the
+individual parser and decoder invariants stay independently reviewable.
 Regular/temp-file and shared-memory reads are isolated in
 `Terminal.App.Graphics_Transport`, which enforces explicit policy, regular-file
 type, offset/size bounds, sensitive-path rejection, temporary-name/directory
@@ -464,8 +470,10 @@ Glyph emission uses constant-time map lookups instead of scanning every shaped
 run twice for each drawable cell, keeping the pass linear in cells plus runs.
 `Terminal.App.Placeholder_Index` retains renderer-wide hashed indexes for image
 objects plus virtual and conventional placements across streams and screens.
-Graphics mutations invalidate the index; the renderer rebuilds it once before
-the next retained-image pass rather than once per pane. A per-snapshot origin
+Only successful object or placement topology mutations invalidate the index;
+animation playback, composition, rejected commands, and other content-only
+changes retain it. The renderer rebuilds a dirty index once before the next
+retained-image pass rather than once per pane. A per-snapshot origin
 epoch indexes placeholder anchors in one cell scan. Placeholder resolution,
 object lookup, and every step of a relative-placement chain are then constant
 time, so the pass remains linear in placements, objects, cells, and parent-chain
@@ -492,9 +500,12 @@ Diagnostics remain app-owned. The core exposes counters and bounded labels for
 initialization, feed outcomes, and diagnostic summaries without taking a
 logging dependency; the app collects core, queue, renderer, and presenter
 snapshots and writes compact stderr diagnostics only when status or counters
-change. Change detection retains and compares the complete renderer diagnostic
-snapshot, so adding a renderer field cannot silently omit it from refresh
-decisions. The main loop retains the last core feed outcome and PTY write outcome
+change. Runtime labels cross the collection boundary as one bounded
+`Runtime_Statuses` record, and change detection retains one complete prior
+snapshot instead of manually mirrored field storage. It compares the complete
+renderer and core diagnostic snapshots, so adding one of those fields cannot
+silently omit it from refresh decisions. The main loop retains the last core
+feed outcome and PTY write outcome
 for those diagnostics. The composed runtime diagnostic line is exposed as a
 testable helper so status UI/logging formatting stays deterministic. Queue
 snapshots include bounded occupancy/overflow labels for PTY output and app

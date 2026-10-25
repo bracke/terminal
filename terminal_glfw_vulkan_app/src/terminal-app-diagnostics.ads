@@ -62,6 +62,41 @@ package Terminal.App.Diagnostics is
    subtype Graphics_Data_Status_Length_Range is
      Natural range 0 .. Terminal.App.Graphics.Max_Status_Label_Length;
 
+   Max_Runtime_Status_Length : constant :=
+     Terminal.App.Hyperlinks.Max_Status_Label_Length;
+   subtype Runtime_Status_Length is
+     Natural range 0 .. Max_Runtime_Status_Length;
+   type Runtime_Status_Text is record
+      Length : Runtime_Status_Length := 0;
+      Text   : String (1 .. Max_Runtime_Status_Length) := (others => ' ');
+   end record;
+   type Runtime_Statuses is record
+      Grid                : Runtime_Status_Text;
+      Policy              : Runtime_Status_Text;
+      Scrollback          : Runtime_Status_Text;
+      Selection           : Runtime_Status_Text;
+      Link                : Runtime_Status_Text;
+      Link_Activation     : Runtime_Status_Text;
+      Clipboard           : Runtime_Status_Text;
+      Tab                 : Runtime_Status_Text;
+      Split               : Runtime_Status_Text;
+      Config              : Runtime_Status_Text;
+      Profile             : Runtime_Status_Text;
+      Input               : Runtime_Status_Text;
+      Mouse               : Runtime_Status_Text;
+      Cursor              : Runtime_Status_Text;
+      Text_Blink          : Runtime_Status_Text;
+      Theme               : Runtime_Status_Text;
+      Font                : Runtime_Status_Text;
+      PTY_Backend         : Runtime_Status_Text;
+      ConPTY              : Runtime_Status_Text;
+      Multiplexer         : Runtime_Status_Text;
+      Graphics_Header     : Runtime_Status_Text;
+      Graphics_Data       : Runtime_Status_Text;
+   end record;
+
+   function To_Runtime_Status (Text : String) return Runtime_Status_Text;
+
    type Snapshot is record
       Core          : Terminal.Core.Diagnostic_Snapshot;
       Last_Feed_Status : Terminal.Core.Feed_Status := Terminal.Core.Ok;
@@ -167,28 +202,7 @@ package Terminal.App.Diagnostics is
       Last_Feed_Status : Terminal.Core.Feed_Status := Terminal.Core.Ok;
       Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
         Terminal.App.PTY_Write.Ok;
-      Grid_Status : String := "";
-      Policy_Status : String := "";
-      Scrollback_Status : String := "";
-      Selection_Status : String := "";
-      Link_Status : String := "";
-      Link_Activation_Status : String := "";
-      Clipboard_Status : String := "";
-      Tab_Status : String := "";
-      Split_Status : String := "";
-      Config_Status : String := "";
-      Profile_Status : String := "";
-      Input_Status : String := "";
-      Mouse_Status : String := "";
-      Cursor_Status : String := "";
-      Text_Blink_Status : String := "";
-      Theme_Status : String := "";
-      Font_Status : String := "";
-      PTY_Backend_Status : String := "";
-      ConPTY_Status : String := "";
-      Multiplexer_Status : String := "";
-      Graphics_Header_Status : String := "";
-      Graphics_Data_Status : String := "")
+      Statuses : Runtime_Statuses := (others => <>))
       return Snapshot;
 
    procedure Log_Startup_Failure

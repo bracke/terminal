@@ -109,7 +109,11 @@ begin
             Cells : aliased Terminal.Core.Cell_Array :=
               (1 .. 4 => (others => <>));
             Snapshot : Terminal.Core.Render_Snapshot :=
-              (Rows => 2, Cols => 2, Graphics_Stream => 9, others => <>);
+              (Rows => 2,
+               Cols => 2,
+               Graphics_Stream => 9,
+               Image_Cell_Count => 1,
+               others => <>);
             Row : Integer;
             Col : Integer;
          begin
@@ -127,6 +131,17 @@ begin
                and then Row = 1
                and then Col = 2,
                "placeholder origins are indexed once per snapshot");
+
+            --  A zero placeholder count is authoritative.  The null cell
+            --  storage makes this a regression check that the fast path does
+            --  not touch the grid while still expiring preceding origins.
+            Snapshot.Image_Cell_Count := 0;
+            Snapshot.Cells := null;
+            Terminal.App.Placeholder_Index.Index_Cells (Index, Snapshot);
+            Assert
+              (not Terminal.App.Placeholder_Index.Find_Origin
+                 (Index, 9, False, 0, 7, 2, Row, Col),
+               "empty placeholder snapshots skip cells and expire origins");
          end;
       end;
       Free (Conventional);

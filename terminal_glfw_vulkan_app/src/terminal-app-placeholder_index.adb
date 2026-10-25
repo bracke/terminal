@@ -140,6 +140,14 @@ package body Terminal.App.Placeholder_Index is
          Item.Origin_Epoch := Item.Origin_Epoch + 1;
       end if;
 
+      --  The snapshot already counts placeholder cells while copying its
+      --  retained cell array.  Advancing the epoch is enough to invalidate
+      --  origins from the preceding snapshot when there are none to index;
+      --  do not add another full-grid traversal to ordinary text frames.
+      if Snapshot.Image_Cell_Count = 0 then
+         return;
+      end if;
+
       for Row in 1 .. Snapshot.Rows loop
          for Col in 1 .. Snapshot.Cols loop
             declare
