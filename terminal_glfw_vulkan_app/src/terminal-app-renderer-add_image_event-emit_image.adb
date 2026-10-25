@@ -54,6 +54,9 @@ is
    Preview_Owner : RM.Image_Data_Access := null;
    Image_Bytes_Owned : Boolean := False;
    Borrowed_From_Object : Boolean := False;
+   Geometry : Placement_Geometry;
+   Display_Width : Natural := 0;
+   Display_Height : Natural := 0;
 
    procedure Release_Local is
    begin
@@ -69,9 +72,13 @@ is
       Terminal.App.Graphics.Release (Data);
    end Release_Local;
 begin
+   if FIS.Is_Full (R.Frame_Images) then
+      R.Frame_Command_Overflowed := True;
+      Terminal.App.Graphics.Release (Data);
+      return;
+   end if;
    if not Item.Pending
      or else Item.Protocol = Terminal.Core.No_Graphics
-     or else FIS.Is_Full (R.Frame_Images)
    then
       Terminal.App.Graphics.Release (Data);
       return;
@@ -137,6 +144,22 @@ begin
      (Image_View, Preview_Length, Preview_Bytes,
       Preview_View, Preview_Owner);
 
+   if Item.Protocol = Terminal.Core.Kitty_Graphics then
+      Geometry := Resolve_Placement_Geometry
+        (R, Pixel_Width, Pixel_Height, Header);
+   end if;
+   if Geometry.Valid then
+      Display_Width := Geometry.Draw_Width;
+      Display_Height := Geometry.Draw_Height;
+   elsif not Terminal.App.Size_Arithmetic.Try_Multiply
+       (R.CW, Header.Placeholder_Cols, Display_Width)
+     or else not Terminal.App.Size_Arithmetic.Try_Multiply
+       (R.CH, Header.Placeholder_Rows, Display_Height)
+   then
+      Release_Local;
+      return;
+   end if;
+
    declare
       Decoded_Owner : RM.Image_Data_Access :=
         (if Image_Bytes_Owned then Image_Bytes else null);
@@ -144,12 +167,16 @@ begin
    begin
       Append_Image_Command
         (R,
-        (X              => X,
-      Y              => Y,
-      Width          =>
-        Float (R.CW * Header.Placeholder_Cols),
-      Height         =>
-        Float (R.CH * Header.Placeholder_Rows),
+        (X              => X
+          + (if Geometry.Valid
+             then Float (Geometry.Draw_Offset_X)
+             else 0.0),
+      Y              => Y
+        + (if Geometry.Valid
+           then Float (Geometry.Draw_Offset_Y)
+           else 0.0),
+      Width          => Float (Display_Width),
+      Height         => Float (Display_Height),
       Protocol       => Graphics_Protocol (Item.Protocol),
       Placeholder    => not Raw_Texture_Ready,
       Raw_Format     => Raw_Format,

@@ -42,5 +42,8 @@ begin
 exception
    when Storage_Error =>
       Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Operation);
+      raise;
+   when Constraint_Error =>
+      Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Operation);
       return False;
 end Prepare_Theme_Composition_Operation;

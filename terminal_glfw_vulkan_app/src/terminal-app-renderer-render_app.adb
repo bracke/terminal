@@ -26,6 +26,9 @@ is
    Pane_W : Natural := 0;
    Pane_H : Natural := 0;
    Tab_Glyphs : Natural := 0;
+   Rectangles_Per_Cell : Natural := 0;
+   Placement_Images : Natural := 0;
+   Event_Images : Natural := 0;
    Glyphs_Per_Cell : constant Natural :=
      Natural'Max
        (Terminal.Core.Max_Cluster_Attachments + 1,
@@ -206,10 +209,26 @@ begin
 
    Text_Run_Max := Cell_Count;
    Colour_Max := Cell_Count;
-   if not Terminal.App.Size_Arithmetic.Try_Add
-     (Cell_Count, Natural (Snapshots'Length), Image_Max)
+   for I in Snapshots'Range loop
+      if not Accumulate
+        (Event_Images,
+         Additional_Frame_Image_Commands (R, Snapshots (I).Graphics))
+      then
+         Set_Render_Status (R, Status, Invalid_Snapshot);
+         return;
+      end if;
+   end loop;
+   if not Terminal.App.Size_Arithmetic.Try_Multiply
+     (R.Kitty_Placement_Count,
+      Natural (Snapshots'Length),
+      Placement_Images)
+     or else not Terminal.App.Size_Arithmetic.Try_Add
+       (Cell_Count, Placement_Images, Image_Max)
+     or else not Accumulate (Image_Max, Event_Images)
+     or else not Terminal.App.Size_Arithmetic.Try_Add
+       (R.CW, 4, Rectangles_Per_Cell)
      or else not Terminal.App.Size_Arithmetic.Try_Multiply
-       (Cell_Count, 4, Rect_Max)
+       (Cell_Count, Rectangles_Per_Cell, Rect_Max)
      or else not Terminal.App.Size_Arithmetic.Try_Multiply
        (Natural (Snapshots'Length), 8, Intermediate)
      or else not Accumulate (Rect_Max, Intermediate)
@@ -312,6 +331,12 @@ begin
 
    R.Draw_Offset_X := 0;
    R.Draw_Offset_Y := 0;
+
+   if R.Frame_Command_Overflowed then
+      Release_Frame (R);
+      Set_Render_Status (R, Status, Allocation_Failed);
+      return;
+   end if;
 
    R.Atlas_Dirty := R.Atlas_Dirty or else Textrender.Atlas_Dirty (R.Text);
    R.Colour_Sheet_Dirty :=

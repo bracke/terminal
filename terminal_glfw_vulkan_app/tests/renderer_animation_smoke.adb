@@ -186,6 +186,11 @@ begin
         ("Gq=2,a=c,i=90,r=2,c=1,X=0,Y=0,x=1,y=0,w=1,h=1,C=1",
          Terminal.Core.Kitty_OK,
          "animation compose");
+      Terminal.App.Renderer.Testing.Fail_Image_Allocation_After (R, 1);
+      Process
+        ("Gq=2,a=c,i=90,r=2,c=1,X=0,Y=0,x=1,y=0,w=1,h=1,C=1",
+         Terminal.Core.Kitty_ENOMEM,
+         "animation composition allocation failure");
       Process
         ("Gq=2,a=a,i=90,c=1",
          Terminal.Core.Kitty_OK,

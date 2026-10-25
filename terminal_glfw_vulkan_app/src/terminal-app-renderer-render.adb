@@ -12,6 +12,7 @@ is
    Content_Height : Natural;
    Capacity_Ok    : Boolean;
    Intermediate   : Natural;
+   Rectangles_Per_Cell : Natural;
    Glyphs_Per_Cell : constant Natural :=
      Natural'Max
        (Terminal.Core.Max_Cluster_Attachments + 1,
@@ -28,8 +29,10 @@ begin
 
    if not Terminal.App.Size_Arithmetic.Try_Multiply
      (Snapshot.Rows, Snapshot.Cols, Cell_Count)
+     or else not Terminal.App.Size_Arithmetic.Try_Add
+       (R.CW, 4, Rectangles_Per_Cell)
      or else not Terminal.App.Size_Arithmetic.Try_Multiply
-       (Cell_Count, 4, Intermediate)
+       (Cell_Count, Rectangles_Per_Cell, Intermediate)
      or else not Terminal.App.Size_Arithmetic.Try_Add
        (Intermediate, 3, Rect_Max)
      or else not Terminal.App.Size_Arithmetic.Try_Multiply
@@ -37,7 +40,11 @@ begin
      or else not Terminal.App.Size_Arithmetic.Try_Add
        (Intermediate, Max_Link_Overlay_Chars, Glyph_Max)
      or else not Terminal.App.Size_Arithmetic.Try_Add
-       (Cell_Count, 1, Image_Max)
+       (Cell_Count, R.Kitty_Placement_Count, Intermediate)
+     or else not Terminal.App.Size_Arithmetic.Try_Add
+       (Intermediate,
+        Additional_Frame_Image_Commands (R, Snapshot.Graphics),
+        Image_Max)
      or else not Terminal.App.Size_Arithmetic.Try_Multiply
        (Snapshot.Cols, R.CW, Intermediate)
      or else not Terminal.App.Size_Arithmetic.Try_Add
@@ -282,6 +289,11 @@ begin
    Add_Link_Overlay (R, Snapshot, Status);
    if Status /= Ok then
       Set_Render_Status (R, Status, Status);
+      return;
+   end if;
+   if R.Frame_Command_Overflowed then
+      Release_Frame (R);
+      Set_Render_Status (R, Status, Allocation_Failed);
       return;
    end if;
 

@@ -7,6 +7,7 @@ begin
    VS.Invalidate (R.Batch);
    FIS.Reset (R.Frame_Images);
    R.Rectangle_Count := 0;
+   R.Frame_Command_Overflowed := False;
    R.Glyph_Count := 0;
    R.Colour_Glyph_Count := 0;
    R.Text_Run_Count := 0;

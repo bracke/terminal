@@ -10,6 +10,7 @@ with Terminal.App.Image_Decode;
 with Terminal.App.Image_Media;
 with Terminal.App.Image_Ingestion;
 with Terminal.App.Image_Placements;
+with Terminal.App.Placeholder_Index;
 with Terminal.App.Image_Store;
 with Terminal.App.Image_Rendering;
 with Terminal.App.Render_Model;
@@ -331,6 +332,9 @@ private
       Frame_Images : Terminal.App.Frame_Image_Storage.Storage;
       Text_Runs   : Terminal.App.Render_Model.Text_Run_Array_Access := null;
       Shaped_Run_Map : Shaped_Run_Map_Array_Access := null;
+      Placement_Index : Terminal.App.Placeholder_Index.Index;
+      Placement_Index_Dirty : Boolean := True;
+      Frame_Command_Overflowed : Boolean := False;
       Batch       : Terminal.App.Vulkan_Submit.Submission_Batch;
       Rectangle_Count : Natural := 0;
       Glyph_Count : Natural := 0;

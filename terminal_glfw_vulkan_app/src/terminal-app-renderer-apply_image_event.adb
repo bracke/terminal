@@ -52,6 +52,10 @@ is
    procedure Apply_Deletion is separate;
 begin
    Placement_Status := Placement_Not_Requested;
+   --  Every accepted graphics event may replace an object or mutate a
+   --  placement.  Rebuild the renderer's lookup index once, immediately
+   --  before retained images are emitted.
+   R.Placement_Index_Dirty := True;
    --  These fields describe only the event currently being applied.  Clear
    --  them before any validation so exception cleanup can never roll back
    --  an object installed by an earlier command.

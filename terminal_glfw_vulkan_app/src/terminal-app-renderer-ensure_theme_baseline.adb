@@ -103,7 +103,10 @@ begin
      (R.Image_Objects, Object, Head);
    return True;
 exception
-   when Storage_Error | Constraint_Error =>
+   when Storage_Error =>
+      Release_Theme_Operation_List (Head);
+      raise;
+   when Constraint_Error =>
       Release_Theme_Operation_List (Head);
       return False;
 end Ensure_Theme_Baseline;

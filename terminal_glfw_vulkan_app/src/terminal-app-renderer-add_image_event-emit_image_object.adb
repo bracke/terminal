@@ -5,10 +5,8 @@ function Emit_Image_Object
 is
    Object : constant Image_Object_Access :=
      Find_Image_Object (R, Item.Stream_ID, Header.Kitty_ID);
-   X : constant Float :=
-     Float (Origin_X (R) + (Item.Col - 1) * R.CW);
-   Y : constant Float :=
-     Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
+   Geometry : constant Placement_Geometry :=
+     Resolve_Placement_Geometry (R, Object, Header);
    Preview_Length : Natural := 0;
    Preview_Bytes : Terminal.Common.Bytes.Byte_Array
      (1 .. RM.Max_Image_Decoded_Preview_Length) := (others => 0);
@@ -20,6 +18,7 @@ is
 begin
    if Object = null
      or else Frame_Bytes = null
+     or else not Geometry.Valid
      or else FIS.Is_Full (R.Frame_Images)
    then
       return False;
@@ -30,12 +29,12 @@ begin
 
    Append_Image_Command
      (R,
-     (X              => X,
-      Y              => Y,
-      Width          =>
-        Float (R.CW * Header.Placeholder_Cols),
-      Height         =>
-        Float (R.CH * Header.Placeholder_Rows),
+     (X              => Float (Origin_X (R) + (Item.Col - 1) * R.CW)
+        + Float (Geometry.Draw_Offset_X),
+      Y              => Float (Origin_Y (R) + (Item.Row - 1) * R.CH)
+        + Float (Geometry.Draw_Offset_Y),
+      Width          => Float (Geometry.Draw_Width),
+      Height         => Float (Geometry.Draw_Height),
       Protocol       => Object.Protocol,
       Placeholder    => False,
       Raw_Format     => Frame_Format,

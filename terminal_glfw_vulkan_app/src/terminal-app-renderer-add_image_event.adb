@@ -69,9 +69,12 @@ is
    Header : constant Terminal.App.Graphics.Graphics_Header :=
      Resolved_Header (Terminal.App.Graphics.Header (Event));
 begin
+   if FIS.Is_Full (R.Frame_Images) then
+      R.Frame_Command_Overflowed := True;
+      return;
+   end if;
    if not Event.Pending
      or else Event.Protocol = Terminal.Core.No_Graphics
-     or else FIS.Is_Full (R.Frame_Images)
    then
       return;
    end if;
@@ -107,9 +110,15 @@ begin
      and then Header.Kitty_ID > 0
      and then not Header.Has_Data
    then
-      if Emit_Image_Object (Event, Header) then
+      --  An addressed display command is either resolved from retained data
+      --  or rejected.  It must never fall through to the generic preview
+      --  path, whose dimensions are not object-validated.
+      declare
+         Emitted : constant Boolean := Emit_Image_Object (Event, Header);
+      begin
+         pragma Unreferenced (Emitted);
          return;
-      end if;
+      end;
    end if;
 
    if Event.Protocol = Terminal.Core.Kitty_Graphics

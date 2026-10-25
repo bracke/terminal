@@ -93,6 +93,11 @@ is
          return;
       end if;
 
+      if not Terminal.App.Image_Store.Allocation_Allowed
+        (R.Image_Allocation_Control)
+      then
+         raise Storage_Error with "composition working allocation rejected";
+      end if;
       Source := new Terminal.Common.Bytes.Byte_Array
         (1 .. Object.Pixel_Width * Object.Pixel_Height * 4);
       Target := new Terminal.Common.Bytes.Byte_Array
@@ -204,7 +209,7 @@ is
    exception
       when Storage_Error =>
          Release_Local;
-         R.Last_Animation_Result := Terminal.Core.Kitty_ENOSPC;
+         R.Last_Animation_Result := Terminal.Core.Kitty_ENOMEM;
       when Constraint_Error =>
          Release_Local;
          R.Last_Animation_Result := Terminal.Core.Kitty_EINVAL;

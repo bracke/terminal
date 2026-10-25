@@ -3188,6 +3188,28 @@ begin
          "curly or dotted underline should be segmented");
    end;
 
+   Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "dense decoration core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "[4:3;9;53mA"),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "dense decoration feed failed");
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "dense one-cell decorations fit the rectangle budget");
+   Assert
+     (Terminal.App.Renderer.Testing.Last_Frame (R).Rectangle_Count >= 9,
+      "dense one-cell decorations are not silently truncated");
+
    Terminal.Core.Initialize (T, 1, 3, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "hover link core initialize failed");
    Terminal.Core.Feed

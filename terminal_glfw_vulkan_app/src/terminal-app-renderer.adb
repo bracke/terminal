@@ -156,11 +156,47 @@ package body Terminal.App.Renderer is
    function Frame_Image_Capacity (R : Renderer) return Natural is
      (FIS.Capacity (R.Frame_Images));
 
+   procedure Release_Unappended_Image_Buffers
+     (Decoded : in out RM.Image_Data_Access;
+      Encoded : in out RM.Image_Data_Access;
+      Preview : in out RM.Image_Data_Access)
+   is
+      Decoded_Owner : RM.Image_Data_Access := Decoded;
+      Encoded_Owner : RM.Image_Data_Access := Encoded;
+      Preview_Owner : RM.Image_Data_Access := Preview;
+      Encoded_Aliases_Decoded : constant Boolean :=
+        Encoded_Owner = Decoded_Owner;
+      Preview_Aliases_Decoded : constant Boolean :=
+        Preview_Owner = Decoded_Owner;
+      Preview_Aliases_Encoded : constant Boolean :=
+        Preview_Owner = Encoded_Owner;
+   begin
+      Decoded := null;
+      Encoded := null;
+      Preview := null;
+      if Decoded_Owner /= null then
+         Free_Image_Data (Decoded_Owner);
+      end if;
+      if Encoded_Owner /= null and then not Encoded_Aliases_Decoded then
+         Free_Image_Data (Encoded_Owner);
+      end if;
+      if Preview_Owner /= null
+        and then not Preview_Aliases_Decoded
+        and then not Preview_Aliases_Encoded
+      then
+         Free_Image_Data (Preview_Owner);
+      end if;
+   end Release_Unappended_Image_Buffers;
+
    procedure Append_Image_Command
      (R       : in out Renderer;
       Command : RM.Image_Command) is
    begin
-      FIS.Append (R.Frame_Images, Command);
+      if FIS.Is_Full (R.Frame_Images) then
+         R.Frame_Command_Overflowed := True;
+      else
+         FIS.Append (R.Frame_Images, Command);
+      end if;
    end Append_Image_Command;
 
    procedure Append_Image_Command
@@ -170,7 +206,12 @@ package body Terminal.App.Renderer is
       Encoded : in out RM.Image_Data_Access;
       Preview : in out RM.Image_Data_Access) is
    begin
-      FIS.Append (R.Frame_Images, Command, Decoded, Encoded, Preview);
+      if FIS.Is_Full (R.Frame_Images) then
+         R.Frame_Command_Overflowed := True;
+         Release_Unappended_Image_Buffers (Decoded, Encoded, Preview);
+      else
+         FIS.Append (R.Frame_Images, Command, Decoded, Encoded, Preview);
+      end if;
    end Append_Image_Command;
 
    procedure Truncate_Image_Commands
@@ -368,58 +409,7 @@ package body Terminal.App.Renderer is
       Height : Natural;
       Pixels : out Textrender.Rgba_Buffer)
       return Boolean
-   is
-      Result : Terminal.App.Graphics.Graphics_Data_Preview;
-   begin
-      if Data'Length = 0
-        or else Width = 0
-        or else Height = 0
-        or else Pixels'Length /= Width * Height * 4
-      then
-         return False;
-      end if;
-
-      declare
-         Source : Terminal.Common.Bytes.Byte_Array (1 .. Data'Length);
-      begin
-         for I in Data'Range loop
-            Source (I - Data'First + 1) :=
-              Terminal.Common.Bytes.Byte (Data (I));
-         end loop;
-
-         Terminal.App.Graphics.Decode_PNG_RGBA_Data
-           (PNG    => Source,
-            Length => Source'Length,
-            Result => Result);
-      end;
-
-      if Result.Decode_Status /= Terminal.App.Graphics.Decode_Ok
-        or else not Result.Decode_Complete
-        or else Result.Pixel_Width /= Width
-        or else Result.Pixel_Height /= Height
-        or else Result.Decoded_Length /= Pixels'Length
-        or else Result.Bytes = null
-      then
-         Terminal.App.Graphics.Release (Result);
-         return False;
-      end if;
-
-      for I in Pixels'Range loop
-         Pixels (I) :=
-           Textrender.Alpha
-             (Result.Bytes (Result.Bytes'First + I - Pixels'First));
-      end loop;
-
-      Terminal.App.Graphics.Release (Result);
-      return True;
-   exception
-      when Storage_Error | Constraint_Error =>
-         Terminal.App.Graphics.Release (Result);
-         return False;
-      when others =>
-         Terminal.App.Graphics.Release (Result);
-         raise;
-   end Decode_Colour_PNG;
+   is separate;
 
    function XTerm_Indexed_Color
      (R     : Renderer;
@@ -754,92 +744,7 @@ package body Terminal.App.Renderer is
       Header    : Terminal.App.Graphics.Graphics_Header;
       Prepared  : in out Virtual_Placement_Access)
       return Placement_Store_Status
-   is
-      Placement : Virtual_Placement_Access :=
-        Find_Addressed_Virtual_Placement
-          (R,
-           Event.Stream_ID,
-           Header.Kitty_ID,
-           Header.Kitty_Placement_ID);
-      Object : constant Image_Object_Access :=
-        Find_Image_Object (R, Event.Stream_ID, Header.Kitty_ID);
-      Geometry : constant Placement_Geometry :=
-        Resolve_Placement_Geometry (R, Object, Header);
-   begin
-      if Header.Kitty_ID = 0
-        or else not Header.Kitty_Virtual_Placement
-        or else Header.Kitty_Parent_ID /= 0
-        or else not Geometry.Valid
-      then
-         --  Kitty virtual placements are prototypes, not positioned objects,
-         --  and therefore cannot themselves be relative placements.
-         return Placement_Rejected;
-      end if;
-
-      if Placement = null then
-         if R.Kitty_Placement_Count >= R.Graphics_Limits.Placements then
-            R.Image_Store_Allocation_Failed := True;
-            return Placement_No_Space;
-         end if;
-         if Prepared /= null then
-            Placement := Prepared;
-            Prepared := null;
-         else
-            if not Terminal.App.Image_Store.Allocation_Allowed
-              (R.Image_Allocation_Control)
-            then
-               R.Image_Store_Allocation_Failed := True;
-               return Placement_No_Space;
-            end if;
-            Placement := new Virtual_Placement;
-         end if;
-         Placement.Next := R.Virtual_Placements;
-         R.Virtual_Placements := Placement;
-         R.Kitty_Placement_Count := R.Kitty_Placement_Count + 1;
-      elsif Prepared /= null then
-         Free_Virtual_Placement (Prepared);
-      end if;
-
-      declare
-         Next : constant Virtual_Placement_Access := Placement.Next;
-      begin
-         Placement.all :=
-           (Stream_ID      => Event.Stream_ID,
-            Alternate_Screen => Event.Alternate_Screen,
-            Screen_Generation => Event.Screen_Generation,
-            Image_ID       => Header.Kitty_ID,
-            Image_Storage_Order => Object.Storage_Order,
-            Placement_ID   => Header.Kitty_Placement_ID,
-            Columns        => Geometry.Columns,
-            Rows           => Geometry.Rows,
-            Source_X       => Header.Kitty_Source_X,
-            Source_Y       => Header.Kitty_Source_Y,
-            Source_Width   => Header.Kitty_Source_Width,
-            Source_Height  => Header.Kitty_Source_Height,
-            Cell_X         => Header.Kitty_Cell_X,
-            Cell_Y         => Header.Kitty_Cell_Y,
-            Draw_Offset_X  => Geometry.Draw_Offset_X,
-            Draw_Offset_Y  => Geometry.Draw_Offset_Y,
-            Draw_Width     => Geometry.Draw_Width,
-            Draw_Height    => Geometry.Draw_Height,
-            Z_Index        => Header.Kitty_Z_Index,
-            Parent_Offset_X => 0,
-            Parent_Offset_Y => 0,
-            Next           => Next);
-      end;
-      Move_Relative_Descendants
-        (R,
-         Event.Stream_ID,
-         Header.Kitty_ID,
-         Header.Kitty_Placement_ID,
-         Event.Alternate_Screen,
-         Event.Screen_Generation);
-      return Placement_Stored;
-   exception
-      when Storage_Error =>
-         R.Image_Store_Allocation_Failed := True;
-         return Placement_No_Space;
-   end Store_Virtual_Placement;
+   is separate;
 
    procedure Delete_Virtual_Placements
      (R            : in out Renderer;
@@ -1073,57 +978,7 @@ package body Terminal.App.Renderer is
       Parent_Image_ID     : Terminal.Core.Graphics_ID;
       Parent_Placement_ID : Terminal.Core.Graphics_ID)
       return Relative_Placement_Status
-   is
-      Current_Image_ID : Terminal.Core.Graphics_ID := Parent_Image_ID;
-      Current_Placement_ID : Terminal.Core.Graphics_ID :=
-        Parent_Placement_ID;
-   begin
-      if Parent_Image_ID = 0 then
-         return Relative_Valid;
-      end if;
-
-      for Depth in 1 .. Max_Relative_Placement_Depth loop
-         if Current_Image_ID = Child_Image_ID
-           and then Current_Placement_ID = Child_Placement_ID
-         then
-            return Relative_Cycle;
-         end if;
-
-         declare
-            Parent : constant Conventional_Placement_Access :=
-              Find_Conventional_Placement
-                (R,
-                 Stream_ID,
-                 Alternate_Screen,
-                 Screen_Generation,
-                 Current_Image_ID,
-                 Current_Placement_ID);
-         begin
-            if Parent /= null then
-               if Parent.Parent_Image_ID = 0 then
-                  return Relative_Valid;
-               end if;
-               Current_Image_ID := Parent.Parent_Image_ID;
-               Current_Placement_ID := Parent.Parent_Placement_ID;
-            else
-               return
-                 (if Find_Virtual_Placement
-                    (R,
-                     Stream_ID,
-                     Alternate_Screen,
-                     Screen_Generation,
-                     Current_Image_ID,
-                     Current_Placement_ID) = null
-                  then Relative_Parent_Missing
-                  else Relative_Valid);
-            end if;
-         end;
-      end loop;
-
-      --  A conforming implementation must permit at least eight ancestors.
-      --  This implementation deliberately accepts up to thirty-two.
-      return Relative_Too_Deep;
-   end Validate_Relative_Placement;
+   is separate;
 
    function Resolve_Virtual_Placement_Origin
      (R            : Renderer;
@@ -1131,137 +986,18 @@ package body Terminal.App.Renderer is
       Image_ID     : Terminal.Core.Graphics_ID;
       Placement_ID : Terminal.Core.Graphics_ID;
       Row           : out Integer;
-      Col           : out Integer) return Boolean
-   is
-      Placement : constant Virtual_Placement_Access :=
-        Find_Virtual_Placement
-          (R,
-           Snapshot.Graphics_Stream,
-           Snapshot.Alternate_Screen,
-           Snapshot.Screen_Generation,
-           Image_ID,
-           Placement_ID);
-      Found : Boolean := False;
-   begin
-      Row := 0;
-      Col := 0;
-      if Placement = null then
-         return False;
-      end if;
-
-      for Cell_Row in 1 .. Snapshot.Rows loop
-         for Cell_Col in 1 .. Snapshot.Cols loop
-            declare
-               Cell : constant Terminal.Core.Cell :=
-                 Terminal.Core.Cell_At (Snapshot, Cell_Row, Cell_Col);
-            begin
-               if Cell.Image.Is_Placeholder
-                 and then Cell.Image.Image_ID_Valid
-                 and then Cell.Image.Image_ID = Image_ID
-                 and then Cell.Image.Placement_ID = Placement_ID
-               then
-                  if not Found then
-                     Row := Cell_Row;
-                     Col := Cell_Col;
-                     Found := True;
-                  else
-                     Row := Integer'Min (Row, Cell_Row);
-                     Col := Integer'Min (Col, Cell_Col);
-                  end if;
-               end if;
-            end;
-         end loop;
-      end loop;
-      return Found;
-   end Resolve_Virtual_Placement_Origin;
+      Col           : out Integer;
+      Use_Index     : Boolean := False) return Boolean
+   is separate;
 
    function Resolve_Conventional_Placement_Origin
      (R         : Renderer;
       Snapshot  : Terminal.Core.Render_Snapshot;
       Placement : Conventional_Placement_Access;
       Row       : out Integer;
-      Col       : out Integer) return Boolean
-   is
-      Current : Conventional_Placement_Access := Placement;
-      Row_Offset : Long_Long_Integer := 0;
-      Col_Offset : Long_Long_Integer := 0;
-      Base_Row : Integer := 0;
-      Base_Col : Integer := 0;
-      Base_Found : Boolean := False;
-      Resolved_Row : Long_Long_Integer;
-      Resolved_Col : Long_Long_Integer;
-   begin
-      Row := 0;
-      Col := 0;
-      if Current = null then
-         return False;
-      end if;
-
-      for Depth in 0 .. Max_Relative_Placement_Depth loop
-         if Current.Parent_Image_ID = 0 then
-            if Snapshot.Scrollback_Offset > Integer'Last
-              or else Current.Row >
-                Integer'Last - Integer (Snapshot.Scrollback_Offset)
-            then
-               return False;
-            end if;
-            Base_Row := Current.Row + Integer (Snapshot.Scrollback_Offset);
-            Base_Col := Current.Col;
-            Base_Found := True;
-            exit;
-         end if;
-
-         Row_Offset :=
-           Row_Offset + Long_Long_Integer (Current.Parent_Offset_Y);
-         Col_Offset :=
-           Col_Offset + Long_Long_Integer (Current.Parent_Offset_X);
-
-         declare
-            Parent : constant Conventional_Placement_Access :=
-              Find_Conventional_Placement
-                (R,
-                 Current.Stream_ID,
-                 Current.Alternate_Screen,
-                 Current.Screen_Generation,
-                 Current.Parent_Image_ID,
-                 Current.Parent_Placement_ID);
-         begin
-            if Parent /= null then
-               Current := Parent;
-            elsif Resolve_Virtual_Placement_Origin
-                (R,
-                 Snapshot,
-                 Current.Parent_Image_ID,
-                 Current.Parent_Placement_ID,
-                 Base_Row,
-                 Base_Col)
-            then
-               Base_Found := True;
-               exit;
-            else
-               return False;
-            end if;
-         end;
-      end loop;
-
-      if not Base_Found or else Base_Col = 0 then
-         return False;
-      end if;
-
-      Resolved_Row := Long_Long_Integer (Base_Row) + Row_Offset;
-      Resolved_Col := Long_Long_Integer (Base_Col) + Col_Offset;
-      if Resolved_Row < Long_Long_Integer (Integer'First)
-        or else Resolved_Row > Long_Long_Integer (Integer'Last)
-        or else Resolved_Col < Long_Long_Integer (Integer'First)
-        or else Resolved_Col > Long_Long_Integer (Integer'Last)
-      then
-         return False;
-      end if;
-
-      Row := Integer (Resolved_Row);
-      Col := Integer (Resolved_Col);
-      return True;
-   end Resolve_Conventional_Placement_Origin;
+      Col       : out Integer;
+      Use_Index : Boolean := False) return Boolean
+   is separate;
 
    function Store_Conventional_Placement
      (R      : in out Renderer;
@@ -1269,127 +1005,7 @@ package body Terminal.App.Renderer is
       Header : Terminal.App.Graphics.Graphics_Header;
       Prepared : in out Conventional_Placement_Access)
       return Placement_Store_Status
-   is
-      Placement : Conventional_Placement_Access :=
-        Find_Addressed_Conventional_Placement
-          (R,
-           Event.Stream_ID,
-           Header.Kitty_ID,
-           Header.Kitty_Placement_ID);
-      Object : constant Image_Object_Access :=
-        (if Header.Kitty_ID = 0
-         then Find_Image_Object_By_Storage_Order
-           (R, Event.Stream_ID, R.Last_Stored_Image_Order)
-         else Find_Image_Object (R, Event.Stream_ID, Header.Kitty_ID));
-      Geometry : constant Placement_Geometry :=
-        Resolve_Placement_Geometry (R, Object, Header);
-   begin
-      if Header.Kitty_Virtual_Placement
-        or else not Geometry.Valid
-        or else Object = null
-      then
-         return Placement_Rejected;
-      end if;
-
-      --  Anonymous transmissions cannot subsequently be addressed, so a
-      --  supplied placement identifier has no protocol meaning.
-      if Header.Kitty_ID = 0 and then Header.Kitty_Parent_ID /= 0 then
-         return Placement_Rejected;
-      end if;
-
-      declare
-         Relative_Status : constant Relative_Placement_Status :=
-           Validate_Relative_Placement
-             (R,
-              Event.Stream_ID,
-              Event.Alternate_Screen,
-              Event.Screen_Generation,
-              Header.Kitty_ID,
-              Header.Kitty_Placement_ID,
-              Header.Kitty_Parent_ID,
-              Header.Kitty_Parent_Placement_ID);
-      begin
-         if Relative_Status /= Relative_Valid then
-            return To_Placement_Status (Relative_Status);
-         end if;
-      end;
-
-      if Placement = null then
-         if R.Kitty_Placement_Count >= R.Graphics_Limits.Placements then
-            R.Image_Store_Allocation_Failed := True;
-            return Placement_No_Space;
-         end if;
-         if Prepared /= null then
-            Placement := Prepared;
-            Prepared := null;
-         else
-            if not Terminal.App.Image_Store.Allocation_Allowed
-              (R.Image_Allocation_Control)
-            then
-               R.Image_Store_Allocation_Failed := True;
-               return Placement_No_Space;
-            end if;
-            Placement := new Conventional_Placement;
-         end if;
-         Placement.Next := R.Conventional_Placements;
-         R.Conventional_Placements := Placement;
-         R.Kitty_Placement_Count := R.Kitty_Placement_Count + 1;
-      elsif Prepared /= null then
-         Free_Conventional_Placement (Prepared);
-      end if;
-
-      declare
-         Next : constant Conventional_Placement_Access := Placement.Next;
-      begin
-         Placement.all :=
-           (Stream_ID      => Event.Stream_ID,
-            Alternate_Screen => Event.Alternate_Screen,
-            Screen_Generation => Event.Screen_Generation,
-            Image_ID       => Header.Kitty_ID,
-            Image_Storage_Order => Object.Storage_Order,
-            Protocol       => RM.Image_Kitty,
-            Placement_ID   =>
-              (if Header.Kitty_ID = 0
-               then 0
-               else Header.Kitty_Placement_ID),
-            Row            => Event.Row,
-            Col            => Event.Col,
-            Columns        => Geometry.Columns,
-            Rows           => Geometry.Rows,
-            Source_X       => Header.Kitty_Source_X,
-            Source_Y       => Header.Kitty_Source_Y,
-            Source_Width   => Header.Kitty_Source_Width,
-            Source_Height  => Header.Kitty_Source_Height,
-            Cell_X         => Header.Kitty_Cell_X,
-            Cell_Y         => Header.Kitty_Cell_Y,
-            Draw_Offset_X  => Geometry.Draw_Offset_X,
-            Draw_Offset_Y  => Geometry.Draw_Offset_Y,
-            Draw_Width     => Geometry.Draw_Width,
-            Draw_Height    => Geometry.Draw_Height,
-            Z_Index        => Header.Kitty_Z_Index,
-            Parent_Image_ID => Header.Kitty_Parent_ID,
-            Parent_Placement_ID => Header.Kitty_Parent_Placement_ID,
-            Parent_Offset_X => Header.Kitty_Parent_Offset_X,
-            Parent_Offset_Y => Header.Kitty_Parent_Offset_Y,
-            Scroll_Sequence => Event.Scroll_Sequence,
-            Clip_Top        => 0,
-            Clip_Bottom     => 0,
-            History_Attached => False,
-            Next           => Next);
-      end;
-      Move_Relative_Descendants
-        (R,
-         Event.Stream_ID,
-         Header.Kitty_ID,
-         Header.Kitty_Placement_ID,
-         Event.Alternate_Screen,
-         Event.Screen_Generation);
-      return Placement_Stored;
-   exception
-      when Storage_Error =>
-         R.Image_Store_Allocation_Failed := True;
-         return Placement_No_Space;
-   end Store_Conventional_Placement;
+   is separate;
 
    function Store_Auxiliary_Placement
      (R           : in out Renderer;
@@ -1397,65 +1013,7 @@ package body Terminal.App.Renderer is
       Protocol    : RM.Image_Protocol;
       Draw_Width  : Positive;
       Draw_Height : Positive) return Boolean
-   is
-      Object : constant Image_Object_Access :=
-        Find_Image_Object_By_Storage_Order
-          (R, Event.Stream_ID, R.Last_Stored_Image_Order);
-      Placement : Conventional_Placement_Access;
-      Columns : Positive;
-      Rows : Positive;
-   begin
-      if Object = null
-        or else R.Kitty_Placement_Count >= R.Graphics_Limits.Placements
-      then
-         return False;
-      end if;
-      Columns := Positive'Max (1, 1 + (Draw_Width - 1) / R.CW);
-      Rows := Positive'Max (1, 1 + (Draw_Height - 1) / R.CH);
-      if not Terminal.App.Image_Store.Allocation_Allowed
-        (R.Image_Allocation_Control)
-      then
-         return False;
-      end if;
-      Placement := new Conventional_Placement'
-        (Stream_ID      => Event.Stream_ID,
-         Alternate_Screen => Event.Alternate_Screen,
-         Screen_Generation => Event.Screen_Generation,
-         Image_ID       => 0,
-         Image_Storage_Order => Object.Storage_Order,
-         Protocol       => Protocol,
-         Placement_ID   => 0,
-         Row            => Event.Row,
-         Col            => Event.Col,
-         Columns        => Columns,
-         Rows           => Rows,
-         Source_X       => 0,
-         Source_Y       => 0,
-         Source_Width   => 0,
-         Source_Height  => 0,
-         Cell_X         => 0,
-         Cell_Y         => 0,
-         Draw_Offset_X  => 0,
-         Draw_Offset_Y  => 0,
-         Draw_Width     => Draw_Width,
-         Draw_Height    => Draw_Height,
-         Z_Index        => 0,
-         Parent_Image_ID => 0,
-         Parent_Placement_ID => 0,
-         Parent_Offset_X => 0,
-         Parent_Offset_Y => 0,
-         Scroll_Sequence => Event.Scroll_Sequence,
-         Clip_Top        => 0,
-         Clip_Bottom     => 0,
-         History_Attached => False,
-         Next           => R.Conventional_Placements);
-      R.Conventional_Placements := Placement;
-      R.Kitty_Placement_Count := R.Kitty_Placement_Count + 1;
-      return True;
-   exception
-      when Storage_Error | Constraint_Error =>
-         return False;
-   end Store_Auxiliary_Placement;
+   is separate;
 
    procedure Delete_Conventional_Placements
      (R               : in out Renderer;
@@ -1532,231 +1090,13 @@ package body Terminal.App.Renderer is
    procedure Synchronize_Graphics_Screen
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot)
-   is
-      Virtual_Previous : Virtual_Placement_Access := null;
-      Virtual_Current  : Virtual_Placement_Access := R.Virtual_Placements;
-      Conventional_Previous : Conventional_Placement_Access := null;
-      Conventional_Current  : Conventional_Placement_Access :=
-        R.Conventional_Placements;
-   begin
-      --  The core advances this generation whenever a full-screen clear or
-      --  entry into the alternate buffer clears that buffer. Retire only the
-      --  placements belonging to that logical screen; image data remains
-      --  available for later placement commands.
-      while Virtual_Current /= null loop
-         declare
-            Next : constant Virtual_Placement_Access := Virtual_Current.Next;
-            Stale : constant Boolean :=
-              Virtual_Current.Stream_ID = Snapshot.Graphics_Stream
-              and then Virtual_Current.Alternate_Screen =
-                Snapshot.Alternate_Screen
-              and then Virtual_Current.Screen_Generation /=
-                Snapshot.Screen_Generation;
-         begin
-            if Stale then
-               --  Virtual placements are invisible prototypes.  Clearing the
-               --  viewport removes their placeholder cells, but prototypes
-               --  must remain available to placeholder cells retained in
-               --  scrollback.
-               Virtual_Current.Screen_Generation := Snapshot.Screen_Generation;
-            end if;
-            Virtual_Previous := Virtual_Current;
-            Virtual_Current := Next;
-         end;
-      end loop;
-
-      while Conventional_Current /= null loop
-         declare
-            Next : constant Conventional_Placement_Access :=
-              Conventional_Current.Next;
-            Stale : constant Boolean :=
-              Conventional_Current.Stream_ID = Snapshot.Graphics_Stream
-              and then Conventional_Current.Alternate_Screen =
-                Snapshot.Alternate_Screen
-              and then Conventional_Current.Screen_Generation /=
-                Snapshot.Screen_Generation;
-         begin
-            if Stale then
-               declare
-                  Origin_Row : Integer := 0;
-                  Origin_Col : Integer := 0;
-                  Resolved : constant Boolean :=
-                    Resolve_Conventional_Placement_Origin
-                      (R,
-                       Snapshot,
-                       Conventional_Current,
-                       Origin_Row,
-                       Origin_Col);
-                  Row_Last : constant Long_Long_Integer :=
-                    Long_Long_Integer (Origin_Row)
-                    + Long_Long_Integer (Conventional_Current.Rows) - 1;
-                  Col_Last : constant Long_Long_Integer :=
-                    Long_Long_Integer (Origin_Col)
-                    + Long_Long_Integer (Conventional_Current.Columns) - 1;
-                  Visible : constant Boolean :=
-                    Resolved
-                    and then Origin_Row <= Snapshot.Rows
-                    and then Origin_Col <= Snapshot.Cols
-                    and then Row_Last >= 1
-                    and then Col_Last >= 1;
-               begin
-                  if Visible then
-                     if Conventional_Previous = null then
-                        R.Conventional_Placements := Next;
-                     else
-                        Conventional_Previous.Next := Next;
-                     end if;
-                     Free_Conventional_Placement (Conventional_Current);
-                     R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-                  else
-                     --  A screen clear has no effect on history that is no
-                     --  longer visible.  Carry that placement into the new
-                     --  generation so scrollback snapshots can still resolve
-                     --  it.
-                     Conventional_Current.Screen_Generation :=
-                       Snapshot.Screen_Generation;
-                     Conventional_Previous := Conventional_Current;
-                  end if;
-               end;
-            else
-               Conventional_Previous := Conventional_Current;
-            end if;
-            Conventional_Current := Next;
-         end;
-      end loop;
-   end Synchronize_Graphics_Screen;
+   is separate;
 
    procedure Synchronize_Graphics_Scroll
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
       Through  : Terminal.Core.Graphics_Scroll_Sequence)
-   is
-      Previous : Conventional_Placement_Access := null;
-      Current  : Conventional_Placement_Access := R.Conventional_Placements;
-   begin
-      while Current /= null loop
-         declare
-            Next : constant Conventional_Placement_Access := Current.Next;
-            Applies : constant Boolean :=
-              Current.Stream_ID = Snapshot.Graphics_Stream
-              and then Current.Alternate_Screen = Snapshot.Alternate_Screen
-              and then Current.Screen_Generation = Snapshot.Screen_Generation;
-            Delete_Current : Boolean := False;
-         begin
-            if Applies then
-               if Current.Scroll_Sequence < Through
-                 and then Snapshot.Graphics_Scroll_Count =
-                    Terminal.Core.Max_Graphics_Scroll_Events
-                 and then Current.Scroll_Sequence + 1 <
-                   Snapshot.Graphics_Scroll_Oldest
-               then
-                  --  The renderer missed more mutations than the bounded core
-                  --  journal retains. Dropping the placement is deterministic
-                  --  and avoids drawing it at a silently incorrect location.
-                  Delete_Current := True;
-               elsif Snapshot.Graphics_Scroll_Events /= null then
-                  for I in 1 .. Snapshot.Graphics_Scroll_Count loop
-                     declare
-                        Mutation : constant Terminal.Core.Graphics_Scroll_Event :=
-                          Snapshot.Graphics_Scroll_Events (I);
-                        Row_Last : constant Long_Long_Integer :=
-                          Long_Long_Integer (Current.Row)
-                          + Long_Long_Integer (Current.Rows) - 1;
-                        Full_Primary : constant Boolean :=
-                          not Snapshot.Alternate_Screen
-                          and then Mutation.Top = 1
-                          and then Mutation.Bottom = Snapshot.Rows;
-                        Same_Clip : constant Boolean :=
-                          Current.Clip_Top = Mutation.Top
-                          and then Current.Clip_Bottom = Mutation.Bottom;
-                        Entirely_Inside : constant Boolean :=
-                          Current.Row >= Mutation.Top
-                          and then Row_Last <=
-                            Long_Long_Integer (Mutation.Bottom);
-                        Move : constant Boolean :=
-                          Current.Parent_Image_ID = 0
-                          and then
-                            (Entirely_Inside
-                             or else Same_Clip
-                             or else
-                               (Full_Primary
-                                and then Current.History_Attached
-                                and then Mutation.Direction =
-                                  Terminal.Core.Graphics_Scroll_Up));
-                     begin
-                        if Mutation.Sequence > Current.Scroll_Sequence
-                          and then Mutation.Sequence <= Through
-                          and then Move
-                        then
-                           if Mutation.Direction =
-                             Terminal.Core.Graphics_Scroll_Up
-                           then
-                              Current.Row := Current.Row - Mutation.Count;
-                              if Full_Primary then
-                                 Current.History_Attached := True;
-                              end if;
-                           else
-                              Current.Row := Current.Row + Mutation.Count;
-                           end if;
-                           if Mutation.Top /= 1
-                             or else Mutation.Bottom /= Snapshot.Rows
-                           then
-                              Current.Clip_Top := Mutation.Top;
-                              Current.Clip_Bottom := Mutation.Bottom;
-                           end if;
-                        end if;
-                        if Mutation.Sequence > Current.Scroll_Sequence
-                          and then Mutation.Sequence <= Through
-                        then
-                           Current.Scroll_Sequence := Mutation.Sequence;
-                        end if;
-                     end;
-                  end loop;
-               end if;
-
-               if not Delete_Current then
-                  declare
-                     Row_Last : constant Long_Long_Integer :=
-                       Long_Long_Integer (Current.Row)
-                       + Long_Long_Integer (Current.Rows) - 1;
-                  begin
-                     if Current.Clip_Top > 0
-                       and then
-                         (Row_Last < Long_Long_Integer (Current.Clip_Top)
-                          or else Current.Row > Current.Clip_Bottom)
-                     then
-                        Delete_Current := True;
-                     elsif Current.History_Attached
-                       and then Row_Last <
-                         1 - Long_Long_Integer (Snapshot.Scrollback_Rows)
-                     then
-                        Delete_Current := True;
-                     elsif Snapshot.Alternate_Screen
-                       and then
-                         (Row_Last < 1 or else Current.Row > Snapshot.Rows)
-                     then
-                        Delete_Current := True;
-                     end if;
-                  end;
-               end if;
-            end if;
-
-            if Delete_Current then
-               if Previous = null then
-                  R.Conventional_Placements := Next;
-               else
-                  Previous.Next := Next;
-               end if;
-               Free_Conventional_Placement (Current);
-               R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-            else
-               Previous := Current;
-            end if;
-            Current := Next;
-         end;
-      end loop;
-      Delete_Orphaned_Relative_Placements (R, Snapshot.Graphics_Stream);
-   end Synchronize_Graphics_Scroll;
+   is separate;
 
    type Image_Storage_Order_List is
      array (Positive range 1 .. Max_Kitty_Image_Objects) of
@@ -1792,46 +1132,7 @@ package body Terminal.App.Renderer is
       Alternate_Screen : Boolean;
       Screen_Generation : Terminal.Core.Graphics_Screen_Generation;
       Delete_Data : Boolean)
-   is
-      Previous : Conventional_Placement_Access := null;
-      Current  : Conventional_Placement_Access := R.Conventional_Placements;
-      Deleted_Orders : Image_Storage_Order_List := (others => 0);
-      Deleted_Count : Natural := 0;
-   begin
-      while Current /= null loop
-         declare
-            Next : constant Conventional_Placement_Access := Current.Next;
-         begin
-            if Current.Stream_ID = Stream_ID
-              and then Current.Protocol = RM.Image_Kitty
-              and then Current.Alternate_Screen = Alternate_Screen
-              and then Current.Screen_Generation = Screen_Generation
-              and then Current.Z_Index = Z_Index
-            then
-               if Delete_Data then
-                  Remember_Deleted_Image
-                    (Deleted_Orders,
-                     Deleted_Count,
-                     Current.Image_Storage_Order);
-               end if;
-               if Previous = null then
-                  R.Conventional_Placements := Next;
-               else
-                  Previous.Next := Next;
-               end if;
-               Free_Conventional_Placement (Current);
-               R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-            else
-               Previous := Current;
-            end if;
-            Current := Next;
-         end;
-      end loop;
-      if Delete_Data then
-         Delete_Selected_Unplaced_Image_Objects
-           (R, Stream_ID, Deleted_Orders, Deleted_Count);
-      end if;
-   end Delete_Conventional_Placements_By_Z;
+   is separate;
 
    procedure Delete_Conventional_Placements_Intersecting
      (R          : in out Renderer;
@@ -1847,69 +1148,7 @@ package body Terminal.App.Renderer is
       Screen_Generation : Terminal.Core.Graphics_Screen_Generation := 0;
       Snapshot     : Terminal.Core.Render_Snapshot;
       Delete_Data  : Boolean)
-   is
-      Previous : Conventional_Placement_Access := null;
-      Current  : Conventional_Placement_Access := R.Conventional_Placements;
-      Deleted_Orders : Image_Storage_Order_List := (others => 0);
-      Deleted_Count : Natural := 0;
-   begin
-      while Current /= null loop
-         declare
-            Next : constant Conventional_Placement_Access := Current.Next;
-            Origin_Row : Integer := 0;
-            Origin_Col : Integer := 0;
-            Resolved : constant Boolean :=
-              Resolve_Conventional_Placement_Origin
-                (R, Snapshot, Current, Origin_Row, Origin_Col);
-            Row_Intersects : constant Boolean :=
-              Resolved
-              and then Long_Long_Integer (Row) >= Long_Long_Integer (Origin_Row)
-              and then Long_Long_Integer (Row) <
-                Long_Long_Integer (Origin_Row)
-                  + Long_Long_Integer (Current.Rows);
-            Col_Intersects : constant Boolean :=
-              Resolved
-              and then Long_Long_Integer (Col) >= Long_Long_Integer (Origin_Col)
-              and then Long_Long_Integer (Col) <
-                Long_Long_Integer (Origin_Col)
-                  + Long_Long_Integer (Current.Columns);
-            Match : constant Boolean :=
-              Current.Stream_ID = Stream_ID
-              and then Current.Protocol = RM.Image_Kitty
-              and then
-                (not Match_Screen
-                 or else
-                   (Current.Alternate_Screen = Alternate_Screen
-                    and then Current.Screen_Generation = Screen_Generation))
-              and then (not Match_Row or else Row_Intersects)
-              and then (not Match_Col or else Col_Intersects)
-              and then (not Match_Z or else Current.Z_Index = Z_Index);
-         begin
-            if Match then
-               if Delete_Data then
-                  Remember_Deleted_Image
-                    (Deleted_Orders,
-                     Deleted_Count,
-                     Current.Image_Storage_Order);
-               end if;
-               if Previous = null then
-                  R.Conventional_Placements := Next;
-               else
-                  Previous.Next := Next;
-               end if;
-               Free_Conventional_Placement (Current);
-               R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-            else
-               Previous := Current;
-            end if;
-            Current := Next;
-         end;
-      end loop;
-      if Delete_Data then
-         Delete_Selected_Unplaced_Image_Objects
-           (R, Stream_ID, Deleted_Orders, Deleted_Count);
-      end if;
-   end Delete_Conventional_Placements_Intersecting;
+   is separate;
 
    function Find_Image_Object
      (R         : Renderer;
@@ -1931,6 +1170,48 @@ package body Terminal.App.Renderer is
       Number : Terminal.Core.Graphics_ID) return Image_Object_Access
    is (Terminal.App.Image_Store.Find_By_Number
          (R.Image_Objects, Stream_ID, Number));
+
+   function Additional_Frame_Image_Commands
+     (R     : Renderer;
+      Event : Terminal.Core.Graphics_Event) return Natural
+   is
+      Header : Terminal.App.Graphics.Graphics_Header;
+      Image_ID : Terminal.Core.Graphics_ID;
+      Numbered_Object : Image_Object_Access;
+   begin
+      if not Event.Pending or else Event.Protocol = Terminal.Core.No_Graphics then
+         return 0;
+      elsif Event.Protocol /= Terminal.Core.Kitty_Graphics then
+         --  A malformed auxiliary image may remain a one-frame diagnostic
+         --  placeholder instead of becoming a retained placement.
+         return 1;
+      end if;
+
+      Header := Terminal.App.Graphics.Header (Event);
+      if not Header.Recognized or else Header.Kitty_Action not in 'p' | 'T' then
+         return 0;
+      end if;
+      Image_ID := Header.Kitty_ID;
+      if Image_ID = 0 and then Header.Kitty_Image_Number > 0 then
+         Numbered_Object := Find_Image_Object_By_Number
+           (R, Event.Stream_ID, Header.Kitty_Image_Number);
+         if Numbered_Object /= null then
+            Image_ID := Numbered_Object.ID;
+         end if;
+      end if;
+      if Header.Kitty_Placement_ID = 0
+        or else Image_ID = 0
+        or else
+          (if Header.Kitty_Virtual_Placement
+           then Find_Addressed_Virtual_Placement
+             (R, Event.Stream_ID, Image_ID, Header.Kitty_Placement_ID) = null
+           else Find_Addressed_Conventional_Placement
+             (R, Event.Stream_ID, Image_ID, Header.Kitty_Placement_ID) = null)
+      then
+         return 1;
+      end if;
+      return 0;
+   end Additional_Frame_Image_Commands;
 
    function Allocate_Image_ID
      (R         : in out Renderer;
@@ -1973,78 +1254,7 @@ package body Terminal.App.Renderer is
       Stream_ID     : Terminal.Core.Graphics_Stream_ID;
       Storage_Order : Interfaces.Unsigned_64;
       Counted       : Boolean := True)
-   is
-      Current  : Image_Object_Access :=
-        Terminal.App.Image_Store.First (R.Image_Objects);
-      Virtual_Previous : Virtual_Placement_Access := null;
-      Virtual_Current : Virtual_Placement_Access := R.Virtual_Placements;
-      Conventional_Previous : Conventional_Placement_Access := null;
-      Conventional_Current : Conventional_Placement_Access :=
-        R.Conventional_Placements;
-   begin
-      if Storage_Order = 0 then
-         return;
-      end if;
-
-      while Current /= null loop
-         exit when Current.Stream_ID = Stream_ID
-           and then Current.Storage_Order = Storage_Order;
-         Current :=
-           Terminal.App.Image_Store.Next_Object (Current);
-      end loop;
-      if Current = null then
-         return;
-      end if;
-
-      while Virtual_Current /= null loop
-         declare
-            Next : constant Virtual_Placement_Access := Virtual_Current.Next;
-         begin
-            if Virtual_Current.Stream_ID = Stream_ID
-              and then Virtual_Current.Image_Storage_Order = Storage_Order
-            then
-               if Virtual_Previous = null then
-                  R.Virtual_Placements := Next;
-               else
-                  Virtual_Previous.Next := Next;
-               end if;
-               Free_Virtual_Placement (Virtual_Current);
-               R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-            else
-               Virtual_Previous := Virtual_Current;
-            end if;
-            Virtual_Current := Next;
-         end;
-      end loop;
-
-      while Conventional_Current /= null loop
-         declare
-            Next : constant Conventional_Placement_Access :=
-              Conventional_Current.Next;
-         begin
-            if Conventional_Current.Stream_ID = Stream_ID
-              and then Conventional_Current.Image_Storage_Order = Storage_Order
-            then
-               if Conventional_Previous = null then
-                  R.Conventional_Placements := Next;
-               else
-                  Conventional_Previous.Next := Next;
-               end if;
-               Free_Conventional_Placement (Conventional_Current);
-               R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-            else
-               Conventional_Previous := Conventional_Current;
-            end if;
-            Conventional_Current := Next;
-         end;
-      end loop;
-      if Counted then
-         Terminal.App.Image_Store.Delete_Object (R.Image_Objects, Current);
-      else
-         Terminal.App.Image_Store.Delete_Replacement
-           (R.Image_Objects, Current);
-      end if;
-   end Delete_Image_Object_By_Storage_Order;
+   is separate;
 
    procedure Delete_Image_Object
      (R         : in out Renderer;
@@ -2096,139 +1306,20 @@ package body Terminal.App.Renderer is
       Stream_ID         : Terminal.Core.Graphics_Stream_ID;
       Preserve_Image_ID : Terminal.Core.Graphics_ID := 0;
       Delete_Data       : Boolean := False)
-   is
-      Removed : Boolean;
-   begin
-      --  Removing a parent recursively removes its relative descendants.
-      --  Process one orphan at a time because deleting its now-unreferenced
-      --  image object can also unlink placements elsewhere in the list.
-      loop
-         Removed := False;
-         declare
-            Previous : Conventional_Placement_Access := null;
-            Current  : Conventional_Placement_Access :=
-              R.Conventional_Placements;
-         begin
-            while Current /= null loop
-               if Current.Stream_ID = Stream_ID
-                 and then Current.Parent_Image_ID /= 0
-                 and then not Parent_Placement_Exists
-                   (R,
-                    Stream_ID,
-                    Current.Alternate_Screen,
-                    Current.Screen_Generation,
-                    Current.Parent_Image_ID,
-                    Current.Parent_Placement_ID)
-               then
-                  declare
-                     Next : constant Conventional_Placement_Access :=
-                       Current.Next;
-                     Child_Image_ID : constant Terminal.Core.Graphics_ID :=
-                       Current.Image_ID;
-                  begin
-                     if Previous = null then
-                        R.Conventional_Placements := Next;
-                     else
-                        Previous.Next := Next;
-                     end if;
-                     Free_Conventional_Placement (Current);
-                     R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-                     if Delete_Data
-                       and then Child_Image_ID /= Preserve_Image_ID
-                       and then not Has_Image_Placement
-                         (R, Stream_ID, Child_Image_ID)
-                     then
-                        Delete_Image_Object (R, Stream_ID, Child_Image_ID);
-                     end if;
-                     Removed := True;
-                     exit;
-                  end;
-               end if;
-               Previous := Current;
-               Current := Current.Next;
-            end loop;
-         end;
-         exit when not Removed;
-      end loop;
-   end Delete_Orphaned_Relative_Placements;
+   is separate;
 
    procedure Delete_Selected_Unplaced_Image_Objects
      (R         : in out Renderer;
       Stream_ID : Terminal.Core.Graphics_Stream_ID;
       Orders    : Image_Storage_Order_List;
       Count     : Natural)
-   is
-   begin
-      for I in 1 .. Count loop
-         declare
-            Object : constant Image_Object_Access :=
-              Find_Image_Object_By_Storage_Order
-                (R, Stream_ID, Orders (I));
-         begin
-            if Object /= null and then not Has_Image_Placement (R, Object) then
-               Delete_Image_Object_By_Storage_Order
-                 (R, Stream_ID, Orders (I));
-            end if;
-         end;
-      end loop;
-   end Delete_Selected_Unplaced_Image_Objects;
+   is separate;
 
    procedure Delete_Visible_Conventional_Placements
      (R           : in out Renderer;
       Snapshot    : Terminal.Core.Render_Snapshot;
       Delete_Data : Boolean)
-   is
-      Previous : Conventional_Placement_Access := null;
-      Current  : Conventional_Placement_Access := R.Conventional_Placements;
-      Deleted_Orders : Image_Storage_Order_List := (others => 0);
-      Deleted_Count : Natural := 0;
-   begin
-      while Current /= null loop
-         declare
-            Next : constant Conventional_Placement_Access := Current.Next;
-            Origin_Row : Integer := 0;
-            Origin_Col : Integer := 0;
-            Resolved : constant Boolean :=
-              Resolve_Conventional_Placement_Origin
-                (R, Snapshot, Current, Origin_Row, Origin_Col);
-            Visible : constant Boolean :=
-              Resolved
-              and then Current.Stream_ID = Snapshot.Graphics_Stream
-              and then Current.Protocol = RM.Image_Kitty
-              and then Current.Alternate_Screen = Snapshot.Alternate_Screen
-              and then Current.Screen_Generation = Snapshot.Screen_Generation
-              and then Origin_Row <= Snapshot.Rows
-              and then Origin_Col <= Snapshot.Cols
-              and then Long_Long_Integer (Origin_Row)
-                + Long_Long_Integer (Current.Rows) - 1 >= 1
-              and then Long_Long_Integer (Origin_Col)
-                + Long_Long_Integer (Current.Columns) - 1 >= 1;
-         begin
-            if Visible then
-               if Delete_Data then
-                  Remember_Deleted_Image
-                    (Deleted_Orders,
-                     Deleted_Count,
-                     Current.Image_Storage_Order);
-               end if;
-               if Previous = null then
-                  R.Conventional_Placements := Next;
-               else
-                  Previous.Next := Next;
-               end if;
-               Free_Conventional_Placement (Current);
-               R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-            else
-               Previous := Current;
-            end if;
-            Current := Next;
-         end;
-      end loop;
-      if Delete_Data then
-         Delete_Selected_Unplaced_Image_Objects
-           (R, Snapshot.Graphics_Stream, Deleted_Orders, Deleted_Count);
-      end if;
-   end Delete_Visible_Conventional_Placements;
+   is separate;
 
    procedure Delete_Image_ID_Range
      (R           : in out Renderer;
@@ -2236,126 +1327,13 @@ package body Terminal.App.Renderer is
       First_ID    : Terminal.Core.Graphics_ID;
       Last_ID     : Terminal.Core.Graphics_ID;
       Delete_Data : Boolean)
-   is
-      Virtual_Previous : Virtual_Placement_Access := null;
-      Virtual_Current  : Virtual_Placement_Access := R.Virtual_Placements;
-      Conventional_Previous : Conventional_Placement_Access := null;
-      Conventional_Current  : Conventional_Placement_Access :=
-        R.Conventional_Placements;
-      Object_Current : Image_Object_Access :=
-        Terminal.App.Image_Store.First (R.Image_Objects);
-   begin
-      if Last_ID < First_ID then
-         return;
-      end if;
-
-      while Virtual_Current /= null loop
-         declare
-            Next : constant Virtual_Placement_Access := Virtual_Current.Next;
-            ID : constant Terminal.Core.Graphics_ID :=
-              Virtual_Current.Image_ID;
-         begin
-            if Virtual_Current.Stream_ID = Stream_ID
-              and then ID >= First_ID and then ID <= Last_ID
-            then
-               if Virtual_Previous = null then
-                  R.Virtual_Placements := Next;
-               else
-                  Virtual_Previous.Next := Next;
-               end if;
-               Free_Virtual_Placement (Virtual_Current);
-               R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-            else
-               Virtual_Previous := Virtual_Current;
-            end if;
-            Virtual_Current := Next;
-         end;
-      end loop;
-
-      while Conventional_Current /= null loop
-         declare
-            Next : constant Conventional_Placement_Access :=
-              Conventional_Current.Next;
-            ID : constant Terminal.Core.Graphics_ID :=
-              Conventional_Current.Image_ID;
-         begin
-            if Conventional_Current.Stream_ID = Stream_ID
-              and then Conventional_Current.Protocol = RM.Image_Kitty
-              and then ID >= First_ID and then ID <= Last_ID
-            then
-               if Conventional_Previous = null then
-                  R.Conventional_Placements := Next;
-               else
-                  Conventional_Previous.Next := Next;
-               end if;
-               Free_Conventional_Placement (Conventional_Current);
-               R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
-            else
-               Conventional_Previous := Conventional_Current;
-            end if;
-            Conventional_Current := Next;
-         end;
-      end loop;
-
-      if Delete_Data then
-         while Object_Current /= null loop
-            declare
-               Next : constant Image_Object_Access :=
-                 Terminal.App.Image_Store.Next_Object
-                   (Object_Current);
-               ID : constant Terminal.Core.Graphics_ID := Object_Current.ID;
-            begin
-               if Object_Current.Stream_ID = Stream_ID
-                 and then Object_Current.Protocol = RM.Image_Kitty
-                 and then ID >= First_ID and then ID <= Last_ID
-               then
-                  Delete_Image_Object_By_Storage_Order
-                    (R, Stream_ID, Object_Current.Storage_Order);
-               end if;
-               Object_Current := Next;
-            end;
-         end loop;
-      end if;
-   end Delete_Image_ID_Range;
+   is separate;
 
    function Evict_One_Unplaced_Image
      (R                 : in out Renderer;
       Preserve_Stream   : Terminal.Core.Graphics_Stream_ID;
       Preserve_Image_ID : Terminal.Core.Graphics_ID) return Boolean
-   is
-      Current   : Image_Object_Access :=
-        Terminal.App.Image_Store.First (R.Image_Objects);
-      Candidate : Image_Object_Access := null;
-   begin
-      while Current /= null loop
-         if not
-           (Preserve_Image_ID /= 0
-            and then Current.Stream_ID = Preserve_Stream
-            and then Current.ID = Preserve_Image_ID)
-           and then not Has_Image_Placement (R, Current)
-           and then
-             (Candidate = null
-              or else
-                (Current.Usage_Hint = 1
-                 and then Candidate.Usage_Hint /= 1)
-              or else
-                (Current.Usage_Hint = Candidate.Usage_Hint
-                 and then Current.Storage_Order < Candidate.Storage_Order))
-         then
-            Candidate := Current;
-         end if;
-         Current :=
-           Terminal.App.Image_Store.Next_Object (Current);
-      end loop;
-
-      if Candidate = null then
-         return False;
-      end if;
-      Delete_Image_Object_By_Storage_Order
-        (R, Candidate.Stream_ID, Candidate.Storage_Order);
-      R.Image_Eviction_Count := R.Image_Eviction_Count + 1;
-      return True;
-   end Evict_One_Unplaced_Image;
+   is separate;
 
    procedure Touch_Image_Object
      (R      : in out Renderer;
@@ -2380,156 +1358,7 @@ package body Terminal.App.Renderer is
       Bytes          : in out RM.Image_Data_Access;
       Stored_Bytes   : out RM.Image_Data_View;
       Additional_Bytes : Natural := 0)
-   is
-      Object : Image_Object_Access := Find_Image_Object (R, Stream_ID, ID);
-      Previous_Length : constant Natural :=
-        (if Object = null
-         then 0
-         else Terminal.App.Image_Store.Owned_Bytes (Object.all));
-      Stored_Length : Natural := 0;
-      Created_Object : Boolean := False;
-      Created_Replacement : Boolean := False;
-
-      procedure Roll_Back_New_Object is
-      begin
-         if Created_Replacement then
-            Terminal.App.Image_Store.Delete_Replacement
-              (R.Image_Objects, Object);
-            R.Replaced_Image_Order := 0;
-            Created_Replacement := False;
-         elsif Created_Object then
-            Terminal.App.Image_Store.Delete_Object
-              (R.Image_Objects, Object);
-            Created_Object := False;
-         end if;
-      end Roll_Back_New_Object;
-   begin
-      Stored_Bytes := null;
-      R.Last_Stored_Image_Order := 0;
-      R.Last_Stored_Image_Content_Serial := 0;
-      if Bytes = null
-        or else Decoded_Length = 0
-        or else Raw_Format = 0
-        or else Pixel_Width = 0
-        or else Pixel_Height = 0
-      then
-         return;
-      end if;
-
-      if Additional_Bytes > Natural'Last - Bytes'Length then
-         R.Image_Store_Allocation_Failed := True;
-         return;
-      end if;
-      Stored_Length := Bytes'Length + Additional_Bytes;
-
-      if Stored_Length > R.Graphics_Limits.Image_Bytes then
-         R.Image_Store_Allocation_Failed := True;
-         return;
-      end if;
-      if Stored_Length > R.Graphics_Limits.Per_Image_Bytes
-        or else Pixel_Width > R.Graphics_Limits.Pixel_Dimension
-        or else Pixel_Height > R.Graphics_Limits.Pixel_Dimension
-      then
-         R.Image_Store_Allocation_Failed := True;
-         return;
-      end if;
-
-      while Terminal.App.Image_Store.Byte_Count (R.Image_Objects)
-          - Previous_Length >
-          R.Graphics_Limits.Image_Bytes - Stored_Length
-        or else
-          (Object = null
-           and then Terminal.App.Image_Store.Object_Count (R.Image_Objects) >=
-             R.Graphics_Limits.Image_Objects)
-      loop
-         if not Evict_One_Unplaced_Image (R, Stream_ID, ID) then
-            R.Image_Store_Allocation_Failed := True;
-            return;
-         end if;
-         Object := Find_Image_Object (R, Stream_ID, ID);
-      end loop;
-
-      if Object = null then
-         declare
-            Candidate : Image_Object_Access;
-         begin
-            Terminal.App.Image_Store.Create_Object (Candidate);
-            begin
-               Terminal.App.Image_Store.Link_New
-                 (R.Image_Objects, Candidate);
-            exception
-               when others =>
-                  Terminal.App.Image_Store.Release_Unowned_Object (Candidate);
-                  raise;
-            end;
-            Object := Candidate;
-            Created_Object := True;
-         end;
-      elsif R.Transactional_Image_Install then
-         --  Keep the previous object and its placements intact until the
-         --  combined transmit-and-display operation has installed its new
-         --  placement.  Apply_Image_Event commits or rolls this object back.
-         declare
-            Previous_Order : constant Interfaces.Unsigned_64 :=
-              Object.Storage_Order;
-            Replaced : constant Image_Object_Access := Object;
-            Replacement : Image_Object_Access;
-         begin
-            Terminal.App.Image_Store.Create_Object (Replacement);
-            begin
-               Terminal.App.Image_Store.Link_Replacement
-                 (R.Image_Objects, Replacement, Replaced);
-            exception
-               when others =>
-                  Terminal.App.Image_Store.Release_Unowned_Object
-                    (Replacement);
-                  raise;
-            end;
-            Object := Replacement;
-            R.Replaced_Image_Order := Previous_Order;
-            Created_Replacement := True;
-         end;
-      else
-         --  Retransmitting an explicit ID replaces both its data and every
-         --  placement made from the previous object.
-         Delete_Virtual_Placements (R, Stream_ID, ID);
-         Delete_Conventional_Placements (R, Stream_ID, ID);
-      end if;
-
-      declare
-      begin
-         Terminal.App.Image_Store.Install_Root
-           (Container      => R.Image_Objects,
-            Object         => Object,
-            Stream_ID      => Stream_ID,
-            ID             => ID,
-            Number         => Image_Number,
-            Protocol       => Protocol,
-            Raw_Format     => Raw_Format,
-            Pixel_Width    => Pixel_Width,
-            Pixel_Height   => Pixel_Height,
-            Decoded_Length => Decoded_Length,
-            Row_Stride     => Decoded_Row_Stride_Bytes,
-            Usage_Hint     => Usage_Hint,
-            Data           => Bytes);
-         R.Image_Install_Count := R.Image_Install_Count + 1;
-         R.Image_Installed_Bytes :=
-           R.Image_Installed_Bytes + Interfaces.Unsigned_64 (Stored_Length);
-         R.Last_Stored_Image_Order := Object.Storage_Order;
-         R.Last_Stored_Image_Content_Serial := Object.Content_Serial;
-         Stored_Bytes := Terminal.App.Image_Store.Root_Data (Object);
-      end;
-      Delete_Orphaned_Relative_Placements
-        (R, Stream_ID, Preserve_Image_ID => ID);
-   exception
-      when Storage_Error =>
-         Roll_Back_New_Object;
-         R.Image_Store_Allocation_Failed := True;
-         Stored_Bytes := null;
-      when others =>
-         Roll_Back_New_Object;
-         raise;
-   end Take_Image_Object;
+   is separate;
 
    function Find_Image_Frame
      (Object : Image_Object_Access;
@@ -2988,6 +1817,7 @@ package body Terminal.App.Renderer is
    is
    begin
       if R.Rectangles = null or else R.Rectangle_Count >= R.Rectangles'Length then
+         R.Frame_Command_Overflowed := True;
          return;
       end if;
 
@@ -3127,1067 +1957,38 @@ package body Terminal.App.Renderer is
      (R      : in out Renderer;
       Event  : Terminal.Core.Graphics_Event;
       Snapshot : Terminal.Core.Render_Snapshot)
+   is separate;
+
+   procedure Prepare_Placement_Index
+     (R        : in out Renderer;
+      Snapshot : Terminal.Core.Render_Snapshot)
    is
-      Event_Header : constant Terminal.App.Graphics.Graphics_Header :=
-        Terminal.App.Graphics.Header (Event);
-      Header : Terminal.App.Graphics.Graphics_Header := Event_Header;
-      Result : Terminal.Core.Kitty_Graphics_Result := (others => <>);
-      Number_Object_Before : Image_Object_Access := null;
-      Resolved_ID : Terminal.Core.Graphics_ID := 0;
-      Placement_Image_ID : Terminal.Core.Graphics_ID := 0;
-      Resolved_Geometry : Placement_Geometry := (others => <>);
-      Geometry_Checked : Boolean := False;
-      Placement_Status : Placement_Store_Status := Placement_Not_Requested;
-      Image_Count_Before : constant Natural := Frame_Image_Count (R);
-      Placement_Count_Before : constant Natural := R.Kitty_Placement_Count;
-      Validation_Error : constant Boolean :=
-        Event.Cancelled and then Event.Payload_Length > 0;
-      Invalid_Chunk_Transition : constant Boolean :=
-        Event.Protocol = Terminal.Core.Kitty_Graphics
-        and then Event_Header.Recognized
-        and then
-          (not Event_Header.Kitty_More_Valid
-           or else Event_Header.Kitty_More
-           or else
-             (Event_Header.Kitty_Transmission in 'f' | 't' | 's'
-              and then Event_Header.Kitty_More_Specified));
-      Retry_Sensitive : constant Boolean :=
-        Event.Pending
-        and then Event.Protocol = Terminal.Core.Kitty_Graphics
-        and then Event.Sequence /= 0
-        and then
-          (Event_Header.Recognized
-           and then
-             (Event_Header.Kitty_More
-              or else Event_Header.Kitty_More_Specified
-              or else Event_Header.Kitty_ID /= 0
-              or else Event_Header.Kitty_Image_Number /= 0
-              or else Event_Header.Kitty_Action = 'd'));
-      Replay_Guarded : constant Boolean :=
-        Retry_Sensitive
-        or else
-          (Event.Pending
-           and then Event.Sequence /= 0
-           and then Event.Protocol in
-             Terminal.Core.Sixel_Graphics | Terminal.Core.ITerm2_Graphics);
-      Track_Result : constant Boolean :=
-        Retry_Sensitive
-        or else
-          (Event.Pending
-           and then Event.Protocol = Terminal.Core.Kitty_Graphics
-           and then Event.Sequence /= 0
-           and then Event_Header.Recognized
-           and then not Event_Header.Kitty_More
-           and then Event_Header.Kitty_Action in 'T' | 'p' | 'q');
-
-
-      function Placement_Exists
-        (Image_ID : Terminal.Core.Graphics_ID) return Boolean
-      is
-         Placement : Conventional_Placement_Access;
-         Virtual   : Virtual_Placement_Access;
-      begin
-         if Image_ID = 0 then
-            if R.Last_Stored_Image_Order /= 0 then
-               Placement := R.Conventional_Placements;
-               while Placement /= null loop
-                  if Placement.Stream_ID = Event.Stream_ID
-                    and then Placement.Image_Storage_Order =
-                      R.Last_Stored_Image_Order
-                  then
-                     return True;
-                  end if;
-                  Placement := Placement.Next;
-               end loop;
-            end if;
-            return Frame_Image_Count (R) > Image_Count_Before;
-         elsif Header.Kitty_Virtual_Placement then
-            if Header.Kitty_Placement_ID = 0 then
-               --  Implicit placements are deliberately not addressable.
-               --  A plain placement command must increase the count.  A
-               --  transmit-and-display replacement may first remove the old
-               --  image's placement, so identify its newly stored object by
-               --  storage order in that case.
-               if R.Kitty_Placement_Count > Placement_Count_Before then
-                  return True;
-               elsif Header.Kitty_Action /= 'T' then
-                  return False;
-               end if;
-               Virtual := R.Virtual_Placements;
-               while Virtual /= null loop
-                  if Virtual.Stream_ID = Event.Stream_ID
-                    and then Virtual.Alternate_Screen = Event.Alternate_Screen
-                    and then Virtual.Screen_Generation = Event.Screen_Generation
-                    and then Virtual.Image_ID = Image_ID
-                    and then Virtual.Placement_ID = 0
-                    and then Virtual.Image_Storage_Order =
-                      R.Last_Stored_Image_Order
-                  then
-                     return True;
-                  end if;
-                  Virtual := Virtual.Next;
-               end loop;
-               return False;
-            end if;
-            return Find_Virtual_Placement
-              (R,
-               Event.Stream_ID,
-               Event.Alternate_Screen,
-               Event.Screen_Generation,
-               Image_ID,
-               Header.Kitty_Placement_ID) /= null;
-         elsif Header.Kitty_Placement_ID /= 0 then
-            return Find_Conventional_Placement
-              (R,
-               Event.Stream_ID,
-               Event.Alternate_Screen,
-               Event.Screen_Generation,
-               Image_ID,
-               Header.Kitty_Placement_ID) /= null;
-         end if;
-
-         --  As with virtual prototypes, a conventional p=0 placement is a
-         --  new, non-addressable object for each command.  A replacement can
-         --  leave the total count unchanged after removing the old image;
-         --  its storage order distinguishes the replacement from stale data.
-         if R.Kitty_Placement_Count > Placement_Count_Before then
-            return True;
-         elsif Header.Kitty_Action /= 'T' then
-            return False;
-         end if;
-         Placement := R.Conventional_Placements;
-         while Placement /= null loop
-            if Placement.Stream_ID = Event.Stream_ID
-              and then Placement.Alternate_Screen = Event.Alternate_Screen
-              and then Placement.Screen_Generation = Event.Screen_Generation
-              and then Placement.Image_ID = Image_ID
-              and then Placement.Placement_ID = 0
-              and then Placement.Image_Storage_Order = R.Last_Stored_Image_Order
-            then
-               return True;
-            end if;
-            Placement := Placement.Next;
-         end loop;
-         return False;
-      end Placement_Exists;
    begin
-      if Event.Cancelled and then not Validation_Error then
-         if Event.Protocol = Terminal.Core.ITerm2_Graphics then
-            Clear_Last_Media_Diagnostics (R);
-         end if;
-         R.Graphics_Event_Count := R.Graphics_Event_Count + 1;
-         R.Kitty_Command_Count := R.Kitty_Command_Count + 1;
-         R.Chunk_Cancel_Count := R.Chunk_Cancel_Count + 1;
-         return;
+      if R.Placement_Index_Dirty then
+         Terminal.App.Placeholder_Index.Build
+           (R.Placement_Index,
+            R.Virtual_Placements,
+            R.Conventional_Placements,
+            R.Image_Objects);
+         R.Placement_Index_Dirty := False;
       end if;
-
-      if Replay_Guarded
-        and then Graphics_Event_Already_Processed (R, Event)
-      then
-         return;
-      end if;
-
-      --  The result cache is fixed-capacity and covers every pane in an app
-      --  frame. Refuse unsupported oversized snapshot batches before applying
-      --  any persistent graphics side effect.
-      if (Replay_Guarded or else Track_Result)
-        and then not Can_Remember_Graphics_Event (R, Event)
-      then
+      Terminal.App.Placeholder_Index.Index_Cells
+        (R.Placement_Index, Snapshot);
+   exception
+      when Storage_Error =>
+         R.Placement_Index_Dirty := True;
          R.Graphics_Event_Tracking_Failed := True;
-         return;
-      end if;
-
-      if Event.Protocol = Terminal.Core.ITerm2_Graphics then
-         --  Diagnostics describe the current event, including malformed and
-         --  non-inline commands that never enter a decoder. Do this only after
-         --  replay detection so a presentation retry retains its result.
-         Clear_Last_Media_Diagnostics (R);
-      end if;
-
-      R.Graphics_Event_Count := R.Graphics_Event_Count + 1;
-      if Event.Protocol = Terminal.Core.Kitty_Graphics then
-         R.Kitty_Command_Count := R.Kitty_Command_Count + 1;
-      end if;
-
-      if Track_Result and then Header.Recognized then
-         Result.Quiet := Natural'Min (Header.Kitty_Quiet, 2);
-         Result.Respond :=
-           not
-             (Header.Kitty_Action = 'T'
-              and then Header.Kitty_ID = 0
-              and then Header.Kitty_Image_Number = 0);
-         Result.Image_ID := Header.Kitty_ID;
-         Result.Image_Number := Header.Kitty_Image_Number;
-         Result.Has_Image_Number := Header.Kitty_Image_Number /= 0;
-         Result.Placement_ID := Header.Kitty_Placement_ID;
-         Result.Has_Placement_ID := Header.Kitty_Placement_ID /= 0;
-
-         if Header.Kitty_Image_Number /= 0 then
-            Number_Object_Before :=
-              Find_Image_Object_By_Number
-                (R, Event.Stream_ID, Header.Kitty_Image_Number);
-         end if;
-         if Header.Kitty_ID /= 0 then
-            Resolved_ID := Header.Kitty_ID;
-         elsif Header.Kitty_Image_Number /= 0
-           and then Header.Kitty_Action not in 't' | 'T'
-           and then Number_Object_Before /= null
-         then
-            Resolved_ID := Number_Object_Before.ID;
-         end if;
-      end if;
-
-      if Event.Protocol = Terminal.Core.Kitty_Graphics
-        and then Validation_Error
-      then
-         R.Chunk_Cancel_Count := R.Chunk_Cancel_Count + 1;
-         Truncate_Image_Commands (R, Image_Count_Before);
-         if Track_Result and then Header.Recognized then
-            Result.Code := Terminal.Core.Kitty_EINVAL;
-            Remember_Processed_Graphics_Event (R, Event, Result);
-         end if;
-         return;
-      end if;
-
-      if Invalid_Chunk_Transition then
-         R.Chunk_Cancel_Count := R.Chunk_Cancel_Count + 1;
-         Truncate_Image_Commands (R, Image_Count_Before);
-         if Track_Result then
-            Result.Code := Terminal.Core.Kitty_EINVAL;
-            Remember_Processed_Graphics_Event (R, Event, Result);
-         end if;
-         return;
-      end if;
-
-      if Track_Result
-        and then Header.Recognized
-        and then Header.Kitty_Action = 'q'
-      then
-         Result.Image_ID := Header.Kitty_ID;
-         if Header.Kitty_ID = 0
-           or else Header.Kitty_Image_Number /= 0
-           or else not Header.Kitty_More_Valid
-         then
-            Result.Code := Terminal.Core.Kitty_EINVAL;
-         elsif not Header.Kitty_Transmission_Valid
-           or else not Header.Kitty_Compression_Valid
-           or else Header.Kitty_Format not in 8 | 16 | 24 | 32 | 100
-             | Terminal.App.Graphics.Kitty_JPEG_Format | Terminal.App.Graphics.Kitty_GIF_Format
-         then
-            Result.Code := Terminal.Core.Kitty_ENOTSUP;
-         elsif not Header.Kitty_Control_Data_Valid
-           or else not Header.Kitty_Action_Controls_Valid
-         then
-            Result.Code := Terminal.Core.Kitty_EINVAL;
-         else
-            declare
-               Query_Header : Terminal.App.Graphics.Graphics_Header := Header;
-            begin
-               if Query_Header.Kitty_Format = 0 then
-                  Query_Header.Kitty_Format := 32;
-                  Query_Header.Raw_Format := 32;
-               end if;
-               Result.Code :=
-                 Terminal.App.Image_Ingestion.Validate_Kitty_Query
-                   (Query_Header,
-                    Complete_Event_Text (R, Event),
-                    R.Graphics_Access,
-                    R.Graphics_Limits.Per_Image_Bytes);
-            end;
-         end if;
-         Remember_Processed_Graphics_Event (R, Event, Result);
-         return;
-      end if;
-
-      if Event.Protocol = Terminal.Core.Kitty_Graphics
-        and then Header.Recognized
-        and then
-          (Header.Kitty_Action not in 't' | 'T' | 'p' | 'd' | 'f' | 'a' | 'c'
-           or else not Header.Kitty_Transmission_Valid
-           or else not Header.Kitty_Compression_Valid
-           or else not Header.Kitty_Control_Data_Valid
-           or else not Header.Kitty_Action_Controls_Valid)
-      then
-         if Track_Result then
-            Result.Code :=
-              (if Header.Kitty_Action not in
-                    't' | 'T' | 'p' | 'd' | 'f' | 'a' | 'c'
-                 or else not Header.Kitty_Transmission_Valid
-                 or else not Header.Kitty_Compression_Valid
-               then Terminal.Core.Kitty_ENOTSUP
-               else Terminal.Core.Kitty_EINVAL);
-            Remember_Processed_Graphics_Event (R, Event, Result);
-         end if;
-         return;
-      end if;
-
-      if Event.Protocol = Terminal.Core.ITerm2_Graphics
-        and then Header.Recognized
-        and then Header.ITerm2_Control_Data_Valid
-        and then not Header.ITerm2_Inline
-      then
-         declare
-            Save_Status : Terminal.App.ITerm2_Files.Save_Status;
-            Saved_Name : String
-              (1 .. Terminal.App.ITerm2_Files.Max_File_Name_Length);
-            Saved_Length : Natural;
-         begin
-            Terminal.App.ITerm2_Files.Save
-              (Complete_Event_Text (R, Event),
-               R.ITerm2_Downloads,
-               R.Graphics_Limits.Per_Image_Bytes,
-               Save_Status,
-               Saved_Name,
-               Saved_Length);
-            pragma Unreferenced (Saved_Name, Saved_Length);
-            Result.Code :=
-              (case Save_Status is
-                 when Terminal.App.ITerm2_Files.Save_Ok =>
-                   Terminal.Core.Kitty_OK,
-                 when Terminal.App.ITerm2_Files.Save_Too_Large =>
-                   Terminal.Core.Kitty_ENOSPC,
-                 when Terminal.App.ITerm2_Files.Save_Allocation_Failed =>
-                   Terminal.Core.Kitty_ENOMEM,
-                 when Terminal.App.ITerm2_Files.Save_Disabled =>
-                   Terminal.Core.Kitty_ENOTSUP,
-                 when Terminal.App.ITerm2_Files.Save_Invalid_Command
-                    | Terminal.App.ITerm2_Files.Save_Invalid_Name
-                    | Terminal.App.ITerm2_Files.Save_Invalid_Data =>
-                   Terminal.Core.Kitty_EINVAL,
-                 when others => Terminal.Core.Kitty_EBADF);
-            if Save_Status =
-              Terminal.App.ITerm2_Files.Save_Allocation_Failed
-            then
-               R.Allocation_Failure_Count := R.Allocation_Failure_Count + 1;
-            elsif Save_Status /= Terminal.App.ITerm2_Files.Save_Ok then
-               R.Transport_Failure_Count := R.Transport_Failure_Count + 1;
-            end if;
-            Remember_Processed_Graphics_Event (R, Event, Result);
-            return;
-         end;
-      end if;
-
-      R.Image_Store_Allocation_Failed := False;
-      R.Image_Transport_Failed := False;
-      R.Last_Animation_Result := Terminal.Core.Kitty_No_Response;
-      Apply_Image_Event (R, Event, Snapshot, Placement_Status);
-      if R.Kitty_Placement_Count > Placement_Count_Before then
-         R.Placement_Create_Count :=
-           R.Placement_Create_Count
-           + Interfaces.Unsigned_64
-               (R.Kitty_Placement_Count - Placement_Count_Before);
-      elsif R.Kitty_Placement_Count < Placement_Count_Before then
-         R.Placement_Delete_Count :=
-           R.Placement_Delete_Count
-           + Interfaces.Unsigned_64
-               (Placement_Count_Before - R.Kitty_Placement_Count);
-      end if;
-      if R.Image_Transport_Failed then
-         R.Transport_Failure_Count := R.Transport_Failure_Count + 1;
-      end if;
-      if R.Image_Store_Allocation_Failed then
-         R.Allocation_Failure_Count := R.Allocation_Failure_Count + 1;
-      end if;
-      if Event.Protocol = Terminal.Core.ITerm2_Graphics
-        and then Header.Recognized
-        and then Header.ITerm2_Control_Data_Valid
-        and then Header.ITerm2_Inline
-      then
-         declare
-            Placement : Conventional_Placement_Access :=
-              R.Conventional_Placements;
-         begin
-            while Placement /= null loop
-               exit when Placement.Stream_ID = Event.Stream_ID
-                 and then Placement.Protocol = RM.Image_ITerm2
-                 and then Placement.Image_Storage_Order =
-                   R.Last_Stored_Image_Order;
-               Placement := Placement.Next;
-            end loop;
-            if Placement /= null and then R.Last_Stored_Image_Order /= 0 then
-               --  iTerm2 emits no protocol reply, but an internal success
-               --  result commits its default cursor movement atomically with
-               --  the decoded image. Complete_Graphics_Event serializes
-               --  replies only for Kitty events.
-               Result.Code := Terminal.Core.Kitty_OK;
-               if not Header.ITerm2_Do_Not_Move_Cursor then
-                  Result.Move_Cursor := True;
-                  Result.Cursor_To_Line_Start := True;
-                  Result.Placement_Columns := 1;
-                  Result.Placement_Rows := Placement.Rows;
-               end if;
-            end if;
-         end;
-      end if;
-      if Header.Recognized and then Header.Kitty_Action in 'T' | 'p' then
-         Placement_Image_ID := Header.Kitty_ID;
-         if Placement_Image_ID = 0
-           and then Header.Kitty_Image_Number /= 0
-         then
-            declare
-               Stored : constant Image_Object_Access :=
-                 Find_Image_Object_By_Number
-                   (R, Event.Stream_ID, Header.Kitty_Image_Number);
-            begin
-               if Stored /= null then
-                  Placement_Image_ID := Stored.ID;
-               end if;
-            end;
-         end if;
-         if Placement_Image_ID /= 0 then
-            declare
-               Object : constant Image_Object_Access :=
-                 Find_Image_Object
-                   (R, Event.Stream_ID, Placement_Image_ID);
-            begin
-               if Object /= null then
-                  Resolved_Geometry :=
-                    Resolve_Placement_Geometry (R, Object, Header);
-                  Geometry_Checked := True;
-               end if;
-            end;
-         elsif Header.Kitty_Action = 'T'
-           and then R.Last_Stored_Image_Order /= 0
-         then
-            declare
-               Object : constant Image_Object_Access :=
-                 Find_Image_Object_By_Storage_Order
-                   (R, Event.Stream_ID, R.Last_Stored_Image_Order);
-            begin
-               if Object /= null then
-                  Resolved_Geometry :=
-                    Resolve_Placement_Geometry (R, Object, Header);
-                  Geometry_Checked := True;
-               end if;
-            end;
-         elsif Header.Kitty_Action = 'T'
-           and then Frame_Image_Commands (R) /= null
-           and then Frame_Image_Count (R) > Image_Count_Before
-         then
-            Resolved_Geometry :=
-              Resolve_Placement_Geometry
-                (R,
-                 FIS.Element (R.Frame_Images, Frame_Image_Count (R)).Pixel_Width,
-                 FIS.Element (R.Frame_Images, Frame_Image_Count (R)).Pixel_Height,
-                 Header);
-            Geometry_Checked := True;
-         end if;
-      end if;
-      if Track_Result then
-         if Header.Recognized and then not Event_Header.Kitty_More then
-            if Header.Kitty_ID /= 0
-              and then Header.Kitty_Image_Number /= 0
-            then
-               Result.Code := Terminal.Core.Kitty_EINVAL;
-            elsif not Header.Kitty_Transmission_Valid
-              or else not Header.Kitty_Compression_Valid
-            then
-               Result.Code := Terminal.Core.Kitty_ENOTSUP;
-            elsif Header.Kitty_Transmission in 'f' | 't' | 's'
-              and then
-                (not Header.Kitty_Data_Size_Valid
-                 or else not Header.Kitty_Data_Offset_Valid
-                 or else Header.Kitty_More_Specified)
-            then
-               Result.Code := Terminal.Core.Kitty_EINVAL;
-            elsif Header.Kitty_Action not in
-              't' | 'T' | 'p' | 'd' | 'f' | 'a' | 'c'
-            then
-               Result.Code := Terminal.Core.Kitty_ENOTSUP;
-            elsif Header.Kitty_Action in 'f' | 'a' | 'c' then
-               Result.Image_ID := Resolved_ID;
-               Result.Code :=
-                 (if R.Image_Transport_Failed
-                  then Terminal.Core.Kitty_EBADF
-                  elsif R.Image_Store_Allocation_Failed
-                  then Terminal.Core.Kitty_ENOMEM
-                  elsif R.Last_Animation_Result = Terminal.Core.Kitty_No_Response
-                  then Terminal.Core.Kitty_EINVAL
-                  else R.Last_Animation_Result);
-            elsif Header.Kitty_Action = 'p' then
-               Result.Image_ID := Resolved_ID;
-               if Placement_Status = Placement_Parent_Missing then
-                  Result.Code := Terminal.Core.Kitty_ENOPARENT;
-               elsif Placement_Status = Placement_Cycle then
-                  Result.Code := Terminal.Core.Kitty_ECYCLE;
-               elsif Placement_Status = Placement_Too_Deep then
-                  Result.Code := Terminal.Core.Kitty_ETOODEEP;
-               elsif Placement_Status = Placement_No_Space then
-                  Result.Code := Terminal.Core.Kitty_ENOMEM;
-               elsif Resolved_ID = 0
-                 or else Find_Image_Object
-                   (R, Event.Stream_ID, Resolved_ID) = null
-               then
-                  Result.Code := Terminal.Core.Kitty_ENOENT;
-               elsif Header.Kitty_Virtual_Placement
-                 and then Header.Kitty_Parent_ID /= 0
-               then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
-               elsif Header.Kitty_Parent_ID /= 0 then
-                  declare
-                     Relative_Status : constant Relative_Placement_Status :=
-                       Validate_Relative_Placement
-                         (R,
-                          Event.Stream_ID,
-                          Event.Alternate_Screen,
-                          Event.Screen_Generation,
-                          Resolved_ID,
-                          Header.Kitty_Placement_ID,
-                          Header.Kitty_Parent_ID,
-                          Header.Kitty_Parent_Placement_ID);
-                  begin
-                     Result.Code :=
-                       (case Relative_Status is
-                           when Relative_Valid => Terminal.Core.Kitty_OK,
-                           when Relative_Parent_Missing =>
-                             Terminal.Core.Kitty_ENOPARENT,
-                           when Relative_Cycle => Terminal.Core.Kitty_ECYCLE,
-                           when Relative_Too_Deep =>
-                             Terminal.Core.Kitty_ETOODEEP);
-                  end;
-               elsif Placement_Status = Placement_Rejected then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
-               else
-                  Result.Code := Terminal.Core.Kitty_OK;
-               end if;
-            elsif Header.Kitty_Action in 't' | 'T' then
-               if Placement_Status = Placement_Parent_Missing then
-                  Result.Code := Terminal.Core.Kitty_ENOPARENT;
-               elsif Placement_Status = Placement_Cycle then
-                  Result.Code := Terminal.Core.Kitty_ECYCLE;
-               elsif Placement_Status = Placement_Too_Deep then
-                  Result.Code := Terminal.Core.Kitty_ETOODEEP;
-               elsif Placement_Status = Placement_No_Space then
-                  Result.Code := Terminal.Core.Kitty_ENOMEM;
-               elsif Placement_Status = Placement_Rejected then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
-               elsif Header.Kitty_Image_Number /= 0 then
-                  declare
-                     Stored : constant Image_Object_Access :=
-                       Find_Image_Object_By_Number
-                         (R, Event.Stream_ID, Header.Kitty_Image_Number);
-                  begin
-                     if Stored = null
-                       or else Stored = Number_Object_Before
-                     then
-                        Result.Code :=
-                          (if R.Image_Store_Allocation_Failed
-                           then Terminal.Core.Kitty_ENOMEM
-                           elsif R.Image_Transport_Failed
-                           then Terminal.Core.Kitty_EBADF
-                           else Terminal.Core.Kitty_EINVAL);
-                     else
-                        Result.Image_ID := Stored.ID;
-                        Result.Code := Terminal.Core.Kitty_OK;
-                     end if;
-                  end;
-               elsif Header.Kitty_ID /= 0 then
-                  Result.Code :=
-                    (if R.Image_Store_Allocation_Failed
-                     then Terminal.Core.Kitty_ENOMEM
-                     elsif R.Image_Transport_Failed
-                     then Terminal.Core.Kitty_EBADF
-                     elsif R.Last_Stored_Image_Order = 0
-                       or else Find_Image_Object
-                         (R, Event.Stream_ID, Header.Kitty_ID) = null
-                     then Terminal.Core.Kitty_EINVAL
-                     else Terminal.Core.Kitty_OK);
-               elsif Header.Kitty_Action = 'T' then
-                  Result.Code :=
-                    (if (R.Last_Stored_Image_Order /= 0
-                         and then Placement_Exists (0))
-                       or else Frame_Image_Count (R) > Image_Count_Before
-                     then Terminal.Core.Kitty_OK
-                     elsif R.Image_Store_Allocation_Failed
-                     then Terminal.Core.Kitty_ENOMEM
-                     elsif R.Image_Transport_Failed
-                     then Terminal.Core.Kitty_EBADF
-                     else Terminal.Core.Kitty_EINVAL);
-               end if;
-            elsif Header.Kitty_Action = 'd' then
-               Result.Image_ID := Resolved_ID;
-               Result.Code := Terminal.Core.Kitty_OK;
-            end if;
-
-            if Header.Kitty_Action in 'T' | 'p'
-              and then
-                (Result.Code = Terminal.Core.Kitty_OK
-                 or else
-                   (Placement_Status in
-                      Placement_Rejected | Placement_Parent_Missing
-                        | Placement_Cycle | Placement_Too_Deep
-                    and then Header.Kitty_Parent_ID /= 0))
-            then
-               if Result.Image_ID = 0
-                 and then Header.Kitty_Image_Number /= 0
-               then
-                  declare
-                     Stored : constant Image_Object_Access :=
-                       Find_Image_Object_By_Number
-                         (R, Event.Stream_ID, Header.Kitty_Image_Number);
-                  begin
-                     if Stored /= null then
-                        Result.Image_ID := Stored.ID;
-                     end if;
-                  end;
-               end if;
-
-               if Geometry_Checked and then not Resolved_Geometry.Valid then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
-               elsif Header.Kitty_Virtual_Placement
-                 and then Header.Kitty_Parent_ID /= 0
-               then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
-               elsif Header.Kitty_Parent_ID /= 0 then
-                  Result.Code :=
-                    (case Validate_Relative_Placement
-                       (R,
-                        Event.Stream_ID,
-                        Event.Alternate_Screen,
-                        Event.Screen_Generation,
-                        Result.Image_ID,
-                        Header.Kitty_Placement_ID,
-                        Header.Kitty_Parent_ID,
-                        Header.Kitty_Parent_Placement_ID) is
-                       when Relative_Valid => Terminal.Core.Kitty_OK,
-                       when Relative_Parent_Missing =>
-                         Terminal.Core.Kitty_ENOPARENT,
-                       when Relative_Cycle => Terminal.Core.Kitty_ECYCLE,
-                       when Relative_Too_Deep => Terminal.Core.Kitty_ETOODEEP);
-               end if;
-
-               if Result.Code = Terminal.Core.Kitty_OK
-                 and then not Placement_Exists (Result.Image_ID)
-               then
-                  Result.Code :=
-                    (if Placement_Status = Placement_Rejected
-                     then Terminal.Core.Kitty_EINVAL
-                     else Terminal.Core.Kitty_ENOMEM);
-               elsif Result.Code = Terminal.Core.Kitty_OK
-                 and then not Header.Kitty_No_Cursor_Move
-                 and then not Header.Kitty_Virtual_Placement
-                 and then Header.Kitty_Parent_ID = 0
-               then
-                  Result.Move_Cursor := True;
-                  if Geometry_Checked and then Resolved_Geometry.Valid then
-                     Result.Placement_Columns := Resolved_Geometry.Columns;
-                     Result.Placement_Rows := Resolved_Geometry.Rows;
-                  else
-                     Result.Placement_Columns := Header.Placeholder_Cols;
-                     Result.Placement_Rows := Header.Placeholder_Rows;
-                  end if;
-               end if;
-            end if;
-         end if;
-         if Result.Code = Terminal.Core.Kitty_EINVAL
-           and then Header.Kitty_Action in 't' | 'T' | 'f' | 'q'
-           and then Header.Has_Data
-           and then not R.Image_Transport_Failed
-           and then not R.Image_Store_Allocation_Failed
-         then
-            R.Decode_Failure_Count := R.Decode_Failure_Count + 1;
-         end if;
-         Remember_Processed_Graphics_Event (R, Event, Result);
-      elsif Replay_Guarded then
-         --  Sixel and iTerm2 commands also install persistent image objects.
-         --  A swapchain retry can render the same pending core event more
-         --  than once before presentation commits it, so guard these
-         --  side-effects exactly like stateful Kitty commands. iTerm2 can
-         --  carry an internal cursor-commit result but emits no reply.
-         Remember_Processed_Graphics_Event (R, Event, Result);
-      end if;
-   end Add_Image;
+   end Prepare_Placement_Index;
 
    procedure Add_Conventional_Images
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot)
-   is
-      Placement : Conventional_Placement_Access := R.Conventional_Placements;
-      Cached_Storage_Order : Interfaces.Unsigned_64 := 0;
-      Cached_Object : Image_Object_Access := null;
-      Cached_Object_Checked : Boolean := False;
-   begin
-      if Frame_Image_Commands (R) = null then
-         return;
-      end if;
-
-      while Placement /= null
-        and then Frame_Image_Count (R) < Frame_Image_Capacity (R)
-      loop
-         declare
-            Object : Image_Object_Access;
-            Placement_Row : Integer := 0;
-            Placement_Col : Integer := 0;
-         begin
-            if not Cached_Object_Checked
-              or else Cached_Storage_Order /= Placement.Image_Storage_Order
-            then
-               Cached_Storage_Order := Placement.Image_Storage_Order;
-               Cached_Object :=
-                 Find_Image_Object_By_Storage_Order
-                   (R,
-                    Snapshot.Graphics_Stream,
-                    Placement.Image_Storage_Order);
-               Cached_Object_Checked := True;
-            end if;
-            Object := Cached_Object;
-            if Placement.Stream_ID = Snapshot.Graphics_Stream
-              and then Placement.Alternate_Screen = Snapshot.Alternate_Screen
-              and then Placement.Screen_Generation = Snapshot.Screen_Generation
-              and then Object /= null
-              and then Resolve_Conventional_Placement_Origin
-                (R,
-                 Snapshot,
-                 Placement,
-                 Placement_Row,
-                 Placement_Col)
-              and then Placement_Row <= Snapshot.Rows
-              and then Placement_Col <= Snapshot.Cols
-              and then
-                Long_Long_Integer (Placement_Row)
-                  + Long_Long_Integer (Placement.Rows) - 1 >= 1
-              and then
-                Long_Long_Integer (Placement_Col)
-                  + Long_Long_Integer (Placement.Columns) - 1 >= 1
-              and then Placement.Source_X < Object.Pixel_Width
-              and then Placement.Source_Y < Object.Pixel_Height
-            then
-               declare
-                  Available_Width : constant Natural :=
-                    Object.Pixel_Width - Placement.Source_X;
-                  Available_Height : constant Natural :=
-                    Object.Pixel_Height - Placement.Source_Y;
-                  Source_Width : constant Natural :=
-                    (if Placement.Source_Width = 0
-                     then Available_Width
-                     else Natural'Min
-                       (Placement.Source_Width, Available_Width));
-                  Source_Height : constant Natural :=
-                    (if Placement.Source_Height = 0
-                     then Available_Height
-                     else Natural'Min
-                       (Placement.Source_Height, Available_Height));
-                  Frame_Bytes : constant RM.Image_Data_View :=
-                    Display_Frame_Bytes (Object);
-                  Frame_Format : constant Natural :=
-                    Display_Frame_Format (Object);
-                  Frame_Length : constant Natural :=
-                    Display_Frame_Length (Object);
-                  Preview_Length : constant Natural :=
-                    Natural'Min
-                      (Frame_Length, RM.Max_Image_Decoded_Preview_Length);
-                  Frame_Stride : constant Natural :=
-                    Display_Frame_Stride (Object);
-                  Raw_X : constant Long_Long_Integer :=
-                    Long_Long_Integer (Origin_X (R))
-                    + Long_Long_Integer (Placement.Cell_X)
-                    + Long_Long_Integer (Placement.Draw_Offset_X)
-                    + Long_Long_Integer (Placement_Col - 1)
-                      * Long_Long_Integer (R.CW);
-                  Raw_Y : constant Long_Long_Integer :=
-                    Long_Long_Integer (Origin_Y (R))
-                    + Long_Long_Integer (Placement.Cell_Y)
-                    + Long_Long_Integer (Placement.Draw_Offset_Y)
-                    + Long_Long_Integer (Placement_Row - 1)
-                      * Long_Long_Integer (R.CH);
-                  View_Left : constant Long_Long_Integer :=
-                    Long_Long_Integer (Origin_X (R));
-                  View_Right : constant Long_Long_Integer :=
-                    View_Left
-                    + Long_Long_Integer (Snapshot.Cols)
-                      * Long_Long_Integer (R.CW);
-                  View_Top : constant Long_Long_Integer :=
-                    Long_Long_Integer (Origin_Y (R));
-                  View_Bottom : constant Long_Long_Integer :=
-                    View_Top
-                    + Long_Long_Integer (Snapshot.Rows)
-                      * Long_Long_Integer (R.CH);
-                  Region_Top : constant Long_Long_Integer :=
-                    (if Placement.Clip_Top = 0
-                     then View_Top
-                     else Long_Long_Integer (Origin_Y (R))
-                       + Long_Long_Integer (Placement.Clip_Top - 1)
-                         * Long_Long_Integer (R.CH));
-                  Region_Bottom : constant Long_Long_Integer :=
-                    (if Placement.Clip_Bottom = 0
-                     then View_Bottom
-                     else Long_Long_Integer (Origin_Y (R))
-                       + Long_Long_Integer (Placement.Clip_Bottom)
-                         * Long_Long_Integer (R.CH));
-                  Clip_X0 : constant Long_Long_Integer :=
-                    Long_Long_Integer'Max (Raw_X, View_Left);
-                  Clip_Y0 : constant Long_Long_Integer :=
-                    Long_Long_Integer'Max
-                      (Raw_Y, Long_Long_Integer'Max (View_Top, Region_Top));
-                  Clip_X1 : constant Long_Long_Integer :=
-                    Long_Long_Integer'Min
-                      (Raw_X + Long_Long_Integer (Placement.Draw_Width),
-                       View_Right);
-                  Clip_Y1 : constant Long_Long_Integer :=
-                    Long_Long_Integer'Min
-                      (Raw_Y + Long_Long_Integer (Placement.Draw_Height),
-                       Long_Long_Integer'Min (View_Bottom, Region_Bottom));
-                  Base_U0 : constant Float := Float (Placement.Source_X)
-                    / Float (Object.Pixel_Width);
-                  Base_V0 : constant Float := Float (Placement.Source_Y)
-                    / Float (Object.Pixel_Height);
-                  U_Span : constant Float := Float (Source_Width)
-                    / Float (Object.Pixel_Width);
-                  V_Span : constant Float := Float (Source_Height)
-                    / Float (Object.Pixel_Height);
-               begin
-                  if Frame_Bytes /= null
-                    and then Clip_X0 < Clip_X1
-                    and then Clip_Y0 < Clip_Y1
-                  then
-                     Append_Image_Command
-                       (R,
-                       (X => Float (Clip_X0),
-                     Y => Float (Clip_Y0),
-                     Width => Float (Clip_X1 - Clip_X0),
-                     Height => Float (Clip_Y1 - Clip_Y0),
-                     Protocol => Object.Protocol,
-                     Placeholder => False,
-                     Raw_Format => Frame_Format,
-                     Pixel_Width => Object.Pixel_Width,
-                     Pixel_Height => Object.Pixel_Height,
-                     Payload_Length => 0,
-                     Staging_Byte_Length => 0,
-                     Payload_Preview_Complete => True,
-                     Encoded_Preview_Length => 0,
-                     Decoded_Byte_Length => Frame_Length,
-                     Decoded_Row_Stride_Bytes =>
-                       Frame_Stride,
-                     Decoded_Source => RM.Image_Decoded_Source_Buffer,
-                     Decoded_Bytes => Frame_Bytes,
-                     Encoded_Source_Bytes => null,
-                     Encoded_Source_Length => 0,
-                     Decoded_Preview_Length => Preview_Length,
-                     Decoded_Preview_Bytes => Frame_Bytes,
-                     Preview_Decode_Complete => True,
-                     Decode_Status => RM.Image_Decode_Ok,
-                     U0 => Base_U0
-                       + U_Span
-                         * Float (Clip_X0 - Raw_X)
-                         / Float (Placement.Draw_Width),
-                     V0 => Base_V0
-                       + V_Span
-                         * Float (Clip_Y0 - Raw_Y)
-                         / Float (Placement.Draw_Height),
-                     U1 => Base_U0
-                       + U_Span
-                         * Float (Clip_X1 - Raw_X)
-                         / Float (Placement.Draw_Width),
-                     V1 => Base_V0
-                       + V_Span
-                         * Float (Clip_Y1 - Raw_Y)
-                         / Float (Placement.Draw_Height),
-                     Image_ID => Interfaces.Unsigned_32 (Placement.Image_ID),
-                     Content_Serial => Object.Content_Serial,
-                     Z_Index => Placement.Z_Index,
-                     Tint => (R => 1.0, G => 1.0, B => 1.0, A => 1.0)));
-                  end if;
-               end;
-            end if;
-         end;
-         Placement := Placement.Next;
-      end loop;
-   end Add_Conventional_Images;
+   is separate;
 
    procedure Add_Placeholder_Images
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot)
-   is
-      Index : Terminal.App.Placeholder_Index.Index;
-   begin
-      if Frame_Image_Commands (R) = null
-        or else Snapshot.Image_Cell_Count = 0
-      then
-         return;
-      end if;
-
-      begin
-         Terminal.App.Placeholder_Index.Build
-           (Index,
-            R.Virtual_Placements,
-            R.Image_Objects,
-            Snapshot.Graphics_Stream,
-            Snapshot.Alternate_Screen,
-            Snapshot.Screen_Generation);
-      exception
-         when Storage_Error =>
-            R.Graphics_Event_Tracking_Failed := True;
-            return;
-      end;
-
-      for Row in 1 .. Snapshot.Rows loop
-         for Col in 1 .. Snapshot.Cols loop
-            declare
-               Cell : constant Terminal.Core.Cell :=
-                 Terminal.Core.Cell_At (Snapshot, Row, Col);
-            begin
-               if Cell.Image.Is_Placeholder
-                 and then Cell.Image.Image_ID_Valid
-                 and then Frame_Image_Count (R) < Frame_Image_Capacity (R)
-               then
-                  declare
-                     Image_ID : constant Terminal.Core.Graphics_ID :=
-                       Cell.Image.Image_ID;
-                     Placement_ID : constant Terminal.Core.Graphics_ID :=
-                       Cell.Image.Placement_ID;
-                     Placement : Virtual_Placement_Access;
-                     Object : Image_Object_Access;
-                  begin
-                     Placement := Terminal.App.Placeholder_Index.Find_Placement
-                       (Index, Image_ID, Placement_ID);
-
-                     if Placement = null then
-                        Object := null;
-                     else
-                        Object := Terminal.App.Placeholder_Index.Find_Object
-                          (Index, Placement.Image_Storage_Order);
-                     end if;
-                     if Placement /= null
-                       and then Object /= null
-                       and then Cell.Image.Image_Column < Placement.Columns
-                       and then Cell.Image.Image_Row < Placement.Rows
-                       and then Placement.Source_X < Object.Pixel_Width
-                       and then Placement.Source_Y < Object.Pixel_Height
-                     then
-                        declare
-                           Available_Width : constant Natural :=
-                             Object.Pixel_Width - Placement.Source_X;
-                           Available_Height : constant Natural :=
-                             Object.Pixel_Height - Placement.Source_Y;
-                           Source_Width : constant Natural :=
-                             (if Placement.Source_Width = 0
-                              then Available_Width
-                              else Natural'Min
-                                (Placement.Source_Width, Available_Width));
-                           Source_Height : constant Natural :=
-                             (if Placement.Source_Height = 0
-                              then Available_Height
-                              else Natural'Min
-                                (Placement.Source_Height, Available_Height));
-                           Column : constant Natural := Cell.Image.Image_Column;
-                           Image_Row : constant Natural := Cell.Image.Image_Row;
-                           Cell_Left : constant Float :=
-                             Float (Column) * Float (R.CW);
-                           Cell_Top : constant Float :=
-                             Float (Image_Row) * Float (R.CH);
-                           Cell_Right : constant Float :=
-                             Cell_Left + Float (R.CW);
-                           Cell_Bottom : constant Float :=
-                             Cell_Top + Float (R.CH);
-                           Draw_Left : constant Float :=
-                             Float
-                               (Placement.Cell_X + Placement.Draw_Offset_X);
-                           Draw_Top : constant Float :=
-                             Float
-                               (Placement.Cell_Y + Placement.Draw_Offset_Y);
-                           Draw_Right : constant Float :=
-                             Draw_Left + Float (Placement.Draw_Width);
-                           Draw_Bottom : constant Float :=
-                             Draw_Top + Float (Placement.Draw_Height);
-                           Clip_Left : constant Float :=
-                             Float'Max (Cell_Left, Draw_Left);
-                           Clip_Top : constant Float :=
-                             Float'Max (Cell_Top, Draw_Top);
-                           Clip_Right : constant Float :=
-                             Float'Min (Cell_Right, Draw_Right);
-                           Clip_Bottom : constant Float :=
-                             Float'Min (Cell_Bottom, Draw_Bottom);
-                           U0 : constant Float :=
-                             (Float (Placement.Source_X)
-                              + (Clip_Left - Draw_Left)
-                                * Float (Source_Width)
-                                / Float (Placement.Draw_Width))
-                             / Float (Object.Pixel_Width);
-                           V0 : constant Float :=
-                             (Float (Placement.Source_Y)
-                              + (Clip_Top - Draw_Top)
-                                * Float (Source_Height)
-                                / Float (Placement.Draw_Height))
-                             / Float (Object.Pixel_Height);
-                           U1 : constant Float :=
-                             (Float (Placement.Source_X)
-                              + (Clip_Right - Draw_Left)
-                                * Float (Source_Width)
-                                / Float (Placement.Draw_Width))
-                             / Float (Object.Pixel_Width);
-                           V1 : constant Float :=
-                             (Float (Placement.Source_Y)
-                              + (Clip_Bottom - Draw_Top)
-                                * Float (Source_Height)
-                                / Float (Placement.Draw_Height))
-                             / Float (Object.Pixel_Height);
-                           Frame_Bytes : constant RM.Image_Data_View :=
-                             Display_Frame_Bytes (Object);
-                           Frame_Format : constant Natural :=
-                             Display_Frame_Format (Object);
-                           Frame_Length : constant Natural :=
-                             Display_Frame_Length (Object);
-                           Preview_Length : constant Natural :=
-                             Natural'Min
-                               (Frame_Length,
-                                RM.Max_Image_Decoded_Preview_Length);
-                           Frame_Stride : constant Natural :=
-                             Display_Frame_Stride (Object);
-                        begin
-                           if Frame_Bytes /= null
-                             and then Clip_Right > Clip_Left
-                             and then Clip_Bottom > Clip_Top
-                           then
-                              Append_Image_Command
-                                (R,
-                                (X => Float
-                                   (Origin_X (R) + (Col - 1) * R.CW)
-                                   + Clip_Left - Cell_Left,
-                                 Y => Float
-                                   (Origin_Y (R) + (Row - 1) * R.CH)
-                                   + Clip_Top - Cell_Top,
-                                 Width => Clip_Right - Clip_Left,
-                                 Height => Clip_Bottom - Clip_Top,
-                                 Protocol => Object.Protocol,
-                                 Placeholder => False,
-                                 Raw_Format => Frame_Format,
-                                 Pixel_Width => Object.Pixel_Width,
-                                 Pixel_Height => Object.Pixel_Height,
-                                 Payload_Length => 0,
-                                 Staging_Byte_Length => 0,
-                                 Payload_Preview_Complete => True,
-                                 Encoded_Preview_Length => 0,
-                                 Decoded_Byte_Length => Frame_Length,
-                                 Decoded_Row_Stride_Bytes =>
-                                   Frame_Stride,
-                                 Decoded_Source =>
-                                   RM.Image_Decoded_Source_Buffer,
-                                 Decoded_Bytes => Frame_Bytes,
-                                 Encoded_Source_Bytes => null,
-                                 Encoded_Source_Length => 0,
-                                 Decoded_Preview_Length => Preview_Length,
-                                 Decoded_Preview_Bytes => Frame_Bytes,
-                                 Preview_Decode_Complete => True,
-                                 Decode_Status => RM.Image_Decode_Ok,
-                                 U0 => U0,
-                                 V0 => V0,
-                                 U1 => U1,
-                                 V1 => V1,
-                                 Image_ID =>
-                                   Interfaces.Unsigned_32 (Placement.Image_ID),
-                                 Content_Serial => Object.Content_Serial,
-                                 Z_Index => Placement.Z_Index,
-                                 Tint =>
-                                   (R => 1.0, G => 1.0, B => 1.0, A => 1.0)));
-                           end if;
-                        end;
-                     end if;
-                  end;
-               end if;
-            end;
-         end loop;
-      end loop;
-   end Add_Placeholder_Images;
+   is separate;
 
    procedure Add_Underline
      (R      : in out Renderer;
@@ -4245,6 +2046,7 @@ package body Terminal.App.Renderer is
    is
    begin
       if R.Glyphs = null or else R.Glyph_Count >= R.Glyphs'Length then
+         R.Frame_Command_Overflowed := True;
          return;
       end if;
 
@@ -4275,74 +2077,7 @@ package body Terminal.App.Renderer is
       Width   : Float;
       Height  : Float;
       Color   : RM.Pixel_Color)
-   is
-      Count : RM.Text_Run_Codepoint_Count := 0;
-      Shape_Status : Terminal.App.Text_Shaper.Shape_Status;
-      First_Cell : constant Terminal.Core.Cell :=
-        Terminal.Core.Cell_At (Snapshot, Row, First_Col);
-   begin
-      if R.Text_Runs = null
-        or else R.Text_Run_Count >= R.Text_Runs'Length
-        or else First_Cell.Text.Code_Point = 0
-      then
-         return;
-      end if;
-
-      R.Text_Run_Count := R.Text_Run_Count + 1;
-      R.Text_Runs (R.Text_Run_Count) :=
-        (X               => X,
-         Y               => Y,
-         Cell_Width      => Width,
-         Cell_Height     => Height,
-         Cell_Span       => Last_Col - First_Col + Cell_Column_Span (First_Cell),
-         Color           => Color,
-         Bold            => First_Cell.Style.Bold,
-         Italic          => First_Cell.Style.Italic,
-         Codepoints      => (others => 0),
-         Codepoint_Count => 0,
-         Run_Kind        => RM.Invalid_Run,
-         Shape_Status    => RM.Invalid_Run,
-         Direction       => RM.Direction_Neutral,
-         Script          => RM.Script_Common,
-         Shaped_Glyphs   => (others => <>),
-         Shaped_Glyph_Count => 0,
-         Fallback_Glyphs => True);
-
-      for Col in First_Col .. Last_Col loop
-         declare
-            Cell : constant Terminal.Core.Cell :=
-              Terminal.Core.Cell_At (Snapshot, Row, Col);
-         begin
-            if Cell.Kind /= Terminal.Core.Wide_Continuation then
-               exit when Count = RM.Max_Text_Run_Codepoints;
-               Count := Count + 1;
-               R.Text_Runs (R.Text_Run_Count).Codepoints (Count) :=
-                 Natural (Cell.Text.Code_Point);
-
-               for I in 1 .. Cell.Text.Attachment_Count loop
-                  exit when Count = RM.Max_Text_Run_Codepoints;
-                  Count := Count + 1;
-                  R.Text_Runs (R.Text_Run_Count).Codepoints (Count) :=
-                    Natural (Cell.Text.Attachments (I));
-               end loop;
-            end if;
-         end;
-      end loop;
-
-      R.Text_Runs (R.Text_Run_Count).Codepoint_Count := Count;
-      Terminal.App.Text_Shaper.Prepare
-        (R.Text_Runs (R.Text_Run_Count),
-         Shape_Status);
-      R.Shaped_Glyph_Count :=
-        R.Shaped_Glyph_Count
-        + Natural (R.Text_Runs (R.Text_Run_Count).Shaped_Glyph_Count);
-      if R.Text_Runs (R.Text_Run_Count).Fallback_Glyphs then
-         R.Text_Fallback_Run_Count := R.Text_Fallback_Run_Count + 1;
-      end if;
-      if Shape_Status = RM.Needs_Shaping_Backend then
-         R.Shaping_Fallback_Count := R.Shaping_Fallback_Count + 1;
-      end if;
-   end Add_Text_Run;
+   is separate;
 
    procedure Cell_Properties
      (Cell      : Terminal.Core.Cell;
@@ -4415,309 +2150,17 @@ package body Terminal.App.Renderer is
       First : Positive;
       Last  : Natural;
       Right : Float)
-   is
-      Base : RM.Text_Run_Direction := RM.Direction_Left_To_Right;
-   begin
-      if Last < First then
-         return;
-      end if;
-
-      for I in First .. Last loop
-         if R.Text_Runs (I).Direction /= RM.Direction_Neutral then
-            Base := R.Text_Runs (I).Direction;
-            exit;
-         end if;
-      end loop;
-
-      if Base = RM.Direction_Right_To_Left then
-         declare
-            Cursor : Float := Right;
-         begin
-            for I in First .. Last loop
-               declare
-                  Width : constant Float :=
-                    R.Text_Runs (I).Cell_Width
-                    * Float (R.Text_Runs (I).Cell_Span);
-               begin
-                  Cursor := Cursor - Width;
-                  R.Text_Runs (I).X := Cursor;
-               end;
-            end loop;
-         end;
-      else
-         declare
-            I : Natural := First;
-         begin
-            while I <= Last loop
-               if R.Text_Runs (I).Direction = RM.Direction_Right_To_Left then
-                  declare
-                     J : Natural := I;
-                     Span_Left  : constant Float := R.Text_Runs (I).X;
-                     Span_Right : Float := R.Text_Runs (I).X;
-                     Cursor     : Float;
-                  begin
-                     while J <= Last
-                       and then R.Text_Runs (J).Direction =
-                         RM.Direction_Right_To_Left
-                     loop
-                        Span_Right := R.Text_Runs (J).X
-                          + R.Text_Runs (J).Cell_Width
-                            * Float (R.Text_Runs (J).Cell_Span);
-                        J := J + 1;
-                     end loop;
-
-                     Cursor := Span_Right;
-                     for K in I .. J - 1 loop
-                        declare
-                           Width : constant Float :=
-                             R.Text_Runs (K).Cell_Width
-                             * Float (R.Text_Runs (K).Cell_Span);
-                        begin
-                           Cursor := Cursor - Width;
-                           R.Text_Runs (K).X := Cursor;
-                        end;
-                     end loop;
-
-                     if Cursor < Span_Left then
-                        for K in I .. J - 1 loop
-                           R.Text_Runs (K).X :=
-                             R.Text_Runs (K).X + (Span_Left - Cursor);
-                        end loop;
-                     end if;
-
-                     I := J;
-                  end;
-               else
-                  I := I + 1;
-               end if;
-            end loop;
-         end;
-      end if;
-   end Reorder_Mixed_Bidi_Row;
+   is separate;
 
    procedure Build_Text_Runs
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot)
-   is
-   begin
-      for Row in 1 .. Snapshot.Rows loop
-         declare
-            Col : Positive := 1;
-            Row_Has_LTR : Boolean := False;
-            Row_Has_RTL : Boolean := False;
-            Row_Run_First : constant Positive := R.Text_Run_Count + 1;
-         begin
-            while Col <= Snapshot.Cols loop
-               declare
-                  Cell : constant Terminal.Core.Cell :=
-                    Terminal.Core.Cell_At (Snapshot, Row, Col);
-                  First : constant Positive := Col;
-                  Last  : Natural := Col;
-               begin
-                  if Is_Drawable (Cell)
-                    and then not Cell.Style.Conceal
-                    and then Cell.Kind /= Terminal.Core.Wide_Continuation
-                  then
-                     if Cell.Text.Width = Terminal.Core.Width_One
-                       and then Cell.Text.Attachment_Count = 0
-                       and then not Is_Block_Cursor (Snapshot, Row, Col)
-                     then
-                        declare
-                           Run_Direction : RM.Text_Run_Direction;
-                           Run_Script    : RM.Text_Run_Script;
-                        begin
-                           Cell_Properties (Cell, Run_Direction, Run_Script);
-                           while Last < Snapshot.Cols
-                             and then Last - First + 1
-                                      < RM.Max_Text_Run_Codepoints
-                             and then Cell_Joins_Run
-                               (Snapshot, Row, Positive (Last + 1),
-                                Cell, Run_Direction, Run_Script)
-                           loop
-                              Last := Last + 1;
-                           end loop;
-                        end;
-                     end if;
-
-                     Add_Text_Run
-                       (R,
-                        Snapshot  => Snapshot,
-                        Row       => Row,
-                        First_Col => First,
-                        Last_Col  => Positive (Last),
-                        X         =>
-                          Float (Origin_X (R) + (First - 1) * R.CW),
-                        Y         =>
-                          Float (Origin_Y (R) + (Row - 1) * R.CH),
-                        Width     => Float (R.CW),
-                        Height    => Float (R.CH),
-                        Color     =>
-                          (if Is_Block_Cursor (Snapshot, Row, First)
-                           then R.Color_Theme.Cursor_FG
-                           else Foreground (R, Cell)));
-
-                     if R.Text_Run_Count > 0 then
-                        case R.Text_Runs (R.Text_Run_Count).Direction is
-                           when RM.Direction_Left_To_Right =>
-                              Row_Has_LTR := True;
-                           when RM.Direction_Right_To_Left =>
-                              Row_Has_RTL := True;
-                           when RM.Direction_Neutral =>
-                              null;
-                        end case;
-                     end if;
-
-                     if Last + Cell_Column_Span (Cell) > Snapshot.Cols then
-                        exit;
-                     else
-                        Col := Positive (Last + Cell_Column_Span (Cell));
-                     end if;
-                  elsif Col = Snapshot.Cols then
-                     exit;
-                  else
-                     Col := Col + 1;
-                  end if;
-               end;
-            end loop;
-
-            if Row_Has_LTR and then Row_Has_RTL then
-               Reorder_Mixed_Bidi_Row
-                 (R,
-                  First => Row_Run_First,
-                  Last  => R.Text_Run_Count,
-                  Right =>
-                    Float (Origin_X (R) + Snapshot.Cols * R.CW));
-            end if;
-         end;
-      end loop;
-   end Build_Text_Runs;
+   is separate;
 
    procedure Initialize_Text
      (R      : in out Renderer;
       Status  : out Init_Status)
-   is
-      Font_Path   : constant String := Terminal.App.Fonts.Default_Font_Path;
-      Text_Status : Textrender.Status_Code;
-      Shape_Backend_Status : Terminal.App.Text_Shaper.Backend_Status;
-   begin
-      R.CW := 8;
-      R.CH := 16;
-      R.Glyph_Count := 0;
-      R.Colour_Glyph_Count := 0;
-      R.Shaped_Glyph_Count := 0;
-      R.Shaping_Fallback_Count := 0;
-      R.Text_Fallback_Run_Count := 0;
-      R.Color_Glyph_Count := 0;
-      R.Color_Emoji_Fallback_Count := 0;
-      R.Paragraph_Bidi_Fallback_Count := 0;
-      R.Missing_Glyph_Count := 0;
-      R.Rectangle_Count := 0;
-      R.Vertex_Count := 0;
-      R.Last_Cell_Count := 0;
-      R.Last_Dirty_Rows := 0;
-      R.Last_Frame_Width := 0;
-      R.Last_Frame_Height := 0;
-      R.Atlas_Dirty := False;
-      R.Colour_Sheet_Dirty := False;
-
-      if Font_Path = "" then
-         R.Initialized := False;
-         R.Text_Loaded := False;
-         Status := Failed;
-         return;
-      end if;
-
-      Text_Status :=
-        Textrender.Load_Font
-          (R            => R.Text,
-           Path         => Font_Path,
-           Pixel_Size   => Pixel_Size,
-           Cell_Width   => R.CW,
-           Cell_Height  => R.CH,
-           Atlas_Width  => Atlas_Width,
-           Atlas_Height => Atlas_Height);
-
-      if Text_Status /= Textrender.Success then
-         R.Initialized := False;
-         R.Text_Loaded := False;
-         Status := Failed;
-         return;
-      end if;
-
-      Terminal.App.Text_Shaper.Configure_Font
-        (Path       => Font_Path,
-         Pixel_Size => Pixel_Size,
-         Status     => Shape_Backend_Status);
-
-      declare
-         Measured_CW : constant Positive :=
-           Measured_Cell_Width (R.Text, R.CW);
-      begin
-         if Measured_CW /= R.CW then
-            R.CW := Measured_CW;
-            Text_Status :=
-              Textrender.Load_Font
-                (R            => R.Text,
-                 Path         => Font_Path,
-                 Pixel_Size   => Pixel_Size,
-                 Cell_Width   => R.CW,
-                 Cell_Height  => R.CH,
-                 Atlas_Width  => Atlas_Width,
-                 Atlas_Height => Atlas_Height);
-
-            if Text_Status /= Textrender.Success then
-               R.Initialized := False;
-               R.Text_Loaded := False;
-               Status := Failed;
-               return;
-            end if;
-
-            Terminal.App.Text_Shaper.Configure_Font
-              (Path       => Font_Path,
-               Pixel_Size => Pixel_Size,
-               Status     => Shape_Backend_Status);
-         end if;
-      end;
-
-      Textrender.Set_Image_Decoder
-        (R      => R.Text,
-         Extent => Colour_PNG_Extent'Access,
-         Decode => Decode_Colour_PNG'Access);
-
-      R.CH := Positive'Max
-        (R.CH, Ceiling_Positive (Textrender.Line_Height (R.Text)));
-
-      for Path of Terminal.App.Fonts.Fallback_Font_Paths loop
-         declare
-            Fallback_Status : constant Textrender.Status_Code :=
-              Textrender.Add_Fallback_Font
-                (R    => R.Text,
-                 Path => Terminal.App.Fonts.To_String (Path));
-         begin
-            if Fallback_Status = Textrender.Success then
-               Terminal.App.Text_Shaper.Add_Fallback_Font
-                 (Path       => Terminal.App.Fonts.To_String (Path),
-                  Pixel_Size => Pixel_Size,
-                  Status     => Shape_Backend_Status);
-            end if;
-         end;
-      end loop;
-
-      declare
-         Ignored : constant Textrender.Status_Code :=
-           Textrender.Preload
-             (R     => R.Text,
-              First => 32,
-              Last  => 126);
-      begin
-         null;
-      end;
-
-      R.Initialized := True;
-      R.Text_Loaded := True;
-      R.Atlas_Dirty := Textrender.Atlas_Dirty (R.Text);
-      Status := Ok;
-   end Initialize_Text;
+   is separate;
 
    procedure Initialize
      (R       : out Renderer;
@@ -4876,150 +2319,19 @@ package body Terminal.App.Renderer is
       Bold      : Boolean;
       Italic    : Boolean;
       Status    : out Render_Status)
-   is
-      Metric       : Textrender.Glyph_Metric;
-      Glyph_Status : Textrender.Status_Code;
-      Placement : Textrender.Glyph_Placement;
-   begin
-      --  A codepoint the font holds as a picture leaves here as a tile rather
-      --  than a glyph: the glyph atlas is one coverage channel, with nowhere to
-      --  keep a colour. Tried first, because for such a codepoint the outline
-      --  lookup below has nothing to find.
-      if Add_Colour_Glyph (R, Codepoint, X, Y) then
-         R.Color_Glyph_Count := R.Color_Glyph_Count + 1;
-         Status := Ok;
-         return;
-      end if;
-
-      if Is_Emoji_Scalar (Codepoint) then
-         R.Color_Emoji_Fallback_Count := R.Color_Emoji_Fallback_Count + 1;
-      end if;
-
-      Glyph_Status :=
-        Textrender.Get_Glyph
-          (R     => R.Text,
-           C     => Textrender.Codepoint (Natural (Codepoint)),
-           M     => Metric,
-           Style =>
-             (if Italic then Textrender.Italic else Textrender.Regular));
-
-      case Glyph_Status is
-         when Textrender.Success | Textrender.Glyph_Missing =>
-            if Glyph_Status = Textrender.Glyph_Missing then
-               R.Missing_Glyph_Count := R.Missing_Glyph_Count + 1;
-            end if;
-
-            if Metric.W > 0 and then Metric.H > 0 then
-               Placement :=
-                 Textrender.Place_Glyph_In_Cell
-                   (R      => R.Text,
-                    M      => Metric,
-                    Cell_X => X,
-                    Cell_Y => Y);
-               Add_Glyph
-                 (R,
-                  Placement => Placement,
-                  Metric    => Metric,
-                  Color     => Color,
-                  Codepoint => Natural (Codepoint));
-               if Bold then
-                  Placement.X := Placement.X + 1.0;
-                  Add_Glyph
-                    (R,
-                     Placement => Placement,
-                     Metric    => Metric,
-                     Color     => Color,
-                     Codepoint => Natural (Codepoint));
-               end if;
-            end if;
-            Status := Ok;
-         when others =>
-            Status := Glyph_Load_Failed;
-      end case;
-   end Draw_Glyph;
+   is separate;
 
    function Draw_Emoji_Run_Color
      (R   : in out Renderer;
       Run : RM.Text_Run_Command)
       return Boolean
-   is
-      Pen_X  : Float := Run.X;
-      Drawn  : Natural := 0;
-      Missed : Natural := 0;
-   begin
-      if Run.Script /= RM.Script_Emoji then
-         return False;
-      end if;
-
-      for I in 1 .. Run.Codepoint_Count loop
-         declare
-            C : constant Terminal.Common.Code_Point :=
-              Terminal.Common.Code_Point (Run.Codepoints (I));
-         begin
-            if Is_Emoji_Scalar (C) then
-               if Add_Colour_Glyph (R, C, Pen_X, Run.Y) then
-                  R.Color_Glyph_Count := R.Color_Glyph_Count + 1;
-                  Drawn := Drawn + 1;
-                  Pen_X := Pen_X + Float (R.CW * 2);
-               else
-                  Missed := Missed + 1;
-               end if;
-            end if;
-         end;
-      end loop;
-
-      R.Color_Emoji_Fallback_Count :=
-        R.Color_Emoji_Fallback_Count + Missed;
-      return Drawn > 0;
-   end Draw_Emoji_Run_Color;
+   is separate;
 
    procedure Add_Link_Overlay
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
       Status   : out Render_Status)
-   is
-      Label : constant String :=
-        Terminal.App.Hyperlinks.Status_Label (R.Hovered_Link);
-      Count : constant Natural :=
-        Natural'Min
-          (Natural'Min (Label'Length, Max_Link_Overlay_Chars),
-           Snapshot.Cols);
-      X : constant Float := Float (Origin_X (R));
-      Y : constant Float :=
-        Float (Origin_Y (R) + (Snapshot.Rows - 1) * R.CH);
-   begin
-      if Count = 0 then
-         Status := Ok;
-         return;
-      end if;
-
-      Add_Rectangle
-        (R,
-         X      => X,
-         Y      => Y,
-         Width  => Float (Count * R.CW),
-         Height => Float (R.CH),
-         Color  => (R => 0.0, G => 0.0, B => 0.0, A => 0.92));
-
-      for Offset in 0 .. Count - 1 loop
-         Draw_Glyph
-           (R,
-            Codepoint =>
-              Terminal.Common.Code_Point
-                (Character'Pos (Label (Label'First + Offset))),
-            X      => X + Float (Offset * R.CW),
-            Y      => Y,
-            Color  => R.Color_Theme.Default_FG,
-            Bold   => False,
-            Italic => False,
-            Status => Status);
-         if Status /= Ok then
-            return;
-         end if;
-      end loop;
-
-      Status := Ok;
-   end Add_Link_Overlay;
+   is separate;
 
    procedure Draw_Label
      (R      : in out Renderer;
@@ -5073,284 +2385,13 @@ package body Terminal.App.Renderer is
       Snapshot     : Terminal.Core.Render_Snapshot;
       Show_Overlay : Boolean;
       Status       : out Render_Status)
-   is
-      First_Run : constant Positive := R.Text_Run_Count + 1;
-   begin
-      Build_Text_Runs (R, Snapshot);
-      Build_Shaped_Run_Map (R, Snapshot, First_Run);
-
-      for Row in 1 .. Snapshot.Rows loop
-         for Col in 1 .. Snapshot.Cols loop
-            declare
-               Cell : constant Terminal.Core.Cell :=
-                 Terminal.Core.Cell_At (Snapshot, Row, Col);
-               X    : constant Float :=
-                 Float (Origin_X (R) + (Col - 1) * R.CW);
-               Y    : constant Float :=
-                 Float (Origin_Y (R) + (Row - 1) * R.CH);
-               Cell_W : constant Positive :=
-                 (if Cell.Text.Width = Terminal.Core.Width_Two then R.CW * 2 else R.CW);
-               Cursor_Cell : constant Boolean := Is_Cursor_Cell (Snapshot, Row, Col);
-               Block_Cursor : constant Boolean :=
-                 Is_Block_Cursor (Snapshot, Row, Col);
-               FG : constant RM.Pixel_Color :=
-                 (if Block_Cursor
-                  then R.Color_Theme.Cursor_FG
-                  else Foreground (R, Cell));
-               BG : constant RM.Pixel_Color := Background (R, Cell);
-            begin
-               if Cell.Kind /= Terminal.Core.Wide_Continuation then
-                  Add_Rectangle
-                    (R,
-                     X      => X,
-                     Y      => Y,
-                     Width  => Float (Cell_W),
-                     Height => Float (R.CH),
-                     Color  => BG,
-                     Layer  =>
-                       (if Has_Non_Default_Background (Cell)
-                        then RM.Rectangle_Cell_Background
-                        else RM.Rectangle_Base_Background));
-                  if Cursor_Cell then
-                     case Snapshot.Cursor.Shape is
-                        when Terminal.Core.Cursor_Block =>
-                           Add_Rectangle
-                             (R,
-                              X      => X,
-                              Y      => Cursor_Block_Y (R, Y),
-                              Width  => Float (Cell_W),
-                              Height => Float (Cursor_Block_Height (R)),
-                              Color  => R.Color_Theme.Cursor_BG);
-                        when Terminal.Core.Cursor_Underline =>
-                           Add_Rectangle
-                             (R,
-                              X      => X,
-                              Y      =>
-                                Y + Float (R.CH - Cursor_Underline_Height (R)),
-                              Width  => Float (Cell_W),
-                              Height => Float (Cursor_Underline_Height (R)),
-                              Color  => R.Color_Theme.Cursor_BG);
-                        when Terminal.Core.Cursor_Bar =>
-                           Add_Rectangle
-                             (R,
-                              X      => X,
-                              Y      => Cursor_Block_Y (R, Y),
-                              Width  => Float (Cursor_Bar_Width (R)),
-                              Height => Float (Cursor_Block_Height (R)),
-                              Color  => R.Color_Theme.Cursor_BG);
-                     end case;
-                  end if;
-               end if;
-
-               if Is_Drawable (Cell) and then not Cell.Style.Conceal then
-                  declare
-                     Glyph_Render_Status : Render_Status;
-                     Run_Entry           : constant Shaped_Run_Map_Entry :=
-                       Shaped_Run_At (R, Snapshot.Cols, Row, Col);
-                  begin
-                     if Run_Entry.Starts_Here then
-                        if not Draw_Emoji_Run_Color
-                          (R, R.Text_Runs (Run_Entry.Run_Index))
-                        then
-                           Draw_Shaped_Run
-                             (R,
-                              Run    => R.Text_Runs (Run_Entry.Run_Index),
-                              Status => Glyph_Render_Status);
-                           if Glyph_Render_Status /= Ok then
-                              Status := Glyph_Render_Status;
-                              return;
-                           end if;
-                        end if;
-                     elsif Run_Entry.Run_Index = 0 then
-                        Draw_Glyph
-                          (R,
-                           Codepoint => Cell.Text.Code_Point,
-                           X         => X,
-                           Y         => Y,
-                           Color     => FG,
-                           Bold      => Cell.Style.Bold,
-                           Italic    => Cell.Style.Italic,
-                           Status    => Glyph_Render_Status);
-                        if Glyph_Render_Status /= Ok then
-                           Status := Glyph_Render_Status;
-                           return;
-                        end if;
-
-                        for I in 1 .. Cell.Text.Attachment_Count loop
-                           if Terminal.Core.Is_Renderable_Attachment
-                             (Cell.Text.Attachments (I))
-                           then
-                              Draw_Glyph
-                                (R,
-                                 Codepoint => Cell.Text.Attachments (I),
-                                 X         => X,
-                                 Y         => Y,
-                                 Color     => FG,
-                                 Bold      => Cell.Style.Bold,
-                                 Italic    => Cell.Style.Italic,
-                                 Status    => Glyph_Render_Status);
-                              if Glyph_Render_Status /= Ok then
-                                 Status := Glyph_Render_Status;
-                                 return;
-                              end if;
-                           end if;
-                        end loop;
-                     end if;
-                  end;
-
-                  if Cell.Style.Overline then
-                     Add_Rectangle
-                       (R,
-                        X      => X,
-                        Y      => Y,
-                        Width  => Float (Cell_W),
-                        Height => 1.0,
-                        Color  => FG);
-                  end if;
-
-                  if Cell.Style.Underline or else Is_Hovered_Link_Cell (R, Cell) then
-                     Add_Underline
-                       (R,
-                        (if Cell.Style.Underline
-                         then Cell.Style.Underline_Kind
-                         else Terminal.Core.Underline_Single),
-                        X,
-                        Y,
-                        Float (Cell_W),
-                        Underline_Color (R, Cell, FG));
-                  end if;
-
-                  if Cell.Style.Strikethrough then
-                     Add_Rectangle
-                       (R,
-                        X      => X,
-                        Y      => Y + Float (R.CH) / 2.0,
-                        Width  => Float (Cell_W),
-                        Height => 1.0,
-                        Color  => FG);
-                  end if;
-               end if;
-            end;
-         end loop;
-      end loop;
-
-      Synchronize_Graphics_Screen (R, Snapshot);
-      if Snapshot.Graphics.Pending then
-         Synchronize_Graphics_Scroll
-           (R, Snapshot, Snapshot.Graphics.Scroll_Sequence);
-      end if;
-      Add_Image (R, Snapshot.Graphics, Snapshot);
-      if R.Graphics_Event_Tracking_Failed then
-         Status := Allocation_Failed;
-         return;
-      end if;
-      Synchronize_Graphics_Screen (R, Snapshot);
-      Synchronize_Graphics_Scroll
-        (R, Snapshot, Snapshot.Graphics_Scroll_Current);
-      Add_Conventional_Images (R, Snapshot);
-      Add_Placeholder_Images (R, Snapshot);
-      if R.Graphics_Event_Tracking_Failed then
-         Status := Allocation_Failed;
-         return;
-      end if;
-
-      if Show_Overlay then
-         Add_Link_Overlay (R, Snapshot, Status);
-      else
-         Status := Ok;
-      end if;
-   end Draw_Snapshot_Into;
+   is separate;
 
    procedure Draw_Shaped_Run
      (R      : in out Renderer;
       Run    : RM.Text_Run_Command;
       Status : out Render_Status)
-   is
-      Pen_X : Float :=
-        (if Run.Direction = RM.Direction_Right_To_Left
-         then Run.X + Run.Cell_Width * Float (Run.Cell_Span)
-         else Run.X);
-   begin
-      if Run.Shape_Status /= RM.Shape_Ok
-        or else Run.Fallback_Glyphs
-        or else Run.Shaped_Glyph_Count = 0
-      then
-         Status := Glyph_Load_Failed;
-         return;
-      end if;
-
-      for I in 1 .. Run.Shaped_Glyph_Count loop
-         declare
-            Glyph : constant RM.Shaped_Glyph_Command := Run.Shaped_Glyphs (I);
-            Advance_X : constant Float := Glyph.X_Advance;
-            Step_X    : constant Float :=
-              (if Run.Direction = RM.Direction_Right_To_Left
-                 and then Advance_X > 0.0
-               then -Advance_X
-               else Advance_X);
-            Glyph_X   : constant Float :=
-              (if Run.Direction = RM.Direction_Right_To_Left
-               then Pen_X + Step_X
-               else Pen_X);
-            Metric : Textrender.Glyph_Metric;
-            Glyph_Status : constant Textrender.Status_Code :=
-              Textrender.Get_Glyph_By_Index
-                (R           => R.Text,
-                 Glyph_Index => Glyph.Glyph_ID,
-                 M           => Metric,
-                 Font_Index  => Glyph.Font_Index,
-                 Style       =>
-                   (if Run.Italic then Textrender.Italic else Textrender.Regular));
-         begin
-            case Glyph_Status is
-               when Textrender.Success | Textrender.Glyph_Missing =>
-                  if Glyph_Status = Textrender.Glyph_Missing then
-                     R.Missing_Glyph_Count := R.Missing_Glyph_Count + 1;
-                  end if;
-
-                  if Metric.W > 0 and then Metric.H > 0 then
-                     declare
-                        Baseline_Y : constant Float :=
-                          Run.Y + Textrender.Ascent (R.Text);
-                        Placement  : Textrender.Glyph_Placement :=
-                          (X => Glyph_X + Glyph.X_Offset + Metric.Bearing_X,
-                           Y =>
-                             Baseline_Y
-                             - Metric.Bearing_Y
-                             - Glyph.Y_Offset);
-                     begin
-                        Add_Glyph
-                          (R,
-                           Placement => Placement,
-                           Metric    => Metric,
-                           Color     => Run.Color,
-                           Codepoint => Glyph.Codepoint);
-                        if Run.Bold then
-                           Placement.X := Placement.X + 1.0;
-                           Add_Glyph
-                             (R,
-                              Placement => Placement,
-                              Metric    => Metric,
-                              Color     => Run.Color,
-                              Codepoint => Glyph.Codepoint);
-                        end if;
-                     end;
-                  end if;
-               when others =>
-                  Status := Glyph_Load_Failed;
-                  return;
-            end case;
-
-            if Run.Direction = RM.Direction_Right_To_Left then
-               Pen_X := Glyph_X;
-            else
-               Pen_X := Pen_X + Step_X;
-            end if;
-         end;
-      end loop;
-
-      Status := Ok;
-   end Draw_Shaped_Run;
+   is separate;
 
    function Is_Shaped_Draw_Run (Run : RM.Text_Run_Command) return Boolean is
      (Run.Shape_Status = RM.Shape_Ok
@@ -5361,48 +2402,7 @@ package body Terminal.App.Renderer is
      (R         : in out Renderer;
       Snapshot  : Terminal.Core.Render_Snapshot;
       First_Run : Positive)
-   is
-      Cell_Count : constant Natural := Snapshot.Rows * Snapshot.Cols;
-   begin
-      if R.Shaped_Run_Map = null
-        or else R.Shaped_Run_Map'Length < Cell_Count
-      then
-         return;
-      end if;
-
-      R.Shaped_Run_Map (1 .. Cell_Count) := (others => <>);
-      for I in First_Run .. R.Text_Run_Count loop
-         if Is_Shaped_Draw_Run (R.Text_Runs (I)) then
-            declare
-               Run : RM.Text_Run_Command renames R.Text_Runs (I);
-               Row_Number : constant Integer :=
-                 Integer
-                   ((Run.Y - Float (Origin_Y (R))) / Float (R.CH)) + 1;
-               Start_Column : constant Integer :=
-                 Integer
-                   ((Run.X - Float (Origin_X (R))) / Float (R.CW)) + 1;
-            begin
-               if Row_Number in 1 .. Snapshot.Rows
-                 and then Start_Column in 1 .. Snapshot.Cols
-               then
-                  declare
-                     Row : constant Positive := Positive (Row_Number);
-                     First_Col : constant Positive := Positive (Start_Column);
-                     Last_Col : constant Positive := Positive'Min
-                       (Snapshot.Cols, First_Col + Run.Cell_Span - 1);
-                  begin
-                     for Col in First_Col .. Last_Col loop
-                        R.Shaped_Run_Map
-                          ((Row - 1) * Snapshot.Cols + Col) :=
-                            (Run_Index   => I,
-                             Starts_Here => Col = First_Col);
-                     end loop;
-                  end;
-               end if;
-            end;
-         end if;
-      end loop;
-   end Build_Shaped_Run_Map;
+   is separate;
 
    function Shaped_Run_At
      (R : Renderer;
@@ -5497,184 +2497,9 @@ package body Terminal.App.Renderer is
    procedure Release_Graphics_Stream
      (R         : in out Renderer;
       Stream_ID : Terminal.Core.Graphics_Stream_ID)
-   is
-      Object_Current : Image_Object_Access :=
-        Terminal.App.Image_Store.First (R.Image_Objects);
-      Object_Next : Image_Object_Access;
-      Palette_Previous : Sixel_Palette_Entry_Access := null;
-      Palette_Current : Sixel_Palette_Entry_Access := R.Sixel_Palettes;
-      Staged_Previous : Staged_Graphics_Event_Access := null;
-      Staged_Current : Staged_Graphics_Event_Access :=
-        R.Staged_Graphics_Events;
-   begin
-      --  Image commands borrow decoded storage from retained image objects.
-      --  Invalidate the current frame before releasing any object owned by
-      --  this stream so diagnostics and callers cannot dereference stale
-      --  preview pointers between stream teardown and the next render.
-      Reset_Frame (R);
+   is separate;
 
-      Delete_Virtual_Placements (R, Stream_ID, 0);
-      Delete_Conventional_Placements
-        (R, Stream_ID, 0, Match_Protocol => False);
-
-      while Object_Current /= null loop
-         Object_Next :=
-           Terminal.App.Image_Store.Next_Object
-             (Object_Current);
-         if Object_Current.Stream_ID = Stream_ID then
-            Delete_Image_Object_By_Storage_Order
-              (R, Stream_ID, Object_Current.Storage_Order);
-         end if;
-         Object_Current := Object_Next;
-      end loop;
-
-      declare
-         Kept : Natural := 0;
-      begin
-         for I in 1 .. R.Processed_Graphics_Event_Count loop
-            if R.Processed_Graphics_Events (I).Stream_ID /= Stream_ID then
-               Kept := Kept + 1;
-               if Kept /= I then
-                  R.Processed_Graphics_Events (Kept) :=
-                    R.Processed_Graphics_Events (I);
-               end if;
-            end if;
-         end loop;
-         for I in Kept + 1 .. R.Processed_Graphics_Event_Count loop
-            R.Processed_Graphics_Events (I) := (others => <>);
-         end loop;
-         R.Processed_Graphics_Event_Count := Kept;
-      end;
-
-      while Palette_Current /= null loop
-         declare
-            Palette_Next : constant Sixel_Palette_Entry_Access :=
-              Palette_Current.Next;
-         begin
-            if Palette_Current.Stream_ID = Stream_ID then
-               if Palette_Previous = null then
-                  R.Sixel_Palettes := Palette_Next;
-               else
-                  Palette_Previous.Next := Palette_Next;
-               end if;
-               Free_Sixel_Palette_Entry (Palette_Current);
-            else
-               Palette_Previous := Palette_Current;
-            end if;
-            Palette_Current := Palette_Next;
-         end;
-      end loop;
-
-      while Staged_Current /= null loop
-         declare
-            Staged_Next : constant Staged_Graphics_Event_Access :=
-              Staged_Current.Next;
-         begin
-            if Staged_Current.Stream_ID = Stream_ID then
-               if Staged_Previous = null then
-                  R.Staged_Graphics_Events := Staged_Next;
-               else
-                  Staged_Previous.Next := Staged_Next;
-               end if;
-               if Staged_Current.Payload /= null then
-                  Free_String (Staged_Current.Payload);
-               end if;
-               Free_Staged_Graphics_Event (Staged_Current);
-            else
-               Staged_Previous := Staged_Current;
-            end if;
-            Staged_Current := Staged_Next;
-         end;
-      end loop;
-   end Release_Graphics_Stream;
-
-   overriding procedure Finalize (R : in out Renderer) is
-      Palette : Sixel_Palette_Entry_Access := R.Sixel_Palettes;
-      Next : Sixel_Palette_Entry_Access;
-      Cleanup_Failed : Boolean := False;
-
-      procedure Release_Frame_Safely is
-      begin
-         Release_Frame (R);
-      exception
-         when others =>
-            Cleanup_Failed := True;
-      end Release_Frame_Safely;
-
-      procedure Release_Images_Safely is
-      begin
-         Release_Image_Objects (R);
-      exception
-         when others =>
-            Cleanup_Failed := True;
-      end Release_Images_Safely;
-
-      procedure Release_Events_Safely is
-      begin
-         Commit_Graphics_Events (R);
-      exception
-         when others =>
-            Cleanup_Failed := True;
-      end Release_Events_Safely;
-
-      procedure Release_Text_Safely is
-      begin
-         Textrender.Reset (R.Text);
-      exception
-         when others =>
-            Cleanup_Failed := True;
-      end Release_Text_Safely;
-   begin
-      if not R.Needs_Finalization then
-         R.Closed := True;
-         return;
-      end if;
-      --  Close the public state immediately, but keep the finalization guard
-      --  armed until every independent cleanup step has completed.  An
-      --  explicit Finalize followed by automatic finalization can therefore
-      --  retry a partially failed cleanup without permitting new allocations.
-      R.Closed := True;
-      R.Initialized := False;
-      Release_Frame_Safely;
-      Release_Images_Safely;
-      Release_Events_Safely;
-      while Palette /= null loop
-         Next := Palette.Next;
-         Free_Sixel_Palette_Entry (Palette);
-         Palette := Next;
-      end loop;
-      R.Sixel_Palettes := null;
-      Release_Text_Safely;
-      if not Cleanup_Failed then
-         R.Needs_Finalization := False;
-      end if;
-      R.Has_Context := False;
-      R.Text_Loaded := False;
-      R.Glyph_Count := 0;
-      R.Colour_Glyph_Count := 0;
-      R.Text_Run_Count := 0;
-      R.Shaped_Glyph_Count := 0;
-      R.Shaping_Fallback_Count := 0;
-      R.Text_Fallback_Run_Count := 0;
-      R.Color_Glyph_Count := 0;
-      R.Color_Emoji_Fallback_Count := 0;
-      R.Paragraph_Bidi_Fallback_Count := 0;
-      R.Vertex_Count := 0;
-      R.Missing_Glyph_Count := 0;
-      R.Target_Frame_Width := 0;
-      R.Target_Frame_Height := 0;
-      R.Hovered_Link := (others => <>);
-      R.Atlas_Dirty := False;
-      R.Colour_Sheet_Dirty := False;
-      R.Last_Render_Status := Not_Initialized;
-   exception
-      when others =>
-         --  Finalization must never mask the exception that caused scope
-         --  unwinding.  Keep Needs_Finalization armed for a possible explicit
-         --  retry, but permanently close the public object.
-         R.Closed := True;
-         R.Initialized := False;
-   end Finalize;
+   overriding procedure Finalize (R : in out Renderer) is separate;
 
    procedure Present
      (R         : Renderer;
@@ -5726,106 +2551,7 @@ package body Terminal.App.Renderer is
       return Result;
    end Image_Preview;
 
-   function Diagnostics (R : Renderer) return Renderer_Diagnostics is
-      Image_Count : constant Natural := Frame_Image_Count (R);
-      Has_Image : constant Boolean := Image_Count > 0;
-      Last_Image : constant RM.Image_Command :=
-        (if Has_Image
-         then FIS.Element (R.Frame_Images, Positive (Image_Count))
-         else (others => <>));
-   begin
-      return
-        (Initialized          => R.Initialized,
-         Text_Loaded          => R.Text_Loaded,
-         Last_Cell_Count      => R.Last_Cell_Count,
-         Last_Dirty_Rows      => R.Last_Dirty_Rows,
-         Last_Rectangle_Count => R.Rectangle_Count,
-         Last_Glyph_Count     => R.Glyph_Count,
-         Last_Image_Count     => Image_Count,
-         Rectangle_Command_Capacity =>
-           (if R.Rectangles = null then 0 else R.Rectangles'Length),
-         Image_Command_Capacity =>
-           Frame_Image_Capacity (R),
-         Last_Image_Protocol  =>
-           (if Has_Image then Last_Image.Protocol
-            else Terminal.App.Render_Model.Image_Sixel),
-         Last_Image_Width =>
-           (if Has_Image then Natural (Last_Image.Width) else 0),
-         Last_Image_Height =>
-           (if Has_Image then Natural (Last_Image.Height) else 0),
-         Last_Image_Raw_Format =>
-           (if Has_Image then Last_Image.Raw_Format else 0),
-         Last_Image_Pixel_Width =>
-           (if Has_Image then Last_Image.Pixel_Width else 0),
-         Last_Image_Pixel_Height =>
-           (if Has_Image then Last_Image.Pixel_Height else 0),
-         Last_Image_Payload_Length =>
-           (if Has_Image then Last_Image.Payload_Length else 0),
-         Last_Image_Staging_Byte_Length =>
-           (if Has_Image then Last_Image.Staging_Byte_Length
-            else 0),
-         Last_Image_Payload_Preview_Complete =>
-           Has_Image
-           and then Last_Image.Payload_Preview_Complete,
-         Last_Image_Encoded_Preview_Length =>
-           (if Has_Image then Last_Image.Encoded_Preview_Length
-            else 0),
-         Last_Image_Decoded_Preview_Length =>
-           (if Has_Image then Last_Image.Decoded_Preview_Length
-            else 0),
-         Last_Image_Decoded_Preview_Bytes =>
-           (if Has_Image then Image_Preview (Last_Image)
-            else (others => 0)),
-         Last_Image_Preview_Decode_Complete =>
-           Has_Image and then Last_Image.Preview_Decode_Complete,
-         Last_Image_Decode_Status =>
-           (if Has_Image then Last_Image.Decode_Status
-            else RM.Image_Decode_Not_Attempted),
-         Last_Media_Decode_Attempted => R.Last_Media.Attempted,
-         Last_Media_Decode_Status => R.Last_Media.Status,
-         Last_Media_Diagnostic => R.Last_Media.Error,
-         Last_Media_Adapter_Buffer_Bytes =>
-           R.Last_Media.Adapter_Buffer_Bytes,
-         Last_Media_Decoder_Configured_Bytes =>
-           R.Last_Media.Decoder_Configured_Bytes,
-         Last_Media_Warning_Count => R.Last_Media.Warning_Count,
-         Last_Media_First_Warning => R.Last_Media.First_Warning,
-         Last_Image_Placeholder =>
-           Has_Image and then Last_Image.Placeholder,
-         Image_Object_Count => Stored_Image_Count (R),
-         Image_Object_Bytes => Stored_Image_Bytes (R),
-         Placement_Count => R.Kitty_Placement_Count,
-         Kitty_Image_Object_Count => Stored_Image_Count (R),
-         Kitty_Image_Object_Bytes => Stored_Image_Bytes (R),
-         Kitty_Placement_Count => R.Kitty_Placement_Count,
-         Kitty_Animation_Frame_Count => Stored_Animation_Frame_Count (R),
-         Graphics_Event_Count => R.Graphics_Event_Count,
-         Kitty_Command_Count => R.Kitty_Command_Count,
-         Kitty_Success_Count => R.Kitty_Success_Count,
-         Kitty_Error_Count => R.Kitty_Error_Count,
-         Image_Install_Count => R.Image_Install_Count,
-         Image_Installed_Bytes => R.Image_Installed_Bytes,
-         Image_Eviction_Count => R.Image_Eviction_Count,
-         Placement_Create_Count => R.Placement_Create_Count,
-         Placement_Delete_Count => R.Placement_Delete_Count,
-         Transport_Failure_Count => R.Transport_Failure_Count,
-         Decode_Failure_Count => R.Decode_Failure_Count,
-         Allocation_Failure_Count => R.Allocation_Failure_Count,
-         Animation_Advance_Count => R.Animation_Advance_Count,
-         Chunk_Cancel_Count => R.Chunk_Cancel_Count,
-         Last_Text_Run_Count  => R.Text_Run_Count,
-         Last_Shaped_Glyph_Count => R.Shaped_Glyph_Count,
-         Last_Shaping_Fallback_Count => R.Shaping_Fallback_Count,
-         Last_Text_Fallback_Run_Count => R.Text_Fallback_Run_Count,
-         Last_Color_Glyph_Count => R.Color_Glyph_Count,
-         Last_Color_Emoji_Fallback_Count => R.Color_Emoji_Fallback_Count,
-         Last_Paragraph_Bidi_Fallback_Count =>
-           R.Paragraph_Bidi_Fallback_Count,
-         Last_Vertex_Count    => R.Vertex_Count,
-         Missing_Glyph_Count  => R.Missing_Glyph_Count,
-         Atlas_Dirty          => R.Atlas_Dirty,
-         Last_Render_Status   => R.Last_Render_Status);
-   end Diagnostics;
+   function Diagnostics (R : Renderer) return Renderer_Diagnostics is separate;
 
    function Color_Emoji_Status_Label
      (Diagnostics : Renderer_Diagnostics) return String is

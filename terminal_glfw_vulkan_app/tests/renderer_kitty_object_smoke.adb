@@ -322,8 +322,15 @@ begin
    Reset;
 
    Process ("Gf=32,a=t,i=91,s=1,v=1;/wAA/w==", "explicit store");
-   Process ("Ga=p,i=91,C=1,c=1,r=1;", "first implicit placement");
-   Process ("Ga=p,i=91,C=1,c=1,r=1;", "second implicit placement");
+   Process
+     ("Ga=p,i=91,C=1,c=2147483647,r=2147483647;",
+      "overflowing placement geometry",
+      Terminal.Core.Kitty_EINVAL);
+   for I in 1 .. 12 loop
+      Process
+        ("Ga=p,i=91,C=1,c=1,r=1;",
+         "overlapping implicit placement" & I'Image);
+   end loop;
    Render_Retained ("implicit placement retained render");
    declare
       Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
@@ -332,8 +339,9 @@ begin
         Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
-        (Diagnostics.Kitty_Placement_Count = 2 and then Frame.Image_Count = 2,
-         "each p=0 command creates a distinct placement");
+        (Diagnostics.Kitty_Placement_Count = 12
+         and then Frame.Image_Count = 12,
+         "all overlapping p=0 placements fit in the frame command budget");
    end;
 
    Reset;

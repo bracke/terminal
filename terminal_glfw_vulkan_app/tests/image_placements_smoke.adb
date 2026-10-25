@@ -7,10 +7,12 @@ with Terminal.App.Image_Store;
 with Terminal.App.Placeholder_Index;
 with Terminal.App.Render_Model;
 with Terminal.Common.Bytes;
+with Terminal.Core;
 
 procedure Image_Placements_Smoke is
    use AUnit.Assertions;
    use type Terminal.App.Image_Placements.Virtual_Placement_Access;
+   use type Terminal.App.Image_Placements.Conventional_Placement_Access;
    use type Terminal.App.Image_Store.Image_Object_Access;
 
    Header : Terminal.App.Graphics.Graphics_Header :=
@@ -59,6 +61,10 @@ begin
         new Placements.Virtual_Placement'
           (Stream_ID => 9, Image_ID => 7, Placement_ID => 1,
            Image_Storage_Order => 1, others => <>);
+      Conventional : Placements.Conventional_Placement_Access :=
+        new Placements.Conventional_Placement'
+          (Stream_ID => 9, Image_ID => 7, Placement_ID => 4,
+           Image_Storage_Order => 1, others => <>);
       Images : Store.Store;
       Object : Store.Image_Object_Access;
       Data : Terminal.App.Render_Model.Image_Data_Access :=
@@ -66,6 +72,9 @@ begin
       procedure Free is new Ada.Unchecked_Deallocation
         (Placements.Virtual_Placement,
          Placements.Virtual_Placement_Access);
+      procedure Free is new Ada.Unchecked_Deallocation
+        (Placements.Conventional_Placement,
+         Placements.Conventional_Placement_Access);
    begin
       Head.Next := Older;
       Store.Create_Object (Object);
@@ -81,17 +90,46 @@ begin
          Index : Terminal.App.Placeholder_Index.Index;
       begin
          Terminal.App.Placeholder_Index.Build
-           (Index, Head, Images, 9, False, 0);
+           (Index, Head, Conventional, Images);
          Assert
            (Terminal.App.Placeholder_Index.Find_Placement
-              (Index, 7, 0) = Head
+              (Index, 9, False, 0, 7, 0) = Head
             and then Terminal.App.Placeholder_Index.Find_Placement
-              (Index, 7, 1) = Older,
+              (Index, 9, False, 0, 7, 1) = Older,
             "placeholder index preserves newest fallback and exact IDs");
          Assert
-           (Terminal.App.Placeholder_Index.Find_Object (Index, 1) = Object,
+           (Terminal.App.Placeholder_Index.Find_Object (Index, 9, 1) = Object,
             "placeholder index resolves image storage order");
+         Assert
+           (Terminal.App.Placeholder_Index.Find_Conventional
+              (Index, 9, False, 0, 7, 4) = Conventional,
+            "placeholder index resolves conventional placements");
+
+         declare
+            Cells : aliased Terminal.Core.Cell_Array :=
+              (1 .. 4 => (others => <>));
+            Snapshot : Terminal.Core.Render_Snapshot :=
+              (Rows => 2, Cols => 2, Graphics_Stream => 9, others => <>);
+            Row : Integer;
+            Col : Integer;
+         begin
+            Cells (2).Image :=
+              (Is_Placeholder => True,
+               Image_ID_Valid => True,
+               Image_ID       => 7,
+               Placement_ID   => 2,
+               others         => <>);
+            Snapshot.Cells := Cells'Unchecked_Access;
+            Terminal.App.Placeholder_Index.Index_Cells (Index, Snapshot);
+            Assert
+              (Terminal.App.Placeholder_Index.Find_Origin
+                 (Index, 9, False, 0, 7, 2, Row, Col)
+               and then Row = 1
+               and then Col = 2,
+               "placeholder origins are indexed once per snapshot");
+         end;
       end;
+      Free (Conventional);
       Free (Older);
       Free (Head);
    end;

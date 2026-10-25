@@ -73,6 +73,14 @@ The app render pipeline is staged:
    Vulkan image, records a render pass, submits, presents through the swapchain,
    detects stale swapchains, and records presentation diagnostics.
 
+`Terminal.App.Renderer` keeps one private state owner, but its implementation is
+partitioned into Ada subunits by responsibility. Frame orchestration remains in
+the parent body; protocol-event application, placement lifecycle, retained-image
+emission, text shaping and glyph drawing, diagnostics, and teardown live in
+named subunits. This preserves direct access to the renderer's invariants without
+introducing another crate or exposing backend types, while keeping each state
+transition independently reviewable.
+
 Renderer command arrays and Vulkan submission arrays retain their capacity
 between frames and grow geometrically when the grid requires more space. Image
 commands borrow a bounded diagnostic-preview source rather than embedding a
@@ -454,17 +462,24 @@ for every coalescing candidate; full records are built only for emitted runs.
 After shaping, the renderer builds a retained cell-to-run map once per pane.
 Glyph emission uses constant-time map lookups instead of scanning every shaped
 run twice for each drawable cell, keeping the pass linear in cells plus runs.
-`Terminal.App.Placeholder_Index` builds frame-local hashed indexes for visible
-virtual placements and their image objects. Every Unicode placeholder cell therefore performs
-constant-time identity and storage-order lookups, including interleaved cells;
-the pass is linear in placements, objects, and cells rather than multiplying
-the cell count by retained linked-list lengths.
+`Terminal.App.Placeholder_Index` retains renderer-wide hashed indexes for image
+objects plus virtual and conventional placements across streams and screens.
+Graphics mutations invalidate the index; the renderer rebuilds it once before
+the next retained-image pass rather than once per pane. A per-snapshot origin
+epoch indexes placeholder anchors in one cell scan. Placeholder resolution,
+object lookup, and every step of a relative-placement chain are then constant
+time, so the pass remains linear in placements, objects, cells, and parent-chain
+length rather than multiplying those dimensions.
 Core snapshots count placeholder cells while copying their retained cell array.
 Frames without placeholders therefore skip the renderer's additional image-cell
 scan, while scrollback views refresh the count during their existing row copy.
 Vulkan submission keeps a retained image-index array and sorts it once by
 z-index, image ID, and source order. The three image layers then traverse that
 order linearly instead of independently selection-sorting every image tile.
+Frame-command capacities are computed with overflow-checked arithmetic from
+the number of cells, retained placements, panes, and the maximum segmented
+underline cost. Exhausting any command array fails the frame explicitly instead
+of publishing a partially rendered frame.
 If acquire or present reports a stale swapchain or device loss, the presenter is
 finalized and reconstructed on the main thread with the current framebuffer
 size. Reconstruction includes physical-device selection and every logical

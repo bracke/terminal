@@ -46,7 +46,11 @@ begin
      (Description, Copy, Operation);
    return True;
 exception
-   when Storage_Error | Constraint_Error =>
+   when Storage_Error =>
+      Free_Image_Data (Copy);
+      Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Operation);
+      raise;
+   when Constraint_Error =>
       Free_Image_Data (Copy);
       Terminal.App.Image_Store.Release_Unowned_Theme_Operations (Operation);
       return False;
