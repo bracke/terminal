@@ -455,21 +455,6 @@ begin
    end;
 
    declare
-      Transaction : Terminal.App.Image_Store.Install_Transaction;
-      Order : Interfaces.Unsigned_64;
-   begin
-      Terminal.App.Image_Store.Record_Install (Transaction, 42);
-      Terminal.App.Image_Store.Take_Rollback_Order (Transaction, Order);
-      Assert (Order = 42, "install transaction exposes rollback order once");
-      Terminal.App.Image_Store.Take_Rollback_Order (Transaction, Order);
-      Assert (Order = 0, "install transaction rollback is idempotent");
-      Terminal.App.Image_Store.Record_Install (Transaction, 43);
-      Terminal.App.Image_Store.Commit (Transaction);
-      Terminal.App.Image_Store.Take_Rollback_Order (Transaction, Order);
-      Assert (Order = 0, "committed install has no rollback order");
-   end;
-
-   declare
       Diagnostics : Rendering.Media_Diagnostics :=
         (Attempted => True,
          Status => Terminal.App.Image_Decode.Decode_Invalid_Data,

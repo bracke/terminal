@@ -12,12 +12,14 @@ package Terminal.App.Session_Runtime is
      (Ok,
       Core_Init_Failed,
       Spawn_Failed,
-      Allocation_Failed);
+      Allocation_Failed,
+      Cleanup_Failed);
 
    type Runtime_Status is
      (Inactive,
       Active,
       Exited,
+      Cleanup_Pending,
       Closed);
 
    type Runtime is limited private;

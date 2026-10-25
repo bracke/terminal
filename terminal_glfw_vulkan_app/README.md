@@ -20,8 +20,8 @@ type, `Terminal.App.Image_Ingestion` owns payload boundaries, encoded-source
 copies, and iTerm2 size resolution, while `Terminal.App.Image_Store` owns
 private image-object linkage, content
 release, replacement-aware object counts, allocation-backed frame/byte accounting,
-serial allocation, atomic root/indexed-buffer ownership transfer, install
-transactions, and allocation controls,
+serial allocation, atomic root/indexed-buffer ownership transfer, controlled
+rollback guards, and allocation controls;
 `Terminal.App.Image_Placements` resolves crop and cell
 geometry, and `Terminal.App.Image_Rendering` owns media admission and bounded
 structured decoder diagnostics. `Terminal.App.Image_Colors` owns xterm/Kitty
@@ -52,8 +52,16 @@ streaming PNG row decoder, theme history/replay operations, and Vulkan staging
 resource transaction are separate Ada subunits. This keeps the primary
 graphics, renderer, and device bodies navigable while preserving private-state
 access and crate boundaries. The single-pane/multi-pane renderer entry points
-and the main-loop runtime controller are subunits for the same reason. Frame
-reset, capacity growth, release, and immutable frame
+and the main-loop runtime controller are subunits for the same reason; backend
+polling and framebuffer resize are separate frame phases. Text, inline-image,
+and colour-glyph textures use the same parameterized Vulkan staging pipeline.
+Frame reset, capacity growth, release, and immutable frame
 view publication are likewise isolated as renderer subunits; image command
 ownership remains centralized in `Terminal.App.Frame_Image_Storage` through an
 atomic command-and-buffer append API.
+
+Session runtimes and the runtime table are controlled owners. Cleanup failures
+remain visible as `Cleanup_Pending`, prevent restart or deallocation from
+overwriting live resources, and are reported by finalization rather than being
+silently converted to a closed state. Runtime diagnostic labels are grouped in
+one bounded `Runtime_Statuses` value at the collection boundary.

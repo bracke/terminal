@@ -63,7 +63,10 @@ Session runtimes and the runtime table are also limited controlled owners. A
 runtime closes its queue, PTY, reader task, and terminal core independently so
 one failed cleanup step cannot prevent the remaining releases. Table teardown
 continues across every live session and is safe to invoke explicitly before the
-automatic finalization performed during scope unwinding.
+automatic finalization performed during scope unwinding. A failed release leaves
+the runtime in `Cleanup_Pending`; restart and table removal refuse to overwrite
+the retained owner, and finalization reports incomplete cleanup instead of
+silently marking leaked resources closed.
 
 The app render pipeline is staged:
 
@@ -111,6 +114,9 @@ renderer finalization. Submission copies compact borrowed descriptors for the
 synchronous upload path; every renderer frame reset invalidates those
 descriptors before releasing or replacing their backing storage. The
 renderer does not publish those borrowed views as a production query API.
+Submission source validation is shared outside `Build`, while bounded image
+atlas admission, scaling, layout, and content-signature construction live in a
+dedicated `Prepare_Image_Atlas` Ada subunit.
 White-box tests access them through `Terminal.App.Renderer.Testing`, whose spec
 and body live only in the test project's source directory.
 
@@ -126,9 +132,13 @@ initialization so the shader sampler binding is always valid. Dirty
 `textrender` atlas batches replace that image through a bounded staging upload.
 Atlas-resource upload and per-frame image-atlas construction are separate Ada
 subunits, keeping their staging and rollback transactions out of the device
-orchestration body.
+orchestration body. Text-atlas, inline-image, and colour-glyph uploads share one
+format-parameterized staging, copy, fence-retirement, and descriptor-update
+pipeline; slot-specific commit logic owns only the final device fields.
 
-The main-loop input dispatcher delegates key, character, mouse-button,
+The main-loop frame controller delegates backend polling and framebuffer/grid
+resize transitions to nested Ada subunits and centralizes presenter recovery in
+one status handler. The input dispatcher delegates key, character, mouse-button,
 cursor-motion, and scroll events to nested Ada subunits. The dispatcher owns
 only event routing and the final PTY write, while each handler owns the state
 transitions specific to its event kind.
@@ -215,7 +225,7 @@ Base64 command first.
 `Terminal.App.Image_Store` owns private object-list
 linkage, replacement-aware object counts, allocation-backed byte/frame accounting,
 storage/content serial allocation, object lookup and release, allocation
-controls, install transaction state, and atomic ownership transfer for root and
+controls and atomic ownership transfer for root and
 indexed buffers. Renderer code can inspect image content through an object
 handle and access-to-constant byte views, but cannot splice owned lists, mutate
 or release store-owned content, or directly synchronize accounting. Frame,
@@ -223,7 +233,10 @@ theme-history, and image metadata are private and change only through checked
 store operations. Accounting totals are cached from the actual owned buffers
 and cached frame/theme-history totals, and therefore
 remain constant-time for quota checks; replacement transactions retain an exact
-pointer to the object being superseded. `Terminal.App.Image_Animation` owns
+pointer to the object being superseded. Theme-list adoption and append
+validation are separate store subunits, keeping alias checks and accounting
+rollback isolated from unrelated lookup and frame operations.
+`Terminal.App.Image_Animation` owns
 bounded playback timing, protocol-neutral control-state transitions, and loop
 semantics, and builds decoded animation frames before transferring the complete
 list to the store atomically. The renderer translates Kitty headers and result
@@ -254,7 +267,9 @@ failures; invariant exceptions are not converted into silent theme failures.
 Palette-sensitive animation edits append their replay operation provisionally
 before publishing changed pixels or frames. The store transaction rolls that
 append back if the subsequent mutation fails, so an allocation failure cannot
-leave live image data and replay history out of sync.
+leave live image data and replay history out of sync. Theme append transactions
+and renderer image-install guards are controlled owners: scope exit performs
+rollback automatically unless commit explicitly disarms the guard.
 Theme-history
 archiving uses a heap-backed operation vector and a hashed frame dependency
 set, making pruning linear in retained history rather than quadratic and
@@ -523,8 +538,8 @@ initialization, feed outcomes, and diagnostic summaries without taking a
 logging dependency; the app collects core, queue, renderer, and presenter
 snapshots and writes compact stderr diagnostics only when status or counters
 change. Runtime labels cross the collection boundary as one bounded
-`Runtime_Statuses` record, and change detection retains one complete prior
-snapshot instead of manually mirrored field storage. It compares the complete
+`Runtime_Statuses` record instead of a long positional parameter list. Change
+detection retains one complete prior snapshot and compares the complete
 renderer and core diagnostic snapshots, so adding one of those fields cannot
 silently omit it from refresh decisions. The main loop retains the last core
 feed outcome and PTY write outcome
@@ -582,12 +597,16 @@ main thread.
 A background Ada task reads PTY bytes and pushes bounded chunks into a
 protected queue. When that queue is full, the producer blocks rather than
 discarding terminal bytes; shutdown opens the entry and rejects the pending
-push so teardown cannot deadlock. The POSIX parent master is nonblocking, so
-the task can stop explicitly before the main thread closes the session. GLFW callbacks enqueue
+push so teardown cannot deadlock. Runtime teardown shuts down the queue and
+closes the PTY to wake blocked work, then joins the reader before releasing its
+queue. Any failed step remains owned as `Cleanup_Pending` and can be retried;
+restart and table removal do not overwrite it. GLFW callbacks enqueue
 compact input/window events. The main loop drains queues, feeds the core,
 writes PTY input through a bounded write-all helper with status labels for
 complete, incomplete, failed, and closed-session outcomes, retains an unwritten
-suffix across iterations, handles resize, snapshots, and renders.
+suffix across iterations, delegates backend polling and framebuffer/grid resize
+to named frame phases, snapshots, and renders. Presenter recovery is handled by
+one shared status path for retained and newly built frames.
 
 Input-event overflow is explicit: newest events are dropped, existing ordering
 is preserved, and overflow counters are exposed. PTY output instead applies

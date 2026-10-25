@@ -87,12 +87,20 @@ participate in explicit bounds. An upload first polls all frame fences and is
 deferred without blocking while shared descriptors or buffers are still in
 use. Atlas/image copies use a dedicated command buffer and transfer fence;
 replacement destroys the old resources only after those fences prove they are
-unused. Queue/device-idle synchronization is reserved for final device
+unused. R8 text-atlas and RGBA image/colour-glyph uploads share this validated
+staging and retirement path, with format and descriptor binding selected by the
+destination slot. Queue/device-idle synchronization is reserved for final device
 teardown. Device loss is propagated to the main loop, which
 preserves the window, PTYs, terminal state, and CPU-side image store while
 rebuilding the logical device and its dependent resources. Failed reconstruction
 attempts remain pending with exponential retry delays bounded at 128 loop ticks
 instead of terminating the application or spinning.
+
+Provisional image-store changes use controlled Ada rollback guards. Uncommitted
+object installation is deleted on scope exit, and an appended theme-replay
+operation is detached and released unless explicitly committed. Session cleanup
+similarly retains failed native owners in `Cleanup_Pending` rather than
+advertising a successful close or allowing restart to overwrite them.
 
 Diagnostics expose live object/byte/placement/frame counts; command, success,
 error, install, eviction, placement, animation, transport, decode, allocation,

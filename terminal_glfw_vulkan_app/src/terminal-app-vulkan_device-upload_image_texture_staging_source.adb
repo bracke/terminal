@@ -13,6 +13,8 @@ procedure Upload_Image_Texture_Staging_Source
       Capacity : Positive;
       Status : out Create_Status);
    Status        : out Create_Status;
+   Image_Format  : Vk.Format_T := Format_R8G8B8A8_Unorm;
+   Maximum_Bytes : Positive := Max_Image_Texture_Bytes;
    Content_Signature : Interfaces.Unsigned_64 := 0)
 is
    Image : aliased Vk.Image_T := System.Null_Address;
@@ -87,7 +89,7 @@ begin
       Source_Bytes_Per_Pixel => Source_Bytes_Per_Pixel,
       Row_Stride_Bytes       => Row_Stride_Bytes,
       Source_Bytes           => Bytes_Natural,
-      Maximum_Bytes          => Max_Image_Texture_Bytes,
+      Maximum_Bytes          => Maximum_Bytes,
       Result                 => Upload_Layout,
       Status                 => Layout_Status);
    if Layout_Status /= Terminal.App.Image_Upload_Layout.Layout_Ok then

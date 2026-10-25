@@ -104,7 +104,7 @@ is
       procedure Release_Local is
       begin
          Terminal.App.Image_Store.Rollback_Theme_Append
-           (R.Image_Objects, Theme_Transaction);
+           (Theme_Transaction);
          Terminal.App.Graphics.Release (Data);
          if Canvas /= null and then Canvas_Owned then
             Free_Image_Data (Canvas);

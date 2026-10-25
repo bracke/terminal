@@ -17,8 +17,12 @@ package body Terminal.App.Session_Table is
    procedure Release_Runtime (Slot : in out Runtime_Access) is
    begin
       if Slot /= null then
-         --  Runtime is controlled; deallocation invokes its exception-safe
-         --  finalizer exactly once before reclaiming the allocation.
+         Terminal.App.Session_Runtime.Close (Slot.all);
+         if Terminal.App.Session_Runtime.State (Slot.all) /=
+           Terminal.App.Session_Runtime.Closed
+         then
+            raise Program_Error with "session runtime cleanup is incomplete";
+         end if;
          Free_Runtime (Slot);
       end if;
    end Release_Runtime;
@@ -377,23 +381,25 @@ package body Terminal.App.Session_Table is
    end Status_Label;
 
    procedure Close_All (Table : in out Runtime_Table) is
+      Cleanup_Failed : Boolean := False;
    begin
       for I in Table.Runtimes'Range loop
          if Table.Runtimes (I) /= null then
             begin
                Release_Runtime (Table.Runtimes (I));
             exception
-               when others => null;
+               when others => Cleanup_Failed := True;
             end;
          end if;
       end loop;
+      if Cleanup_Failed then
+         raise Program_Error with "one or more session runtimes remain owned";
+      end if;
       Terminal.App.Sessions.Initialize (Table.Sessions);
    end Close_All;
 
    overriding procedure Finalize (Table : in out Runtime_Table) is
    begin
       Close_All (Table);
-   exception
-      when others => null;
    end Finalize;
 end Terminal.App.Session_Table;

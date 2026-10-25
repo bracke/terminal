@@ -49,82 +49,96 @@ package body Terminal.App.Session_Runtime is
          when Terminal.Core.Parser_Overflow  => 2,
          when Terminal.Core.Invalid_State    => 3);
 
-   procedure Stop_Reader (R : in out Runtime) is
+   function Has_Resources (R : Runtime) return Boolean is
+     (R.T /= null or else R.S /= null or else R.Q /= null
+      or else R.Reader /= null);
+
+   procedure Stop_Reader
+     (R       : in out Runtime;
+      Success : out Boolean)
+   is
    begin
+      Success := True;
       if R.Reader /= null then
          begin
             R.Reader.Stop;
          exception
             when Tasking_Error =>
                null;
+            when others =>
+               Success := False;
+               return;
          end;
          begin
             Free_Reader (R.Reader);
          exception
-            when others => null;
+            when others => Success := False;
          end;
       end if;
    end Stop_Reader;
 
    procedure Close (R : in out Runtime) is
+      Queue_Closed    : Boolean := True;
+      Session_Closed  : Boolean := True;
+      Reader_Stopped  : Boolean := True;
+      Core_Closed     : Boolean := True;
    begin
       if R.Q /= null then
          begin
             R.Q.Shut_Down;
          exception
-            when others => null;
+            when others => Queue_Closed := False;
          end;
       end if;
       if R.S /= null then
          begin
             Terminal.PTY.Backend.Close (R.S.all);
          exception
-            when others => null;
+            when others => Session_Closed := False;
          end;
       end if;
-      begin
-         Stop_Reader (R);
-      exception
-         when others => null;
-      end;
-      if R.S /= null then
+      Stop_Reader (R, Reader_Stopped);
+      if R.S /= null and then Session_Closed then
          begin
             Free_Session (R.S);
          exception
-            when others => null;
+            when others => Session_Closed := False;
          end;
       end if;
-      if R.Q /= null then
+      if R.Q /= null and then Queue_Closed and then Reader_Stopped then
          begin
             Free_Queue (R.Q);
          exception
-            when others => null;
+            when others => Queue_Closed := False;
          end;
       end if;
       if R.T /= null then
          begin
             Terminal.Core.Finalize (R.T.all);
          exception
-            when others => null;
+            when others => Core_Closed := False;
          end;
-         begin
-            Free_Core (R.T);
-         exception
-            when others => null;
-         end;
+         if Core_Closed then
+            begin
+               Free_Core (R.T);
+            exception
+               when others => Core_Closed := False;
+            end;
+         end if;
       end if;
       R.Size_Known := False;
       R.Pending_Write := (others => <>);
       R.Pending_Write_Offset := 1;
-      R.Current_State := Closed;
+      R.Current_State :=
+        (if Has_Resources (R) then Cleanup_Pending else Closed);
    end Close;
 
    overriding procedure Finalize (R : in out Runtime) is
    begin
       Close (R);
-   exception
-      when others =>
-         R.Current_State := Closed;
+      if R.Current_State /= Closed then
+         raise Program_Error with "session runtime finalization is incomplete";
+      end if;
    end Finalize;
 
    procedure Start
@@ -139,8 +153,15 @@ package body Terminal.App.Session_Runtime is
       Core_Status : Terminal.Core.Initialize_Status;
       Spawn_Status : Terminal.PTY.Backend.Spawn_Status;
    begin
-      if R.Current_State in Active | Exited then
+      if Has_Resources (R) then
          Close (R);
+      end if;
+
+      if Has_Resources (R) then
+         R.Current_State := Cleanup_Pending;
+         Status := Cleanup_Failed;
+         R.Last_Start := Status;
+         return;
       end if;
 
       R.T := new Terminal.Core.Terminal;
@@ -367,6 +388,8 @@ package body Terminal.App.Session_Runtime is
               & (if R.Q = null then "0" else Trim_Image (R.Q.Length));
          when Exited =>
             return "Session runtime exited";
+         when Cleanup_Pending =>
+            return "Session runtime cleanup pending";
          when Closed =>
             return "Session runtime closed";
       end case;

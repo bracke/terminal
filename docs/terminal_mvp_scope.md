@@ -111,10 +111,12 @@
   last core feed outcome and PTY write outcome, then composes feed, write,
   core, queue, geometry, redraw-policy, scrollback, selection, hyperlink,
   clipboard, tabs, splits, config/profile, input-mode, mouse-routing, cursor
-  blink, text blink, theme, font discovery, graphics, multiplexer, renderer,
-  PTY backend, ConPTY capability, multiplexer capability/diagnostics, renderer,
+  blink, text blink, theme, font discovery, graphics, PTY backend, ConPTY
+  capability, multiplexer capability/diagnostics, renderer,
   graphics header, graphics data preview, and presenter status labels into one
-  deterministic runtime diagnostics line.
+  deterministic runtime diagnostics line. Those bounded labels cross the
+  collection API in one `Runtime_Statuses` record rather than a long positional
+  parameter list.
 - DECRQSS status-string reports (`DCS $ q m ST`, `DCS $ q r ST`, and
   `DCS $ q SP q ST`) return current SGR state, scrolling margins, and
   DECSCUSR cursor style using 7-bit DCS/ST framing, BEL termination, or C1
@@ -329,6 +331,9 @@ a frame while allowing repeated placements to share one atlas entry. Content
 serials form a deterministic atlas signature, so an unchanged visible set
 reuses the resident GPU image instead of uploading it again. Fallback
 placeholders continue to use untextured `texture=none` vertices.
+The R8 text atlas and RGBA image/colour-glyph textures share the same validated
+Vulkan staging, copy, fence-retirement, and descriptor-update implementation;
+the selected texture slot determines its format, binding, and committed owner.
 Submit, presenter, and device helpers expose compact image texture readiness
 labels for unavailable, downgraded, and ready states with texture-backed vertex
 counts, and the Vulkan device exposes a resource-status label that reports

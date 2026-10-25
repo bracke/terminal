@@ -110,6 +110,7 @@ package body Terminal.App.Vulkan_Device is
    Image_Layout_Present_Source : constant Vk.Image_Layout_T :=
      Vk.Image_Layout_T (1_000_001_002);
    Format_R8G8B8A8_Unorm : constant Vk.Format_T := Vk.Format_T (37);
+   Format_R8_Unorm : constant Vk.Format_T := Vk.Format_T (9);
    Suboptimal_KHR : constant Vk.Result_T := Vk.Result_T (1_000_001_003);
    Error_Out_Of_Date_KHR : constant Vk.Result_T := Vk.Result_T (-1_000_001_004);
    Subpass_External : constant Interfaces.Unsigned_32 := Interfaces.Unsigned_32'Last;
@@ -207,6 +208,7 @@ package body Terminal.App.Vulkan_Device is
      (Byte_Array);
    package Image_Texture_Byte_Mapping is new System.Address_To_Access_Conversions
      (Image_Texture_Byte_Array);
+   use type Byte_Mapping.Object_Pointer;
    use type Image_Texture_Byte_Mapping.Object_Pointer;
 
    type Chars_Ptr_Array is array (Positive range <>) of Interfaces.C.Strings.chars_ptr
@@ -316,8 +318,25 @@ package body Terminal.App.Vulkan_Device is
    type Blank_Pixel is array (1 .. 4) of Interfaces.Unsigned_8;
    pragma Convention (C, Blank_Pixel);
 
-   --  Which of the two picture textures an upload is for.
-   type Texture_Slot is (Inline_Picture, Colour_Glyphs);
+   type Texture_Slot is (Text_Glyphs, Inline_Picture, Colour_Glyphs);
+
+   procedure Upload_Image_Texture_Staging_Source
+     (Device        : in out Logical_Device;
+      Slot          : Texture_Slot;
+      Choice        : Selection;
+      Width         : Natural;
+      Height        : Natural;
+      Source_Bytes_Per_Pixel : Natural;
+      Row_Stride_Bytes : Natural;
+      Bytes_Natural : Natural;
+      Fill_Staging  : not null access procedure
+        (Target   : Image_Texture_Byte_Mapping.Object_Pointer;
+         Capacity : Positive;
+         Status : out Create_Status);
+      Status        : out Create_Status;
+      Image_Format  : Vk.Format_T := Format_R8G8B8A8_Unorm;
+      Maximum_Bytes : Positive := Max_Image_Texture_Bytes;
+      Content_Signature : Interfaces.Unsigned_64 := 0);
 
    procedure Upload_Atlas_Data
      (Device        : in out Logical_Device;
@@ -972,6 +991,8 @@ package body Terminal.App.Vulkan_Device is
          Capacity : Positive;
          Status : out Create_Status);
       Status        : out Create_Status;
+      Image_Format  : Vk.Format_T := Format_R8G8B8A8_Unorm;
+      Maximum_Bytes : Positive := Max_Image_Texture_Bytes;
       Content_Signature : Interfaces.Unsigned_64 := 0) is separate;
 
    procedure Upload_Image_Texture_Row_Source

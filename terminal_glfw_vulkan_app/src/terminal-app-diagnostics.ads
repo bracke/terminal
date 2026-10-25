@@ -21,6 +21,42 @@ with Terminal.App.Vulkan_Presenter;
 with Terminal.PTY.Backend;
 
 package Terminal.App.Diagnostics is
+   type Runtime_Status_Kind is
+     (Grid_Status,
+      Policy_Status,
+      Scrollback_Status,
+      Selection_Status,
+      Link_Status,
+      Link_Activation_Status,
+      Clipboard_Status,
+      Tab_Status,
+      Split_Status,
+      Config_Status,
+      Profile_Status,
+      Input_Status,
+      Mouse_Status,
+      Cursor_Status,
+      Text_Blink_Status,
+      Theme_Status,
+      Font_Status,
+      PTY_Backend_Status,
+      ConPTY_Status,
+      Multiplexer_Status,
+      Graphics_Header_Status,
+      Graphics_Data_Status);
+   Max_Runtime_Status_Length : constant :=
+     Terminal.App.Hyperlinks.Max_Status_Label_Length;
+   type Runtime_Status_Value is record
+      Length : Natural range 0 .. Max_Runtime_Status_Length := 0;
+      Text   : String (1 .. Max_Runtime_Status_Length) := (others => ' ');
+   end record;
+   type Runtime_Statuses is
+     array (Runtime_Status_Kind) of Runtime_Status_Value;
+   procedure Set
+     (Statuses : in out Runtime_Statuses;
+      Kind     : Runtime_Status_Kind;
+      Value    : String);
+
    subtype Grid_Status_Length_Range is
      Natural range 0 .. Terminal.App.Resize.Max_Status_Label_Length;
    subtype Policy_Status_Length_Range is
@@ -167,28 +203,7 @@ package Terminal.App.Diagnostics is
       Last_Feed_Status : Terminal.Core.Feed_Status := Terminal.Core.Ok;
       Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
         Terminal.App.PTY_Write.Ok;
-      Grid_Status : String := "";
-      Policy_Status : String := "";
-      Scrollback_Status : String := "";
-      Selection_Status : String := "";
-      Link_Status : String := "";
-      Link_Activation_Status : String := "";
-      Clipboard_Status : String := "";
-      Tab_Status : String := "";
-      Split_Status : String := "";
-      Config_Status : String := "";
-      Profile_Status : String := "";
-      Input_Status : String := "";
-      Mouse_Status : String := "";
-      Cursor_Status : String := "";
-      Text_Blink_Status : String := "";
-      Theme_Status : String := "";
-      Font_Status : String := "";
-      PTY_Backend_Status : String := "";
-      ConPTY_Status : String := "";
-      Multiplexer_Status : String := "";
-      Graphics_Header_Status : String := "";
-      Graphics_Data_Status : String := "")
+      Statuses : Runtime_Statuses := (others => <>))
       return Snapshot;
 
    procedure Log_Startup_Failure

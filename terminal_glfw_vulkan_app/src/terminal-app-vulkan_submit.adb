@@ -309,258 +309,92 @@ package body Terminal.App.Vulkan_Submit is
       end loop;
    end Append_Colour_Glyphs;
 
+   function Texture_Eligible (Image : RM.Image_Command) return Boolean is
+      Bytes_Per_Pixel : constant Natural :=
+        (if Image.Raw_Format = 24 then 3
+         elsif Image.Raw_Format = 32 then 4
+         else 0);
+      Row_Bytes : constant Natural :=
+        (if Bytes_Per_Pixel > 0
+           and then Image.Pixel_Width <= Natural'Last / Bytes_Per_Pixel
+         then Image.Pixel_Width * Bytes_Per_Pixel
+         else 0);
+      Row_Stride_Bytes : constant Natural :=
+        (if Image.Decoded_Row_Stride_Bytes > 0
+         then Image.Decoded_Row_Stride_Bytes
+         else Row_Bytes);
+   begin
+      return not Image.Placeholder
+        and then Image.Protocol in
+          RM.Image_Kitty | RM.Image_Sixel | RM.Image_ITerm2
+        and then Image.Pixel_Width > 0
+        and then Image.Pixel_Height > 0
+        and then Bytes_Per_Pixel > 0
+        and then Row_Bytes > 0
+        and then Image.Payload_Preview_Complete
+        and then Image.Preview_Decode_Complete
+        and then Image.Decode_Status = RM.Image_Decode_Ok
+        and then Row_Stride_Bytes >= Row_Bytes
+        and then RM.Image_Decoded_Source_Bytes (Image) > 0
+        and then RM.Image_Decoded_Source_Available (Image);
+   end Texture_Eligible;
+
+   function Same_Image_Source
+     (Left  : RM.Image_Command;
+      Right : RM.Image_Command) return Boolean
+   is
+   begin
+      if Left.Decoded_Source /= Right.Decoded_Source
+        or else Left.Raw_Format /= Right.Raw_Format
+        or else Left.Pixel_Width /= Right.Pixel_Width
+        or else Left.Pixel_Height /= Right.Pixel_Height
+        or else Left.Decoded_Row_Stride_Bytes /=
+          Right.Decoded_Row_Stride_Bytes
+        or else Left.Decoded_Byte_Length /= Right.Decoded_Byte_Length
+      then
+         return False;
+      end if;
+
+      case Left.Decoded_Source is
+         when RM.Image_Decoded_Source_Buffer =>
+            return Left.Decoded_Bytes /= null
+              and then Left.Decoded_Bytes = Right.Decoded_Bytes;
+         when RM.Image_Decoded_Source_Raw_Base64 |
+              RM.Image_Decoded_Source_PNG_Base64 |
+              RM.Image_Decoded_Source_Sixel_Text =>
+            return Left.Encoded_Source_Bytes /= null
+              and then Left.Encoded_Source_Bytes = Right.Encoded_Source_Bytes
+              and then Left.Encoded_Source_Length = Right.Encoded_Source_Length;
+         when RM.Image_Decoded_Source_None =>
+            return False;
+      end case;
+   end Same_Image_Source;
+
+   function Atlas_Source_Index
+     (Batch : Submission_Batch;
+      Image : RM.Image_Command) return Natural is
+   begin
+      if Batch.Image_Atlas_Sources = null then
+         return 0;
+      end if;
+      for I in 1 .. Batch.Image_Atlas_Source_Total loop
+         if Same_Image_Source (Image, Batch.Image_Atlas_Sources (I).Command) then
+            return I;
+         end if;
+      end loop;
+      return 0;
+   end Atlas_Source_Index;
+
+   procedure Prepare_Image_Atlas
+     (Frame : RM.Frame_Commands;
+      Batch : in out Submission_Batch) is separate;
+
    procedure Build
      (Frame  : RM.Frame_Commands;
       Batch  : in out Submission_Batch;
       Status : out Build_Status)
    is
       Max_Vertices : Natural;
-
-      function Texture_Eligible (Image : RM.Image_Command) return Boolean is
-         Bytes_Per_Pixel : constant Natural :=
-           (if Image.Raw_Format = 24 then 3
-            elsif Image.Raw_Format = 32 then 4
-            else 0);
-         Row_Bytes : constant Natural :=
-           (if Bytes_Per_Pixel > 0
-              and then Image.Pixel_Width <= Natural'Last / Bytes_Per_Pixel
-            then Image.Pixel_Width * Bytes_Per_Pixel
-            else 0);
-         Row_Stride_Bytes : constant Natural :=
-           (if Image.Decoded_Row_Stride_Bytes > 0
-            then Image.Decoded_Row_Stride_Bytes
-            else Row_Bytes);
-      begin
-         return not Image.Placeholder
-           and then
-             (Image.Protocol = RM.Image_Kitty
-              or else Image.Protocol = RM.Image_Sixel
-              or else Image.Protocol = RM.Image_ITerm2)
-           and then Image.Pixel_Width > 0
-           and then Image.Pixel_Height > 0
-           and then Bytes_Per_Pixel > 0
-           and then Row_Bytes > 0
-           and then Image.Payload_Preview_Complete
-           and then Image.Preview_Decode_Complete
-           and then Image.Decode_Status = RM.Image_Decode_Ok
-           and then Row_Stride_Bytes >= Row_Bytes
-           and then RM.Image_Decoded_Source_Bytes (Image) > 0
-           and then RM.Image_Decoded_Source_Available (Image);
-      end Texture_Eligible;
-
-      function Same_Source
-        (Left  : RM.Image_Command;
-         Right : RM.Image_Command) return Boolean
-      is
-      begin
-         if Left.Decoded_Source /= Right.Decoded_Source
-           or else Left.Raw_Format /= Right.Raw_Format
-           or else Left.Pixel_Width /= Right.Pixel_Width
-           or else Left.Pixel_Height /= Right.Pixel_Height
-           or else Left.Decoded_Row_Stride_Bytes /=
-             Right.Decoded_Row_Stride_Bytes
-           or else Left.Decoded_Byte_Length /= Right.Decoded_Byte_Length
-         then
-            return False;
-         end if;
-
-         case Left.Decoded_Source is
-            when RM.Image_Decoded_Source_Buffer =>
-               return Left.Decoded_Bytes /= null
-                 and then Left.Decoded_Bytes = Right.Decoded_Bytes;
-            when RM.Image_Decoded_Source_Raw_Base64 |
-                 RM.Image_Decoded_Source_PNG_Base64 |
-                 RM.Image_Decoded_Source_Sixel_Text =>
-               return Left.Encoded_Source_Bytes /= null
-                 and then Left.Encoded_Source_Bytes = Right.Encoded_Source_Bytes
-                 and then Left.Encoded_Source_Length =
-                   Right.Encoded_Source_Length;
-            when RM.Image_Decoded_Source_None =>
-               return False;
-         end case;
-      end Same_Source;
-
-      function Atlas_Source_Index (Image : RM.Image_Command) return Natural is
-      begin
-         if Batch.Image_Atlas_Sources = null then
-            return 0;
-         end if;
-         for I in 1 .. Batch.Image_Atlas_Source_Total loop
-            if Same_Source (Image, Batch.Image_Atlas_Sources (I).Command) then
-               return I;
-            end if;
-         end loop;
-         return 0;
-      end Atlas_Source_Index;
-
-      procedure Prepare_Image_Atlas is
-         Width  : Natural := 0;
-         Height : Natural := 0;
-         Max_Source_Dimension : Natural := 1;
-         Scale_Divisor : Positive := 1;
-         Packed : Boolean := False;
-
-         function Scaled
-           (Value   : Positive;
-            Divisor : Positive) return Positive is
-           (1 + (Value - 1) / Divisor);
-
-         function Try_Layout (Divisor : Positive) return Boolean is
-            Candidate_Width  : Natural := 0;
-            Candidate_Height : Natural := 0;
-            Target_Width     : Positive;
-            Target_Height    : Positive;
-         begin
-            for I in 1 .. Batch.Image_Atlas_Source_Total loop
-               Target_Width := Scaled
-                 (Batch.Image_Atlas_Sources (I).Command.Pixel_Width,
-                  Divisor);
-               Target_Height := Scaled
-                 (Batch.Image_Atlas_Sources (I).Command.Pixel_Height,
-                  Divisor);
-               if Target_Width > Batch.Image_Atlas_Limit_Value.Dimension - 2
-                 or else Target_Height >
-                   Batch.Image_Atlas_Limit_Value.Dimension - 2
-                 or else Candidate_Height >
-                   Batch.Image_Atlas_Limit_Value.Dimension
-                     - (Target_Height + 2)
-               then
-                  return False;
-               end if;
-               Batch.Image_Atlas_Sources (I).X := 1;
-               Batch.Image_Atlas_Sources (I).Y := Candidate_Height + 1;
-               Batch.Image_Atlas_Sources (I).Width := Target_Width;
-               Batch.Image_Atlas_Sources (I).Height := Target_Height;
-               Candidate_Width := Natural'Max
-                 (Candidate_Width, Target_Width + 2);
-               Candidate_Height := Candidate_Height + Target_Height + 2;
-            end loop;
-
-            if Candidate_Width = 0
-              or else Candidate_Height = 0
-              or else Candidate_Width >
-                Batch.Image_Atlas_Limit_Value.Bytes / 4
-              or else Candidate_Height >
-                Batch.Image_Atlas_Limit_Value.Bytes /
-                  (Candidate_Width * 4)
-            then
-               return False;
-            end if;
-            Width := Candidate_Width;
-            Height := Candidate_Height;
-            return True;
-         end Try_Layout;
-      begin
-         if Frame.Image_Count = 0
-           or else Batch.Image_Atlas_Limit_Value.Dimension <= 2
-         then
-            return;
-         end if;
-
-         declare
-            Required : constant Positive := Positive
-              (Natural'Min (Frame.Image_Count, Max_Image_Atlas_Sources));
-         begin
-            if Batch.Image_Atlas_Sources = null
-              or else Batch.Image_Atlas_Sources'Length < Required
-            then
-               declare
-                  Replacement : Image_Atlas_Source_Array_Access :=
-                    new Image_Atlas_Source_Array
-                      (1 .. Grown_Capacity
-                        ((if Batch.Image_Atlas_Sources = null
-                          then 0
-                          else Batch.Image_Atlas_Sources'Length),
-                         Required));
-               begin
-                  if Batch.Image_Atlas_Sources /= null then
-                     Free_Image_Atlas_Sources (Batch.Image_Atlas_Sources);
-                  end if;
-                  Batch.Image_Atlas_Sources := Replacement;
-               end;
-            end if;
-         end;
-         for I in 1 .. Frame.Image_Count loop
-            if Texture_Eligible (Frame.Images (I))
-              and then Atlas_Source_Index (Frame.Images (I)) = 0
-              and then Batch.Image_Atlas_Source_Total <
-                Max_Image_Atlas_Sources
-            then
-               Batch.Image_Atlas_Source_Total :=
-                 Batch.Image_Atlas_Source_Total + 1;
-               Batch.Image_Atlas_Sources (Batch.Image_Atlas_Source_Total) :=
-                 (Command => Frame.Images (I),
-                  others  => <>);
-               Max_Source_Dimension := Natural'Max
-                 (Max_Source_Dimension,
-                  Natural'Max
-                    (Frame.Images (I).Pixel_Width,
-                     Frame.Images (I).Pixel_Height));
-            end if;
-         end loop;
-
-         if Batch.Image_Atlas_Source_Total = 0 then
-            return;
-         end if;
-
-         --  The backend has one image descriptor for a frame. Keep the bounded
-         --  source set in that atlas and reduce its stored resolution when the
-         --  configured GPU budget cannot hold full-resolution copies. Sources
-         --  beyond the descriptor bound are downgraded individually instead
-         --  of invalidating textures already admitted to the atlas.
-         loop
-            Packed := Try_Layout (Scale_Divisor);
-            exit when Packed or else Scale_Divisor >= Max_Source_Dimension;
-            if Scale_Divisor > Max_Source_Dimension / 2 then
-               Scale_Divisor := Positive (Max_Source_Dimension);
-            else
-               Scale_Divisor := Scale_Divisor * 2;
-            end if;
-         end loop;
-         if not Packed then
-            Batch.Image_Atlas_Source_Total := 0;
-            return;
-         end if;
-
-         Batch.Image_Atlas_W := Width;
-         Batch.Image_Atlas_H := Height;
-         Batch.Image_Atlas_Byte_Count := Width * Height * 4;
-         declare
-            Signature : Interfaces.Unsigned_64 := 16#CBF29CE484222325#;
-
-            procedure Mix (Value : Interfaces.Unsigned_64) is
-            begin
-               Signature :=
-                 (Signature xor Value) * Interfaces.Unsigned_64'(16#100000001B3#);
-            end Mix;
-         begin
-            Mix (Interfaces.Unsigned_64 (Width));
-            Mix (Interfaces.Unsigned_64 (Height));
-            Mix (Interfaces.Unsigned_64 (Batch.Image_Atlas_Source_Total));
-            for I in 1 .. Batch.Image_Atlas_Source_Total loop
-               declare
-                  Source : constant Image_Atlas_Source :=
-                    Batch.Image_Atlas_Sources (I);
-               begin
-                  Mix (Source.Command.Content_Serial);
-                  Mix (Interfaces.Unsigned_64 (Source.Command.Image_ID));
-                  Mix (Interfaces.Unsigned_64 (Source.Command.Pixel_Width));
-                  Mix (Interfaces.Unsigned_64 (Source.Command.Pixel_Height));
-                  Mix (Interfaces.Unsigned_64 (Source.Command.Raw_Format));
-                  Mix
-                    (Interfaces.Unsigned_64
-                       (Source.Command.Decoded_Byte_Length));
-                  Mix (Interfaces.Unsigned_64 (Source.X));
-                  Mix (Interfaces.Unsigned_64 (Source.Y));
-                  Mix (Interfaces.Unsigned_64 (Source.Width));
-                  Mix (Interfaces.Unsigned_64 (Source.Height));
-               end;
-            end loop;
-            --  Zero means "not cacheable" in the Vulkan device.
-            Batch.Image_Atlas_Content_Signature :=
-              (if Signature = 0 then 1 else Signature);
-         end;
-      end Prepare_Image_Atlas;
 
       procedure Append_Image_Command (Image : RM.Image_Command) is
          Before : constant Natural := Batch.Count;
@@ -575,7 +409,7 @@ package body Terminal.App.Vulkan_Submit is
             else Row_Bytes);
          Required_Decoded_Bytes : constant Natural :=
            RM.Image_Decoded_Source_Bytes (Image);
-         Atlas_Index : constant Natural := Atlas_Source_Index (Image);
+         Atlas_Index : constant Natural := Atlas_Source_Index (Batch, Image);
          Image_Texture_Eligible : constant Boolean :=
            Texture_Eligible (Image) and then Atlas_Index > 0;
          Source : constant Texture_Source :=
@@ -883,7 +717,7 @@ package body Terminal.App.Vulkan_Submit is
       Batch.Text_Atlas_Bytes := Frame.Atlas_Bytes;
       Batch.Dirty_Atlas := Frame.Atlas_Dirty;
       Prepare_Image_Order;
-      Prepare_Image_Atlas;
+      Prepare_Image_Atlas (Frame, Batch);
 
       Append_Rectangle_Layer (RM.Rectangle_Base_Background);
       Append_Image_Layer (Image_Below_Cell_Background);

@@ -9,6 +9,28 @@ separate (Terminal.App.Main_Loop.Run)
       Current_Blink_Tick : Natural := Last_Blink_Tick;
 
       procedure Handle_Input_Event (Stop : out Boolean) is separate;
+      procedure Poll_Backends is separate;
+      procedure Resize_Surface is separate;
+
+      procedure Handle_Present_Status
+        (Status : Terminal.App.Vulkan_Presenter.Present_Status) is
+      begin
+         if Status in
+           Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
+             | Terminal.App.Vulkan_Presenter.Device_Lost
+         then
+            Terminal.App.Vulkan_Presenter.Finalize (Presenter);
+            Terminal.App.Vulkan_Recovery.Begin_Recovery
+              (Vulkan_Recovery,
+               (if Status = Terminal.App.Vulkan_Presenter.Device_Lost
+                then Terminal.App.Vulkan_Recovery.Device_Lost
+                else Terminal.App.Vulkan_Recovery.Swapchain_Invalid),
+               Recovery_Tick);
+            Need_Redraw := True;
+         elsif Status = Terminal.App.Vulkan_Presenter.Resources_In_Flight then
+            Need_Redraw := True;
+         end if;
+      end Handle_Present_Status;
    begin
       if Recovery_Tick < Natural'Last then
          Recovery_Tick := Recovery_Tick + 1;
@@ -38,69 +60,7 @@ separate (Terminal.App.Main_Loop.Run)
       end if;
       Last_Blink_Tick := Current_Blink_Tick;
 
-      declare
-         Output : Terminal.App.Session_Table.Runtime_Output_Set;
-         Runtime_Feed : Terminal.Core.Feed_Status;
-         Runtime_Write : Terminal.App.PTY_Write.Write_All_Status;
-      begin
-         Terminal.App.Session_Table.Poll_Output
-           (Sessions, Output, Runtime_Feed, Runtime_Write);
-         for I in 1 .. Terminal.App.Session_Table.Count (Sessions) loop
-            if Output (I) then
-               Last_Feed_Status := Runtime_Feed;
-               if (Terminal.App.Splits.Count (Splits) <= 1
-                   and then I = Terminal.App.Session_Table.Active
-                     (Sessions))
-                 or else
-                   (Terminal.App.Splits.Count (Splits) > 1
-                    and then I <= Terminal.App.Splits.Count (Splits))
-               then
-                  Dirty := True;
-               end if;
-            end if;
-         end loop;
-         if Fatal_Write (Runtime_Write) then
-            Last_Write_Status := Runtime_Write;
-            if Terminal.App.Session_Table.Count (Sessions) = 1 then
-               GLFW_Vulkan.Windows.Set_Should_Close (W, True);
-            end if;
-         elsif Runtime_Write = Terminal.App.PTY_Write.Incomplete then
-            Last_Write_Status := Runtime_Write;
-         end if;
-         if Terminal.App.Session_Table.Count (Sessions) = 1
-           and then Terminal.App.Session_Runtime.State
-             (Active_Runtime.all) = Terminal.App.Session_Runtime.Exited
-         then
-            GLFW_Vulkan.Windows.Set_Should_Close (W, True);
-         end if;
-      end;
-      declare
-         Graphics_Processed : Boolean;
-         Graphics_Render : Terminal.App.Renderer.Render_Status;
-         Graphics_Write : Terminal.App.PTY_Write.Write_All_Status;
-      begin
-         Terminal.App.Session_Graphics.Process_Hidden
-           (Sessions,
-            Splits,
-            R,
-            Graphics_Processed,
-            Graphics_Render,
-            Graphics_Write);
-         if Graphics_Processed then
-            --  Off-screen protocol processing rebuilds the renderer
-            --  batch.  Rebuild the visible frame before presenting.
-            Dirty := True;
-            Need_Redraw := True;
-         end if;
-         if Fatal_Write (Graphics_Write) then
-            Last_Write_Status := Graphics_Write;
-         elsif Graphics_Write = Terminal.App.PTY_Write.Incomplete then
-            Last_Write_Status := Graphics_Write;
-         end if;
-         if Graphics_Render /= Terminal.App.Renderer.Ok then
-            Need_Redraw := True;
-         end if;
-      end;
+      Poll_Backends;
       Scroll_Offset :=
         Terminal.App.Scrollback_View.Clamp_Offset
           (Active_Core.all, Scroll_Offset);
@@ -145,49 +105,7 @@ separate (Terminal.App.Main_Loop.Run)
          end;
       end loop;
 
-      GLFW_Vulkan.Windows.Framebuffer_Size (W, FB_Width, FB_Height);
-      Terminal.App.Renderer.Set_Framebuffer_Size
-        (R, FB_Width, FB_Height);
-      Configure_Active_Core;
-      if FB_Width > 0 and then FB_Height > 0 then
-         declare
-            New_Rows : Positive;
-            New_Cols : Positive;
-            Core_Resize : Terminal.Core.Resize_Status;
-            PTY_Resize  : Terminal.PTY.Backend.Resize_Status;
-         begin
-            Terminal.App.Resize.Pixels_To_Cells
-              (FB_Width,
-               FB_Height,
-               Terminal.App.Renderer.Cell_Width (R),
-               Terminal.App.Renderer.Cell_Height (R),
-               Terminal.App.Renderer.Content_Margin,
-               New_Rows,
-               New_Cols);
-            if New_Rows /= Last_Rows or else New_Cols /= Last_Cols then
-               Terminal.App.Session_Runtime.Resize
-                 (Active_Runtime.all,
-                  New_Rows,
-                  New_Cols,
-                  Core_Resize,
-                  PTY_Resize);
-               if Core_Resize = Terminal.Core.Ok
-                 and then PTY_Resize = Terminal.PTY.Backend.Ok
-               then
-                  Last_Rows := New_Rows;
-                  Last_Cols := New_Cols;
-                  Scroll_Offset :=
-                    Terminal.App.Scrollback_View.Clamp_Offset
-                      (Active_Core.all, Scroll_Offset);
-                  Terminal.App.Selection.Clear (Selection);
-                  Apply_Hovered_Link ((others => <>));
-                  Dirty := True;
-                  Need_Redraw := True;
-                  Local_Redraw := True;
-               end if;
-            end if;
-         end;
-      end if;
+      Resize_Surface;
 
       declare
          Render_Policy_Status : constant String :=
@@ -230,25 +148,7 @@ separate (Terminal.App.Main_Loop.Run)
          begin
             Terminal.App.Renderer.Present_Retained
               (R, Vk_Ctx, Presenter, Present_Status);
-            if Present_Status in
-              Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
-                | Terminal.App.Vulkan_Presenter.Device_Lost
-            then
-               Terminal.App.Vulkan_Presenter.Finalize (Presenter);
-               Terminal.App.Vulkan_Recovery.Begin_Recovery
-                 (Vulkan_Recovery,
-                  (if Present_Status =
-                        Terminal.App.Vulkan_Presenter.Device_Lost
-                   then Terminal.App.Vulkan_Recovery.Device_Lost
-                   else Terminal.App.Vulkan_Recovery
-                     .Swapchain_Invalid),
-                  Recovery_Tick);
-               Need_Redraw := True;
-            elsif Present_Status =
-              Terminal.App.Vulkan_Presenter.Resources_In_Flight
-            then
-               Need_Redraw := True;
-            end if;
+            Handle_Present_Status (Present_Status);
          end;
       elsif Dirty or else Grace_Active then
          declare
@@ -402,24 +302,7 @@ separate (Terminal.App.Main_Loop.Run)
             else
                Render_Status := Terminal.App.Renderer.Not_Initialized;
             end if;
-            if Present_Status in
-              Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
-                | Terminal.App.Vulkan_Presenter.Device_Lost
-            then
-               Terminal.App.Vulkan_Presenter.Finalize (Presenter);
-               Terminal.App.Vulkan_Recovery.Begin_Recovery
-                 (Vulkan_Recovery,
-                  (if Present_Status =
-                        Terminal.App.Vulkan_Presenter.Device_Lost
-                   then Terminal.App.Vulkan_Recovery.Device_Lost
-                   else Terminal.App.Vulkan_Recovery
-                     .Swapchain_Invalid),
-                  Recovery_Tick);
-               --  Keep terminal, PTY, image objects and the window
-               --  alive.  Reconstruction is attempted on subsequent
-               --  loop ticks with bounded backoff.
-               Need_Redraw := True;
-            end if;
+            Handle_Present_Status (Present_Status);
             declare
                Grid_Status : constant String :=
                  Terminal.App.Resize.Grid_Status_Label
@@ -474,38 +357,82 @@ separate (Terminal.App.Main_Loop.Run)
                Graphics_Data_Status : constant String :=
                  Terminal.App.Graphics.Data_Status_Label
                    (Snaps (Active_Render_Index).Graphics);
-               Diag : constant Terminal.App.Diagnostics.Snapshot :=
-                 Terminal.App.Diagnostics.Collect
-                   (Active_Core.all,
-                    Active_PTY_Queue.all,
-                    In_Q,
-                    R,
-                    Presenter,
-                    Last_Feed_Status,
-                    Last_Write_Status,
-                    Grid_Status => Grid_Status,
-                    Policy_Status => Render_Policy_Status,
-                    Scrollback_Status => Scrollback_Status,
-                    Selection_Status => Selection_Status,
-                    Link_Status => Link_Status,
-                    Link_Activation_Status => Link_Activation_Status,
-                    Clipboard_Status => Clipboard_Status,
-                    Tab_Status => Tab_Status,
-                    Split_Status => Split_Status,
-                    Config_Status => Config_Status,
-                    Profile_Status => Profile_Status,
-                    Input_Status => Input_Status,
-                    Mouse_Status => Mouse_Status,
-                    Cursor_Status => Cursor_Status,
-                    Text_Blink_Status => Text_Blink_Status,
-                    Theme_Status => Theme_Status,
-                    Font_Status => Runtime_Font_Status,
-                    PTY_Backend_Status => Runtime_PTY_Backend_Status,
-                    ConPTY_Status => Runtime_ConPTY_Status,
-                    Multiplexer_Status => Runtime_Multiplexer_Status,
-                    Graphics_Header_Status => Graphics_Header_Status,
-                    Graphics_Data_Status => Graphics_Data_Status);
+               Statuses : Terminal.App.Diagnostics.Runtime_Statuses :=
+                 (others => <>);
+               Diag : Terminal.App.Diagnostics.Snapshot;
             begin
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Grid_Status, Grid_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Policy_Status,
+                  Render_Policy_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Scrollback_Status,
+                  Scrollback_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Selection_Status,
+                  Selection_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Link_Status, Link_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Link_Activation_Status,
+                  Link_Activation_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Clipboard_Status,
+                  Clipboard_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Tab_Status, Tab_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Split_Status,
+                  Split_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Config_Status,
+                  Config_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Profile_Status,
+                  Profile_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Input_Status,
+                  Input_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Mouse_Status,
+                  Mouse_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Cursor_Status,
+                  Cursor_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Text_Blink_Status,
+                  Text_Blink_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Theme_Status,
+                  Theme_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Font_Status,
+                  Runtime_Font_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.PTY_Backend_Status,
+                  Runtime_PTY_Backend_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.ConPTY_Status,
+                  Runtime_ConPTY_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Multiplexer_Status,
+                  Runtime_Multiplexer_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Graphics_Header_Status,
+                  Graphics_Header_Status);
+               Terminal.App.Diagnostics.Set
+                 (Statuses, Terminal.App.Diagnostics.Graphics_Data_Status,
+                  Graphics_Data_Status);
+               Diag := Terminal.App.Diagnostics.Collect
+                 (Active_Core.all,
+                  Active_PTY_Queue.all,
+                  In_Q,
+                  R,
+                  Presenter,
+                  Last_Feed_Status,
+                  Last_Write_Status,
+                  Statuses);
                Terminal.App.Diagnostics.Log_If_Changed (Diag);
             end;
             if Render_Status = Terminal.App.Renderer.Ok

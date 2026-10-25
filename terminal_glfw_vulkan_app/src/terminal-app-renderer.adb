@@ -1,5 +1,6 @@
 with Ada.Unchecked_Deallocation;
 with Ada.Real_Time;
+with Ada.Finalization;
 with Interfaces;
 with System;
 

@@ -7,7 +7,7 @@ declare
       p_Next => System.Null_Address,
       flags => 0,
       image_Type => Vk.IMAGE_TYPE_2D,
-      format => Format_R8G8B8A8_Unorm,
+      format => Image_Format,
       extent =>
         (width => Interfaces.Unsigned_32 (Width),
          height => Interfaces.Unsigned_32 (Height),
@@ -79,7 +79,7 @@ declare
       flags => 0,
       image => Image,
       view_Type => Vk.IMAGE_VIEW_TYPE_2D,
-      format => Format_R8G8B8A8_Unorm,
+      format => Image_Format,
       components =>
         (r => Vk.COMPONENT_SWIZZLE_IDENTITY,
          g => Vk.COMPONENT_SWIZZLE_IDENTITY,

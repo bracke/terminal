@@ -19,7 +19,7 @@ procedure Image_Store_Smoke is
 
    package Store renames Terminal.App.Image_Store;
 
-   Container : Store.Store;
+   Container : aliased Store.Store;
    Original : Store.Image_Object_Access := null;
    Replacement : Store.Image_Object_Access := null;
    Pixel : Terminal.Common.Bytes.Byte_Array (1 .. 4);
@@ -28,7 +28,7 @@ begin
    Store.Create_Object (Original);
    Store.Create_Object (Replacement);
    declare
-      Indexed_Container : Store.Store;
+      Indexed_Container : aliased Store.Store;
       Indexed_Object : Store.Image_Object_Access := null;
       Indexed_Data : Terminal.App.Render_Model.Image_Data_Access :=
         new Terminal.Common.Bytes.Byte_Array'(1 => 7);
@@ -200,7 +200,7 @@ begin
          and then Store.Theme_Operation_Count_Of (Original) = 1
          and then Store.Byte_Count (Container) = 8,
          "theme append transaction publishes provisional accounting");
-      Store.Rollback_Theme_Append (Container, Transaction);
+      Store.Rollback_Theme_Append (Transaction);
       Assert
         (Store.Theme_Operation_Count_Of (Original) = 0
          and then Store.Byte_Count (Container) = 4,
@@ -218,12 +218,35 @@ begin
       Store.Begin_Theme_Append
         (Container, Original, Operation, Transaction);
       Store.Commit (Transaction);
-      Store.Rollback_Theme_Append (Container, Transaction);
+      Store.Rollback_Theme_Append (Transaction);
       Assert
         (Store.Theme_Operation_Count_Of (Original) = 1
          and then Store.Byte_Count (Container) = 8,
          "committed theme append is not rolled back by cleanup");
       Store.Clear_Theme_Operations (Container, Original);
+   end;
+
+   declare
+      Before_Bytes : constant Natural := Store.Byte_Count (Container);
+   begin
+      declare
+         Data : Terminal.App.Render_Model.Image_Data_Access :=
+           new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#33#);
+         Operation : Store.Theme_Operation_Access;
+         Transaction : Store.Theme_Append_Transaction;
+      begin
+         Store.Create_Theme_Operation
+           ((Target_Frame => 1, others => <>), Data, Operation);
+         Store.Begin_Theme_Append
+           (Container, Original, Operation, Transaction);
+         Assert
+           (Store.Theme_Operation_Count_Of (Original) = 1,
+            "uncommitted theme append is provisionally visible");
+      end;
+      Assert
+        (Store.Theme_Operation_Count_Of (Original) = 0
+         and then Store.Byte_Count (Container) = Before_Bytes,
+         "theme append finalizer automatically rolls back");
    end;
 
    declare

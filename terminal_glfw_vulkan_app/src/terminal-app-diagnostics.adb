@@ -45,6 +45,25 @@ package body Terminal.App.Diagnostics is
         (Ada.Text_IO.Standard_Error, "terminal: " & Message);
    end Put;
 
+   procedure Set
+     (Statuses : in out Runtime_Statuses;
+      Kind     : Runtime_Status_Kind;
+      Value    : String)
+   is
+      Length : constant Natural :=
+        Natural'Min (Value'Length, Max_Runtime_Status_Length);
+   begin
+      Statuses (Kind).Length := Length;
+      for I in 1 .. Length loop
+         Statuses (Kind).Text (I) := Value (Value'First + I - 1);
+      end loop;
+   end Set;
+
+   function Value
+     (Statuses : Runtime_Statuses;
+      Kind     : Runtime_Status_Kind) return String is
+     (Statuses (Kind).Text (1 .. Statuses (Kind).Length));
+
    function Bounded_Length (Text : String) return Grid_Status_Length_Range is
      (Grid_Status_Length_Range'Min
         (Text'Length, Terminal.App.Resize.Max_Status_Label_Length));
@@ -151,30 +170,36 @@ package body Terminal.App.Diagnostics is
       Last_Feed_Status : Terminal.Core.Feed_Status := Terminal.Core.Ok;
       Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
         Terminal.App.PTY_Write.Ok;
-      Grid_Status : String := "";
-      Policy_Status : String := "";
-      Scrollback_Status : String := "";
-      Selection_Status : String := "";
-      Link_Status : String := "";
-      Link_Activation_Status : String := "";
-      Clipboard_Status : String := "";
-      Tab_Status : String := "";
-      Split_Status : String := "";
-      Config_Status : String := "";
-      Profile_Status : String := "";
-      Input_Status : String := "";
-      Mouse_Status : String := "";
-      Cursor_Status : String := "";
-      Text_Blink_Status : String := "";
-      Theme_Status : String := "";
-      Font_Status : String := "";
-      PTY_Backend_Status : String := "";
-      ConPTY_Status : String := "";
-      Multiplexer_Status : String := "";
-      Graphics_Header_Status : String := "";
-      Graphics_Data_Status : String := "")
+      Statuses : Runtime_Statuses := (others => <>))
       return Snapshot
    is
+      Grid_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (0));
+      Policy_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (1));
+      Scrollback_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (2));
+      Selection_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (3));
+      Link_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (4));
+      Link_Activation_Status : constant String :=
+        Value (Statuses, Runtime_Status_Kind'Val (5));
+      Clipboard_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (6));
+      Tab_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (7));
+      Split_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (8));
+      Config_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (9));
+      Profile_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (10));
+      Input_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (11));
+      Mouse_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (12));
+      Cursor_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (13));
+      Text_Blink_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (14));
+      Theme_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (15));
+      Font_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (16));
+      PTY_Backend_Status : constant String :=
+        Value (Statuses, Runtime_Status_Kind'Val (17));
+      ConPTY_Status : constant String := Value (Statuses, Runtime_Status_Kind'Val (18));
+      Multiplexer_Status : constant String :=
+        Value (Statuses, Runtime_Status_Kind'Val (19));
+      Graphics_Header_Status : constant String :=
+        Value (Statuses, Runtime_Status_Kind'Val (20));
+      Graphics_Data_Status : constant String :=
+        Value (Statuses, Runtime_Status_Kind'Val (21));
       Grid_Length : constant Grid_Status_Length_Range :=
         Bounded_Length (Grid_Status);
       Grid_Text : String (1 .. Terminal.App.Resize.Max_Status_Label_Length) :=

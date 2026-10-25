@@ -269,14 +269,13 @@ package Terminal.App.Image_Store is
    --  Rollback.
    type Theme_Append_Transaction is limited private;
    procedure Begin_Theme_Append
-     (Container   : in out Store;
+     (Container   : aliased in out Store;
       Object      : Image_Object_Access;
       Operation   : in out Theme_Operation_Access;
       Transaction : in out Theme_Append_Transaction);
    procedure Commit (Transaction : in out Theme_Append_Transaction);
    procedure Rollback_Theme_Append
-     (Container   : in out Store;
-      Transaction : in out Theme_Append_Transaction);
+     (Transaction : in out Theme_Append_Transaction);
    procedure Clear_Theme_Operations
      (Container : in out Store;
       Object    : Image_Object_Access);
@@ -307,16 +306,6 @@ package Terminal.App.Image_Store is
 
    function Allocation_Allowed
      (Control : in out Allocation_Control) return Boolean;
-
-   type Install_Transaction is limited private;
-
-   procedure Record_Install
-     (Transaction   : in out Install_Transaction;
-      Storage_Order : Interfaces.Unsigned_64);
-   procedure Commit (Transaction : in out Install_Transaction);
-   procedure Take_Rollback_Order
-     (Transaction   : in out Install_Transaction;
-      Storage_Order : out Interfaces.Unsigned_64);
 
 private
    type Image_Frame is tagged record
@@ -422,13 +411,17 @@ private
       Remaining_Attempts : Natural := 0;
    end record;
 
-   type Install_Transaction is limited record
-      Storage_Order : Interfaces.Unsigned_64 := 0;
-   end record;
-
-   type Theme_Append_Transaction is limited record
+   type Store_Access is access all Store;
+   type Theme_Rollback_Guard is
+     new Ada.Finalization.Limited_Controlled with record
+      Container     : Store_Access := null;
       Object        : Image_Object_Access := null;
       Previous_Tail : Theme_Operation_Access := null;
       Operation     : Theme_Operation_Access := null;
+   end record;
+   overriding procedure Finalize
+     (Guard : in out Theme_Rollback_Guard);
+   type Theme_Append_Transaction is limited record
+      Guard : Theme_Rollback_Guard;
    end record;
 end Terminal.App.Image_Store;

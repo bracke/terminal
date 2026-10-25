@@ -24,7 +24,8 @@
 - Record command buffers, submit frames, and present through the swapchain while
   preserving the batch submission API.
 - Upload and sample the `textrender` glyph atlas through a descriptor-backed
-  Vulkan image.
+  Vulkan image. Text, inline-image, and colour-glyph textures use one bounded,
+  format-parameterized staging/copy/fence pipeline with slot-specific commits.
 - Detect stale swapchains during acquire/present and recreate the presenter from
   the main loop without clearing terminal damage.
 - Keep damage pending and skip swapchain recreation/presentation while the
@@ -98,6 +99,10 @@
   GUI result in `docs/m1_runtime_validation.md`.
 - Propagate row/column resize to the core and PTY via `TIOCSWINSZ`.
 - Close the window cleanly.
+- Keep failed session teardown owned in a visible `Cleanup_Pending` state;
+  restart, table removal, and finalization must not silently overwrite it.
+- Roll back provisional image installation and theme-history appends through
+  controlled Ada guards unless the mutation is explicitly committed.
 
 ## Program Progression
 

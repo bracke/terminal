@@ -11,7 +11,10 @@ declare
       p_Next => System.Null_Address,
       dst_Set => Device.Descriptor_Set,
       dst_Binding =>
-        (if Slot = Colour_Glyphs then 2 else 1),
+        (case Slot is
+           when Text_Glyphs    => 0,
+           when Inline_Picture => 1,
+           when Colour_Glyphs  => 2),
       dst_Array_Element => 0,
       descriptor_Count => 1,
       descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
@@ -23,7 +26,7 @@ begin
      (Device.Device, 1, Write'Address, 0, System.Null_Address);
 end;
 
-if Device.Atlas_View = System.Null_Address then
+if Slot /= Text_Glyphs and then Device.Atlas_View = System.Null_Address then
    declare
       Image_Info : aliased Vk.Descriptor_Image_Info_T :=
         (sampler => Device.Atlas_Sampler,
@@ -46,7 +49,16 @@ if Device.Atlas_View = System.Null_Address then
    end;
 end if;
 
-if Slot = Colour_Glyphs then
+if Slot = Text_Glyphs then
+   Destroy_Atlas_Image (Device);
+   Device.Atlas_Image := Image;
+   Device.Atlas_Memory := Image_Memory;
+   Device.Atlas_View := Image_View;
+   Device.Atlas_Width := Width;
+   Device.Atlas_Height := Height;
+   Device.Atlas_Bytes := Upload_Bytes_Natural;
+   Device.Atlas_Upload_Count := Device.Atlas_Upload_Count + 1;
+elsif Slot = Colour_Glyphs then
    Destroy_Colour_Sheet (Device);
    Device.Colour_Sheet_Image := Image;
    Device.Colour_Sheet_Memory := Image_Memory;
@@ -67,7 +79,13 @@ end if;
 if Slot = Inline_Picture then
    Device.Image_Texture_Bytes := Upload_Bytes_Natural;
 end if;
-Device.Image_Texture_Descriptor_Bound_Count := 2;
+if Slot = Text_Glyphs then
+   if Device.Image_Texture_Descriptor_Bound_Count = 0 then
+      Device.Image_Texture_Descriptor_Bound_Count := 1;
+   end if;
+else
+   Device.Image_Texture_Descriptor_Bound_Count := 2;
+end if;
 Image := System.Null_Address;
 Image_Memory := System.Null_Address;
 Image_View := System.Null_Address;

@@ -20,7 +20,7 @@ is
       procedure Release_Local is
       begin
          Terminal.App.Image_Store.Rollback_Theme_Append
-           (R.Image_Objects, Theme_Transaction);
+           (Theme_Transaction);
          Free_Image_Data (Source);
          Free_Image_Data (Target);
          Terminal.App.Image_Store.Release_Unowned_Theme_Operations

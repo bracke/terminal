@@ -361,7 +361,7 @@ private
       Draw_Offset_Y : Natural := 0;
       Atlas_Dirty : Boolean := False;
       Colour_Sheet_Dirty : Boolean := False;
-      Image_Objects : Terminal.App.Image_Store.Store;
+      Image_Objects : aliased Terminal.App.Image_Store.Store;
       Next_Automatic_Image_ID : Terminal.Core.Graphics_ID := 1;
       Graphics_Limits : Graphics_Resource_Limits :=
         Default_Graphics_Resource_Limits;
