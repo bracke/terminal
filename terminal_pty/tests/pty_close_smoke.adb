@@ -5,7 +5,6 @@ with Terminal.Common.Bytes;
 with Terminal.PTY.Backend;
 
 procedure PTY_Close_Smoke is
-   use AUnit.Assertions;
    use Terminal.Common.Bytes;
    use type Terminal.PTY.Backend.Exit_State;
    use type Terminal.PTY.Backend.Read_Status;
