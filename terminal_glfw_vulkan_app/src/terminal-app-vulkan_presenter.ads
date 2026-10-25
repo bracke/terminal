@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Terminal.Common.Bytes;
 with Terminal.App.Render_Model;
 with Terminal.App.Vulkan_Context;
@@ -7,12 +8,14 @@ with Terminal.App.Vulkan_Submit;
 package Terminal.App.Vulkan_Presenter is
    Max_Status_Label_Length : constant := 96;
 
-   type Presenter is limited private;
+   type Presenter is new Ada.Finalization.Limited_Controlled with private;
 
    type Init_Status is
      (Ok,
       Context_Not_Initialized,
+      Selection_Not_Ready,
       Device_Lost,
+      Resources_In_Flight,
       Surface_Unavailable,
       Surface_Query_Failed,
       No_Suitable_Device,
@@ -24,6 +27,7 @@ package Terminal.App.Vulkan_Presenter is
       Get_Swapchain_Images_Failed,
       Too_Many_Swapchain_Images,
       Create_Image_View_Failed,
+      Create_Color_Target_Failed,
       Create_Render_Pass_Failed,
       Create_Framebuffer_Failed,
       Create_Command_Pool_Failed,
@@ -43,6 +47,8 @@ package Terminal.App.Vulkan_Presenter is
       Bind_Vertex_Buffer_Failed,
       Map_Vertex_Buffer_Failed,
       Atlas_Too_Large,
+      Image_Staging_Invalid_Source,
+      Image_Staging_Allocation_Failed,
       Create_Atlas_Image_Failed,
       Allocate_Atlas_Memory_Failed,
       Bind_Atlas_Image_Failed,
@@ -63,6 +69,8 @@ package Terminal.App.Vulkan_Presenter is
       Resources_In_Flight,
       Upload_Failed,
       Atlas_Upload_Failed,
+      Image_Staging_Invalid_Source,
+      Image_Staging_Allocation_Failed,
       Render_Failed,
       Acquire_Image_Failed,
       Swapchain_Out_Of_Date,
@@ -154,7 +162,7 @@ package Terminal.App.Vulkan_Presenter is
       Red, Green, Blue, Alpha : out Terminal.Common.Bytes.Byte;
       Status : out Readback_Status);
 
-   procedure Finalize (P : in out Presenter);
+   overriding procedure Finalize (P : in out Presenter);
 
    function Is_Initialized (P : Presenter) return Boolean;
    function Diagnostics (P : Presenter) return Diagnostic_Snapshot;
@@ -167,7 +175,7 @@ package Terminal.App.Vulkan_Presenter is
      (Diagnostics : Diagnostic_Snapshot) return String;
 
 private
-   type Presenter is limited record
+   type Presenter is new Ada.Finalization.Limited_Controlled with record
       Initialized       : Boolean := False;
       Context_Ready     : Boolean := False;
       Surface_Ready     : Boolean := False;

@@ -1,3 +1,5 @@
+with Terminal.App.Status_Labels;
+
 package body Terminal.App.Resize is
    function Natural_Image (Value : Natural) return String is
       Image : constant String := Natural'Image (Value);
@@ -6,15 +8,9 @@ package body Terminal.App.Resize is
    end Natural_Image;
 
    function Bounded (Text : String) return String is
-      Result : String (1 .. Max_Status_Label_Length);
-      Last   : Natural := 0;
    begin
-      for Ch of Text loop
-         exit when Last = Result'Last;
-         Last := Last + 1;
-         Result (Last) := Ch;
-      end loop;
-      return Result (1 .. Last);
+      return Terminal.App.Status_Labels.Bounded
+        (Text, Max_Status_Label_Length);
    end Bounded;
 
    procedure Pixels_To_Cells

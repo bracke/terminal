@@ -1,0 +1,13 @@
+package Terminal.App.Renderer.Testing is
+   --  The returned view borrows renderer and atlas storage and is valid only
+   --  until the next Render/Render_App, Set_Theme,
+   --  Set_Graphics_Resource_Limits, Release_Graphics_Stream, or Finalize call
+   --  for R.
+   function Last_Frame
+     (R : Renderer) return Terminal.App.Render_Model.Frame_Commands;
+
+   --  Reject the Nth subsequent encoded-source copy.
+   procedure Fail_Image_Allocation_After
+     (R        : in out Renderer;
+      Attempts : Natural);
+end Terminal.App.Renderer.Testing;

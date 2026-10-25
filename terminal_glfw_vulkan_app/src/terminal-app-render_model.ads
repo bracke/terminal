@@ -97,6 +97,8 @@ package Terminal.App.Render_Model is
    Max_Image_Decoded_Data_Length : constant := 64 * 1024 * 1024;
    Max_Image_Decoded_Preview_Length : constant := 4096;
    type Image_Data_Access is access all Terminal.Common.Bytes.Byte_Array;
+   type Image_Data_View is access constant Terminal.Common.Bytes.Byte_Array;
+   function Read_Only (Data : Image_Data_Access) return Image_Data_View;
    type Image_Decoded_Source_Kind is
      (Image_Decoded_Source_None,
       Image_Decoded_Source_Buffer,
@@ -121,17 +123,14 @@ package Terminal.App.Render_Model is
       Decoded_Byte_Length : Natural := 0;
       Decoded_Row_Stride_Bytes : Natural := 0;
       Decoded_Source : Image_Decoded_Source_Kind := Image_Decoded_Source_None;
-      Decoded_Bytes : Image_Data_Access := null;
-      Decoded_Bytes_Owned : Boolean := False;
-      Encoded_Source_Bytes : Image_Data_Access := null;
-      Encoded_Source_Bytes_Owned : Boolean := False;
+      Decoded_Bytes : Image_Data_View := null;
+      Encoded_Source_Bytes : Image_Data_View := null;
       Encoded_Source_Length : Natural := 0;
       Decoded_Preview_Length : Natural := 0;
       --  Preview diagnostics borrow the decoded source whenever possible.  A
       --  pointer keeps the 4 KiB diagnostic prefix out of every draw command,
       --  which is particularly important for one-command-per-cell placeholders.
-      Decoded_Preview_Bytes : Image_Data_Access := null;
-      Decoded_Preview_Bytes_Owned : Boolean := False;
+      Decoded_Preview_Bytes : Image_Data_View := null;
       Preview_Decode_Complete : Boolean := False;
       Decode_Status : Image_Decode_Status := Image_Decode_Not_Attempted;
       U0             : Float := 0.0;
@@ -145,10 +144,6 @@ package Terminal.App.Render_Model is
       Z_Index        : Integer := 0;
       Tint           : Pixel_Color;
    end record;
-
-   --  Release each distinct owned buffer exactly once and reset every view.
-   --  Preview storage may alias the decoded or encoded source.
-   procedure Release_Owned_Buffers (Image : in out Image_Command);
 
    function Image_Decoded_Source_Bytes
      (Image : Image_Command) return Natural;

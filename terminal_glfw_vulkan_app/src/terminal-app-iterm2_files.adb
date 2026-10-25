@@ -308,6 +308,48 @@ package body Terminal.App.ITerm2_Files is
       Valid : Boolean := False;
       Too_Large : Boolean := False;
       Write_Failed : Boolean := False;
+
+      procedure Cleanup_Partial_Save is
+      begin
+         if File_FD >= 0 then
+            declare
+               Ignored : constant C.int := Platform.Close_File (File_FD);
+               pragma Unreferenced (Ignored);
+            begin
+               File_FD := -1;
+            end;
+         end if;
+         if Directory_FD >= 0 then
+            if Saved_Length > 0 then
+               begin
+                  declare
+                     Ignored : constant Boolean :=
+                       Platform.Delete_File_At
+                         (Directory_FD,
+                          Saved_Name
+                            (Saved_Name'First ..
+                             Saved_Name'First + Saved_Length - 1));
+                     pragma Unreferenced (Ignored);
+                  begin
+                     null;
+                  end;
+               exception
+                  --  Cleanup after an allocation failure must not require a
+                  --  second successful C-string allocation.
+                  when Storage_Error =>
+                     null;
+               end;
+            end if;
+            declare
+               Ignored : constant C.int := Platform.Close_File (Directory_FD);
+               pragma Unreferenced (Ignored);
+            begin
+               Directory_FD := -1;
+            end;
+         end if;
+         Saved_Name := (others => ' ');
+         Saved_Length := 0;
+      end Cleanup_Partial_Save;
    begin
       Saved_Name := (others => ' ');
       Saved_Length := 0;
@@ -400,9 +442,14 @@ package body Terminal.App.ITerm2_Files is
             Write_Failed);
          declare
             File_Close : constant C.int := Platform.Close_File (File_FD);
-            pragma Unreferenced (File_Close);
          begin
             File_FD := -1;
+            if File_Close /= 0 then
+               --  close(2) may be where delayed write errors are reported.
+               --  Never acknowledge a download whose final flush failed.
+               Write_Failed := True;
+               Valid := False;
+            end if;
          end;
          if not Valid then
             declare
@@ -436,36 +483,11 @@ package body Terminal.App.ITerm2_Files is
          end;
       end;
    exception
+      when Storage_Error =>
+         Cleanup_Partial_Save;
+         Status := Save_Allocation_Failed;
       when others =>
-         if File_FD >= 0 then
-            declare
-               Ignored : constant C.int := Platform.Close_File (File_FD);
-               pragma Unreferenced (Ignored);
-            begin
-               null;
-            end;
-         end if;
-         if Directory_FD >= 0 then
-            if Saved_Length > 0 then
-               declare
-                  Ignored : constant Boolean :=
-                    Platform.Delete_File_At
-                      (Directory_FD,
-                       Saved_Name
-                         (Saved_Name'First ..
-                          Saved_Name'First + Saved_Length - 1));
-                  pragma Unreferenced (Ignored);
-               begin
-                  null;
-               end;
-            end if;
-            declare
-               Ignored : constant C.int := Platform.Close_File (Directory_FD);
-               pragma Unreferenced (Ignored);
-            begin
-               null;
-            end;
-         end if;
-         Status := Save_Write_Failed;
+         Cleanup_Partial_Save;
+         raise;
    end Save;
 end Terminal.App.ITerm2_Files;

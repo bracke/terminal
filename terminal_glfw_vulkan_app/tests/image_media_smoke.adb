@@ -148,13 +148,19 @@ procedure Image_Media_Smoke is
          Label_Text & " first frame pixel");
       Assert
         (Image.Adapter_Buffer_Bytes >= Image.Total_Bytes
-         and then Image.Decoder_Configured_Bytes > 0,
+         and then Image.Decoder_Configured_Bytes > 0
+         and then Image.Adapter_Buffer_Bytes <=
+           1_048_576 * 2
+         and then Image.Adapter_Buffer_Bytes
+           + Image.Decoder_Configured_Bytes <=
+             1_048_576
+               * Terminal.App.Image_Media.Max_Transient_Decode_Multiplier,
          Label_Text & " reports explicit buffers and configured decoder memory");
       if Label_Text = "PICT" or else Label_Text = "PICT QuickTime JPEG" then
          Assert
            (Image.Adapter_Buffer_Bytes = Image.Frame_Bytes * 2
             and then Image.Decoder_Configured_Bytes = 1_048_576,
-            Label_Text & " reports adapter buffers and aggregate decoder limits");
+            Label_Text & " reports bounded adapter and decoder budgets");
       end if;
       if Animated then
          Assert

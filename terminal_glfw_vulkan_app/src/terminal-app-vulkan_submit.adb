@@ -1,9 +1,9 @@
-with Ada.Characters.Handling;
 with Ada.Containers.Generic_Array_Sort;
 with Ada.Unchecked_Deallocation;
 
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
+with Terminal.App.Status_Labels;
 
 package body Terminal.App.Vulkan_Submit is
    package RM renames Terminal.App.Render_Model;
@@ -13,6 +13,7 @@ package body Terminal.App.Vulkan_Submit is
    use type RM.Image_Array_Access;
    use type RM.Image_Array_View;
    use type RM.Image_Data_Access;
+   use type RM.Image_Data_View;
    use type RM.Image_Decode_Status;
    use type RM.Image_Decoded_Source_Kind;
    use type RM.Image_Protocol;
@@ -31,28 +32,8 @@ package body Terminal.App.Vulkan_Submit is
       return Text (Text'First + 1 .. Text'Last);
    end Trimmed_Natural;
 
-   function Humanize (Text : String) return String is
-      Result : String (1 .. Text'Length);
-      At_Word_Start : Boolean := True;
-   begin
-      for I in Text'Range loop
-         declare
-            Ch : constant Character := Text (I);
-            Out_Index : constant Positive := I - Text'First + 1;
-         begin
-            if Ch = '_' then
-               Result (Out_Index) := ' ';
-               At_Word_Start := True;
-            elsif At_Word_Start then
-               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
-               At_Word_Start := False;
-            else
-               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
-            end if;
-         end;
-      end loop;
-      return Result;
-   end Humanize;
+   function Humanize (Text : String) return String
+      renames Terminal.App.Status_Labels.Humanize;
 
    function Status_Label (Status : Build_Status) return String is
       Label : constant String := "Submit build: " & Humanize (Build_Status'Image (Status));
@@ -210,6 +191,11 @@ package body Terminal.App.Vulkan_Submit is
       Batch.Text_Atlas_Bytes := 0;
       Batch.Dirty_Atlas := False;
    end Reset;
+
+   procedure Invalidate (Batch : in out Submission_Batch) is
+   begin
+      Reset (Batch);
+   end Invalidate;
 
    procedure Release (Batch : in out Submission_Batch) is
    begin

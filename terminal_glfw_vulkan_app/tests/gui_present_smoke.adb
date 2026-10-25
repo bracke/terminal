@@ -18,7 +18,6 @@ with Terminal.Common.Bytes;
 with Terminal.Core;
 
 procedure GUI_Present_Smoke is
-   use AUnit.Assertions;
    use type Ada.Streams.Stream_Element_Offset;
    use type Interfaces.Unsigned_64;
    use Terminal.Common.Bytes;

@@ -171,7 +171,7 @@ begin
             Preview_Decode_Complete => True,
             Decode_Status => RM.Image_Decode_Ok,
             Decoded_Source => RM.Image_Decoded_Source_Buffer,
-            Decoded_Bytes => Decoded,
+            Decoded_Bytes => RM.Read_Only (Decoded),
             Decoded_Byte_Length => 2 * 2 * 4,
             others => <>)];
       With_Image : RM.Frame_Commands;

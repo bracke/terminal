@@ -6,6 +6,7 @@ with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.Core;
 with Terminal.PTY.Backend;
+with Test_Support;
 
 procedure PTY_M1_Commands_Smoke is
    use AUnit.Assertions;
@@ -27,16 +28,23 @@ procedure PTY_M1_Commands_Smoke is
    LS_Marker    : constant String := "ADA_LS_COLOR_DIR";
    Clear_Marker : constant String := "ADA_CLEAR_OK";
 
-   Command : constant String :=
-     "printf '\033[2J\033[H'; "
-     & "echo ADA_ECHO_OK; sleep 0.05; "
-     & "printf 'ADA_CAT_OK\n' | cat; sleep 0.05; "
-     & "printf '\033[31mADA_RED_OK\033[0m\n'; sleep 0.05; "
-     & "rm -rf /tmp/ADA_LS_COLOR_DIR; mkdir /tmp/ADA_LS_COLOR_DIR; "
-     & "cd /tmp; LS_COLORS='di=01;34' ls --color=always -d ADA_LS_COLOR_DIR; "
-     & "rm -rf /tmp/ADA_LS_COLOR_DIR; sleep 0.05; "
-     & "printf '\033[2J\033[HADA_CLEAR_OK\n'; exit"
-     & Character'Val (13);
+   Workspace : Test_Support.Temporary_Directory;
+
+   function Command return String is
+      Work_Path : constant String := Test_Support.Path (Workspace);
+   begin
+      return
+        "printf '\033[2J\033[H'; "
+        & "echo ADA_ECHO_OK; sleep 0.05; "
+        & "printf 'ADA_CAT_OK\n' | cat; sleep 0.05; "
+        & "printf '\033[31mADA_RED_OK\033[0m\n'; sleep 0.05; "
+        & "mkdir '" & Work_Path & "/ADA_LS_COLOR_DIR'; "
+        & "cd '" & Work_Path & "'; "
+        & "LS_COLORS='di=01;34' ls --color=always -d ADA_LS_COLOR_DIR; "
+        & "sleep 0.05; "
+        & "printf '\033[2J\033[HADA_CLEAR_OK\n'; exit"
+        & Character'Val (13);
+   end Command;
 
    T            : Terminal.Core.Terminal;
    Init_Status  : Terminal.Core.Initialize_Status;
@@ -179,6 +187,7 @@ procedure PTY_M1_Commands_Smoke is
       Terminal.Core.Release (Snap);
    end Inspect_Snapshot;
 begin
+   Test_Support.Reserve (Workspace, "terminal-m1-commands");
    Terminal.Core.Initialize (T, Rows, Cols, 100, Init_Status);
    Assert (Init_Status = Terminal.Core.Ok, "core initialize failed");
 

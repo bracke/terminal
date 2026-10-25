@@ -12,12 +12,14 @@ procedure Theme_Config_Smoke is
    use type Terminal.App.Config.Line_Status;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Renderer.Theme_Update_Status;
    use type Terminal.App.Theme.Theme_Name;
    use type Terminal.Core.Initialize_Status;
 
    R : Terminal.App.Renderer.Renderer;
    Renderer_Status : Terminal.App.Renderer.Init_Status;
    Render_Status   : Terminal.App.Renderer.Render_Status;
+   Theme_Status    : Terminal.App.Renderer.Theme_Update_Status;
    T : Terminal.Core.Terminal;
    Core_Status : Terminal.Core.Initialize_Status;
 
@@ -436,7 +438,10 @@ begin
      (Renderer_Status = Terminal.App.Renderer.Ok,
       "renderer initialize failed");
    Terminal.App.Renderer.Set_Theme
-     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light));
+     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light), Theme_Status);
+   Assert
+     (Theme_Status = Terminal.App.Renderer.Theme_Ok,
+      "renderer theme update failed");
 
    Terminal.Core.Initialize (T, 1, 1, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "core initialize failed");
@@ -467,4 +472,10 @@ begin
    end;
 
    Terminal.App.Renderer.Finalize (R);
+   Terminal.App.Renderer.Set_Theme
+     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark),
+      Theme_Status);
+   Assert
+     (Theme_Status = Terminal.App.Renderer.Theme_Closed,
+      "closed renderer rejects theme mutation");
 end Theme_Config_Smoke;

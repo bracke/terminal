@@ -1,8 +1,10 @@
+with Ada.Finalization;
 with Terminal.Common.Bytes;
 with Interfaces;
 with Terminal.Core;
 with Terminal.App.Graphics;
 with Terminal.App.Graphics_Transport;
+with Terminal.App.Frame_Image_Storage;
 with Terminal.App.ITerm2_Files;
 with Terminal.App.Image_Decode;
 with Terminal.App.Image_Media;
@@ -28,6 +30,8 @@ package Terminal.App.Renderer is
    Max_Kitty_Image_Bytes   : constant := 64 * 1024 * 1024;
    Max_Kitty_Placements    : constant := 16 * 1024;
    Max_Kitty_Animation_Frames : constant := 4_096;
+   --  One complete backup plus replay's two canvases and one published frame.
+   Max_Theme_Transaction_Bytes : constant := Max_Kitty_Image_Bytes * 4;
    Max_Relative_Placement_Depth : constant := 32;
    Max_Graphics_Pixel_Dimension : constant := 16_384;
 
@@ -43,6 +47,8 @@ package Terminal.App.Renderer is
       Per_Image_Bytes : Positive range
         1 .. Terminal.App.Render_Model.Max_Image_Decoded_Data_Length :=
           Terminal.App.Render_Model.Max_Image_Decoded_Data_Length;
+      Theme_Transaction_Bytes : Positive range
+        1 .. Max_Theme_Transaction_Bytes := Max_Theme_Transaction_Bytes;
       Pixel_Dimension : Positive range 1 .. Max_Graphics_Pixel_Dimension :=
         Max_Graphics_Pixel_Dimension;
       GPU_Atlas_Bytes : Positive range
@@ -58,7 +64,7 @@ package Terminal.App.Renderer is
    Default_Graphics_Resource_Limits : constant Graphics_Resource_Limits :=
      (others => <>);
 
-   type Renderer is limited private;
+   type Renderer is new Ada.Finalization.Limited_Controlled with private;
    type Snapshot_Array is array (Positive range <>) of Terminal.Core.Render_Snapshot;
 
    type Init_Status is (Ok, Vulkan_Adapter_Missing, Failed);
@@ -70,6 +76,11 @@ package Terminal.App.Renderer is
       Glyph_Load_Failed,
       Batch_Build_Failed,
       Failed);
+   type Theme_Update_Status is
+     (Theme_Ok,
+      Theme_Closed,
+      Theme_Allocation_Failed,
+      Theme_Replay_Failed);
 
    type Renderer_Diagnostics is record
       Initialized         : Boolean := False;
@@ -188,7 +199,8 @@ package Terminal.App.Renderer is
       Height : Natural);
    procedure Set_Theme
      (R : in out Renderer;
-      T : Terminal.App.Theme.Theme);
+      T : Terminal.App.Theme.Theme;
+      Status : out Theme_Update_Status);
    procedure Set_Hovered_Link
      (R    : in out Renderer;
       Link : Terminal.Core.Hyperlink);
@@ -218,7 +230,7 @@ package Terminal.App.Renderer is
    function Graphics_Event_Processed
      (R     : Renderer;
       Event : Terminal.Core.Graphics_Event) return Boolean;
-   procedure Finalize (R : in out Renderer);
+   overriding procedure Finalize (R : in out Renderer);
 
    function Cell_Width (R : Renderer) return Positive;
    function Cell_Height (R : Renderer) return Positive;
@@ -304,7 +316,9 @@ private
      array (Positive range <>) of Shaped_Run_Map_Entry;
    type Shaped_Run_Map_Array_Access is access Shaped_Run_Map_Array;
 
-   type Renderer is limited record
+   type Renderer is new Ada.Finalization.Limited_Controlled with record
+      Needs_Finalization : Boolean := False;
+      Closed      : Boolean := False;
       Initialized : Boolean := False;
       Has_Context : Boolean := False;
       Text        : Textrender.Renderer;
@@ -314,14 +328,13 @@ private
       Rectangles  : Terminal.App.Render_Model.Rectangle_Array_Access := null;
       Glyphs      : Terminal.App.Render_Model.Glyph_Array_Access := null;
       Colour_Glyphs : Terminal.App.Render_Model.Colour_Glyph_Array_Access := null;
-      Images      : Terminal.App.Render_Model.Image_Array_Access := null;
+      Frame_Images : Terminal.App.Frame_Image_Storage.Storage;
       Text_Runs   : Terminal.App.Render_Model.Text_Run_Array_Access := null;
       Shaped_Run_Map : Shaped_Run_Map_Array_Access := null;
       Batch       : Terminal.App.Vulkan_Submit.Submission_Batch;
       Rectangle_Count : Natural := 0;
       Glyph_Count : Natural := 0;
       Colour_Glyph_Count : Natural := 0;
-      Image_Count : Natural := 0;
       Text_Run_Count : Natural := 0;
       Shaped_Glyph_Count : Natural := 0;
       Shaping_Fallback_Count : Natural := 0;
@@ -344,7 +357,7 @@ private
       Draw_Offset_Y : Natural := 0;
       Atlas_Dirty : Boolean := False;
       Colour_Sheet_Dirty : Boolean := False;
-      Image_Objects : Image_Object_Access := null;
+      Image_Objects : Terminal.App.Image_Store.Store;
       Next_Automatic_Image_ID : Terminal.Core.Graphics_ID := 1;
       Graphics_Limits : Graphics_Resource_Limits :=
         Default_Graphics_Resource_Limits;
@@ -352,8 +365,6 @@ private
         Terminal.App.Graphics_Transport.Default_Access_Policy;
       ITerm2_Downloads : Terminal.App.ITerm2_Files.Download_Policy :=
         Terminal.App.ITerm2_Files.Disabled_Policy;
-      Next_Storage_Order : Interfaces.Unsigned_64 := 1;
-      Next_Content_Serial : Interfaces.Unsigned_64 := 1;
       Last_Stored_Image_Order : Interfaces.Unsigned_64 := 0;
       Last_Stored_Image_Content_Serial : Interfaces.Unsigned_64 := 0;
       Transactional_Image_Install : Boolean := False;
@@ -362,13 +373,6 @@ private
       Image_Transport_Failed : Boolean := False;
       Last_Animation_Result : Terminal.Core.Kitty_Graphics_Result_Code :=
         Terminal.Core.Kitty_No_Response;
-      Image_Object_Count : Natural range 0 .. Max_Kitty_Image_Objects := 0;
-      --  A combined replacement may retain the old and new payloads until
-      --  placement commit.  Public quota checks still use Max_Kitty_Image_Bytes;
-      --  this wider private range exists only for that bounded transaction.
-      Image_Object_Bytes : Natural range
-        0 .. 2 * Max_Kitty_Image_Bytes := 0;
-      Animation_Frame_Count : Natural range 0 .. Max_Kitty_Animation_Frames := 0;
       Graphics_Event_Count : Interfaces.Unsigned_64 := 0;
       Kitty_Command_Count : Interfaces.Unsigned_64 := 0;
       Kitty_Success_Count : Interfaces.Unsigned_64 := 0;

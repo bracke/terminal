@@ -1,8 +1,8 @@
 with System;
-with Ada.Characters.Handling;
 
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
+with Terminal.App.Status_Labels;
 
 package body Terminal.App.Vulkan_Presenter is
    use type System.Address;
@@ -23,28 +23,8 @@ package body Terminal.App.Vulkan_Presenter is
       return Text (Text'First + 1 .. Text'Last);
    end Trimmed_Natural;
 
-   function Humanize (Text : String) return String is
-      Result : String (1 .. Text'Length);
-      At_Word_Start : Boolean := True;
-   begin
-      for I in Text'Range loop
-         declare
-            Ch : constant Character := Text (I);
-            Out_Index : constant Positive := I - Text'First + 1;
-         begin
-            if Ch = '_' then
-               Result (Out_Index) := ' ';
-               At_Word_Start := True;
-            elsif At_Word_Start then
-               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
-               At_Word_Start := False;
-            else
-               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
-            end if;
-         end;
-      end loop;
-      return Result;
-   end Humanize;
+   function Humanize (Text : String) return String
+      renames Terminal.App.Status_Labels.Humanize;
 
    function To_Present_Status
      (Status : VD.Render_Status)
@@ -73,7 +53,9 @@ package body Terminal.App.Vulkan_Presenter is
             return Queue_Submit_Failed;
          when VD.Queue_Present_Failed =>
             return Queue_Present_Failed;
-         when others =>
+         when VD.Not_Initialized =>
+            return Not_Initialized;
+         when VD.No_Uploaded_Vertices =>
             return Render_Failed;
       end case;
    end To_Present_Status;
@@ -210,7 +192,10 @@ package body Terminal.App.Vulkan_Presenter is
             when VD.Surface_Query_Failed =>
                Status := Surface_Query_Failed;
                return;
-            when others =>
+            when VD.Context_Not_Initialized =>
+               Status := Context_Not_Initialized;
+               return;
+            when VD.No_Physical_Devices | VD.No_Suitable_Device =>
                Status := No_Suitable_Device;
                return;
          end case;
@@ -306,6 +291,12 @@ package body Terminal.App.Vulkan_Presenter is
             when VD.Atlas_Too_Large =>
                Status := Atlas_Too_Large;
                return;
+            when VD.Image_Staging_Invalid_Source =>
+               Status := Image_Staging_Invalid_Source;
+               return;
+            when VD.Image_Staging_Allocation_Failed =>
+               Status := Image_Staging_Allocation_Failed;
+               return;
             when VD.Create_Atlas_Image_Failed =>
                Status := Create_Atlas_Image_Failed;
                return;
@@ -333,8 +324,20 @@ package body Terminal.App.Vulkan_Presenter is
             when VD.Copy_Atlas_Failed =>
                Status := Copy_Atlas_Failed;
                return;
-            when others =>
+            when VD.Selection_Not_Ready =>
+               Status := Selection_Not_Ready;
+               return;
+            when VD.Resources_In_Flight =>
+               Status := Resources_In_Flight;
+               return;
+            when VD.Create_Device_Failed =>
                Status := Create_Device_Failed;
+               return;
+            when VD.Create_Color_Target_Failed =>
+               Status := Create_Color_Target_Failed;
+               return;
+            when VD.Surface_Query_Failed =>
+               Status := Surface_Query_Failed;
                return;
          end case;
       end;
@@ -405,6 +408,10 @@ package body Terminal.App.Vulkan_Presenter is
                return;
             end if;
             case Upload_Status is
+               when VD.Image_Staging_Invalid_Source =>
+                  Status := Image_Staging_Invalid_Source;
+               when VD.Image_Staging_Allocation_Failed =>
+                  Status := Image_Staging_Allocation_Failed;
                when VD.Atlas_Too_Large
                   | VD.Create_Atlas_Image_Failed
                   | VD.Allocate_Atlas_Memory_Failed
@@ -416,7 +423,38 @@ package body Terminal.App.Vulkan_Presenter is
                   | VD.Map_Atlas_Staging_Buffer_Failed
                   | VD.Copy_Atlas_Failed =>
                   Status := Atlas_Upload_Failed;
-               when others =>
+               when VD.Ok
+                  | VD.Selection_Not_Ready
+                  | VD.Device_Lost
+                  | VD.Resources_In_Flight
+                  | VD.Swapchain_Extension_Missing
+                  | VD.Create_Device_Failed
+                  | VD.Queue_Unavailable
+                  | VD.Surface_Query_Failed
+                  | VD.Invalid_Extent
+                  | VD.Create_Swapchain_Failed
+                  | VD.Get_Swapchain_Images_Failed
+                  | VD.Too_Many_Swapchain_Images
+                  | VD.Create_Image_View_Failed
+                  | VD.Create_Color_Target_Failed
+                  | VD.Create_Render_Pass_Failed
+                  | VD.Create_Framebuffer_Failed
+                  | VD.Create_Command_Pool_Failed
+                  | VD.Allocate_Command_Buffers_Failed
+                  | VD.Create_Sync_Failed
+                  | VD.Create_Pipeline_Layout_Failed
+                  | VD.Create_Descriptor_Set_Layout_Failed
+                  | VD.Create_Descriptor_Pool_Failed
+                  | VD.Allocate_Descriptor_Set_Failed
+                  | VD.Create_Atlas_Sampler_Failed
+                  | VD.Shader_Load_Failed
+                  | VD.Create_Shader_Module_Failed
+                  | VD.Create_Graphics_Pipeline_Failed
+                  | VD.Vertex_Buffer_Too_Large
+                  | VD.Create_Vertex_Buffer_Failed
+                  | VD.Allocate_Vertex_Memory_Failed
+                  | VD.Bind_Vertex_Buffer_Failed
+                  | VD.Map_Vertex_Buffer_Failed =>
                   Status := Upload_Failed;
             end case;
             Remember_Rejection (P, Status);
@@ -545,7 +583,7 @@ package body Terminal.App.Vulkan_Presenter is
         (P.Logical_Device, X, Y, Red, Green, Blue, Alpha, Status);
    end Readback_Pixel;
 
-   procedure Finalize (P : in out Presenter) is
+   overriding procedure Finalize (P : in out Presenter) is
    begin
       VD.Finalize (P.Logical_Device);
       P.Initialized := False;
@@ -553,6 +591,11 @@ package body Terminal.App.Vulkan_Presenter is
       P.Surface_Ready := False;
       P.Has_Uploaded_Frame := False;
       P.Last_Status := Not_Initialized;
+   exception
+      when others =>
+         P.Initialized := False;
+         P.Has_Uploaded_Frame := False;
+         P.Last_Status := Not_Initialized;
    end Finalize;
 
    function Is_Initialized (P : Presenter) return Boolean is

@@ -16,6 +16,7 @@ procedure Graphics_Capabilities_Smoke is
    use type Terminal.App.Graphics.Data_Decode_Status;
    use type Terminal.App.Graphics.ITerm2_Size_Unit;
    use type Terminal.App.Render_Model.Image_Data_Access;
+   use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
    use type Terminal.Common.Bytes.Byte;
@@ -184,32 +185,22 @@ begin
       "unsupported-format data decode maps to image decode");
 
    declare
-      Shared : constant RM.Image_Data_Access :=
-        new Terminal.Common.Bytes.Byte_Array'(1 => 16#A5#);
+      Shared : aliased Terminal.Common.Bytes.Byte_Array := (1 => 16#A5#);
       Image : RM.Image_Command :=
         (Decoded_Byte_Length => 1,
-         Decoded_Bytes => Shared,
-         Decoded_Bytes_Owned => True,
-         Encoded_Source_Bytes => Shared,
-         Encoded_Source_Bytes_Owned => True,
+         Decoded_Bytes => Shared'Unchecked_Access,
+         Encoded_Source_Bytes => Shared'Unchecked_Access,
          Encoded_Source_Length => 1,
          Decoded_Preview_Length => 1,
-         Decoded_Preview_Bytes => Shared,
-         Decoded_Preview_Bytes_Owned => True,
+         Decoded_Preview_Bytes => Shared'Unchecked_Access,
          others => <>);
+      Copy : constant RM.Image_Command := Image;
    begin
-      RM.Release_Owned_Buffers (Image);
       Assert
-        (Image.Decoded_Bytes = null
-         and then Image.Encoded_Source_Bytes = null
-         and then Image.Decoded_Preview_Bytes = null
-         and then not Image.Decoded_Bytes_Owned
-         and then not Image.Encoded_Source_Bytes_Owned
-         and then not Image.Decoded_Preview_Bytes_Owned
-         and then Image.Decoded_Byte_Length = 0
-         and then Image.Encoded_Source_Length = 0
-         and then Image.Decoded_Preview_Length = 0,
-         "owned buffer release handles aliased views exactly once");
+        (Copy.Decoded_Bytes = Image.Decoded_Bytes
+         and then Copy.Encoded_Source_Bytes = Image.Encoded_Source_Bytes
+         and then Copy.Decoded_Preview_Bytes = Image.Decoded_Preview_Bytes,
+         "image commands are safely copyable borrowed views");
    end;
 
    declare

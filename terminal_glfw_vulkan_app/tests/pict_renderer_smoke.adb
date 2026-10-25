@@ -13,6 +13,7 @@ procedure PICT_Renderer_Smoke is
    use AUnit.Assertions;
    use type Terminal.Common.Bytes.Byte;
    use type Terminal.App.Render_Model.Image_Data_Access;
+   use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Image_Media.Decode_Status;

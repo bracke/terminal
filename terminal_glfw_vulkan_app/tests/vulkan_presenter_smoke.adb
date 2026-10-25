@@ -149,6 +149,16 @@ begin
    Assert
      (VP.Status_Label (Present_Status) = "Present: Not Initialized",
       "not initialized present status label");
+   Assert
+     (VP.Status_Label
+        (VP.Present_Status'(VP.Image_Staging_Invalid_Source)) =
+          "Present: Image Staging Invalid Source",
+      "invalid encoded staging input remains distinct in diagnostics");
+   Assert
+     (VP.Status_Label
+        (VP.Present_Status'(VP.Image_Staging_Allocation_Failed)) =
+          "Present: Image Staging Allocation Failed",
+      "staging allocation failure remains distinct in diagnostics");
 
    declare
       Diag : constant VP.Diagnostic_Snapshot := VP.Diagnostics (Presenter);

@@ -17,7 +17,9 @@ procedure Renderer_Kitty_Object_Smoke is
    use type Terminal.Core.Kitty_Graphics_Result_Code;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Renderer.Theme_Update_Status;
    use type Terminal.App.Render_Model.Image_Data_Access;
+   use type Terminal.App.Render_Model.Image_Data_View;
    use type Interfaces.Unsigned_64;
 
    R : Terminal.App.Renderer.Renderer;
@@ -26,6 +28,7 @@ procedure Renderer_Kitty_Object_Smoke is
    Core_Status : Terminal.Core.Initialize_Status;
    Feed_Status : Terminal.Core.Feed_Status;
    Render_Status : Terminal.App.Renderer.Render_Status;
+   Theme_Status : Terminal.App.Renderer.Theme_Update_Status;
    Tabs : Terminal.App.Tabs.Tab_State;
    Splits : Terminal.App.Splits.Split_State;
 
@@ -125,8 +128,28 @@ begin
         (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Bytes = 5,
          "indexed source and expanded texture are quota-accounted");
    end;
+   Terminal.App.Renderer.Testing.Fail_Image_Allocation_After (R, 2);
    Terminal.App.Renderer.Set_Theme
-     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light));
+     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light), Theme_Status);
+   Assert
+     (Theme_Status = Terminal.App.Renderer.Theme_Allocation_Failed,
+      "failed theme switch reports allocation failure");
+   Render_Retained ("failed indexed image theme refresh");
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Testing.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Images (1).Decoded_Bytes (1) = 16#CC#
+         and then Frame.Images (1).Decoded_Bytes (2) = 16#2E#
+         and then Frame.Images (1).Decoded_Bytes (3) = 16#2E#,
+         "failed theme switch preserves the prior image state");
+   end;
+   Terminal.App.Renderer.Set_Theme
+     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light), Theme_Status);
+   Assert
+     (Theme_Status = Terminal.App.Renderer.Theme_Ok,
+      "indexed image theme refresh status");
    Render_Retained ("indexed image theme refresh");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
@@ -156,7 +179,11 @@ begin
       Light_Blue : constant Byte := Light_Frame.Images (1).Decoded_Bytes (3);
    begin
       Terminal.App.Renderer.Set_Theme
-        (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark));
+        (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark),
+         Theme_Status);
+      Assert
+        (Theme_Status = Terminal.App.Renderer.Theme_Ok,
+         "indexed animation dark theme status");
       Render_Retained ("indexed animation dark theme refresh");
       declare
          Dark_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
@@ -191,7 +218,11 @@ begin
       Dark_Blue : constant Byte := Dark_Frame.Images (1).Decoded_Bytes (3);
    begin
       Terminal.App.Renderer.Set_Theme
-        (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light));
+        (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light),
+         Theme_Status);
+      Assert
+        (Theme_Status = Terminal.App.Renderer.Theme_Ok,
+         "indexed root light theme status");
       Render_Retained ("deleted-frame indexed root theme refresh");
       declare
          Light_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
@@ -223,9 +254,31 @@ begin
          "frame deletion compacts replay data unrelated to the root");
    end;
 
+   declare
+      Original : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
+        Terminal.App.Renderer.Graphics_Resource_Limit (R);
+      Tight : Terminal.App.Renderer.Graphics_Resource_Limits := Original;
+   begin
+      --  Even the smallest one-pixel replay needs a root backup, two work
+      --  canvases, and one retained-state canvas: sixteen bytes exactly.
+      Tight.Theme_Transaction_Bytes := 15;
+      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Set_Theme
+        (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark),
+         Theme_Status);
+      Assert
+        (Theme_Status = Terminal.App.Renderer.Theme_Allocation_Failed,
+         "theme replay canvases are charged to the scratch quota");
+      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Original);
+   end;
+
    Reset;
    Terminal.App.Renderer.Set_Theme
-     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark));
+     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark),
+      Theme_Status);
+   Assert
+     (Theme_Status = Terminal.App.Renderer.Theme_Ok,
+      "indexed alpha dark theme status");
    Process
      ("Gf=16,a=T,i=231,s=1,v=1,C=1,c=1,r=1;+IA=",
       "indexed alpha image");
@@ -574,6 +627,27 @@ begin
          and then Diagnostics.Placement_Create_Count > 0
          and then Diagnostics.Chunk_Cancel_Count > 0,
          "cumulative graphics diagnostics cover protocol and resources");
+   end;
+
+   Reset;
+   Process
+     ("Gq=2,f=8,a=T,i=241,s=1,v=1,C=1,c=1,r=1;Ag==",
+      "theme scratch quota indexed image",
+      Terminal.Core.Kitty_OK);
+   declare
+      Original : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
+        Terminal.App.Renderer.Graphics_Resource_Limit (R);
+      Tight : Terminal.App.Renderer.Graphics_Resource_Limits := Original;
+   begin
+      Tight.Theme_Transaction_Bytes := 1;
+      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Set_Theme
+        (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light),
+         Theme_Status);
+      Assert
+        (Theme_Status = Terminal.App.Renderer.Theme_Allocation_Failed,
+         "theme scratch quota failure is reported");
+      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Original);
    end;
 
    Terminal.App.Renderer.Release_Graphics_Stream (R, 4_001);

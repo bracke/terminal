@@ -3,6 +3,7 @@ with Ada.Directories;
 with Ada.Environment_Variables;
 
 with Textrender.Fonts;
+with Terminal.App.Status_Labels;
 
 package body Terminal.App.Fonts is
    use type Ada.Directories.File_Kind;
@@ -264,15 +265,9 @@ package body Terminal.App.Fonts is
    end Natural_Image;
 
    function Bounded (Text : String) return String is
-      Result : String (1 .. Max_Status_Label_Length);
-      Last   : Natural := 0;
    begin
-      for Ch of Text loop
-         exit when Last = Result'Last;
-         Last := Last + 1;
-         Result (Last) := Ch;
-      end loop;
-      return Result (1 .. Last);
+      return Terminal.App.Status_Labels.Bounded
+        (Text, Max_Status_Label_Length);
    end Bounded;
 
    function To_Lower (Text : String) return String is

@@ -4,6 +4,9 @@ with Terminal.App.Render_Model;
 with Interfaces;
 
 package Terminal.App.Image_Media is
+   --  Native decoders may retain one configured workspace quota while the
+   --  adapter owns a result and one composition/output canvas.
+   Max_Transient_Decode_Multiplier : constant := 3;
    Max_Frames : constant := 256;
 
    subtype Decode_Status is Terminal.App.Image_Decode.Status;

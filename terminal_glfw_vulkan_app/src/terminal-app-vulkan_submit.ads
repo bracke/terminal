@@ -69,6 +69,9 @@ package Terminal.App.Vulkan_Submit is
       Batch  : in out Submission_Batch;
       Status : out Build_Status);
 
+   --  Drop all frame-specific state, including borrowed image and atlas views,
+   --  while retaining allocated working capacity for the next Build call.
+   procedure Invalidate (Batch : in out Submission_Batch);
    procedure Release (Batch : in out Submission_Batch);
    procedure Set_Image_Atlas_Limits
      (Batch  : in out Submission_Batch;

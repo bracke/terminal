@@ -156,6 +156,9 @@ begin
         Terminal.App.Renderer.Graphics_Resource_Limit (R);
       Tight : Terminal.App.Renderer.Graphics_Resource_Limits := Original;
       D : Terminal.App.Renderer.Renderer_Diagnostics;
+      Original_X : Float;
+      Original_Y : Float;
+      Original_Width : Float;
    begin
       Tight.Placements := 1;
       Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight);
@@ -163,6 +166,34 @@ begin
         ("Gq=2,a=T,i=10,p=1,f=32,s=1,v=1,c=1,r=1,C=1;/wAA/w==",
          Terminal.Core.Kitty_OK,
          "initial combined placement");
+      Original_X :=
+        Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).X;
+      Original_Y :=
+        Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Y;
+      Original_Width :=
+        Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Width;
+
+      Terminal.Core.Feed
+        (T, To_Bytes (ASCII.ESC & "[2;2H"), Feed_Status);
+      Assert
+        (Feed_Status = Terminal.Core.Ok,
+         "failed replacement cursor movement feed");
+      Process_Kitty
+        ("Gq=2,a=T,i=10,p=1,f=32,s=1,v=1,c=2,r=1,C=1;!!!!",
+         Terminal.Core.Kitty_EINVAL,
+         "malformed combined replacement");
+      Assert
+        (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1
+         and then
+           Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).X =
+             Original_X
+         and then
+           Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Y =
+             Original_Y
+         and then
+           Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).Width =
+             Original_Width,
+         "failed combined replacement preserves exact placement");
       Process_Kitty
         ("Gq=2,a=T,i=11,p=1,f=32,s=1,v=1,c=1,r=1,C=1;AP8A/w==",
          Terminal.Core.Kitty_ENOMEM,

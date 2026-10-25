@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Interfaces;
 with System;
 with Terminal.Common.Bytes;
@@ -17,7 +18,7 @@ package Terminal.App.Vulkan_Device is
    Max_Status_Label_Length : constant := 96;
 
    type Selection is private;
-   type Logical_Device is limited private;
+   type Logical_Device is new Ada.Finalization.Limited_Controlled with private;
 
    type Select_Status is
      (Ok,
@@ -73,6 +74,8 @@ package Terminal.App.Vulkan_Device is
       Bind_Vertex_Buffer_Failed,
       Map_Vertex_Buffer_Failed,
       Atlas_Too_Large,
+      Image_Staging_Invalid_Source,
+      Image_Staging_Allocation_Failed,
       Create_Atlas_Image_Failed,
       Allocate_Atlas_Memory_Failed,
       Bind_Atlas_Image_Failed,
@@ -197,7 +200,7 @@ package Terminal.App.Vulkan_Device is
       Device : out Logical_Device;
       Status : out Create_Status);
 
-   procedure Finalize (Device : in out Logical_Device);
+   overriding procedure Finalize (Device : in out Logical_Device);
 
    procedure Upload
      (Device : in out Logical_Device;
@@ -260,7 +263,7 @@ private
       Last_Status           : Select_Status := Context_Not_Initialized;
    end record;
 
-   type Logical_Device is limited record
+   type Logical_Device is new Ada.Finalization.Limited_Controlled with record
       Initialized        : Boolean := False;
       Device             : Vk.Device_T := System.Null_Address;
       Queue              : Vk.Queue_T := System.Null_Address;
@@ -313,6 +316,12 @@ private
       Render_Finished    : Semaphore_Array := (others => System.Null_Address);
       In_Flight          : Fence_Array := (others => System.Null_Address);
       Upload_Fence       : Vk.Fence_T := System.Null_Address;
+      Deferred_Upload_Buffer : Vk.Buffer_T := System.Null_Address;
+      Deferred_Upload_Memory : Vk.Device_Memory_T := System.Null_Address;
+      Deferred_Upload_Image  : Vk.Image_T := System.Null_Address;
+      Deferred_Upload_Image_Memory : Vk.Device_Memory_T := System.Null_Address;
+      Deferred_Upload_View   : Vk.Image_View_T := System.Null_Address;
+      Deferred_Upload_Pending : Boolean := False;
       Queue_Family_Index : Natural := 0;
       Swapchain_Image_Count : Natural := 0;
       Swapchain_View_Count : Natural := 0;

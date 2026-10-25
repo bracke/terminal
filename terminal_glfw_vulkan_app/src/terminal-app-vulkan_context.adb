@@ -1,8 +1,8 @@
-with Ada.Characters.Handling;
 with Interfaces.C.Strings;
 with Interfaces.C;
 with GLFW_Vulkan.Surfaces;
 with System;
+with Terminal.App.Status_Labels;
 
 package body Terminal.App.Vulkan_Context is
    use type GLFW_Vulkan.Surfaces.Surface_Status;
@@ -11,28 +11,8 @@ package body Terminal.App.Vulkan_Context is
    use type Vk.Instance_T;
    use type Vk.Surface_KHR_T;
 
-   function Humanize (Text : String) return String is
-      Result : String (1 .. Text'Length);
-      At_Word_Start : Boolean := True;
-   begin
-      for I in Text'Range loop
-         declare
-            Ch : constant Character := Text (I);
-            Out_Index : constant Positive := I - Text'First + 1;
-         begin
-            if Ch = '_' then
-               Result (Out_Index) := ' ';
-               At_Word_Start := True;
-            elsif At_Word_Start then
-               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
-               At_Word_Start := False;
-            else
-               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
-            end if;
-         end;
-      end loop;
-      return Result;
-   end Humanize;
+   function Humanize (Text : String) return String
+      renames Terminal.App.Status_Labels.Humanize;
 
    function Status_Label (Status : Init_Status) return String is
       Label : constant String :=
@@ -145,17 +125,33 @@ package body Terminal.App.Vulkan_Context is
       Status := Ok;
    end Initialize;
 
-   procedure Finalize (Ctx : in out Context) is
+   overriding procedure Finalize (Ctx : in out Context) is
    begin
-      if Ctx.Surface /= System.Null_Address and then Ctx.Instance /= System.Null_Address then
-         Vk.Destroy_Surface_KHR (Ctx.Instance, Ctx.Surface, System.Null_Address);
-         Ctx.Surface := System.Null_Address;
+      if Ctx.Surface /= System.Null_Address
+        and then Ctx.Instance /= System.Null_Address
+      then
+         begin
+            Vk.Destroy_Surface_KHR
+              (Ctx.Instance, Ctx.Surface, System.Null_Address);
+         exception
+            when others => null;
+         end;
       end if;
+      --  Clear each handle even when its destroy call failed.  Finalization
+      --  is best-effort and must never retry a possibly consumed handle.
+      Ctx.Surface := System.Null_Address;
       if Ctx.Instance /= System.Null_Address then
-         Vk.Destroy_Instance (Ctx.Instance, System.Null_Address);
-         Ctx.Instance := System.Null_Address;
+         begin
+            Vk.Destroy_Instance (Ctx.Instance, System.Null_Address);
+         exception
+            when others => null;
+         end;
       end if;
+      Ctx.Instance := System.Null_Address;
       Ctx.Initialized := False;
+   exception
+      when others =>
+         Ctx.Initialized := False;
    end Finalize;
 
    function Is_Initialized (Ctx : Context) return Boolean is

@@ -69,7 +69,7 @@ package body Terminal.App.Platform_Media is
    exception
       when others =>
          CS.Free (Name);
-         return OS.Invalid_FD;
+         raise;
    end Open_Read_No_Follow;
 
    function Descriptor_Path (FD : OS.File_Descriptor) return String is
@@ -94,7 +94,7 @@ package body Terminal.App.Platform_Media is
    exception
       when others =>
          CS.Free (C_Name);
-         return OS.Invalid_FD;
+         raise;
    end Shared_Memory_Open;
 
    function Shared_Memory_Unlink (Name : String) return Boolean is
@@ -107,7 +107,7 @@ package body Terminal.App.Platform_Media is
    exception
       when others =>
          CS.Free (C_Name);
-         return False;
+         raise;
    end Shared_Memory_Unlink;
 
    function Open_Directory_No_Follow (Path : String) return C.int is
@@ -120,7 +120,7 @@ package body Terminal.App.Platform_Media is
    exception
       when others =>
          CS.Free (Name);
-         return -1;
+         raise;
    end Open_Directory_No_Follow;
 
    function Create_File_At
@@ -140,7 +140,7 @@ package body Terminal.App.Platform_Media is
    exception
       when others =>
          CS.Free (C_Name);
-         return -1;
+         raise;
    end Create_File_At;
 
    function Write_File
@@ -164,7 +164,7 @@ package body Terminal.App.Platform_Media is
    exception
       when others =>
          CS.Free (C_Name);
-         return False;
+         raise;
    end Delete_File_At;
 
 end Terminal.App.Platform_Media;

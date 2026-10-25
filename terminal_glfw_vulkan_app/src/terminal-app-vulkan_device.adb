@@ -1,5 +1,4 @@
 with Interfaces;
-with Ada.Characters.Handling;
 with Ada.Unchecked_Deallocation;
 with Interfaces.C;
 with Interfaces.C.Strings;
@@ -7,8 +6,10 @@ with System;
 with System.Address_To_Access_Conversions;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
-with Terminal.App.Graphics;
+with Terminal.App.Image_Staging;
+with Terminal.App.Image_Upload_Layout;
 with Terminal.App.Shaders;
+with Terminal.App.Status_Labels;
 
 package body Terminal.App.Vulkan_Device is
    use type Interfaces.Unsigned_32;
@@ -51,7 +52,8 @@ package body Terminal.App.Vulkan_Device is
    package RM renames Terminal.App.Render_Model;
    use type RM.Image_Data_Access;
    use type RM.Image_Decoded_Source_Kind;
-   use type Terminal.App.Graphics.Data_Decode_Status;
+   use type Terminal.App.Image_Staging.Decode_Status;
+   use type Terminal.App.Image_Upload_Layout.Layout_Status;
 
    function Trimmed_Natural (Value : Natural) return String is
       Text : constant String := Natural'Image (Value);
@@ -59,36 +61,13 @@ package body Terminal.App.Vulkan_Device is
       return Text (Text'First + 1 .. Text'Last);
    end Trimmed_Natural;
 
-   function Humanize (Text : String) return String is
-      Result : String (1 .. Text'Length);
-      At_Word_Start : Boolean := True;
-   begin
-      for I in Text'Range loop
-         declare
-            Ch : constant Character := Text (I);
-            Out_Index : constant Positive := I - Text'First + 1;
-         begin
-            if Ch = '_' then
-               Result (Out_Index) := ' ';
-               At_Word_Start := True;
-            elsif At_Word_Start then
-               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
-               At_Word_Start := False;
-            else
-               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
-            end if;
-         end;
-      end loop;
-      return Result;
-   end Humanize;
+   function Humanize (Text : String) return String
+      renames Terminal.App.Status_Labels.Humanize;
 
    function Bounded (Text : String) return String is
    begin
-      if Text'Length > Max_Status_Label_Length then
-         return Text (Text'First .. Text'First + Max_Status_Label_Length - 1);
-      else
-         return Text;
-      end if;
+      return Terminal.App.Status_Labels.Bounded
+        (Text, Max_Status_Label_Length);
    end Bounded;
 
    function Select_Status_Label (Status : Select_Status) return String is
@@ -313,6 +292,20 @@ package body Terminal.App.Vulkan_Device is
    procedure Destroy_Atlas_Image (Device : in out Logical_Device);
    procedure Destroy_Image_Texture (Device : in out Logical_Device);
    procedure Destroy_Colour_Sheet (Device : in out Logical_Device);
+   procedure Destroy_Deferred_Upload (Device : in out Logical_Device);
+
+   procedure Defer_Upload_Resources
+     (Device         : in out Logical_Device;
+      Staging_Buffer : in out Vk.Buffer_T;
+      Staging_Memory : in out Vk.Device_Memory_T;
+      Image          : in out Vk.Image_T;
+      Image_Memory   : in out Vk.Device_Memory_T;
+      Image_View     : in out Vk.Image_View_T);
+
+   procedure Reap_Deferred_Upload
+     (Device : in out Logical_Device;
+      Ready  : out Boolean;
+      Status : out Create_Status);
 
    procedure Restore_Upload_Fence (Device : in out Logical_Device);
 
@@ -1299,7 +1292,17 @@ package body Terminal.App.Vulkan_Device is
          Vk.Destroy_Shader_Module (Handle, Fragment_Module, System.Null_Address);
          Vk.Destroy_Shader_Module (Handle, Vertex_Module, System.Null_Address);
 
-         if Result /= Vk.SUCCESS or else Pipeline = System.Null_Address then
+         if Result /= Vk.SUCCESS then
+            --  Vulkan permits a failed batch creation to return handles for
+            --  entries completed before the failure.  This call creates one
+            --  pipeline, so destroy that partial result before reporting it.
+            if Pipeline /= System.Null_Address then
+               Vk.Destroy_Pipeline
+                 (Handle, Pipeline, System.Null_Address);
+               Pipeline := System.Null_Address;
+            end if;
+            return Create_Graphics_Pipeline_Failed;
+         elsif Pipeline = System.Null_Address then
             return Create_Graphics_Pipeline_Failed;
          end if;
 
@@ -2221,166 +2224,144 @@ package body Terminal.App.Vulkan_Device is
       Status := Ok;
    end Create_Logical_Device;
 
-   procedure Finalize (Device : in out Logical_Device) is
+   overriding procedure Finalize (Device : in out Logical_Device) is
+      generic
+         type Handle_Type is private;
+         Null_Handle : Handle_Type;
+         with procedure Destroy
+           (Parent    : Vk.Device_T;
+            Handle    : Handle_Type;
+            Allocator : System.Address);
+      procedure Destroy_Safely (Handle : in out Handle_Type);
+
+      procedure Destroy_Safely (Handle : in out Handle_Type) is
+      begin
+         if Handle /= Null_Handle then
+            begin
+               Destroy (Device.Device, Handle, System.Null_Address);
+            exception
+               when others => null;
+            end;
+         end if;
+         --  Never retry a handle after a best-effort destructor was called:
+         --  the foreign call may have consumed it before an Ada exception.
+         Handle := Null_Handle;
+      end Destroy_Safely;
+
+      procedure Destroy_Fence is new Destroy_Safely
+        (Vk.Fence_T, System.Null_Address, Vk.Destroy_Fence);
+      procedure Destroy_Semaphore is new Destroy_Safely
+        (Vk.Semaphore_T, System.Null_Address, Vk.Destroy_Semaphore);
+      procedure Destroy_Command_Pool is new Destroy_Safely
+        (Vk.Command_Pool_T, System.Null_Address, Vk.Destroy_Command_Pool);
+      procedure Destroy_Buffer is new Destroy_Safely
+        (Vk.Buffer_T, System.Null_Address, Vk.Destroy_Buffer);
+      procedure Free_Memory is new Destroy_Safely
+        (Vk.Device_Memory_T, System.Null_Address, Vk.Free_Memory);
+      procedure Destroy_Image_View is new Destroy_Safely
+        (Vk.Image_View_T, System.Null_Address, Vk.Destroy_Image_View);
+      procedure Destroy_Image is new Destroy_Safely
+        (Vk.Image_T, System.Null_Address, Vk.Destroy_Image);
+      procedure Destroy_Sampler is new Destroy_Safely
+        (Vk.Sampler_T, System.Null_Address, Vk.Destroy_Sampler);
+      procedure Destroy_Pipeline is new Destroy_Safely
+        (Vk.Pipeline_T, System.Null_Address, Vk.Destroy_Pipeline);
+      procedure Destroy_Pipeline_Layout is new Destroy_Safely
+        (Vk.Pipeline_Layout_T, System.Null_Address, Vk.Destroy_Pipeline_Layout);
+      procedure Destroy_Descriptor_Pool is new Destroy_Safely
+        (Vk.Descriptor_Pool_T, System.Null_Address, Vk.Destroy_Descriptor_Pool);
+      procedure Destroy_Descriptor_Set_Layout is new Destroy_Safely
+        (Vk.Descriptor_Set_Layout_T, System.Null_Address,
+         Vk.Destroy_Descriptor_Set_Layout);
+      procedure Destroy_Framebuffer is new Destroy_Safely
+        (Vk.Framebuffer_T, System.Null_Address, Vk.Destroy_Framebuffer);
+      procedure Destroy_Render_Pass is new Destroy_Safely
+        (Vk.Render_Pass_T, System.Null_Address, Vk.Destroy_Render_Pass);
+      procedure Destroy_Swapchain is new Destroy_Safely
+        (Vk.Swapchain_KHR_T, System.Null_Address, Vk.Destroy_Swapchain_KHR);
    begin
       if Device.Device /= System.Null_Address then
-         declare
-            Result : constant Vk.Result_T := Vk.Device_Wait_Idle (Device.Device);
-            pragma Unreferenced (Result);
          begin
-            if Device.Upload_Fence /= System.Null_Address then
-               Vk.Destroy_Fence
-                 (Device.Device, Device.Upload_Fence, System.Null_Address);
-            end if;
-            for I in 1 .. Device.Sync_Frame_Count loop
-               if Device.In_Flight (I) /= System.Null_Address then
-                  Vk.Destroy_Fence
-                    (Device.Device, Device.In_Flight (I), System.Null_Address);
-               end if;
-               if Device.Render_Finished (I) /= System.Null_Address then
-                  Vk.Destroy_Semaphore
-                    (Device.Device, Device.Render_Finished (I), System.Null_Address);
-               end if;
-               if Device.Image_Available (I) /= System.Null_Address then
-                  Vk.Destroy_Semaphore
-                    (Device.Device, Device.Image_Available (I), System.Null_Address);
-               end if;
-            end loop;
+            declare
+               Result : constant Vk.Result_T :=
+                 Vk.Device_Wait_Idle (Device.Device);
+               pragma Unreferenced (Result);
+            begin
+               null;
+            end;
+         exception
+            when others => null;
+         end;
 
-            if Device.Command_Pool /= System.Null_Address then
-               if Device.Upload_Command_Buffer /= System.Null_Address then
+         Destroy_Deferred_Upload (Device);
+         Destroy_Fence (Device.Upload_Fence);
+         for I in Device.In_Flight'Range loop
+            Destroy_Fence (Device.In_Flight (I));
+            Destroy_Semaphore (Device.Render_Finished (I));
+            Destroy_Semaphore (Device.Image_Available (I));
+         end loop;
+
+         if Device.Command_Pool /= System.Null_Address then
+            if Device.Upload_Command_Buffer /= System.Null_Address then
+               begin
                   Vk.Free_Command_Buffers
-                    (Device.Device,
-                     Device.Command_Pool,
-                     1,
+                    (Device.Device, Device.Command_Pool, 1,
                      Device.Upload_Command_Buffer'Address);
-               end if;
-               if Device.Command_Buffer_Count > 0 then
+               exception
+                  when others => null;
+               end;
+            end if;
+            Device.Upload_Command_Buffer := System.Null_Address;
+            if Device.Command_Buffer_Count > 0 then
+               begin
                   Vk.Free_Command_Buffers
                     (Device.Device,
                      Device.Command_Pool,
                      Interfaces.Unsigned_32 (Device.Command_Buffer_Count),
                      Device.Command_Buffers'Address);
-               end if;
-               Vk.Destroy_Command_Pool
-                 (Device.Device, Device.Command_Pool, System.Null_Address);
+               exception
+                  when others => null;
+               end;
             end if;
+         end if;
+         Device.Command_Buffers := (others => System.Null_Address);
+         Device.Command_Buffer_Count := 0;
+         Destroy_Command_Pool (Device.Command_Pool);
 
-            if Device.Vertex_Buffer /= System.Null_Address then
-               Vk.Destroy_Buffer
-                 (Device.Device, Device.Vertex_Buffer, System.Null_Address);
-            end if;
+         Destroy_Buffer (Device.Vertex_Buffer);
+         Free_Memory (Device.Vertex_Memory);
+         Destroy_Buffer (Device.Readback_Buffer);
+         Free_Memory (Device.Readback_Memory);
+         Destroy_Image_View (Device.Atlas_View);
+         Destroy_Image (Device.Atlas_Image);
+         Free_Memory (Device.Atlas_Memory);
+         Destroy_Image_View (Device.Image_Texture_View);
+         Destroy_Image (Device.Image_Texture_Image);
+         Free_Memory (Device.Image_Texture_Memory);
+         Destroy_Sampler (Device.Atlas_Sampler);
+         Destroy_Pipeline (Device.Graphics_Pipeline);
+         Destroy_Pipeline_Layout (Device.Pipeline_Layout);
+         Destroy_Descriptor_Pool (Device.Descriptor_Pool);
+         Destroy_Descriptor_Set_Layout (Device.Descriptor_Set_Layout);
 
-            if Device.Vertex_Memory /= System.Null_Address then
-               Vk.Free_Memory
-                 (Device.Device, Device.Vertex_Memory, System.Null_Address);
-            end if;
+         for I in Device.Framebuffers'Range loop
+            Destroy_Framebuffer (Device.Framebuffers (I));
+         end loop;
+         Destroy_Render_Pass (Device.Render_Pass);
+         Destroy_Image_View (Device.Color_MSAA_View);
+         Destroy_Image (Device.Color_MSAA_Image);
+         Free_Memory (Device.Color_MSAA_Memory);
+         for I in Device.Swapchain_Views'Range loop
+            Destroy_Image_View (Device.Swapchain_Views (I));
+         end loop;
+         Destroy_Swapchain (Device.Swapchain);
 
-            if Device.Readback_Buffer /= System.Null_Address then
-               Vk.Destroy_Buffer
-                 (Device.Device, Device.Readback_Buffer, System.Null_Address);
-            end if;
-
-            if Device.Readback_Memory /= System.Null_Address then
-               Vk.Free_Memory
-                 (Device.Device, Device.Readback_Memory, System.Null_Address);
-            end if;
-
-            if Device.Atlas_View /= System.Null_Address then
-               Vk.Destroy_Image_View
-                 (Device.Device, Device.Atlas_View, System.Null_Address);
-            end if;
-
-            if Device.Atlas_Image /= System.Null_Address then
-               Vk.Destroy_Image
-                 (Device.Device, Device.Atlas_Image, System.Null_Address);
-            end if;
-
-            if Device.Atlas_Memory /= System.Null_Address then
-               Vk.Free_Memory
-                 (Device.Device, Device.Atlas_Memory, System.Null_Address);
-            end if;
-
-            if Device.Image_Texture_View /= System.Null_Address then
-               Vk.Destroy_Image_View
-                 (Device.Device, Device.Image_Texture_View, System.Null_Address);
-            end if;
-
-            if Device.Image_Texture_Image /= System.Null_Address then
-               Vk.Destroy_Image
-                 (Device.Device, Device.Image_Texture_Image, System.Null_Address);
-            end if;
-
-            if Device.Image_Texture_Memory /= System.Null_Address then
-               Vk.Free_Memory
-                 (Device.Device, Device.Image_Texture_Memory, System.Null_Address);
-            end if;
-
-            if Device.Atlas_Sampler /= System.Null_Address then
-               Vk.Destroy_Sampler
-                 (Device.Device, Device.Atlas_Sampler, System.Null_Address);
-            end if;
-
-            if Device.Graphics_Pipeline /= System.Null_Address then
-               Vk.Destroy_Pipeline
-                 (Device.Device, Device.Graphics_Pipeline, System.Null_Address);
-            end if;
-
-            if Device.Pipeline_Layout /= System.Null_Address then
-               Vk.Destroy_Pipeline_Layout
-                 (Device.Device, Device.Pipeline_Layout, System.Null_Address);
-            end if;
-
-            if Device.Descriptor_Pool /= System.Null_Address then
-               Vk.Destroy_Descriptor_Pool
-                 (Device.Device, Device.Descriptor_Pool, System.Null_Address);
-            end if;
-
-            if Device.Descriptor_Set_Layout /= System.Null_Address then
-               Vk.Destroy_Descriptor_Set_Layout
-                 (Device.Device, Device.Descriptor_Set_Layout, System.Null_Address);
-            end if;
-
-            for I in 1 .. Device.Framebuffer_Count loop
-               if Device.Framebuffers (I) /= System.Null_Address then
-                  Vk.Destroy_Framebuffer
-                    (Device.Device, Device.Framebuffers (I), System.Null_Address);
-               end if;
-            end loop;
-
-            if Device.Render_Pass /= System.Null_Address then
-               Vk.Destroy_Render_Pass
-                 (Device.Device, Device.Render_Pass, System.Null_Address);
-            end if;
-
-            if Device.Color_MSAA_View /= System.Null_Address then
-               Vk.Destroy_Image_View
-                 (Device.Device, Device.Color_MSAA_View, System.Null_Address);
-            end if;
-
-            if Device.Color_MSAA_Image /= System.Null_Address then
-               Vk.Destroy_Image
-                 (Device.Device, Device.Color_MSAA_Image, System.Null_Address);
-            end if;
-
-            if Device.Color_MSAA_Memory /= System.Null_Address then
-               Vk.Free_Memory
-                 (Device.Device, Device.Color_MSAA_Memory, System.Null_Address);
-            end if;
-
-            for I in 1 .. Device.Swapchain_View_Count loop
-               if Device.Swapchain_Views (I) /= System.Null_Address then
-                  Vk.Destroy_Image_View
-                    (Device.Device, Device.Swapchain_Views (I), System.Null_Address);
-               end if;
-            end loop;
-
-            if Device.Swapchain /= System.Null_Address then
-               Vk.Destroy_Swapchain_KHR
-                 (Device.Device, Device.Swapchain, System.Null_Address);
-            end if;
+         begin
             Vk.Destroy_Device (Device.Device, System.Null_Address);
+         exception
+            when others => null;
          end;
+         Device.Device := System.Null_Address;
       end if;
 
       Device.Initialized := False;
@@ -2452,6 +2433,13 @@ package body Terminal.App.Vulkan_Device is
       Device.Swapchain_Width := 0;
       Device.Swapchain_Height := 0;
       Device.Last_Status := Selection_Not_Ready;
+   exception
+      when others =>
+         --  A controlled finalizer must not replace an exception already in
+         --  flight.  Mark the device unusable even if a corrupted teardown
+         --  invariant prevented complete release.
+         Device.Initialized := False;
+         Device.Last_Status := Selection_Not_Ready;
    end Finalize;
 
    function Has_Memory_Type
@@ -2579,6 +2567,122 @@ package body Terminal.App.Vulkan_Device is
          Device.Image_Texture_Descriptor_Bound_Count := 1;
       end if;
    end Destroy_Image_Texture;
+
+   procedure Destroy_Deferred_Upload (Device : in out Logical_Device) is
+   begin
+      if Device.Deferred_Upload_View /= System.Null_Address then
+         begin
+            Vk.Destroy_Image_View
+              (Device.Device,
+               Device.Deferred_Upload_View,
+               System.Null_Address);
+         exception
+            when others => null;
+         end;
+      end if;
+      Device.Deferred_Upload_View := System.Null_Address;
+      if Device.Deferred_Upload_Image /= System.Null_Address then
+         begin
+            Vk.Destroy_Image
+              (Device.Device,
+               Device.Deferred_Upload_Image,
+               System.Null_Address);
+         exception
+            when others => null;
+         end;
+      end if;
+      Device.Deferred_Upload_Image := System.Null_Address;
+      if Device.Deferred_Upload_Image_Memory /= System.Null_Address then
+         begin
+            Vk.Free_Memory
+              (Device.Device,
+               Device.Deferred_Upload_Image_Memory,
+               System.Null_Address);
+         exception
+            when others => null;
+         end;
+      end if;
+      Device.Deferred_Upload_Image_Memory := System.Null_Address;
+      if Device.Deferred_Upload_Buffer /= System.Null_Address then
+         begin
+            Vk.Destroy_Buffer
+              (Device.Device,
+               Device.Deferred_Upload_Buffer,
+               System.Null_Address);
+         exception
+            when others => null;
+         end;
+      end if;
+      Device.Deferred_Upload_Buffer := System.Null_Address;
+      if Device.Deferred_Upload_Memory /= System.Null_Address then
+         begin
+            Vk.Free_Memory
+              (Device.Device,
+               Device.Deferred_Upload_Memory,
+               System.Null_Address);
+         exception
+            when others => null;
+         end;
+      end if;
+      Device.Deferred_Upload_Memory := System.Null_Address;
+      Device.Deferred_Upload_Pending := False;
+   end Destroy_Deferred_Upload;
+
+   procedure Defer_Upload_Resources
+     (Device         : in out Logical_Device;
+      Staging_Buffer : in out Vk.Buffer_T;
+      Staging_Memory : in out Vk.Device_Memory_T;
+      Image          : in out Vk.Image_T;
+      Image_Memory   : in out Vk.Device_Memory_T;
+      Image_View     : in out Vk.Image_View_T) is
+   begin
+      if Device.Deferred_Upload_Pending then
+         raise Program_Error with "an upload retirement is already pending";
+      end if;
+      Device.Deferred_Upload_Buffer := Staging_Buffer;
+      Device.Deferred_Upload_Memory := Staging_Memory;
+      Device.Deferred_Upload_Image := Image;
+      Device.Deferred_Upload_Image_Memory := Image_Memory;
+      Device.Deferred_Upload_View := Image_View;
+      Device.Deferred_Upload_Pending := True;
+      Staging_Buffer := System.Null_Address;
+      Staging_Memory := System.Null_Address;
+      Image := System.Null_Address;
+      Image_Memory := System.Null_Address;
+      Image_View := System.Null_Address;
+   end Defer_Upload_Resources;
+
+   procedure Reap_Deferred_Upload
+     (Device : in out Logical_Device;
+      Ready  : out Boolean;
+      Status : out Create_Status)
+   is
+      Result : Vk.Result_T;
+   begin
+      Ready := True;
+      Status := Ok;
+      if not Device.Deferred_Upload_Pending then
+         return;
+      elsif Device.Upload_Fence = System.Null_Address then
+         Ready := False;
+         Status := Copy_Atlas_Failed;
+         return;
+      end if;
+      Result := Vk.Get_Fence_Status (Device.Device, Device.Upload_Fence);
+      if Result = Vk.SUCCESS then
+         Destroy_Deferred_Upload (Device);
+      elsif Result = Vk.ERROR_DEVICE_LOST then
+         Destroy_Deferred_Upload (Device);
+         Ready := False;
+         Status := Device_Lost;
+      else
+         Ready := False;
+         Status :=
+           (if Result = Vk.NOT_READY
+            then Resources_In_Flight
+            else Copy_Atlas_Failed);
+      end if;
+   end Reap_Deferred_Upload;
 
    procedure Restore_Upload_Fence (Device : in out Logical_Device) is
       Fence_Info : aliased Vk.Fence_Create_Info_T :=
@@ -3139,606 +3243,11 @@ package body Terminal.App.Vulkan_Device is
       Row_Stride_Bytes : Natural;
       Bytes_Natural : Natural;
       Fill_Staging  : not null access procedure
-        (Target : Image_Texture_Byte_Mapping.Object_Pointer;
+        (Target   : Image_Texture_Byte_Mapping.Object_Pointer;
+         Capacity : Positive;
          Status : out Create_Status);
       Status        : out Create_Status;
-      Content_Signature : Interfaces.Unsigned_64 := 0)
-   is
-      Image : aliased Vk.Image_T := System.Null_Address;
-      Image_Memory : aliased Vk.Device_Memory_T := System.Null_Address;
-      Image_View : aliased Vk.Image_View_T := System.Null_Address;
-      Staging_Buffer : aliased Vk.Buffer_T := System.Null_Address;
-      Staging_Memory : aliased Vk.Device_Memory_T := System.Null_Address;
-      Data : aliased System.Address := System.Null_Address;
-      Memory_Requirements : aliased Vk.Memory_Requirements_T;
-      Memory_Properties : aliased Vk.Physical_Device_Memory_Properties_T;
-      Memory_Type_Index : Interfaces.Unsigned_32 := 0;
-      Source_Row_Bytes : Natural := 0;
-      Target_Row_Bytes : Natural := 0;
-      Upload_Bytes_Natural : Natural := 0;
-      Staging_Bytes_Natural : Natural := 0;
-      Vulkan_Buffer_Row_Length : Interfaces.Unsigned_32 := 0;
-      Required_Source_Bytes : Natural := 0;
-      Bytes : Interfaces.Unsigned_64 := 0;
-      Result : Vk.Result_T;
-
-      procedure Destroy_Staging is
-      begin
-         if Staging_Buffer /= System.Null_Address then
-            Vk.Destroy_Buffer
-              (Device.Device, Staging_Buffer, System.Null_Address);
-            Staging_Buffer := System.Null_Address;
-         end if;
-
-         if Staging_Memory /= System.Null_Address then
-            Vk.Free_Memory
-              (Device.Device, Staging_Memory, System.Null_Address);
-            Staging_Memory := System.Null_Address;
-         end if;
-      end Destroy_Staging;
-
-      procedure Cleanup_New_Image is
-      begin
-         if Image_View /= System.Null_Address then
-            Vk.Destroy_Image_View
-              (Device.Device, Image_View, System.Null_Address);
-            Image_View := System.Null_Address;
-         end if;
-
-         if Image /= System.Null_Address then
-            Vk.Destroy_Image (Device.Device, Image, System.Null_Address);
-            Image := System.Null_Address;
-         end if;
-
-         if Image_Memory /= System.Null_Address then
-            Vk.Free_Memory
-              (Device.Device, Image_Memory, System.Null_Address);
-            Image_Memory := System.Null_Address;
-         end if;
-      end Cleanup_New_Image;
-
-   begin
-      if Width = 0
-        or else Height = 0
-      then
-         Status := Atlas_Too_Large;
-         return;
-      end if;
-
-      if Source_Bytes_Per_Pixel /= 3
-        and then Source_Bytes_Per_Pixel /= 4
-      then
-         Status := Atlas_Too_Large;
-         return;
-      end if;
-
-      if Width > Max_Image_Texture_Bytes / 4
-        or else Width > Max_Image_Texture_Bytes / Source_Bytes_Per_Pixel
-      then
-         Status := Atlas_Too_Large;
-         return;
-      end if;
-
-      Target_Row_Bytes := Width * 4;
-      Source_Row_Bytes := Width * Source_Bytes_Per_Pixel;
-      if Target_Row_Bytes = 0
-        or else Source_Row_Bytes = 0
-        or else Height > Max_Image_Texture_Bytes / Target_Row_Bytes
-        or else Row_Stride_Bytes < Source_Row_Bytes
-        or else Row_Stride_Bytes > Max_Image_Texture_Bytes
-        or else
-          (Height > 1
-           and then
-             Row_Stride_Bytes >
-               (Max_Image_Texture_Bytes - Source_Row_Bytes) / (Height - 1))
-      then
-         Status := Atlas_Too_Large;
-         return;
-      end if;
-
-      Upload_Bytes_Natural := Target_Row_Bytes * Height;
-      Required_Source_Bytes :=
-        (Height - 1) * Row_Stride_Bytes + Source_Row_Bytes;
-      if Source_Bytes_Per_Pixel = 4
-        and then Row_Stride_Bytes > Target_Row_Bytes
-        and then Row_Stride_Bytes mod 4 = 0
-      then
-         Staging_Bytes_Natural := Required_Source_Bytes;
-         Vulkan_Buffer_Row_Length :=
-           Interfaces.Unsigned_32 (Row_Stride_Bytes / 4);
-      else
-         Staging_Bytes_Natural := Upload_Bytes_Natural;
-         Vulkan_Buffer_Row_Length := 0;
-      end if;
-      Bytes := Interfaces.Unsigned_64 (Staging_Bytes_Natural);
-      if Upload_Bytes_Natural = 0
-        or else Upload_Bytes_Natural > Max_Image_Texture_Bytes
-        or else Staging_Bytes_Natural = 0
-        or else Staging_Bytes_Natural > Max_Image_Texture_Bytes
-        or else Bytes_Natural < Required_Source_Bytes
-        or else Bytes_Natural > Max_Image_Texture_Bytes
-      then
-         Status := Atlas_Too_Large;
-         return;
-      end if;
-
-      if Slot = Inline_Picture
-        and then Content_Signature /= 0
-        and then Device.Image_Texture_Image /= System.Null_Address
-        and then Device.Image_Texture_Content_Signature = Content_Signature
-        and then Device.Image_Texture_Width = Width
-        and then Device.Image_Texture_Height = Height
-        and then Device.Image_Texture_Bytes = Upload_Bytes_Natural
-      then
-         Device.Image_Texture_Cache_Hit_Count :=
-           Device.Image_Texture_Cache_Hit_Count + 1;
-         Status := Ok;
-         return;
-      end if;
-
-      declare
-         Buffer_Info : aliased Vk.Buffer_Create_Info_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-            p_Next => System.Null_Address,
-            flags => 0,
-            size => Bytes,
-            usage => Vk.BUFFER_USAGE_TRANSFER_SRC_BIT,
-            sharing_Mode => Vk.SHARING_MODE_EXCLUSIVE,
-            queue_Family_Index_Count => 0,
-            p_Queue_Family_Indices => System.Null_Address);
-      begin
-         Result :=
-           Vk.Create_Buffer
-             (Device.Device,
-              Buffer_Info'Address,
-              System.Null_Address,
-              Staging_Buffer'Address);
-         if Result /= Vk.SUCCESS or else Staging_Buffer = System.Null_Address then
-            Status := Create_Atlas_Staging_Buffer_Failed;
-            return;
-         end if;
-      end;
-
-      Vk.Get_Buffer_Memory_Requirements
-        (Device.Device, Staging_Buffer, Memory_Requirements'Address);
-      Vk.Get_Physical_Device_Memory_Properties
-        (Choice.Physical_Device, Memory_Properties'Address);
-
-      if not Has_Memory_Type
-        (Memory_Properties,
-         Memory_Requirements.memory_Type_Bits,
-         Vk.MEMORY_PROPERTY_HOST_VISIBLE_BIT or
-           Vk.MEMORY_PROPERTY_HOST_COHERENT_BIT,
-         Memory_Type_Index)
-      then
-         Destroy_Staging;
-         Status := Allocate_Atlas_Staging_Memory_Failed;
-         return;
-      end if;
-
-      declare
-         Allocate_Info : aliased Vk.Memory_Allocate_Info_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            p_Next => System.Null_Address,
-            allocation_Size => Memory_Requirements.size,
-            memory_Type_Index => Memory_Type_Index);
-      begin
-         Result :=
-           Vk.Allocate_Memory
-             (Device.Device,
-              Allocate_Info'Address,
-              System.Null_Address,
-              Staging_Memory'Address);
-         if Result /= Vk.SUCCESS or else Staging_Memory = System.Null_Address then
-            Destroy_Staging;
-            Status := Allocate_Atlas_Staging_Memory_Failed;
-            return;
-         end if;
-      end;
-
-      Result :=
-        Vk.Bind_Buffer_Memory (Device.Device, Staging_Buffer, Staging_Memory, 0);
-      if Result /= Vk.SUCCESS then
-         Destroy_Staging;
-         Status := Bind_Atlas_Staging_Buffer_Failed;
-         return;
-      end if;
-
-      Result :=
-        Vk.Map_Memory
-          (Device.Device, Staging_Memory, 0, Bytes, 0, Data'Address);
-      if Result /= Vk.SUCCESS or else Data = System.Null_Address then
-         Destroy_Staging;
-         Status := Map_Atlas_Staging_Buffer_Failed;
-         return;
-      end if;
-
-      declare
-         Target : constant Image_Texture_Byte_Mapping.Object_Pointer :=
-           Image_Texture_Byte_Mapping.To_Pointer (Data);
-         Fill_Status : Create_Status := Ok;
-      begin
-         Fill_Staging (Target, Fill_Status);
-         if Fill_Status /= Ok then
-            Vk.Unmap_Memory (Device.Device, Staging_Memory);
-            Destroy_Staging;
-            Status := Fill_Status;
-            return;
-         end if;
-      end;
-      Vk.Unmap_Memory (Device.Device, Staging_Memory);
-
-      declare
-         Image_Info : aliased Vk.Image_Create_Info_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            p_Next => System.Null_Address,
-            flags => 0,
-            image_Type => Vk.IMAGE_TYPE_2D,
-            format => Format_R8G8B8A8_Unorm,
-            extent =>
-              (width => Interfaces.Unsigned_32 (Width),
-               height => Interfaces.Unsigned_32 (Height),
-               depth => 1),
-            mip_Levels => 1,
-            array_Layers => 1,
-            samples => Vk.SAMPLE_COUNT_1_BIT,
-            tiling => Vk.IMAGE_TILING_OPTIMAL,
-            usage => Vk.IMAGE_USAGE_TRANSFER_DST_BIT or Vk.IMAGE_USAGE_SAMPLED_BIT,
-            sharing_Mode => Vk.SHARING_MODE_EXCLUSIVE,
-            queue_Family_Index_Count => 0,
-            p_Queue_Family_Indices => System.Null_Address,
-            initial_Layout => Vk.IMAGE_LAYOUT_UNDEFINED);
-      begin
-         Result :=
-           Vk.Create_Image
-             (Device.Device, Image_Info'Address, System.Null_Address, Image'Address);
-         if Result /= Vk.SUCCESS or else Image = System.Null_Address then
-            Destroy_Staging;
-            Status := Create_Atlas_Image_Failed;
-            return;
-         end if;
-      end;
-
-      Vk.Get_Image_Memory_Requirements
-        (Device.Device, Image, Memory_Requirements'Address);
-      if not Has_Memory_Type
-        (Memory_Properties, Memory_Requirements.memory_Type_Bits, 0, Memory_Type_Index)
-      then
-         Cleanup_New_Image;
-         Destroy_Staging;
-         Status := Allocate_Atlas_Memory_Failed;
-         return;
-      end if;
-
-      declare
-         Allocate_Info : aliased Vk.Memory_Allocate_Info_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            p_Next => System.Null_Address,
-            allocation_Size => Memory_Requirements.size,
-            memory_Type_Index => Memory_Type_Index);
-      begin
-         Result :=
-           Vk.Allocate_Memory
-             (Device.Device,
-              Allocate_Info'Address,
-              System.Null_Address,
-              Image_Memory'Address);
-         if Result /= Vk.SUCCESS or else Image_Memory = System.Null_Address then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status := Allocate_Atlas_Memory_Failed;
-            return;
-         end if;
-      end;
-
-      Result := Vk.Bind_Image_Memory (Device.Device, Image, Image_Memory, 0);
-      if Result /= Vk.SUCCESS then
-         Cleanup_New_Image;
-         Destroy_Staging;
-         Status := Bind_Atlas_Image_Failed;
-         return;
-      end if;
-
-      declare
-         View_Info : aliased Vk.Image_View_Create_Info_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            p_Next => System.Null_Address,
-            flags => 0,
-            image => Image,
-            view_Type => Vk.IMAGE_VIEW_TYPE_2D,
-            format => Format_R8G8B8A8_Unorm,
-            components =>
-              (r => Vk.COMPONENT_SWIZZLE_IDENTITY,
-               g => Vk.COMPONENT_SWIZZLE_IDENTITY,
-               b => Vk.COMPONENT_SWIZZLE_IDENTITY,
-               a => Vk.COMPONENT_SWIZZLE_IDENTITY),
-            subresource_Range =>
-              (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
-               base_Mip_Level => 0,
-               level_Count => 1,
-               base_Array_Layer => 0,
-               layer_Count => 1));
-      begin
-         Result :=
-           Vk.Create_Image_View
-             (Device.Device,
-              View_Info'Address,
-              System.Null_Address,
-              Image_View'Address);
-         if Result /= Vk.SUCCESS or else Image_View = System.Null_Address then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status := Create_Atlas_View_Failed;
-            return;
-         end if;
-      end;
-
-      declare
-         Command_Buffer : constant Vk.Command_Buffer_T :=
-           Device.Upload_Command_Buffer;
-         Begin_Info : aliased Vk.Command_Buffer_Begin_Info_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            p_Next => System.Null_Address,
-            flags => Vk.COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-            p_Inheritance_Info => System.Null_Address);
-         To_Transfer : aliased Vk.Image_Memory_Barrier_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            p_Next => System.Null_Address,
-            src_Access_Mask => 0,
-            dst_Access_Mask => Vk.ACCESS_TRANSFER_WRITE_BIT,
-            old_Layout => Vk.IMAGE_LAYOUT_UNDEFINED,
-            new_Layout => Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            src_Queue_Family_Index => Queue_Family_Ignored,
-            dst_Queue_Family_Index => Queue_Family_Ignored,
-            image => Image,
-            subresource_Range =>
-              (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
-               base_Mip_Level => 0,
-               level_Count => 1,
-               base_Array_Layer => 0,
-               layer_Count => 1));
-         Region : aliased Vk.Buffer_Image_Copy_T :=
-           (buffer_Offset => 0,
-            buffer_Row_Length => Vulkan_Buffer_Row_Length,
-            buffer_Image_Height => 0,
-            image_Subresource =>
-              (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
-               mip_Level => 0,
-               base_Array_Layer => 0,
-               layer_Count => 1),
-            image_Offset => (x => 0, y => 0, z => 0),
-            image_Extent =>
-              (width => Interfaces.Unsigned_32 (Width),
-               height => Interfaces.Unsigned_32 (Height),
-               depth => 1));
-         To_Shader : aliased Vk.Image_Memory_Barrier_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            p_Next => System.Null_Address,
-            src_Access_Mask => Vk.ACCESS_TRANSFER_WRITE_BIT,
-            dst_Access_Mask => Vk.ACCESS_SHADER_READ_BIT,
-            old_Layout => Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            new_Layout => Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-            src_Queue_Family_Index => Queue_Family_Ignored,
-            dst_Queue_Family_Index => Queue_Family_Ignored,
-            image => Image,
-            subresource_Range =>
-              (aspect_Mask => Vk.IMAGE_ASPECT_COLOR_BIT,
-               base_Mip_Level => 0,
-               level_Count => 1,
-               base_Array_Layer => 0,
-               layer_Count => 1));
-         Submit_Command_Buffers : aliased Command_Buffer_Submit_Array :=
-           (1 => Command_Buffer);
-         Submit_Info : aliased Vk.Submit_Info_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_SUBMIT_INFO,
-            p_Next => System.Null_Address,
-            wait_Semaphore_Count => 0,
-            p_Wait_Semaphores => System.Null_Address,
-            p_Wait_Dst_Stage_Mask => System.Null_Address,
-            command_Buffer_Count => 1,
-            p_Command_Buffers => Submit_Command_Buffers'Address,
-            signal_Semaphore_Count => 0,
-            p_Signal_Semaphores => System.Null_Address);
-      begin
-         if Command_Buffer = System.Null_Address
-           or else Device.Upload_Fence = System.Null_Address
-         then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status := Copy_Atlas_Failed;
-            return;
-         end if;
-
-         Result :=
-           Vk.Wait_For_Fences
-             (Device.Device,
-              1,
-              Device.Upload_Fence'Address,
-              1,
-              Interfaces.Unsigned_64'Last);
-         if Result /= Vk.SUCCESS then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status :=
-              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
-               else Copy_Atlas_Failed);
-            return;
-         end if;
-
-         Result := Vk.Reset_Command_Buffer (Command_Buffer, 0);
-         if Result /= Vk.SUCCESS then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status :=
-              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
-               else Copy_Atlas_Failed);
-            return;
-         end if;
-
-         Result := Vk.Begin_Command_Buffer (Command_Buffer, Begin_Info'Address);
-         if Result /= Vk.SUCCESS then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status :=
-              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
-               else Copy_Atlas_Failed);
-            return;
-         end if;
-
-         Vk.Cmd_Pipeline_Barrier
-           (Command_Buffer,
-            Vk.PIPELINE_STAGE_TRANSFER_BIT,
-            Vk.PIPELINE_STAGE_TRANSFER_BIT,
-            0,
-            0,
-            System.Null_Address,
-            0,
-            System.Null_Address,
-            1,
-            To_Transfer'Address);
-         Vk.Cmd_Copy_Buffer_To_Image
-           (Command_Buffer,
-            Staging_Buffer,
-            Image,
-            Vk.IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-            1,
-            Region'Address);
-         Vk.Cmd_Pipeline_Barrier
-           (Command_Buffer,
-            Vk.PIPELINE_STAGE_TRANSFER_BIT,
-            Vk.PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0,
-            0,
-            System.Null_Address,
-            0,
-            System.Null_Address,
-            1,
-            To_Shader'Address);
-
-         Result := Vk.End_Command_Buffer (Command_Buffer);
-         if Result /= Vk.SUCCESS then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status := Copy_Atlas_Failed;
-            return;
-         end if;
-
-         Result := Vk.Reset_Fences
-           (Device.Device, 1, Device.Upload_Fence'Address);
-         if Result /= Vk.SUCCESS then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status :=
-              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
-               else Copy_Atlas_Failed);
-            return;
-         end if;
-
-         Result :=
-           Vk.Queue_Submit
-             (Device.Queue, 1, Submit_Info'Address, Device.Upload_Fence);
-         if Result /= Vk.SUCCESS then
-            if Result /= Vk.ERROR_DEVICE_LOST then
-               Restore_Upload_Fence (Device);
-            end if;
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status :=
-              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
-               else Copy_Atlas_Failed);
-            return;
-         end if;
-
-         Result :=
-           Vk.Wait_For_Fences
-             (Device.Device,
-              1,
-              Device.Upload_Fence'Address,
-              1,
-              Interfaces.Unsigned_64'Last);
-         if Result /= Vk.SUCCESS then
-            Cleanup_New_Image;
-            Destroy_Staging;
-            Status :=
-              (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
-               else Copy_Atlas_Failed);
-            return;
-         end if;
-      end;
-
-      declare
-         Image_Info : aliased Vk.Descriptor_Image_Info_T :=
-           (sampler => Device.Atlas_Sampler,
-            image_View => Image_View,
-            image_Layout => Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-         Write : aliased Vk.Write_Descriptor_Set_T :=
-           (s_Type => Vk.STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-            p_Next => System.Null_Address,
-            dst_Set => Device.Descriptor_Set,
-            dst_Binding =>
-              (if Slot = Colour_Glyphs then 2 else 1),
-            dst_Array_Element => 0,
-            descriptor_Count => 1,
-            descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            p_Image_Info => Image_Info'Address,
-            p_Buffer_Info => System.Null_Address,
-            p_Texel_Buffer_View => System.Null_Address);
-      begin
-         Vk.Update_Descriptor_Sets
-           (Device.Device, 1, Write'Address, 0, System.Null_Address);
-      end;
-
-      if Device.Atlas_View = System.Null_Address then
-         declare
-            Image_Info : aliased Vk.Descriptor_Image_Info_T :=
-              (sampler => Device.Atlas_Sampler,
-               image_View => Image_View,
-               image_Layout => Vk.IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            Write : aliased Vk.Write_Descriptor_Set_T :=
-              (s_Type => Vk.STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-               p_Next => System.Null_Address,
-               dst_Set => Device.Descriptor_Set,
-               dst_Binding => 0,
-               dst_Array_Element => 0,
-               descriptor_Count => 1,
-               descriptor_Type => Vk.DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-               p_Image_Info => Image_Info'Address,
-               p_Buffer_Info => System.Null_Address,
-               p_Texel_Buffer_View => System.Null_Address);
-         begin
-            Vk.Update_Descriptor_Sets
-              (Device.Device, 1, Write'Address, 0, System.Null_Address);
-         end;
-      end if;
-
-      if Slot = Colour_Glyphs then
-         Destroy_Colour_Sheet (Device);
-         Device.Colour_Sheet_Image := Image;
-         Device.Colour_Sheet_Memory := Image_Memory;
-         Device.Colour_Sheet_View := Image_View;
-         Device.Colour_Sheet_Width := Width;
-         Device.Colour_Sheet_Height := Height;
-      else
-         Destroy_Image_Texture (Device);
-         Device.Image_Texture_Image := Image;
-         Device.Image_Texture_Memory := Image_Memory;
-         Device.Image_Texture_View := Image_View;
-         Device.Image_Texture_Width := Width;
-         Device.Image_Texture_Height := Height;
-         Device.Image_Texture_Content_Signature := Content_Signature;
-         Device.Image_Texture_Upload_Count :=
-           Device.Image_Texture_Upload_Count + 1;
-      end if;
-      if Slot = Inline_Picture then
-         Device.Image_Texture_Bytes := Upload_Bytes_Natural;
-      end if;
-      Device.Image_Texture_Descriptor_Bound_Count := 2;
-      Image := System.Null_Address;
-      Image_Memory := System.Null_Address;
-      Image_View := System.Null_Address;
-      Destroy_Staging;
-      Status := Ok;
-   end Upload_Image_Texture_Staging_Source;
+      Content_Signature : Interfaces.Unsigned_64 := 0) is separate;
 
    procedure Upload_Image_Texture_Row_Source
      (Device        : in out Logical_Device;
@@ -3768,13 +3277,15 @@ package body Terminal.App.Vulkan_Device is
         and then Row_Stride_Bytes mod 4 = 0;
 
       procedure Fill_Row_Source_Staging
-        (Target : Image_Texture_Byte_Mapping.Object_Pointer;
+        (Target   : Image_Texture_Byte_Mapping.Object_Pointer;
+         Capacity : Positive;
          Status : out Create_Status)
       is
          Target_Index : Natural := 1;
       begin
          Status := Ok;
          if Target = null
+           or else Capacity = 0
            or else Target_Row_Bytes = 0
            or else Source_Row_Bytes = 0
          then
@@ -3861,183 +3372,44 @@ package body Terminal.App.Vulkan_Device is
         Image_Source.Decoded_Row_Stride_Bytes;
       Bytes_Natural : constant Natural :=
         RM.Image_Decoded_Source_Bytes (Image_Source);
-      Source_Row_Bytes : constant Natural :=
-        (if Bytes_Per_Pixel > 0
-           and then Width <= Max_Image_Texture_Bytes / Bytes_Per_Pixel
-         then Width * Bytes_Per_Pixel
-         else 0);
-      Target_Row_Bytes : constant Natural :=
-        (if Width <= Max_Image_Texture_Bytes / 4 then Width * 4 else 0);
-      Use_Vulkan_Row_Length : constant Boolean :=
-        Bytes_Per_Pixel = 4
-        and then Target_Row_Bytes > 0
-        and then Row_Stride_Bytes > Target_Row_Bytes
-        and then Row_Stride_Bytes mod 4 = 0;
-      Target_Stride : constant Natural :=
-        (if Use_Vulkan_Row_Length then Row_Stride_Bytes else Target_Row_Bytes);
-
-      function Encoded_Text return String is
-         Result : String (1 .. Image_Source.Encoded_Source_Length);
-      begin
-         if Image_Source.Encoded_Source_Bytes = null
-           or else Image_Source.Encoded_Source_Length = 0
-           or else Image_Source.Encoded_Source_Length >
-             Image_Source.Encoded_Source_Bytes'Length
-         then
-            return "";
-         end if;
-
-         for I in Result'Range loop
-            Result (I) :=
-              Character'Val (Image_Source.Encoded_Source_Bytes (I));
-         end loop;
-         return Result;
-      end Encoded_Text;
 
       procedure Fill_Encoded_Staging
-        (Target : Image_Texture_Byte_Mapping.Object_Pointer;
+        (Target   : Image_Texture_Byte_Mapping.Object_Pointer;
+         Capacity : Positive;
          Status : out Create_Status)
       is
-         Text : constant String := Encoded_Text;
-         Data : Terminal.App.Graphics.Graphics_Data_Preview :=
-           (Header_Recognized => True,
-            Has_Data          => True,
-            Raw_Format        => Image_Source.Raw_Format,
-            Pixel_Width       => Image_Source.Pixel_Width,
-            Pixel_Height      => Image_Source.Pixel_Height,
-            others            => <>);
-         Decoded_Encoded_Length : Natural := 0;
-         PNG_Length : Natural := 0;
-         Rows_Seen : Natural := 0;
-         Fill_Failed : Boolean := False;
+         Decode_Status : Terminal.App.Image_Staging.Decode_Status;
 
-         function Chunk_Text (Index : Positive) return String is
-         begin
-            if Index = 1 then
-               return Text;
-            else
-               return "";
-            end if;
-         end Chunk_Text;
-
-         procedure Capture_Row
-           (Y        : Natural;
-            Row      : Terminal.Common.Bytes.Byte_Array;
+         procedure Write_Byte
+           (Index    : Positive;
+            Value    : Interfaces.Unsigned_8;
             Continue : in out Boolean)
          is
-            Target_Index : Natural := 0;
          begin
-            if Target = null
-              or else Text'Length = 0
-              or else Source_Row_Bytes = 0
-              or else Target_Row_Bytes = 0
-              or else Target_Stride = 0
-              or else Y >= Height
-              or else Row'Length < Source_Row_Bytes
-              or else Y > (Max_Image_Texture_Bytes - 1) / Target_Stride
-            then
-               Fill_Failed := True;
+            if Target = null or else Index > Capacity then
                Continue := False;
-               return;
-            end if;
-
-            Target_Index := Y * Target_Stride + 1;
-            if Target_Index > Max_Image_Texture_Bytes
-              or else Target_Row_Bytes >
-                Max_Image_Texture_Bytes - Target_Index + 1
-            then
-               Fill_Failed := True;
-               Continue := False;
-               return;
-            end if;
-
-            if Bytes_Per_Pixel = 4 then
-               for Offset in 0 .. Target_Row_Bytes - 1 loop
-                  Target.all (Target_Index + Offset) := Interfaces.Unsigned_8
-                    (Row (Row'First + Offset));
-               end loop;
             else
-               for Pixel in 0 .. Width - 1 loop
-                  declare
-                     Source_Offset : constant Natural := Pixel * 3;
-                     Target_Offset : constant Natural := Pixel * 4;
-                  begin
-                     Target.all (Target_Index + Target_Offset) :=
-                       Interfaces.Unsigned_8 (Row (Row'First + Source_Offset));
-                     Target.all (Target_Index + Target_Offset + 1) :=
-                       Interfaces.Unsigned_8
-                         (Row (Row'First + Source_Offset + 1));
-                     Target.all (Target_Index + Target_Offset + 2) :=
-                       Interfaces.Unsigned_8
-                         (Row (Row'First + Source_Offset + 2));
-                     Target.all (Target_Index + Target_Offset + 3) := 16#FF#;
-                  end;
-               end loop;
+               Target.all (Index) := Value;
             end if;
-
-            if Use_Vulkan_Row_Length
-              and then Row_Stride_Bytes > Target_Row_Bytes
-            then
-               for Offset in Target_Row_Bytes .. Row_Stride_Bytes - 1 loop
-                  exit when Target_Index + Offset > Max_Image_Texture_Bytes;
-                  Target.all (Target_Index + Offset) := 0;
-               end loop;
-            end if;
-
-            Rows_Seen := Rows_Seen + 1;
-         end Capture_Row;
+         end Write_Byte;
       begin
-         Status := Ok;
-         if Target = null
-           or else Text'Length = 0
-           or else Bytes_Per_Pixel = 0
-           or else Source_Row_Bytes = 0
-           or else Target_Row_Bytes = 0
-           or else Target_Stride = 0
-           or else Image_Source.Decoded_Source =
-             RM.Image_Decoded_Source_Buffer
-         then
+         if Target = null then
             Status := Atlas_Too_Large;
             return;
          end if;
-
-         case Image_Source.Decoded_Source is
-            when RM.Image_Decoded_Source_Raw_Base64 =>
-               Terminal.App.Graphics.Decode_Base64_Raw_Rows
-                 (Text,
-                  Image_Source.Raw_Format,
-                  Width,
-                  Height,
-                  Capture_Row'Access,
-                  Data);
-            when RM.Image_Decoded_Source_PNG_Base64 =>
-               Terminal.App.Graphics.Decode_Base64_PNG_Chunk_Rows
-                 (1,
-                  Chunk_Text'Access,
-                  Decoded_Encoded_Length,
-                  PNG_Length,
-                  Capture_Row'Access,
-                  Data);
-            when RM.Image_Decoded_Source_Sixel_Text =>
-               Terminal.App.Graphics.Decode_Sixel_Rows
-                 (Text, Capture_Row'Access, Data);
-            when others =>
-               Status := Atlas_Too_Large;
-               return;
+         Terminal.App.Image_Staging.Decode_Encoded_RGBA
+           (Source        => Image_Source,
+            Maximum_Bytes => Capacity,
+            Write         => Write_Byte'Access,
+            Status        => Decode_Status);
+         case Decode_Status is
+            when Terminal.App.Image_Staging.Decode_Ok =>
+               Status := Ok;
+            when Terminal.App.Image_Staging.Invalid_Source =>
+               Status := Image_Staging_Invalid_Source;
+            when Terminal.App.Image_Staging.Allocation_Failed =>
+               Status := Image_Staging_Allocation_Failed;
          end case;
-
-         if Fill_Failed
-           or else not Data.Decode_Complete
-           or else Data.Decode_Status /= Terminal.App.Graphics.Decode_Ok
-           or else Rows_Seen < Height
-         then
-            Status := Atlas_Too_Large;
-         end if;
-         Terminal.App.Graphics.Release (Data);
-      exception
-         when Storage_Error =>
-            Status := Atlas_Too_Large;
-            Terminal.App.Graphics.Release (Data);
       end Fill_Encoded_Staging;
    begin
       Upload_Image_Texture_Staging_Source
@@ -4067,7 +3439,8 @@ package body Terminal.App.Vulkan_Device is
       Atlas_Bytes  : constant Natural := VS.Image_Atlas_Bytes (Batch);
 
       procedure Fill_Atlas
-        (Target : Image_Texture_Byte_Mapping.Object_Pointer;
+        (Target   : Image_Texture_Byte_Mapping.Object_Pointer;
+         Capacity : Positive;
          Fill_Status : out Create_Status)
       is
          function Pixel_Index (X, Y : Natural) return Positive is
@@ -4090,6 +3463,7 @@ package body Terminal.App.Vulkan_Device is
            or else Atlas_Width = 0
            or else Atlas_Height = 0
            or else Atlas_Bytes = 0
+           or else Capacity < Atlas_Bytes
            or else Atlas_Bytes > Max_Image_Texture_Bytes
          then
             Fill_Status := Atlas_Too_Large;
@@ -4196,77 +3570,21 @@ package body Terminal.App.Vulkan_Device is
                   end loop;
                end Write_Buffer_Rows;
 
-               function Encoded_Text return String is
-                  Result : String (1 .. Source.Encoded_Source_Length);
-               begin
-                  if Source.Encoded_Source_Bytes = null
-                    or else Source.Encoded_Source_Length = 0
-                    or else Source.Encoded_Source_Length >
-                      Source.Encoded_Source_Bytes'Length
-                  then
-                     return "";
-                  end if;
-                  for I in Result'Range loop
-                     Result (I) :=
-                       Character'Val (Source.Encoded_Source_Bytes (I));
-                  end loop;
-                  return Result;
-               end Encoded_Text;
-
                procedure Write_Encoded_Rows is
-                  Text : constant String := Encoded_Text;
-                  Data : Terminal.App.Graphics.Graphics_Data_Preview :=
-                    (Header_Recognized => True,
-                     Has_Data          => True,
-                     Raw_Format        => Source.Raw_Format,
-                     Pixel_Width       => Source.Pixel_Width,
-                     Pixel_Height      => Source.Pixel_Height,
-                     others            => <>);
-                  Encoded_Length : Natural := 0;
-                  PNG_Length : Natural := 0;
-
-                  function Chunk_Text (Index : Positive) return String is
-                  begin
-                     return (if Index = 1 then Text else "");
-                  end Chunk_Text;
+                  Decode_Status : Terminal.App.Image_Staging.Decode_Status;
                begin
-                  if Text'Length = 0 then
-                     Decode_Failed := True;
-                     return;
-                  end if;
-                  case Source.Decoded_Source is
-                     when RM.Image_Decoded_Source_Raw_Base64 =>
-                        Terminal.App.Graphics.Decode_Base64_Raw_Rows
-                          (Text,
-                           Source.Raw_Format,
-                           Source.Pixel_Width,
-                           Source.Pixel_Height,
-                           Write_Row'Access,
-                           Data);
-                     when RM.Image_Decoded_Source_PNG_Base64 =>
-                        Terminal.App.Graphics.Decode_Base64_PNG_Chunk_Rows
-                          (1,
-                           Chunk_Text'Access,
-                           Encoded_Length,
-                           PNG_Length,
-                           Write_Row'Access,
-                           Data);
-                     when RM.Image_Decoded_Source_Sixel_Text =>
-                        Terminal.App.Graphics.Decode_Sixel_Rows
-                          (Text, Write_Row'Access, Data);
-                     when others =>
+                  Terminal.App.Image_Staging.Decode_Encoded_Rows
+                    (Source, Write_Row'Access, Decode_Status);
+                  case Decode_Status is
+                     when Terminal.App.Image_Staging.Decode_Ok =>
+                        null;
+                     when Terminal.App.Image_Staging.Invalid_Source =>
                         Decode_Failed := True;
+                        Fill_Status := Image_Staging_Invalid_Source;
+                     when Terminal.App.Image_Staging.Allocation_Failed =>
+                        Decode_Failed := True;
+                        Fill_Status := Image_Staging_Allocation_Failed;
                   end case;
-                  if not Data.Decode_Complete
-                    or else Data.Decode_Status /= Terminal.App.Graphics.Decode_Ok
-                  then
-                     Decode_Failed := True;
-                  end if;
-                  Terminal.App.Graphics.Release (Data);
-               exception
-                  when Storage_Error =>
-                     Decode_Failed := True;
-                     Terminal.App.Graphics.Release (Data);
                end Write_Encoded_Rows;
             begin
                if Bytes_Per_Pixel = 0 then
@@ -4281,7 +3599,9 @@ package body Terminal.App.Vulkan_Device is
                  or else Rows_Seen /= Source.Pixel_Height
                  or else Target_Rows_Written /= Target_Height
                then
-                  Fill_Status := Atlas_Too_Large;
+                  if Fill_Status = Ok then
+                     Fill_Status := Atlas_Too_Large;
+                  end if;
                   return;
                end if;
 

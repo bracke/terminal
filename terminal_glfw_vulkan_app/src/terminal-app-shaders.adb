@@ -1,8 +1,9 @@
-with Ada.Characters.Handling;
 with Ada.Directories;
+with Ada.IO_Exceptions;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with Ada.Unchecked_Deallocation;
+with Terminal.App.Status_Labels;
 
 package body Terminal.App.Shaders is
    use type Ada.Directories.File_Size;
@@ -10,28 +11,8 @@ package body Terminal.App.Shaders is
    use type Interfaces.Unsigned_32;
    use type Word_Array_Access;
 
-   function Humanize (Text : String) return String is
-      Result : String (1 .. Text'Length);
-      At_Word_Start : Boolean := True;
-   begin
-      for I in Text'Range loop
-         declare
-            Ch : constant Character := Text (I);
-            Out_Index : constant Positive := I - Text'First + 1;
-         begin
-            if Ch = '_' then
-               Result (Out_Index) := ' ';
-               At_Word_Start := True;
-            elsif At_Word_Start then
-               Result (Out_Index) := Ada.Characters.Handling.To_Upper (Ch);
-               At_Word_Start := False;
-            else
-               Result (Out_Index) := Ada.Characters.Handling.To_Lower (Ch);
-            end if;
-         end;
-      end loop;
-      return Result;
-   end Humanize;
+   function Humanize (Text : String) return String
+      renames Terminal.App.Status_Labels.Humanize;
 
    function Status_Label (Status : Load_Status) return String is
       Label : constant String := "Shader load: " & Humanize (Load_Status'Image (Status));
@@ -82,93 +63,117 @@ package body Terminal.App.Shaders is
       Code.Count := 0;
    end Release;
 
+   overriding procedure Finalize (Code : in out Shader_Code) is
+   begin
+      Release (Code);
+   end Finalize;
+
    procedure Load
      (Name   : String;
       Code   : in out Shader_Code;
       Status : out Load_Status)
    is
-      Path : constant String := Existing_Path (Name);
+      File : Ada.Streams.Stream_IO.File_Type;
+
+      procedure Close_If_Open is
+      begin
+         if Ada.Streams.Stream_IO.Is_Open (File) then
+            Ada.Streams.Stream_IO.Close (File);
+         end if;
+      exception
+         --  Cleanup must preserve the exception that selected the handler.
+         when others =>
+            null;
+      end Close_If_Open;
    begin
       Release (Code);
-
-      if Path = "" then
-         Status := Not_Found;
-         return;
-      end if;
-
       declare
-         Size : constant Ada.Directories.File_Size := Ada.Directories.Size (Path);
+         Path : constant String := Existing_Path (Name);
       begin
-         if Size = 0 or else Size mod 4 /= 0 then
-            Status := Invalid_Size;
-            return;
-         elsif Size / 4 > Ada.Directories.File_Size (Max_Shader_Words) then
-            Status := Too_Large;
+         if Path = "" then
+            Status := Not_Found;
             return;
          end if;
 
          declare
-            subtype Buffer_Range is Ada.Streams.Stream_Element_Offset
-              range 1 .. Ada.Streams.Stream_Element_Offset (Size);
-            Buffer : Ada.Streams.Stream_Element_Array (Buffer_Range);
-            Last   : Ada.Streams.Stream_Element_Offset;
-            File   : Ada.Streams.Stream_IO.File_Type;
-            Count  : constant Natural := Natural (Size / 4);
+            Size : constant Ada.Directories.File_Size :=
+              Ada.Directories.Size (Path);
          begin
-            Code.Data := new Word_Array (1 .. Count);
-            Ada.Streams.Stream_IO.Open
-              (File, Ada.Streams.Stream_IO.In_File, Path);
-            Ada.Streams.Stream_IO.Read (File, Buffer, Last);
-            Ada.Streams.Stream_IO.Close (File);
-
-            if Last /= Buffer'Last then
-               Release (Code);
-               Status := Read_Failed;
+            if Size = 0 or else Size mod 4 /= 0 then
+               Status := Invalid_Size;
+               return;
+            elsif Size / 4 > Ada.Directories.File_Size (Max_Shader_Words) then
+               Status := Too_Large;
                return;
             end if;
 
-            for I in 1 .. Count loop
-               declare
-                  Base : constant Ada.Streams.Stream_Element_Offset :=
-                    Buffer'First + Ada.Streams.Stream_Element_Offset ((I - 1) * 4);
-                  B0 : constant Interfaces.Unsigned_32 :=
-                    Interfaces.Unsigned_32 (Buffer (Base));
-                  B1 : constant Interfaces.Unsigned_32 :=
-                    Interfaces.Unsigned_32 (Buffer (Base + 1));
-                  B2 : constant Interfaces.Unsigned_32 :=
-                    Interfaces.Unsigned_32 (Buffer (Base + 2));
-                  B3 : constant Interfaces.Unsigned_32 :=
-                    Interfaces.Unsigned_32 (Buffer (Base + 3));
-               begin
-                  Code.Data (I) :=
-                    B0 or
-                    Interfaces.Shift_Left (B1, 8) or
-                    Interfaces.Shift_Left (B2, 16) or
-                    Interfaces.Shift_Left (B3, 24);
-               end;
-            end loop;
+            declare
+               subtype Buffer_Range is Ada.Streams.Stream_Element_Offset
+                 range 1 .. Ada.Streams.Stream_Element_Offset (Size);
+               Buffer : Ada.Streams.Stream_Element_Array (Buffer_Range);
+               Last   : Ada.Streams.Stream_Element_Offset;
+               Count  : constant Natural := Natural (Size / 4);
+            begin
+               Code.Data := new Word_Array (1 .. Count);
+               Ada.Streams.Stream_IO.Open
+                 (File, Ada.Streams.Stream_IO.In_File, Path);
+               Ada.Streams.Stream_IO.Read (File, Buffer, Last);
+               Ada.Streams.Stream_IO.Close (File);
 
-            Code.Count := Count;
-            Status := Ok;
-         exception
-            when Storage_Error =>
-               if Ada.Streams.Stream_IO.Is_Open (File) then
-                  Ada.Streams.Stream_IO.Close (File);
+               if Last /= Buffer'Last then
+                  Release (Code);
+                  Status := Read_Failed;
+                  return;
                end if;
-               Release (Code);
-               Status := Allocation_Failed;
-            when others =>
-               if Ada.Streams.Stream_IO.Is_Open (File) then
-                  Ada.Streams.Stream_IO.Close (File);
-               end if;
-               Release (Code);
-               Status := Read_Failed;
+
+               for I in 1 .. Count loop
+                  declare
+                     Base : constant Ada.Streams.Stream_Element_Offset :=
+                       Buffer'First
+                       + Ada.Streams.Stream_Element_Offset ((I - 1) * 4);
+                     B0 : constant Interfaces.Unsigned_32 :=
+                       Interfaces.Unsigned_32 (Buffer (Base));
+                     B1 : constant Interfaces.Unsigned_32 :=
+                       Interfaces.Unsigned_32 (Buffer (Base + 1));
+                     B2 : constant Interfaces.Unsigned_32 :=
+                       Interfaces.Unsigned_32 (Buffer (Base + 2));
+                     B3 : constant Interfaces.Unsigned_32 :=
+                       Interfaces.Unsigned_32 (Buffer (Base + 3));
+                  begin
+                     Code.Data (I) :=
+                       B0 or
+                       Interfaces.Shift_Left (B1, 8) or
+                       Interfaces.Shift_Left (B2, 16) or
+                       Interfaces.Shift_Left (B3, 24);
+                  end;
+               end loop;
+
+               Code.Count := Count;
+               Status := Ok;
+            end;
          end;
       end;
+   exception
+      when Storage_Error =>
+         Close_If_Open;
+         Release (Code);
+         Status := Allocation_Failed;
+      when Ada.IO_Exceptions.Status_Error
+         | Ada.IO_Exceptions.Mode_Error
+         | Ada.IO_Exceptions.Name_Error
+         | Ada.IO_Exceptions.Use_Error
+         | Ada.IO_Exceptions.Device_Error
+         | Ada.IO_Exceptions.End_Error
+         | Ada.IO_Exceptions.Data_Error
+         | Ada.IO_Exceptions.Layout_Error =>
+         Close_If_Open;
+         Release (Code);
+         Status := Read_Failed;
+      when others =>
+         Close_If_Open;
+         Release (Code);
+         raise;
    end Load;
-
-   function Words (Code : Shader_Code) return Word_Array_Access is
-     (Code.Data);
 
    function Word_Count (Code : Shader_Code) return Natural is
      (Code.Count);

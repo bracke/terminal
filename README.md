@@ -105,6 +105,9 @@ tests/bin/shader_loader_smoke
 tests/bin/font_discovery_smoke
 tests/bin/text_shaper_smoke
 tests/bin/renderer_metrics_smoke
+tests/bin/renderer_status_smoke
+tests/bin/renderer_animation_smoke
+tests/bin/renderer_local_media_smoke
 tests/bin/renderer_transaction_smoke
 tests/bin/renderer_kitty_object_smoke
 tests/bin/renderer_large_payload_smoke
@@ -126,8 +129,10 @@ tests/bin/diagnostics_smoke
 tests/bin/scrollback_view_smoke
 tests/bin/render_policy_smoke
 tests/bin/theme_config_smoke
+tests/bin/config_file_smoke
 tests/bin/graphics_capabilities_smoke
 tests/bin/image_pipeline_units_smoke
+tests/bin/image_store_smoke
 tests/bin/image_placements_smoke
 tests/bin/tabs_smoke
 tests/bin/splits_smoke

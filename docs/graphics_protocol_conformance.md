@@ -221,13 +221,17 @@ formats as portable protocol requirements.
   Sixel modes, capability reporting, tmux passthrough, scrolling, and scrollback.
 - `terminal_glfw_vulkan_app/tests/graphics_capabilities_smoke.adb`: raw, PNG,
   JPEG, zlib, Sixel, iTerm2, malformed-data, and pre-allocation limit coverage.
-- `image_pipeline_units_smoke.adb`, `image_placements_smoke.adb`, and
-  `renderer_transaction_smoke.adb`: focused ingestion/store transactions,
+- `image_pipeline_units_smoke.adb`, `image_store_smoke.adb`,
+  `image_placements_smoke.adb`, and `renderer_transaction_smoke.adb`: focused
+  ingestion/store transactions,
   bounded diagnostics, placement geometry, exception propagation, and
   deterministic post-install allocation rollback.
 - `graphics_transport_smoke.adb`: regular/temp/shared-memory policy, offsets,
   limits, cleanup, and indistinguishable access failures.
-- `renderer_metrics_smoke.adb` and `renderer_kitty_object_smoke.adb`: IDs,
+- `renderer_metrics_smoke.adb`, `renderer_graphics_cells_smoke.adb`,
+  `renderer_status_smoke.adb`,
+  `renderer_animation_smoke.adb`,
+  `renderer_local_media_smoke.adb`, and `renderer_kitty_object_smoke.adb`: IDs,
   placements, geometry, deletion, relative placement, animation, quotas,
   eviction, screen lifetime, auxiliary persistence, and exact result codes.
 - `kitty_control_matrix_smoke.adb`: table-driven coverage of all eight Kitty

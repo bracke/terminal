@@ -46,7 +46,10 @@ in Ada.
 uses GLFW-provided instance extensions, `df_vulkan` handle types, and
 `glfw_vulkan` surface creation. The renderer receives this context during
 initialization and consumes only terminal render snapshots after that. Context
-init outcomes expose bounded labels for startup/status UI.
+init outcomes expose bounded labels for startup/status UI. Context, presenter,
+and logical-device objects are limited controlled resource owners, so exception
+unwinding invokes their idempotent teardown even when the main loop does not
+reach its explicit orderly-shutdown path.
 
 The app render pipeline is staged:
 
@@ -74,17 +77,20 @@ Renderer command arrays and Vulkan submission arrays retain their capacity
 between frames and grow geometrically when the grid requires more space. Image
 commands borrow a bounded diagnostic-preview source rather than embedding a
 4 KiB copy in every command; placeholder tiles for the same image therefore
-share the decoded source. Ownership remains with the renderer frame or retained
-image object through presentation. `Terminal.App.Render_Model` is the ownership
-boundary for command buffers: its release operation recognizes aliased decoded,
-encoded, and preview views, frees each distinct owned allocation exactly once,
-and clears every view before a command can be reused.
+share the decoded source. `Terminal.App.Frame_Image_Storage` is the frame-local
+ownership boundary: it keeps image commands and their decoded, encoded, and
+preview owners in synchronized slots, recognizes aliased owners, and releases
+removed slots on truncation as well as full reset. This makes failed graphics
+event rollbacks reclaim ownership instead of merely reducing a visible count.
 `Frame_Commands` exposes command arrays through access-to-constant views. These
 views borrow renderer and text-atlas storage and are valid only until the next
-render, graphics-stream release, or renderer finalization; submission consumes
-them synchronously and does not retain the CPU pointers for presentation. The
-renderer does not publish those borrowed views as a production query API;
-white-box tests access them only through `Terminal.App.Renderer.Testing`.
+render, theme update, graphics-limit update, graphics-stream release, or
+renderer finalization. Submission copies compact borrowed descriptors for the
+synchronous upload path; every renderer frame reset invalidates those
+descriptors before releasing or replacing their backing storage. The
+renderer does not publish those borrowed views as a production query API.
+White-box tests access them through `Terminal.App.Renderer.Testing`, whose spec
+and body live only in the test project's source directory.
 
 The presenter also exposes an opt-in validation-only framebuffer readback. If
 the surface supports transfer-source swapchain images, enabling it allocates a
@@ -171,10 +177,59 @@ generation-safe resynchronization rather than ambiguous movement.
 Pure crop, aspect-ratio, cell-span, and pixel-offset calculation lives in
 `Terminal.App.Image_Placements`; renderer-owned lists remain responsible only
 for placement identity, lifetime, references, and screen association.
-`Terminal.App.Image_Ingestion` owns protocol payload-boundary discovery and
-encoded-source copies. `Terminal.App.Image_Store` owns object lookup, byte
-accounting, object-content release, allocation controls, and install transaction
-state. Every fallible placement allocation is completed before a combined
+`Terminal.App.Image_Ingestion` owns protocol payload-boundary discovery,
+encoded-source copies, iTerm2 unit/aspect-ratio resolution, local-medium query
+loading, and bounded Kitty query validation. Local query data is decoded
+directly from the loaded byte buffer; it is not expanded into a temporary
+Base64 command first.
+`Terminal.App.Image_Store` owns private object-list
+linkage, replacement-aware object counts, allocation-backed byte/frame accounting,
+storage/content serial allocation, object lookup and release, allocation
+controls, install transaction state, and atomic ownership transfer for root and
+indexed buffers. Renderer code can inspect image content through an object
+handle and access-to-constant byte views, but cannot splice owned lists, mutate
+or release store-owned content, or directly synchronize accounting. Frame,
+theme-history, and image metadata are private and change only through checked
+store operations. Accounting totals are cached from the actual owned buffers
+and cached frame/theme-history totals, and therefore
+remain constant-time for quota checks; replacement transactions retain an exact
+pointer to the object being superseded. `Terminal.App.Image_Animation` owns
+bounded playback timing, Kitty control-state transitions, and loop semantics,
+and builds decoded animation frames before transferring the complete list to
+the store atomically.
+`Terminal.App.Image_Colors` owns xterm/Kitty palette
+resolution and indexed-pixel expansion. `Terminal.App.Image_Staging` decodes
+encoded render commands into bounded row or RGBA byte sinks; Vulkan owns only
+mapping or packing the destination and uploading it.
+Native GIF and PICT decode transactions independently bound decoder workspace,
+retained output, and the adapter canvas. Their combined transient peak is at
+most three times the configured decoded-image quota.
+Theme replay and indexed recoloring build private working buffers and publish
+them through store replacement operations only after replay succeeds. A theme
+switch snapshots every affected root and animation frame before changing the
+active theme, then restores the complete set if any object cannot be rebuilt;
+failed theme changes therefore cannot leave mixed-theme live image storage.
+Before allocating, the transaction reserves its complete backup plus the exact
+per-object replay working set against the configurable theme scratch limit.
+That set contains two work canvases and one canvas for each distinct retained
+operation target or source/base reference, rather than each operation or only
+the current live frames. Deleted but replayable animation dependencies therefore
+remain quota-accounted without penalizing long edit histories of the same
+frames. Rollback consumes each
+backup node exactly once and releases the unconsumed tail if restoration itself
+raises. Callers receive an explicit update status for resource or replay
+failures; invariant exceptions are not converted into silent theme failures.
+Theme-history
+archiving uses a heap-backed operation vector and a hashed frame dependency
+set, making pruning linear in retained history rather than quadratic and
+avoiding a maximum-sized stack allocation.
+`Terminal.App.Image_Upload_Layout` computes and validates source, staging,
+upload, and Vulkan row-pitch extents without Vulkan handles. The graphics-event
+adapter, theme baseline/preparation/replay operations, and the Vulkan
+staging-resource transaction are Ada subunits of their owning packages,
+reducing the primary bodies without weakening private-state boundaries. Every
+fallible placement allocation is completed
+before a combined
 Kitty transmission replaces an object. The prior object remains owned until its
 new placement commits; a rejected placement rolls the new object back without
 consuming image or placement quota.
@@ -263,6 +318,10 @@ The app graphics layer parses Kitty and iTerm2 headers, performs strict bounded
 Base64 and RFC 1950 decoding, rasterizes Sixel rows, expands PNG to RGBA with
 the local zlib crate, decodes iTerm2 JPEG through the local jpeglib crate, and
 decodes/composites iTerm2 GIF animations through the local giflib crate.
+Direct-byte and Base64 transports feed the same
+`Terminal.App.Zlib_Inflation` state machine, so output limits, trailing bytes,
+termination, exact-length checks, and allocation failures have one status
+mapping.
 QuickDraw PICT input is rendered to bounded RGBA through the local pictlib
 crate. The adapter borrows encoded bytes through the same checked cursor model
 used for GIF input, renders into a pictlib-owned bounded buffer, and copies the
@@ -295,6 +354,8 @@ before output allocation; PNG validates chunk bounds, CRCs, ordering, critical
 chunks, IEND termination, and trailing data. PNG and Sixel decode through
 bounded row sinks whose potentially large working rows are heap-backed and
 automatically released.
+The large streaming PNG row state machine is an Ada subunit of the graphics
+package, separate from header parsing and transport orchestration.
 Regular/temp-file and shared-memory reads are isolated in
 `Terminal.App.Graphics_Transport`, which enforces explicit policy, regular-file
 type, offset/size bounds, sensitive-path rejection, temporary-name/directory
@@ -418,7 +479,10 @@ Renderer diagnostics include the last frame-build
 status so visible window failures distinguish initialization, invalid snapshot,
 allocation, glyph, and batch-conversion problems. Vulkan device selection,
 logical-device creation, device rendering, and presenter statuses expose
-bounded labels for status/help UI and diagnostics. The same line reports live
+bounded labels for status/help UI and diagnostics. `Terminal.App.Status_Labels`
+centralizes enum-image humanization and truncation so Vulkan, font, resize,
+scrollback, and shader labels use identical formatting. The same line reports
+live
 graphics objects/bytes/placements/frames, cumulative protocol and failure
 counters, image texture uploads, and content-cache hits, so replacement and
 resource pressure are observable without instrumenting the renderer. Media

@@ -1,13 +1,12 @@
-with Ada.Directories;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with AUnit.Assertions;
-with GNAT.OS_Lib;
 
 with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.ITerm2_Files;
 with Terminal.App.Renderer;
+with Test_Support;
 
 procedure ITerm2_File_Smoke is
    use AUnit.Assertions;
@@ -20,11 +19,8 @@ procedure ITerm2_File_Smoke is
    package Files renames Terminal.App.ITerm2_Files;
    package SIO renames Ada.Streams.Stream_IO;
 
-   Process_Image : constant String :=
-     GNAT.OS_Lib.Process_Id'Image (GNAT.OS_Lib.Current_Process_Id);
-   Directory : constant String :=
-     "/tmp/terminal-iterm2-files-"
-     & Process_Image (Process_Image'First + 1 .. Process_Image'Last);
+   Workspace : Test_Support.Temporary_Directory;
+   function Directory return String is (Test_Support.Path (Workspace));
    Policy : Files.Download_Policy;
    Status : Files.Save_Status;
    Saved_Name : String (1 .. Files.Max_File_Name_Length);
@@ -61,10 +57,7 @@ procedure ITerm2_File_Smoke is
       return Result;
    end To_Bytes;
 begin
-   if Ada.Directories.Exists (Directory) then
-      Ada.Directories.Delete_Tree (Directory);
-   end if;
-   Ada.Directories.Create_Directory (Directory);
+   Test_Support.Reserve (Workspace, "terminal-iterm2-files");
 
    Files.Configure (Policy, False, Directory);
    Files.Save
@@ -188,11 +181,4 @@ begin
       Terminal.App.Renderer.Finalize (R);
    end;
 
-   Ada.Directories.Delete_Tree (Directory);
-exception
-   when others =>
-      if Ada.Directories.Exists (Directory) then
-         Ada.Directories.Delete_Tree (Directory);
-      end if;
-      raise;
 end ITerm2_File_Smoke;

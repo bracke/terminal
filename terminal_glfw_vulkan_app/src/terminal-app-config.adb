@@ -1,5 +1,6 @@
 with Ada.Directories;
 with Ada.Environment_Variables;
+with Ada.IO_Exceptions;
 with Ada.Strings;
 with Ada.Strings.Fixed;
 with Ada.Text_IO;
@@ -42,7 +43,7 @@ package body Terminal.App.Config is
          Value := Natural'Value (Text);
          return True;
       exception
-         when others =>
+         when Constraint_Error =>
             return False;
       end Parse_Natural;
 
@@ -322,30 +323,78 @@ package body Terminal.App.Config is
    end Apply_Line;
 
    procedure Load_File
-     (C    : in out Config;
-      Path : String)
+     (C                : in out Config;
+      Path             : String;
+      Missing_Is_Error : Boolean := True)
    is
       File : Ada.Text_IO.File_Type;
+      Line_Number : Natural := 0;
+
+      procedure Close_After_Exception is
+      begin
+         if Ada.Text_IO.Is_Open (File) then
+            Ada.Text_IO.Close (File);
+         end if;
+      exception
+         when Ada.IO_Exceptions.Status_Error
+            | Ada.IO_Exceptions.Mode_Error
+            | Ada.IO_Exceptions.Name_Error
+            | Ada.IO_Exceptions.Use_Error
+            | Ada.IO_Exceptions.Device_Error
+            | Ada.IO_Exceptions.End_Error
+            | Ada.IO_Exceptions.Data_Error
+            | Ada.IO_Exceptions.Layout_Error =>
+            null;
+      end Close_After_Exception;
    begin
-      if Path'Length = 0 or else not Ada.Directories.Exists (Path) then
+      C.Load_Status := Config_Not_Checked;
+      C.Invalid_Line := 0;
+      C.Invalid_Line_Status := Accepted;
+      if Path'Length = 0 then
+         if Missing_Is_Error then
+            C.Load_Status := Config_Not_Found;
+         end if;
+         return;
+      elsif not Ada.Directories.Exists (Path) then
+         if Missing_Is_Error then
+            C.Load_Status := Config_Not_Found;
+         end if;
          return;
       end if;
 
       Ada.Text_IO.Open (File, Ada.Text_IO.In_File, Path);
+      C.Load_Status := Config_Loaded;
       while not Ada.Text_IO.End_Of_File (File) loop
          declare
             Line : constant String := Ada.Text_IO.Get_Line (File);
-            Accepted : Boolean;
+            Status : Line_Status;
          begin
-            Apply_Line (C, Line, Accepted);
+            Line_Number := Line_Number + 1;
+            Apply_Line (C, Line, Status);
+            if Status in Missing_Separator | Unknown_Key | Invalid_Value
+              and then C.Load_Status = Config_Loaded
+            then
+               C.Load_Status := Config_Invalid;
+               C.Invalid_Line := Line_Number;
+               C.Invalid_Line_Status := Status;
+            end if;
          end;
       end loop;
       Ada.Text_IO.Close (File);
    exception
+      when Ada.IO_Exceptions.Status_Error
+         | Ada.IO_Exceptions.Mode_Error
+         | Ada.IO_Exceptions.Name_Error
+         | Ada.IO_Exceptions.Use_Error
+         | Ada.IO_Exceptions.Device_Error
+         | Ada.IO_Exceptions.End_Error
+         | Ada.IO_Exceptions.Data_Error
+         | Ada.IO_Exceptions.Layout_Error =>
+         Close_After_Exception;
+         C.Load_Status := Config_IO_Error;
       when others =>
-         if Ada.Text_IO.Is_Open (File) then
-            Ada.Text_IO.Close (File);
-         end if;
+         Close_After_Exception;
+         raise;
    end Load_File;
 
    procedure Load_Default_File (C : in out Config) is
@@ -357,11 +406,17 @@ package body Terminal.App.Config is
         Ada.Environment_Variables.Value ("HOME", "");
    begin
       if Explicit'Length > 0 then
-         Load_File (C, Explicit);
+         Load_File (C, Explicit, Missing_Is_Error => True);
       elsif XDG_Config'Length > 0 then
-         Load_File (C, XDG_Config & "/ada-terminal/config");
+         Load_File
+           (C,
+            XDG_Config & "/ada-terminal/config",
+            Missing_Is_Error => False);
       elsif Home'Length > 0 then
-         Load_File (C, Home & "/.config/ada-terminal/config");
+         Load_File
+           (C,
+            Home & "/.config/ada-terminal/config",
+            Missing_Is_Error => False);
       end if;
    end Load_Default_File;
 
@@ -463,8 +518,15 @@ package body Terminal.App.Config is
    end Line_Status_Label;
 
    function Status_Label (C : Config) return String is
-   begin
-      return
+      Load_Label : constant String :=
+        (case C.Load_Status is
+            when Config_Not_Checked | Config_Loaded => "",
+            when Config_Not_Found => "; config file not found",
+            when Config_IO_Error => "; config file read failed",
+            when Config_Invalid =>
+              "; config line " & Trim_Image (C.Invalid_Line) & " "
+              & Line_Status_Label (C.Invalid_Line_Status));
+      Text : constant String :=
         Terminal.App.Theme.Status_Label (C.Color_Theme)
         & "; window "
         & Trim_Image (C.Window_Width)
@@ -473,6 +535,12 @@ package body Terminal.App.Config is
         & "; startup grid "
         & Trim_Image (C.Startup_Rows)
         & "x"
-        & Trim_Image (C.Startup_Cols);
+        & Trim_Image (C.Startup_Cols)
+        & Load_Label;
+   begin
+      return
+        (if Text'Length <= Max_Status_Label_Length
+         then Text
+         else Text (Text'First .. Text'First + Max_Status_Label_Length - 1));
    end Status_Label;
 end Terminal.App.Config;

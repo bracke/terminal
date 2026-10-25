@@ -619,9 +619,13 @@ framebuffer-derived and fallback cell dimensions. Themes currently control the
 base 16-color palette, default
 foreground/background, and cursor foreground/background used by renderer frame
 commands. The config parser exposes line-level status for accepted entries,
-blank/comment lines, malformed lines, unknown keys, and invalid values while the
-startup loader continues to tolerate missing or unreadable config files, with
-bounded labels for each line status. The config package exposes a stable
+blank/comment lines, malformed lines, unknown keys, and invalid values. The
+startup loader records whether a selected file was loaded, missing, unreadable,
+or contained an invalid line, including the first rejected line number and
+reason. Missing implicit default files remain normal; a missing explicit
+`ADA_TERMINAL_CONFIG` path is reported. Unexpected exceptions propagate instead
+of being converted into an ignored configuration. The config package exposes a
+stable
 effective-config image for diagnostics and
 help/status surfaces, plus bounded status labels for the selected theme,
 window size, and startup grid.

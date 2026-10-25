@@ -13,6 +13,7 @@ procedure Vulkan_Submit_Smoke is
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
    use type Terminal.App.Render_Model.Image_Data_Access;
+   use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Render_Model.Text_Run_Array_Access;
    use type Terminal.App.Render_Model.Text_Run_Direction;
@@ -88,13 +89,10 @@ procedure Vulkan_Submit_Smoke is
          Decoded_Row_Stride_Bytes => 0,
          Decoded_Source => RM.Image_Decoded_Source_None,
          Decoded_Bytes => null,
-         Decoded_Bytes_Owned => False,
          Encoded_Source_Bytes => null,
-         Encoded_Source_Bytes_Owned => False,
          Encoded_Source_Length => 0,
          Decoded_Preview_Length => 3,
          Decoded_Preview_Bytes => Preview_ABC'Unchecked_Access,
-         Decoded_Preview_Bytes_Owned => False,
          Preview_Decode_Complete => True,
          Decode_Status => RM.Image_Decode_Ok,
          U0             => 0.0,
@@ -629,7 +627,7 @@ begin
               4 => 16#FF#);
          Overflow_Images (I) := Images (1);
          Overflow_Images (I).Image_ID := Interfaces.Unsigned_32 (I);
-         Overflow_Images (I).Decoded_Bytes := Sources (I);
+         Overflow_Images (I).Decoded_Bytes := RM.Read_Only (Sources (I));
       end loop;
       Overflow_Frame.Images := Overflow_Images'Unchecked_Access;
       Overflow_Frame.Image_Count := Overflow_Count;
@@ -858,9 +856,9 @@ begin
    Images (1).Encoded_Preview_Length := 5_632;
    Images (1).Decoded_Byte_Length := 65 * 64 * 4;
    Images (1).Decoded_Source := RM.Image_Decoded_Source_Buffer;
-   Images (1).Decoded_Bytes := Large_RGBA;
+   Images (1).Decoded_Bytes := RM.Read_Only (Large_RGBA);
    Images (1).Decoded_Preview_Length := RM.Max_Image_Decoded_Preview_Length;
-   Images (1).Decoded_Preview_Bytes := Large_RGBA;
+   Images (1).Decoded_Preview_Bytes := RM.Read_Only (Large_RGBA);
    Images (1).Preview_Decode_Complete := True;
    Images (1).Decode_Status := RM.Image_Decode_Ok;
    VS.Set_Image_Atlas_Limits
@@ -890,6 +888,12 @@ begin
       and then VS.Image_Atlas_Source_Height (Batch, 1) = 32
       and then VS.Image_Atlas_Bytes (Batch) <= VS.Min_Image_Atlas_Bytes,
       "oversized image is reduced to fit without losing its texture");
+   VS.Invalidate (Batch);
+   Assert
+     (VS.Vertex_Count (Batch) = 0
+      and then VS.Image_Atlas_Source_Count (Batch) = 0
+      and then VS.Width (Batch) = 0,
+      "invalidation removes all frame-specific borrowed state");
    VS.Release (Batch);
    VS.Set_Image_Atlas_Limits (Batch, VS.Default_Image_Atlas_Limits);
 

@@ -17,6 +17,7 @@ package Terminal.App.ITerm2_Files is
       Save_Invalid_Name,
       Save_Invalid_Data,
       Save_Too_Large,
+      Save_Allocation_Failed,
       Save_Directory_Unavailable,
       Save_Create_Failed,
       Save_Write_Failed);

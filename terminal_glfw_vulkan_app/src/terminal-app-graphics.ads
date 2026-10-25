@@ -187,6 +187,18 @@ package Terminal.App.Graphics is
       Result : in out Graphics_Data_Preview;
       Maximum_Decoded_Bytes : Positive := Max_Data_Preview_Length;
       Maximum_Pixel_Dimension : Positive := Positive'Last);
+   procedure Decode_Image_RGBA_Data
+     (Data   : Terminal.Common.Bytes.Byte_Array;
+      Length : Natural;
+      Result : in out Graphics_Data_Preview);
+   procedure Decode_Zlib_Data
+     (Compressed      : Terminal.Common.Bytes.Byte_Array;
+      Length          : Natural;
+      Maximum_Length  : Natural;
+      Exact_Length    : Boolean;
+      Inflated        : out Terminal.App.Render_Model.Image_Data_Access;
+      Inflated_Length : out Natural;
+      Status          : out Data_Decode_Status);
    function JPEG_Data_Preview_Text
      (Text                    : String;
       Maximum_Decoded_Bytes   : Positive;

@@ -421,6 +421,9 @@ package body Terminal.App.Image_Media is
       Frame_Bytes : Natural := 0;
       Total_Bytes : Natural := 0;
       Decoder_Initialized : Boolean := False;
+      Decoder_Budget : constant Natural := Maximum_Decoded_Bytes;
+      Adapter_Budget : constant Natural :=
+        Saturating_Multiply (Maximum_Decoded_Bytes, 2);
 
       function Bounded_Multiple
         (Value  : Natural;
@@ -477,23 +480,25 @@ package body Terminal.App.Image_Media is
           (Natural'Min (Maximum_Pixel_Dimension,
                         Natural (Giflib.Image_Height'Last)));
       Constraints.Max_Canvas_Pixels :=
-        Giflib.Pixel_Count (Maximum_Decoded_Bytes / 4);
+        Giflib.Pixel_Count (Decoder_Budget / 4);
       Constraints.Max_Canvas_Bytes :=
-        Giflib.Byte_Count (Maximum_Decoded_Bytes);
+        Giflib.Byte_Count (Decoder_Budget);
       Constraints.Max_Frames := Giflib.Frame_Ordinal (Max_Frames);
       Constraints.Max_Frame_Pixels :=
-        Giflib.Pixel_Count (Maximum_Decoded_Bytes / 4);
+        Giflib.Pixel_Count (Decoder_Budget / 4);
       Constraints.Max_Total_Decoded_Frame_Pixels :=
         Giflib.Pixel_Count (Maximum_Decoded_Bytes / 4);
       Constraints.Max_Compressed_Bytes := Giflib.Byte_Count (Length);
-      Constraints.Max_Allocation_Bytes :=
-        Bounded_Multiple (Maximum_Decoded_Bytes, 3);
+      --  Giflib accounts its simultaneously live buffers against this
+      --  aggregate limit.  The adapter separately admits at most one result
+      --  quota plus one canvas quota, giving a documented 3x peak ceiling.
+      Constraints.Max_Allocation_Bytes := Giflib.Byte_Count (Decoder_Budget);
       Constraints.Max_Output_Bytes :=
-        Giflib.Byte_Count (Maximum_Decoded_Bytes);
+        Giflib.Byte_Count (Adapter_Budget);
       Constraints.Max_LZW_Work :=
         Bounded_Multiple (Maximum_Decoded_Bytes, 16);
       Constraints.Max_Compositor_Snapshot_Bytes :=
-        Giflib.Byte_Count (Maximum_Decoded_Bytes);
+        Giflib.Byte_Count (Decoder_Budget);
 
       --  Count frames first so the public result owns an exact-size bounded
       --  allocation. This pass skips compressed image data and also discovers
@@ -558,6 +563,7 @@ package body Terminal.App.Image_Media is
       end if;
       Frame_Bytes := Pixel_Count * 4;
       if Frame_Bytes = 0
+        or else Frame_Bytes > Decoder_Budget
         or else Frame_Count > Maximum_Decoded_Bytes / Frame_Bytes
       then
          Release (Result);
@@ -566,6 +572,12 @@ package body Terminal.App.Image_Media is
          return;
       end if;
       Total_Bytes := Frame_Count * Frame_Bytes;
+      if Total_Bytes > Adapter_Budget - Frame_Bytes then
+         Release (Result);
+         Status := Decode_Too_Large;
+         Clean_Up;
+         return;
+      end if;
       Result.Bytes :=
         new Terminal.Common.Bytes.Byte_Array (1 .. Total_Bytes);
       Canvas := new Giflib.Streams.Byte_Array (1 .. Frame_Bytes);
@@ -643,13 +655,13 @@ package body Terminal.App.Image_Media is
             when Giflib.Animations.No_Loop_Extension => 0,
             when Giflib.Animations.Infinite_Looping => 1,
             when Giflib.Animations.Finite_Loop_Count =>
-              Looping.Raw_Count + 1);
+              Giflib.Animations.Raw_Count (Looping) + 1);
       Result.Frame_Bytes := Frame_Bytes;
       Result.Total_Bytes := Total_Bytes;
       Result.Adapter_Buffer_Bytes :=
         Saturating_Add (Frame_Bytes, Total_Bytes);
       Result.Decoder_Configured_Bytes :=
-        Saturating_Multiply (Maximum_Decoded_Bytes, 3);
+        Decoder_Budget;
       Status := Decode_Ok;
       Clean_Up;
    exception
@@ -683,6 +695,9 @@ package body Terminal.App.Image_Media is
       Frame_Bytes : Natural := 0;
       Decoder_Initialized : Boolean := False;
       Output : Pictlib.Streams.Byte_Array_Access := null;
+      Decoder_Budget : constant Natural := Maximum_Decoded_Bytes;
+      Adapter_Budget : constant Natural :=
+        Saturating_Multiply (Maximum_Decoded_Bytes, 2);
 
       procedure Clean_Up is
       begin
@@ -727,22 +742,22 @@ package body Terminal.App.Image_Media is
           (Natural'Min
              (Maximum_Pixel_Dimension, Natural (Pictlib.Image_Height'Last)));
       Constraints.Max_Canvas_Pixels :=
-        Pictlib.Pixel_Count (Maximum_Decoded_Bytes / 4);
+        Pictlib.Pixel_Count (Decoder_Budget / 4);
       Constraints.Max_Picture_Bytes := Pictlib.Byte_Count (Length);
       Constraints.Max_Opcodes := Pictlib.Opcode_Ordinal (Length);
       Constraints.Max_Opcode_Bytes := Pictlib.Byte_Count (Length);
       Constraints.Max_Region_Bytes := Pictlib.Byte_Count (Length);
       Constraints.Max_Polygon_Points := Length / 4;
       Constraints.Max_Drawing_Work :=
-        Bounded_Work (Maximum_Decoded_Bytes / 4);
+        Bounded_Work (Decoder_Budget / 4);
       Constraints.Max_Retained_Metadata_Bytes := 0;
       Constraints.Max_Metadata_Items := 0;
       Constraints.Max_Allocation_Bytes :=
-        Pictlib.Byte_Count (Maximum_Decoded_Bytes);
+        Pictlib.Byte_Count (Decoder_Budget);
       Constraints.Max_Total_Allocation_Bytes :=
-        Pictlib.Byte_Count (Maximum_Decoded_Bytes);
+        Pictlib.Byte_Count (Decoder_Budget);
       Constraints.Max_Output_Bytes :=
-        Pictlib.Byte_Count (Maximum_Decoded_Bytes);
+        Pictlib.Byte_Count (Adapter_Budget / 2);
       Constraints.Max_Embedded_Image_Bytes :=
         Pictlib.Byte_Count (Natural'Min (Length, Maximum_Decoded_Bytes));
       Constraints.Max_Embedded_Image_Pixels :=
@@ -818,13 +833,18 @@ package body Terminal.App.Image_Media is
       end if;
       Pixel_Count := Width * Height;
       if Pixel_Count > Natural'Last / 4
-        or else Pixel_Count > Maximum_Decoded_Bytes / 4
+        or else Pixel_Count > Decoder_Budget / 4
       then
          Status := Decode_Too_Large;
          Clean_Up;
          return;
       end if;
       Frame_Bytes := Pixel_Count * 4;
+      if Frame_Bytes > Adapter_Budget / 2 then
+         Status := Decode_Too_Large;
+         Clean_Up;
+         return;
+      end if;
       Output := new Pictlib.Streams.Byte_Array (1 .. Frame_Bytes);
       Outcome :=
         Pictlib.Decoding.Render
@@ -858,7 +878,7 @@ package body Terminal.App.Image_Media is
       Result.Adapter_Buffer_Bytes := Saturating_Multiply (Frame_Bytes, 2);
       --  Pictlib admits all decoder-owned allocations against one monotonic
       --  session quota; released/replaced buffers do not replenish it.
-      Result.Decoder_Configured_Bytes := Maximum_Decoded_Bytes;
+      Result.Decoder_Configured_Bytes := Decoder_Budget;
       Result.Warning_Count := Pictlib.Decoding.Warning_Count (Decoder);
       if Result.Warning_Count > 0 then
          Set_PICT_Warning

@@ -6,6 +6,7 @@ with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.Core;
 with Terminal.PTY.Backend;
+with Test_Support;
 
 procedure PTY_Program_Progression_Smoke is
    use AUnit.Assertions;
@@ -31,40 +32,40 @@ procedure PTY_Program_Progression_Smoke is
    Tmux_Marker : constant String := "ADA_TMUX_DONE";
    Screen_Marker : constant String := "ADA_SCREEN_DONE";
 
-   Command : constant String :=
-     "set +e; "
-     & "rm -rf /tmp/terminal_program_progression_smoke; "
-     & "mkdir /tmp/terminal_program_progression_smoke; "
-     & "cd /tmp/terminal_program_progression_smoke; "
-     & "git init -q; "
-     & "printf tracked > tracked.txt; "
-     & "git add tracked.txt; "
-     & "printf change >> tracked.txt; "
-     & "printf untracked > untracked.txt; "
-     & "git status --short; "
-     & "printf 'ADA_GIT_STATUS_DONE\n'; "
-     & "printf 'ADA_LESS_VISIBLE\n' > less.txt; "
-     & "if command -v less >/dev/null 2>&1; then less -F -X less.txt; fi; "
-     & "printf 'ADA_LESS_DONE\n'; "
-     & "if command -v nano >/dev/null 2>&1; then nano --version | head -n 1; fi; "
-     & "printf 'ADA_NANO_DONE\n'; "
-     & "if command -v vim >/dev/null 2>&1; then vim --version | head -n 1; fi; "
-     & "printf 'ADA_VIM_DONE\n'; "
-     & "if command -v top >/dev/null 2>&1; then top -b -n 1 | head -n 1; fi; "
-     & "printf 'ADA_TOP_DONE\n'; "
-     & "if command -v htop >/dev/null 2>&1; then htop --version | head -n 1; fi; "
-     & "printf 'ADA_HTOP_DONE\n'; "
-     & "if command -v tig >/dev/null 2>&1; then tig --version | head -n 1; fi; "
-     & "printf 'ADA_TIG_DONE\n'; "
-     & "if command -v lazygit >/dev/null 2>&1; then lazygit --version | head -n 1; fi; "
-     & "printf 'ADA_LAZYGIT_DONE\n'; "
-     & "if command -v tmux >/dev/null 2>&1; then tmux -V; fi; "
-     & "printf 'ADA_TMUX_DONE\n'; "
-     & "if command -v screen >/dev/null 2>&1; then screen -v; fi; "
-     & "printf 'ADA_SCREEN_DONE\n'; "
-     & "rm -rf /tmp/terminal_program_progression_smoke; "
-     & "exit"
-     & Character'Val (13);
+   Workspace : Test_Support.Temporary_Directory;
+
+   function Command return String is
+   begin
+      return
+        "set +e; cd '" & Test_Support.Path (Workspace) & "'; "
+        & "git init -q; "
+        & "printf tracked > tracked.txt; "
+        & "git add tracked.txt; "
+        & "printf change >> tracked.txt; "
+        & "printf untracked > untracked.txt; "
+        & "git status --short; "
+        & "printf 'ADA_GIT_STATUS_DONE\n'; "
+        & "printf 'ADA_LESS_VISIBLE\n' > less.txt; "
+        & "if command -v less >/dev/null 2>&1; then less -F -X less.txt; fi; "
+        & "printf 'ADA_LESS_DONE\n'; "
+        & "if command -v nano >/dev/null 2>&1; then nano --version | head -n 1; fi; "
+        & "printf 'ADA_NANO_DONE\n'; "
+        & "if command -v vim >/dev/null 2>&1; then vim --version | head -n 1; fi; "
+        & "printf 'ADA_VIM_DONE\n'; "
+        & "if command -v top >/dev/null 2>&1; then top -b -n 1 | head -n 1; fi; "
+        & "printf 'ADA_TOP_DONE\n'; "
+        & "if command -v htop >/dev/null 2>&1; then htop --version | head -n 1; fi; "
+        & "printf 'ADA_HTOP_DONE\n'; "
+        & "if command -v tig >/dev/null 2>&1; then tig --version | head -n 1; fi; "
+        & "printf 'ADA_TIG_DONE\n'; "
+        & "if command -v lazygit >/dev/null 2>&1; then lazygit --version | head -n 1; fi; "
+        & "printf 'ADA_LAZYGIT_DONE\n'; "
+        & "if command -v tmux >/dev/null 2>&1; then tmux -V; fi; "
+        & "printf 'ADA_TMUX_DONE\n'; "
+        & "if command -v screen >/dev/null 2>&1; then screen -v; fi; "
+        & "printf 'ADA_SCREEN_DONE\n'; exit"
+        & Character'Val (13);
+   end Command;
 
    T            : Terminal.Core.Terminal;
    Init_Status  : Terminal.Core.Initialize_Status;
@@ -191,6 +192,7 @@ procedure PTY_Program_Progression_Smoke is
       Terminal.Core.Release (Snap);
    end Inspect_Snapshot;
 begin
+   Test_Support.Reserve (Workspace, "terminal-program-progression");
    Terminal.Core.Initialize (T, Rows, Cols, 200, Init_Status);
    Assert (Init_Status = Terminal.Core.Ok, "core initialize failed");
 

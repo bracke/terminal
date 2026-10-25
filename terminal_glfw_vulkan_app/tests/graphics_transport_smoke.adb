@@ -5,6 +5,7 @@ with Interfaces.C;
 with Interfaces.C.Strings;
 with Terminal.App.Graphics_Transport;
 with Terminal.Common.Bytes;
+with Test_Support;
 
 procedure Graphics_Transport_Smoke is
    use AUnit.Assertions;
@@ -25,19 +26,10 @@ procedure Graphics_Transport_Smoke is
       Link   : CS.chars_ptr) return C.int
    with Import, Convention => C, External_Name => "symlink";
 
-   File_Path : constant String := "/tmp/terminal-graphics-transport.bin";
-   File_Name : constant String :=
-     "L3RtcC90ZXJtaW5hbC1ncmFwaGljcy10cmFuc3BvcnQuYmlu";
-   Temp_Path : constant String :=
-     "/tmp/tty-graphics-protocol-terminal-test.bin";
-   Temp_Name : constant String :=
-     "L3RtcC90dHktZ3JhcGhpY3MtcHJvdG9jb2wtdGVybWluYWwtdGVzdC5iaW4=";
-   Temp_Link_Path : constant String :=
-     "/tmp/tty-graphics-protocol-terminal-link.bin";
-   Temp_Link_Name : constant String :=
-     "L3RtcC90dHktZ3JhcGhpY3MtcHJvdG9jb2wtdGVybWluYWwtbGluay5iaW4=";
-   Shm_Path : constant String := "/dev/shm/terminal-graphics-shm-test";
-   Shm_Name : constant String := "L3Rlcm1pbmFsLWdyYXBoaWNzLXNobS10ZXN0";
+   File_Fixture : Test_Support.Temporary_File;
+   Temp_Fixture : Test_Support.Temporary_File;
+   Link_Fixture : Test_Support.Temporary_File;
+   Shm_Fixture : Test_Support.Temporary_File;
    Content : aliased Terminal.Common.Bytes.Byte_Array :=
      (1 => 16#10#, 2 => 16#20#, 3 => 16#30#, 4 => 16#40#);
 
@@ -50,14 +42,6 @@ procedure Graphics_Transport_Smoke is
       OS.Close (FD);
       Assert (Written = Content'Length, "write transport fixture");
    end Write_File;
-
-   procedure Delete_If_Present (Path : String) is
-      Deleted : Boolean;
-   begin
-      if Ada.Directories.Exists (Path) then
-         OS.Delete_File (Path, Deleted);
-      end if;
-   end Delete_If_Present;
 
    function Create_Symlink (Target, Link : String) return Boolean is
       Target_C : CS.chars_ptr := CS.New_String (Target);
@@ -115,10 +99,28 @@ procedure Graphics_Transport_Smoke is
       Transport.Release (Bytes);
    end Check_Load;
 begin
-   Delete_If_Present (File_Path);
-   Delete_If_Present (Temp_Path);
-   Delete_If_Present (Temp_Link_Path);
-   Delete_If_Present (Shm_Path);
+   Test_Support.Reserve (File_Fixture, "terminal-graphics-transport.bin");
+   Test_Support.Reserve
+     (Temp_Fixture, "tty-graphics-protocol-terminal-test.bin");
+   Test_Support.Reserve
+     (Link_Fixture, "tty-graphics-protocol-terminal-link.bin");
+   Test_Support.Reserve
+     (Shm_Fixture, "terminal-graphics-shm-test", "/dev/shm");
+   declare
+      File_Path : constant String := Test_Support.Path (File_Fixture);
+      File_Name : constant String := Test_Support.Base64 (File_Path);
+      Temp_Path : constant String := Test_Support.Path (Temp_Fixture);
+      Temp_Name : constant String := Test_Support.Base64 (Temp_Path);
+      Temp_Link_Path : constant String := Test_Support.Path (Link_Fixture);
+      Temp_Link_Name : constant String := Test_Support.Base64 (Temp_Link_Path);
+      Shm_Path : constant String := Test_Support.Path (Shm_Fixture);
+      Shm_Object : constant String := Shm_Path (9 .. Shm_Path'Last);
+      Shm_Name : constant String := Test_Support.Base64 (Shm_Object);
+   begin
+   Test_Support.Delete_If_Present (File_Path);
+   Test_Support.Delete_If_Present (Temp_Path);
+   Test_Support.Delete_If_Present (Temp_Link_Path);
+   Test_Support.Delete_If_Present (Shm_Path);
 
    Write_File (File_Path);
    declare
@@ -205,7 +207,7 @@ begin
         (Status = Transport.Load_Access_Failed and then Bytes = null,
          "temporary transfer must not follow a symbolic link");
    end;
-   Delete_If_Present (Temp_Link_Path);
+   Test_Support.Delete_If_Present (Temp_Link_Path);
    Check_Load ('t', Temp_Name, 0, 0, False, 4, "temporary file");
    Assert
      (not Ada.Directories.Exists (Temp_Path),
@@ -217,5 +219,6 @@ begin
      (not Ada.Directories.Exists (Shm_Path),
       "POSIX shared-memory transfer must unlink its object");
 
-   Delete_If_Present (File_Path);
+      Test_Support.Delete_If_Present (File_Path);
+   end;
 end Graphics_Transport_Smoke;

@@ -41,6 +41,7 @@ package body Terminal.App.Main_Loop is
    use type GLFW_Vulkan.Windows.Create_Status;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Renderer.Theme_Update_Status;
    use type Terminal.App.Vulkan_Context.Init_Status;
    use type Terminal.App.Vulkan_Presenter.Init_Status;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
@@ -366,6 +367,7 @@ package body Terminal.App.Main_Loop is
       Vulkan_Recovery : Terminal.App.Vulkan_Recovery.Controller;
       Recovery_Tick : Natural := 0;
       Renderer_Status : Terminal.App.Renderer.Init_Status;
+      Theme_Status : Terminal.App.Renderer.Theme_Update_Status;
       App_Config : Terminal.App.Config.Config;
       FB_Width  : Natural := 0;
       FB_Height : Natural := 0;
@@ -416,6 +418,9 @@ package body Terminal.App.Main_Loop is
       Last_Click_Pos  : Terminal.App.Selection.Cell_Position;
       Have_Last_Click : Boolean := False;
       Click_Count     : Natural := 0;
+      GLFW_Ready      : Boolean := False;
+      Window_Ready    : Boolean := False;
+      Sessions_Ready  : Boolean := False;
 
       procedure Apply_Hovered_Link (Link : Terminal.Core.Hyperlink) is
          Cursor_Status : GLFW_Vulkan.Windows.Cursor_Status;
@@ -622,16 +627,74 @@ package body Terminal.App.Main_Loop is
       procedure Copy_Selection is
          Copy_Snap : Terminal.Core.Render_Snapshot :=
            Terminal.App.Scrollback_View.Snapshot (Active_Core.all, Scroll_Offset);
-         Text : constant String :=
-           Terminal.App.Selection.Selected_Text (Copy_Snap, Selection);
       begin
-         if Text'Length > 0 then
-            GLFW_Vulkan.Clipboard.Set_Text (W, Text);
-            Terminal.App.Clipboard_OSC52.Store_Local_Selection
-              (Clipboard_Targets, Text);
-         end if;
+         declare
+            Text : constant String :=
+              Terminal.App.Selection.Selected_Text (Copy_Snap, Selection);
+         begin
+            if Text'Length > 0 then
+               GLFW_Vulkan.Clipboard.Set_Text (W, Text);
+               Terminal.App.Clipboard_OSC52.Store_Local_Selection
+                 (Clipboard_Targets, Text);
+            end if;
+         end;
          Terminal.Core.Release (Copy_Snap);
+      exception
+         when others =>
+            Terminal.Core.Release (Copy_Snap);
+            raise;
       end Copy_Selection;
+
+      procedure Release_Snapshot_Cache is
+      begin
+         for I in Snapshot_Cache'Range loop
+            begin
+               Terminal.Core.Release (Snapshot_Cache (I));
+            exception
+               when others => null;
+            end;
+         end loop;
+      end Release_Snapshot_Cache;
+
+      procedure Cleanup_After_Exception is
+      begin
+         Input_Queue := null;
+         --  Cached snapshots borrow session-owned screen storage.  Release
+         --  every cache entry before closing those sessions, and keep cleanup
+         --  progressing if one damaged snapshot raises during unwinding.
+         Release_Snapshot_Cache;
+         if Sessions_Ready then
+            begin
+               Terminal.App.Session_Table.Close_All (Sessions);
+            exception
+               when others => null;
+            end;
+            Sessions_Ready := False;
+         end if;
+         --  Preserve the native dependency order: renderer, device/swapchain,
+         --  surface/instance, window, then GLFW.  Each owner is idempotent and
+         --  controlled, but explicit cleanup here keeps the window alive until
+         --  Vulkan has released the surface during exception propagation.
+         Terminal.App.Renderer.Finalize (R);
+         Terminal.App.Vulkan_Presenter.Finalize (Presenter);
+         Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
+         if Window_Ready then
+            begin
+               GLFW_Vulkan.Windows.Destroy (W);
+            exception
+               when others => null;
+            end;
+            Window_Ready := False;
+         end if;
+         if GLFW_Ready then
+            begin
+               GLFW_Vulkan.Finalize (Ctx);
+            exception
+               when others => null;
+            end;
+            GLFW_Ready := False;
+         end if;
+      end Cleanup_After_Exception;
    begin
       Terminal.App.Vulkan_Recovery.Initialize (Vulkan_Recovery);
       GLFW_Vulkan.Initialize (Ctx, Init_Status);
@@ -640,6 +703,7 @@ package body Terminal.App.Main_Loop is
            ("glfw", GLFW_Vulkan.Init_Status'Image (Init_Status));
          return;
       end if;
+      GLFW_Ready := True;
 
       Terminal.App.Config.Load (App_Config);
 
@@ -654,8 +718,10 @@ package body Terminal.App.Main_Loop is
          Terminal.App.Diagnostics.Log_Startup_Failure
            ("window", GLFW_Vulkan.Windows.Create_Status'Image (Window_Status));
          GLFW_Vulkan.Finalize (Ctx);
+         GLFW_Ready := False;
          return;
       end if;
+      Window_Ready := True;
 
       Terminal.App.Vulkan_Context.Initialize (Vk_Ctx, W, Vk_Status);
       if Vk_Status /= Terminal.App.Vulkan_Context.Ok then
@@ -664,6 +730,8 @@ package body Terminal.App.Main_Loop is
             Terminal.App.Vulkan_Context.Init_Status'Image (Vk_Status));
          GLFW_Vulkan.Windows.Destroy (W);
          GLFW_Vulkan.Finalize (Ctx);
+         Window_Ready := False;
+         GLFW_Ready := False;
          return;
       end if;
 
@@ -681,6 +749,8 @@ package body Terminal.App.Main_Loop is
          Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
          GLFW_Vulkan.Windows.Destroy (W);
          GLFW_Vulkan.Finalize (Ctx);
+         Window_Ready := False;
+         GLFW_Ready := False;
          return;
       end if;
 
@@ -694,10 +764,17 @@ package body Terminal.App.Main_Loop is
          Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
          GLFW_Vulkan.Windows.Destroy (W);
          GLFW_Vulkan.Finalize (Ctx);
+         Window_Ready := False;
+         GLFW_Ready := False;
          return;
       end if;
       Terminal.App.Renderer.Set_Theme
-        (R, Terminal.App.Config.Active_Theme (App_Config));
+        (R, Terminal.App.Config.Active_Theme (App_Config), Theme_Status);
+      if Theme_Status /= Terminal.App.Renderer.Theme_Ok then
+         Terminal.App.Diagnostics.Log_Startup_Failure
+           ("theme", Terminal.App.Renderer.Theme_Update_Status'Image
+              (Theme_Status));
+      end if;
       Terminal.App.Renderer.Set_Graphics_Access_Policy
         (R,
          (Allow_Regular_Files   => App_Config.Kitty_File_Transfer,
@@ -719,6 +796,7 @@ package body Terminal.App.Main_Loop is
           Placements => App_Config.Graphics_Placements,
           Animation_Frames => App_Config.Graphics_Animation_Frames,
           Per_Image_Bytes => App_Config.Graphics_Per_Image_Bytes,
+          Theme_Transaction_Bytes => App_Config.Graphics_Image_Bytes * 4,
           Pixel_Dimension => App_Config.Graphics_Pixel_Dimension,
           GPU_Atlas_Bytes => App_Config.Graphics_GPU_Atlas_Bytes,
           GPU_Atlas_Dimension => App_Config.Graphics_GPU_Atlas_Dimension));
@@ -759,6 +837,7 @@ package body Terminal.App.Main_Loop is
          GLFW_Vulkan.Finalize (Ctx);
          return;
       end if;
+      Sessions_Ready := True;
 
       Configure_Active_Core;
 
@@ -1910,14 +1989,19 @@ package body Terminal.App.Main_Loop is
       end loop;
 
       Input_Queue := null;
-      for I in Snapshot_Cache'Range loop
-         Terminal.Core.Release (Snapshot_Cache (I));
-      end loop;
+      Release_Snapshot_Cache;
       Terminal.App.Session_Table.Close_All (Sessions);
+      Sessions_Ready := False;
       Terminal.App.Renderer.Finalize (R);
       Terminal.App.Vulkan_Presenter.Finalize (Presenter);
       Terminal.App.Vulkan_Context.Finalize (Vk_Ctx);
       GLFW_Vulkan.Windows.Destroy (W);
+      Window_Ready := False;
       GLFW_Vulkan.Finalize (Ctx);
+      GLFW_Ready := False;
+   exception
+      when others =>
+         Cleanup_After_Exception;
+         raise;
    end Run;
 end Terminal.App.Main_Loop;

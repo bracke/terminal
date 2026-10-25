@@ -32,6 +32,21 @@ package Terminal.App.Config is
    Min_Graphics_GPU_Atlas_Dimension : constant Positive :=
      Terminal.App.Vulkan_Submit.Min_Image_Atlas_Dimension;
 
+   type Line_Status is
+     (Accepted,
+      Ignored_Blank,
+      Ignored_Comment,
+      Missing_Separator,
+      Unknown_Key,
+      Invalid_Value);
+
+   type Config_Load_Status is
+     (Config_Not_Checked,
+      Config_Not_Found,
+      Config_Loaded,
+      Config_Invalid,
+      Config_IO_Error);
+
    type Config is record
       Color_Theme : Terminal.App.Theme.Theme_Name :=
         Terminal.App.Theme.Default_Dark;
@@ -60,15 +75,10 @@ package Terminal.App.Config is
       Graphics_Pixel_Dimension : Positive := Max_Graphics_Pixel_Dimension;
       Graphics_GPU_Atlas_Bytes : Positive := 4 * 1024 * 1024;
       Graphics_GPU_Atlas_Dimension : Positive := 4_096;
+      Load_Status : Config_Load_Status := Config_Not_Checked;
+      Invalid_Line : Natural := 0;
+      Invalid_Line_Status : Line_Status := Accepted;
    end record;
-
-   type Line_Status is
-     (Accepted,
-      Ignored_Blank,
-      Ignored_Comment,
-      Missing_Separator,
-      Unknown_Key,
-      Invalid_Value);
 
    procedure Apply_Line
      (C      : in out Config;
@@ -78,6 +88,10 @@ package Terminal.App.Config is
      (C        : in out Config;
       Line     : String;
       Accepted : out Boolean);
+   procedure Load_File
+     (C                : in out Config;
+      Path             : String;
+      Missing_Is_Error : Boolean := True);
    procedure Load (C : out Config);
    function Active_Theme (C : Config) return Terminal.App.Theme.Theme;
    function Image (C : Config) return String;
