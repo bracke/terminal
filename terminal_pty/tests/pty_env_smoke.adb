@@ -6,11 +6,23 @@ with Terminal.Common.Bytes;
 with Terminal.PTY.Backend;
 
 procedure PTY_Env_Smoke is
-   use AUnit.Assertions;
    use Terminal.Common.Bytes;
    use type Terminal.PTY.Backend.Read_Status;
    use type Terminal.PTY.Backend.Spawn_Status;
    use type Terminal.PTY.Backend.Write_Status;
+
+   --  AUnit's Assert outside a test case raises with no word of what
+   --  failed; say it on standard error first, so a CI log names the check.
+   procedure Assert (Condition : Boolean; Message : String);
+
+   procedure Assert (Condition : Boolean; Message : String) is
+   begin
+      if not Condition then
+         Ada.Text_IO.Flush;
+         Ada.Text_IO.Put_Line (Ada.Text_IO.Standard_Error, "FAILED: " & Message);
+         AUnit.Assertions.Assert (False, Message);
+      end if;
+   end Assert;
 
    Rows : constant Positive := 12;
    Cols : constant Positive := 80;
