@@ -12,6 +12,8 @@ with GLFW_Vulkan.Windows;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
 with Terminal.App.Renderer.Testing;
+with Terminal.App.Splits;
+with Terminal.App.Tabs;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
 with Terminal.Common.Bytes;
@@ -75,6 +77,8 @@ procedure GUI_Present_Smoke is
         and then
           Ada.Environment_Variables.Value ("TERMINAL_REQUIRE_GUI_PRESENT") =
             "1");
+   Tabs : Terminal.App.Tabs.Tab_State;
+   Splits : Terminal.App.Splits.Split_State;
    Saw_Stream_Image : Boolean := False;
    Presented_Stream_Image : Boolean := False;
    Pixel_Oracle_Passed : Boolean := False;
@@ -112,15 +116,25 @@ procedure GUI_Present_Smoke is
             Event : Terminal.Core.Graphics_Event;
             Result : Terminal.Core.Kitty_Graphics_Result;
             Snap : Terminal.Core.Render_Snapshot;
+            Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
          begin
             Terminal.Core.Peek_Graphics_Event (T, Event);
             Assert
               (Event.Pending and then not Event.Cancelled,
                "tmux graphics event should be complete");
-            Snap := Terminal.Core.Snapshot (T);
-            Snap.Graphics := Event;
-            Terminal.App.Renderer.Render (R, Snap, Render_Status);
-            Terminal.Core.Release (Snap);
+            --  Render commits its frame's graphics events, forgetting their
+            --  results; Render_App leaves the commit to the caller, so the
+            --  result can be read first.
+            Snaps (1) := Terminal.Core.Snapshot (T);
+            Snaps (1).Graphics := Event;
+            Terminal.App.Renderer.Render_App
+              (R,
+               Snaps,
+               1,
+               Terminal.App.Tabs.Snapshot (Tabs),
+               Terminal.App.Splits.Snapshot (Splits),
+               Render_Status);
+            Terminal.Core.Release (Snaps (1));
             Assert
               (Render_Status = Terminal.App.Renderer.Ok,
                "tmux graphics event should render");
@@ -371,6 +385,8 @@ begin
    Terminal.App.Renderer.Set_Framebuffer_Size (R, FB_Width, FB_Height);
    Terminal.Core.Initialize (T, 4, 16, 10, Core_Status);
    Assert (Core_Status = Terminal.Core.Ok, "core should initialize");
+   Terminal.App.Tabs.Initialize (Tabs);
+   Terminal.App.Splits.Initialize (Splits);
    Terminal.Core.Feed (T, To_Bytes ("GUI smoke"), Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "core feed should succeed");
 
@@ -386,13 +402,16 @@ begin
          Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "Kitty visual-oracle image feed");
       Process_Pending_Graphics;
+      --  The red image stays where it was drawn; place the green one on
+      --  another row, so neither covers the other's center.
       Terminal.Core.Feed
         (T,
          To_Bytes
-           (ASCII.ESC & "]1337;File=name=green.pict;inline=1;width=2;"
+           (ASCII.ESC & "[3;1H"
+            & ASCII.ESC & "]1337;File=name=green.pict;inline=1;width=2;"
             & "height=1;preserveAspectRatio=0;doNotMoveCursor=1:"
-            & "AAAAAAAAAAAABAAEABEC/wwA//4AAABIAAAASAAAAAAAAAAEAAQAAAAA"
-            & "ABoAAP//AAAAMQAAAAAABAAEAP8=" & ASCII.BEL),
+            & "AAAAAAAAAAQABAARAv8MAP/+AAAASAAAAEgAAAAAAAAABAAEAAAAAAAa"
+            & "AAD//wAAADEAAAAAAAQABAD/" & ASCII.BEL),
          Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "PICT visual-oracle image feed");
       Process_Pending_Graphics;

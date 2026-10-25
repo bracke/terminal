@@ -23,6 +23,12 @@ procedure PTY_Close_Smoke is
       end if;
    end Assert;
 
+   --  The backend spawns sh on POSIX and cmd.exe on Windows. A line ends in
+   --  CR for both: cmd under a pseudo-console runs a line on CR alone, and
+   --  the POSIX tty turns CR into the newline sh waits for.
+   On_Windows : constant Boolean :=
+     Terminal.PTY.Backend.Capabilities.Windows_ConPTY;
+
    S            : Terminal.PTY.Backend.Session;
    Spawn_Status : Terminal.PTY.Backend.Spawn_Status;
    Buffer       : Byte_Array (1 .. 16);
@@ -74,8 +80,8 @@ begin
 
    Terminal.PTY.Backend.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "exit-status spawn failed");
-   Send ("exit 7" & ASCII.LF);
-   for Attempt in 1 .. 100 loop
+   Send ("exit 7" & ASCII.CR);
+   for Attempt in 1 .. 500 loop
       exit when not Terminal.PTY.Backend.Is_Alive (S);
       delay 0.01;
    end loop;
@@ -86,14 +92,18 @@ begin
    Assert
      (Terminal.PTY.Backend.Child_Status (S) /= 0,
       "Is_Alive preserves the reaped child status");
-   for Attempt in 1 .. 100 loop
-      Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
-      exit when Read_Status = Terminal.PTY.Backend.End_Of_File;
-      delay 0.01;
-   end loop;
-   Assert
-     (Read_Status = Terminal.PTY.Backend.End_Of_File,
-      "closed PTY slave reports end of file");
+   --  A pseudo-console keeps its output pipe open until the console itself
+   --  is closed, so only a POSIX slave reports the end of file on its own.
+   if not On_Windows then
+      for Attempt in 1 .. 100 loop
+         Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
+         exit when Read_Status = Terminal.PTY.Backend.End_Of_File;
+         delay 0.01;
+      end loop;
+      Assert
+        (Read_Status = Terminal.PTY.Backend.End_Of_File,
+         "closed PTY slave reports end of file");
+   end if;
    Terminal.PTY.Backend.Close (S);
    Assert
      (Terminal.PTY.Backend.Child_State (S) = Terminal.PTY.Backend.Exited,
@@ -101,7 +111,10 @@ begin
 
    Terminal.PTY.Backend.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "stubborn-shell spawn failed");
-   Send ("trap '' HUP; while :; do sleep 1; done" & ASCII.LF);
+   --  cmd has no hangup to ignore; Close still has to end it.
+   if not On_Windows then
+      Send ("trap '' HUP; while :; do sleep 1; done" & ASCII.CR);
+   end if;
    delay 0.05;
    Terminal.PTY.Backend.Close (S);
    Assert
