@@ -171,18 +171,28 @@ package body Terminal.App.Session_Table is
       Session_Status : Terminal.App.Sessions.Session_Status;
       Tab_Status : Terminal.App.Tabs.Tab_Status;
       New_Index : Terminal.App.Sessions.Session_Index;
+      Next_Sessions : Terminal.App.Sessions.Session_Table := Table.Sessions;
+      Next_Tabs : Terminal.App.Tabs.Tab_State := Tabs;
    begin
       if Terminal.App.Splits.Count (Splits) > 1 then
          Status := Layout_Conflict;
          return;
       end if;
-      Terminal.App.Sessions.New_Session (Table.Sessions, Session_Status);
+      Terminal.App.Tabs.Apply
+        (Next_Tabs, Terminal.App.Tabs.New_Tab, Tab_Status);
+      if Tab_Status /= Terminal.App.Tabs.Ok then
+         Status :=
+           (if Tab_Status = Terminal.App.Tabs.At_Capacity
+            then At_Capacity else Invalid_Index);
+         return;
+      end if;
+      Terminal.App.Sessions.New_Session (Next_Sessions, Session_Status);
       if Session_Status /= Terminal.App.Sessions.Ok then
          Status := Convert (Session_Status);
          return;
       end if;
 
-      New_Index := Terminal.App.Sessions.Active (Table.Sessions);
+      New_Index := Terminal.App.Sessions.Active (Next_Sessions);
       Start_Runtime
         (Table.Runtimes (New_Index),
          Rows,
@@ -192,16 +202,10 @@ package body Terminal.App.Session_Table is
          Status,
          Table.Last_Start);
       if Status /= Ok then
-         Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
          return;
       end if;
-
-      Terminal.App.Tabs.Apply (Tabs, Terminal.App.Tabs.New_Tab, Tab_Status);
-      if Tab_Status /= Terminal.App.Tabs.Ok then
-         Release_Runtime (Table.Runtimes (New_Index));
-         Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
-         Status := Invalid_Index;
-      end if;
+      Table.Sessions := Next_Sessions;
+      Tabs := Next_Tabs;
    end New_Tab;
 
    procedure Close_Tab
@@ -213,20 +217,28 @@ package body Terminal.App.Session_Table is
         Terminal.App.Sessions.Active (Table.Sessions);
       Session_Status : Terminal.App.Sessions.Session_Status;
       Tab_Status : Terminal.App.Tabs.Tab_Status;
+      Next_Sessions : Terminal.App.Sessions.Session_Table := Table.Sessions;
+      Next_Tabs : Terminal.App.Tabs.Tab_State := Tabs;
    begin
       if Terminal.App.Sessions.Count (Table.Sessions) <= 1 then
          Status := Last_Session;
          return;
       end if;
 
-      if Table.Runtimes (Index) /= null then
-         Release_Runtime (Table.Runtimes (Index));
-      end if;
-
-      Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
+      Terminal.App.Sessions.Close_Active (Next_Sessions, Session_Status);
       if Session_Status /= Terminal.App.Sessions.Ok then
          Status := Convert (Session_Status);
          return;
+      end if;
+      Terminal.App.Tabs.Apply
+        (Next_Tabs, Terminal.App.Tabs.Close_Tab, Tab_Status);
+      if Tab_Status /= Terminal.App.Tabs.Ok then
+         Status := Invalid_Index;
+         return;
+      end if;
+
+      if Table.Runtimes (Index) /= null then
+         Release_Runtime (Table.Runtimes (Index));
       end if;
 
       if Index < Terminal.App.Sessions.Session_Index'Last then
@@ -235,8 +247,9 @@ package body Terminal.App.Session_Table is
          end loop;
          Table.Runtimes (Terminal.App.Sessions.Session_Index'Last) := null;
       end if;
-      Terminal.App.Tabs.Apply (Tabs, Terminal.App.Tabs.Close_Tab, Tab_Status);
-      Status := (if Tab_Status = Terminal.App.Tabs.Ok then Ok else Invalid_Index);
+      Table.Sessions := Next_Sessions;
+      Tabs := Next_Tabs;
+      Status := Ok;
    end Close_Tab;
 
    procedure Split_Pane
@@ -252,6 +265,8 @@ package body Terminal.App.Session_Table is
       Session_Status : Terminal.App.Sessions.Session_Status;
       Split_Status : Terminal.App.Splits.Split_Status;
       New_Index : Terminal.App.Sessions.Session_Index;
+      Next_Sessions : Terminal.App.Sessions.Session_Table := Table.Sessions;
+      Next_Splits : Terminal.App.Splits.Split_State := Splits;
    begin
       if Terminal.App.Tabs.Count (Tabs) > 1 then
          Status := Layout_Conflict;
@@ -279,13 +294,20 @@ package body Terminal.App.Session_Table is
          return;
       end if;
 
-      Terminal.App.Sessions.New_Session (Table.Sessions, Session_Status);
+      Terminal.App.Splits.Apply (Next_Splits, Command, Split_Status);
+      if Split_Status /= Terminal.App.Splits.Ok then
+         Status :=
+           (if Split_Status = Terminal.App.Splits.At_Capacity
+            then At_Capacity else Invalid_Index);
+         return;
+      end if;
+      Terminal.App.Sessions.New_Session (Next_Sessions, Session_Status);
       if Session_Status /= Terminal.App.Sessions.Ok then
          Status := Convert (Session_Status);
          return;
       end if;
 
-      New_Index := Terminal.App.Sessions.Active (Table.Sessions);
+      New_Index := Terminal.App.Sessions.Active (Next_Sessions);
       Start_Runtime
         (Table.Runtimes (New_Index),
          Rows,
@@ -295,16 +317,10 @@ package body Terminal.App.Session_Table is
          Status,
          Table.Last_Start);
       if Status /= Ok then
-         Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
          return;
       end if;
-
-      Terminal.App.Splits.Apply (Splits, Command, Split_Status);
-      if Split_Status /= Terminal.App.Splits.Ok then
-         Release_Runtime (Table.Runtimes (New_Index));
-         Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
-         Status := Invalid_Index;
-      end if;
+      Table.Sessions := Next_Sessions;
+      Splits := Next_Splits;
    end Split_Pane;
 
    procedure Close_Pane
@@ -316,20 +332,28 @@ package body Terminal.App.Session_Table is
         Terminal.App.Sessions.Active (Table.Sessions);
       Session_Status : Terminal.App.Sessions.Session_Status;
       Split_Status : Terminal.App.Splits.Split_Status;
+      Next_Sessions : Terminal.App.Sessions.Session_Table := Table.Sessions;
+      Next_Splits : Terminal.App.Splits.Split_State := Splits;
    begin
       if Terminal.App.Sessions.Count (Table.Sessions) <= 1 then
          Status := Last_Session;
          return;
       end if;
 
-      if Table.Runtimes (Index) /= null then
-         Release_Runtime (Table.Runtimes (Index));
-      end if;
-
-      Terminal.App.Sessions.Close_Active (Table.Sessions, Session_Status);
+      Terminal.App.Sessions.Close_Active (Next_Sessions, Session_Status);
       if Session_Status /= Terminal.App.Sessions.Ok then
          Status := Convert (Session_Status);
          return;
+      end if;
+      Terminal.App.Splits.Apply
+        (Next_Splits, Terminal.App.Splits.Close_Pane, Split_Status);
+      if Split_Status /= Terminal.App.Splits.Ok then
+         Status := Invalid_Index;
+         return;
+      end if;
+
+      if Table.Runtimes (Index) /= null then
+         Release_Runtime (Table.Runtimes (Index));
       end if;
 
       if Index < Terminal.App.Sessions.Session_Index'Last then
@@ -338,10 +362,9 @@ package body Terminal.App.Session_Table is
          end loop;
          Table.Runtimes (Terminal.App.Sessions.Session_Index'Last) := null;
       end if;
-      Terminal.App.Splits.Apply
-        (Splits, Terminal.App.Splits.Close_Pane, Split_Status);
-      Status :=
-        (if Split_Status = Terminal.App.Splits.Ok then Ok else Invalid_Index);
+      Table.Sessions := Next_Sessions;
+      Splits := Next_Splits;
+      Status := Ok;
    end Close_Pane;
 
    procedure Activate

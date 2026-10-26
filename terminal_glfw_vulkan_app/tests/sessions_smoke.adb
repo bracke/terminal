@@ -50,6 +50,18 @@ begin
      (Sessions.Status_Label (Table) = "Live sessions=2 active=2",
       "multi-session status label");
 
+   Sessions.Activate_Tab (Table, Tab_State, 3, Status);
+   Assert (Status = Sessions.Invalid_Index, "invalid tab activation status");
+   Assert
+     (Sessions.Active (Table) = 2 and then Tabs.Active (Tab_State) = 2,
+      "invalid tab activation is atomic");
+
+   Sessions.Activate_Pane (Table, Split_State, 3, Status);
+   Assert (Status = Sessions.Invalid_Index, "invalid pane activation status");
+   Assert
+     (Sessions.Active (Table) = 2 and then Splits.Active (Split_State) = 2,
+      "invalid pane activation is atomic");
+
    Sessions.Activate_Tab (Table, Tab_State, 1, Status);
    Assert (Status = Sessions.Ok, "activate first tab session");
    Assert (Sessions.Active (Table) = 1, "active session after tab activate");

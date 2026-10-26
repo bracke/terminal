@@ -78,13 +78,18 @@ package body Terminal.App.Sessions is
       Status : out Session_Status)
    is
       Tab_Status : Terminal.App.Tabs.Tab_Status;
+      Next_Table : Session_Table := Table;
+      Next_Tabs  : Terminal.App.Tabs.Tab_State := Tabs;
    begin
-      Activate (Table, Session_Index (Index), Status);
+      Terminal.App.Tabs.Activate (Next_Tabs, Index, Tab_Status);
+      if Tab_Status /= Terminal.App.Tabs.Ok then
+         Status := Invalid_Index;
+         return;
+      end if;
+      Activate (Next_Table, Session_Index (Index), Status);
       if Status = Ok then
-         Terminal.App.Tabs.Activate (Tabs, Index, Tab_Status);
-         if Tab_Status /= Terminal.App.Tabs.Ok then
-            Status := Invalid_Index;
-         end if;
+         Table := Next_Table;
+         Tabs := Next_Tabs;
       end if;
    end Activate_Tab;
 
@@ -95,13 +100,18 @@ package body Terminal.App.Sessions is
       Status : out Session_Status)
    is
       Split_Status : Terminal.App.Splits.Split_Status;
+      Next_Table  : Session_Table := Table;
+      Next_Splits : Terminal.App.Splits.Split_State := Splits;
    begin
-      Activate (Table, Session_Index (Index), Status);
+      Terminal.App.Splits.Activate (Next_Splits, Index, Split_Status);
+      if Split_Status /= Terminal.App.Splits.Ok then
+         Status := Invalid_Index;
+         return;
+      end if;
+      Activate (Next_Table, Session_Index (Index), Status);
       if Status = Ok then
-         Terminal.App.Splits.Activate (Splits, Index, Split_Status);
-         if Split_Status /= Terminal.App.Splits.Ok then
-            Status := Invalid_Index;
-         end if;
+         Table := Next_Table;
+         Splits := Next_Splits;
       end if;
    end Activate_Pane;
 

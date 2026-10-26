@@ -56,23 +56,28 @@ begin
                end;
             when Terminal.App.Tabs.Next_Tab
                | Terminal.App.Tabs.Previous_Tab =>
+               declare
+                  Next_Tabs : Terminal.App.Tabs.Tab_State := Tabs;
+               begin
                Terminal.App.Tabs.Apply
-                 (Tabs, Tab_Command, Tab_Status);
+                 (Next_Tabs, Tab_Command, Tab_Status);
                if Tab_Status = Terminal.App.Tabs.Ok then
                   Terminal.App.Session_Table.Activate
                     (Sessions,
                      Terminal.App.Sessions.Session_Index
-                       (Terminal.App.Tabs.Active (Tabs)),
+                       (Terminal.App.Tabs.Active (Next_Tabs)),
                      Session_Table_Status);
                   if Session_Table_Status =
                     Terminal.App.Session_Table.Ok
                   then
+                     Tabs := Next_Tabs;
                      Configure_Visible_Cores;
                      Scroll_Offset := 0;
                      Terminal.App.Selection.Clear (Selection);
                      Apply_Hovered_Link ((others => <>));
                   end if;
                end if;
+               end;
             when Terminal.App.Tabs.No_Command =>
                null;
          end case;
@@ -128,23 +133,28 @@ begin
                   end if;
                end;
             when Terminal.App.Splits.Next_Pane =>
+               declare
+                  Next_Splits : Terminal.App.Splits.Split_State := Splits;
+               begin
                Terminal.App.Splits.Apply
-                 (Splits, Split_Command, Split_Status);
+                 (Next_Splits, Split_Command, Split_Status);
                if Split_Status = Terminal.App.Splits.Ok then
                   Terminal.App.Session_Table.Activate
                     (Sessions,
                      Terminal.App.Sessions.Session_Index
-                       (Terminal.App.Splits.Active (Splits)),
+                       (Terminal.App.Splits.Active (Next_Splits)),
                      Session_Table_Status);
                   if Session_Table_Status =
                     Terminal.App.Session_Table.Ok
                   then
+                     Splits := Next_Splits;
                      Configure_Visible_Cores;
                      Scroll_Offset := 0;
                      Terminal.App.Selection.Clear (Selection);
                      Apply_Hovered_Link ((others => <>));
                   end if;
                end if;
+               end;
             when Terminal.App.Splits.No_Command =>
                null;
          end case;
