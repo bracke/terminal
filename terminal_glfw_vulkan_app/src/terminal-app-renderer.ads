@@ -27,7 +27,7 @@ package Terminal.App.Renderer is
    Max_Status_Label_Length : constant :=
      Terminal.App.Image_Rendering.Max_Status_Label_Length;
    Max_Kitty_Image_Objects : constant :=
-     Terminal.App.Vulkan_Submit.Max_Image_Atlas_Sources;
+     Terminal.App.Max_Graphics_Image_Objects;
    Max_Kitty_Image_Bytes   : constant := 64 * 1024 * 1024;
    Max_Kitty_Placements    : constant := 16 * 1024;
    Max_Kitty_Animation_Frames : constant := 4_096;

@@ -1,4 +1,5 @@
 with Ada.Unchecked_Deallocation;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.Common.Bytes;
 
 package body Terminal.App.Frame_Image_Storage is
@@ -164,7 +165,8 @@ package body Terminal.App.Frame_Image_Storage is
       Release (S);
    exception
       when others =>
-         null;
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Frame_Image_Storage);
    end Finalize;
 
    function Count (S : Storage) return Natural is (S.Length);

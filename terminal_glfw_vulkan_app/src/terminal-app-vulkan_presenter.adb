@@ -2,6 +2,7 @@ with System;
 
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Status_Labels;
 
 package body Terminal.App.Vulkan_Presenter is
@@ -12,7 +13,7 @@ package body Terminal.App.Vulkan_Presenter is
    package VS renames Terminal.App.Vulkan_Submit;
    package RM renames Terminal.App.Render_Model;
 
-   use type VS.Vertex_Array_Access;
+   use type VS.Vertex_Array_View;
    use type VS.Texture_Source;
    use type VD.Create_Status;
    use type VD.Render_Status;
@@ -596,6 +597,8 @@ package body Terminal.App.Vulkan_Presenter is
          P.Initialized := False;
          P.Has_Uploaded_Frame := False;
          P.Last_Status := Not_Initialized;
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Vulkan_Presenter);
    end Finalize;
 
    function Is_Initialized (P : Presenter) return Boolean is

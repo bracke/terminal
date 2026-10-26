@@ -20,6 +20,25 @@ is
    Old_Scrollback_Rows : constant Natural := T.Scrollback_Rows;
    Old_Scrollback_Head : constant Natural := T.Scrollback_Head;
    New_Count   : Positive;
+
+   procedure Release_Replacements is
+   begin
+      if New_Primary /= null then
+         Free_Cells (New_Primary);
+      end if;
+      if New_Alt /= null then
+         Free_Cells (New_Alt);
+      end if;
+      if New_Scrollback /= null then
+         Free_Cells (New_Scrollback);
+      end if;
+      if New_Dirty /= null then
+         Free_Dirty (New_Dirty);
+      end if;
+      if New_Tabs /= null then
+         Free_Tab_Stops (New_Tabs);
+      end if;
+   end Release_Replacements;
 begin
    if not T.Initialized then
       Status := Allocation_Failed;
@@ -44,56 +63,64 @@ begin
    end if;
    New_Count := Rows * Cols;
 
-   --  Allocate the complete replacement before changing terminal state.
-   --  A failed resize must leave every old buffer and all history usable.
-   New_Primary := new Cell_Array (1 .. New_Count);
-   New_Alt := new Cell_Array (1 .. New_Count);
-   if T.Scrollback_Limit > 0 then
-      New_Scrollback := new Cell_Array (1 .. T.Scrollback_Limit * Cols);
-      for I in New_Scrollback'Range loop
-         New_Scrollback (I) := Blank_Cell (T.Current_Style);
-      end loop;
-   end if;
-   New_Dirty := new Dirty_Row_Array (1 .. Rows);
-   New_Tabs := new Tab_Stop_Array (1 .. Cols);
+   begin
+      --  Allocate and populate the complete replacement before changing
+      --  terminal state.  Only allocation failure is converted to a status;
+      --  invariant and bounds defects remain visible to callers.
+      New_Primary := new Cell_Array (1 .. New_Count);
+      New_Alt := new Cell_Array (1 .. New_Count);
+      if T.Scrollback_Limit > 0 then
+         New_Scrollback := new Cell_Array (1 .. T.Scrollback_Limit * Cols);
+         for I in New_Scrollback'Range loop
+            New_Scrollback (I) := Blank_Cell (T.Current_Style);
+         end loop;
+      end if;
+      New_Dirty := new Dirty_Row_Array (1 .. Rows);
+      New_Tabs := new Tab_Stop_Array (1 .. Cols);
 
-   --  Populate the replacement while it is still detached from T.  This
-   --  keeps even a bounds or assignment failure transactional, rather than
-   --  exposing a partially initialized live screen.
-   for I in New_Primary'Range loop
-      New_Primary (I) := Blank_Cell (T.Current_Style);
-      New_Alt (I) := Blank_Cell (T.Current_Style);
-   end loop;
-   New_Dirty.all := (others => True);
-   for C in New_Tabs'Range loop
-      New_Tabs (C) := C > 1 and then (C - 1) mod 8 = 0;
-   end loop;
-   for R in 1 .. Positive'Min (Old_Rows, Rows) loop
-      for C in 1 .. Positive'Min (Old_Cols, Cols) loop
-         New_Primary ((R - 1) * Cols + C) :=
-           Old_Primary ((R - 1) * Old_Cols + C);
-         New_Alt ((R - 1) * Cols + C) :=
-           Old_Alt ((R - 1) * Old_Cols + C);
+      for I in New_Primary'Range loop
+         New_Primary (I) := Blank_Cell (T.Current_Style);
+         New_Alt (I) := Blank_Cell (T.Current_Style);
       end loop;
-   end loop;
-   if Old_Tabs /= null then
-      for C in 1 .. Positive'Min (Old_Cols, Cols) loop
-         New_Tabs (C) := Old_Tabs (C);
+      New_Dirty.all := (others => True);
+      for C in New_Tabs'Range loop
+         New_Tabs (C) := C > 1 and then (C - 1) mod 8 = 0;
       end loop;
-   end if;
-   if Old_Scrollback /= null and then New_Scrollback /= null then
-      for R in 1 .. Old_Scrollback_Rows loop
-         declare
-            Old_Physical_Row : constant Natural :=
-              (Old_Scrollback_Head + R - 1) mod T.Scrollback_Limit;
-         begin
-            for C in 1 .. Positive'Min (Old_Cols, Cols) loop
-               New_Scrollback ((R - 1) * Cols + C) :=
-                 Old_Scrollback (Old_Physical_Row * Old_Cols + C);
-            end loop;
-         end;
+      for R in 1 .. Positive'Min (Old_Rows, Rows) loop
+         for C in 1 .. Positive'Min (Old_Cols, Cols) loop
+            New_Primary ((R - 1) * Cols + C) :=
+              Old_Primary ((R - 1) * Old_Cols + C);
+            New_Alt ((R - 1) * Cols + C) :=
+              Old_Alt ((R - 1) * Old_Cols + C);
+         end loop;
       end loop;
-   end if;
+      if Old_Tabs /= null then
+         for C in 1 .. Positive'Min (Old_Cols, Cols) loop
+            New_Tabs (C) := Old_Tabs (C);
+         end loop;
+      end if;
+      if Old_Scrollback /= null and then New_Scrollback /= null then
+         for R in 1 .. Old_Scrollback_Rows loop
+            declare
+               Old_Physical_Row : constant Natural :=
+                 (Old_Scrollback_Head + R - 1) mod T.Scrollback_Limit;
+            begin
+               for C in 1 .. Positive'Min (Old_Cols, Cols) loop
+                  New_Scrollback ((R - 1) * Cols + C) :=
+                    Old_Scrollback (Old_Physical_Row * Old_Cols + C);
+               end loop;
+            end;
+         end loop;
+      end if;
+   exception
+      when Storage_Error =>
+         Release_Replacements;
+         Status := Allocation_Failed;
+         return;
+      when others =>
+         Release_Replacements;
+         raise;
+   end;
 
    T.Primary_Cells := New_Primary;
    T.Alt_Cells := New_Alt;
@@ -137,22 +164,4 @@ begin
    if T.Current_Modes.In_Band_Resize then
       Queue_Resize_Report (T);
    end if;
-exception
-   when Storage_Error | Constraint_Error =>
-      if New_Primary /= null then
-         Free_Cells (New_Primary);
-      end if;
-      if New_Alt /= null then
-         Free_Cells (New_Alt);
-      end if;
-      if New_Scrollback /= null then
-         Free_Cells (New_Scrollback);
-      end if;
-      if New_Dirty /= null then
-         Free_Dirty (New_Dirty);
-      end if;
-      if New_Tabs /= null then
-         Free_Tab_Stops (New_Tabs);
-      end if;
-      Status := Allocation_Failed;
 end Resize;

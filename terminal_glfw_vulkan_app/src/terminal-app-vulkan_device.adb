@@ -6,6 +6,7 @@ with System;
 with System.Address_To_Access_Conversions;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Image_Staging;
 with Terminal.App.Image_Upload_Layout;
 with Terminal.App.Shaders;
@@ -91,7 +92,7 @@ package body Terminal.App.Vulkan_Device is
    package VS renames Terminal.App.Vulkan_Submit;
 
    use type Shaders.Load_Status;
-   use type VS.Vertex_Array_Access;
+   use type VS.Vertex_Array_View;
    use type VS.Texture_Source;
 
    subtype Device_Count_Range is Positive range 1 .. Max_Physical_Devices;

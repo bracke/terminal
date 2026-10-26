@@ -7,14 +7,13 @@ procedure Complete_Frame_Graphics
    Runtime_Table       : Terminal.App.Session_Table.Runtime_Table;
    Current_Runtime     : not null access
      Terminal.App.Session_Runtime.Runtime;
-   Current_Core        : not null access Terminal.Core.Terminal;
    Scrollback_Offset   : Natural;
    Renderer_State      : in out Terminal.App.Renderer.Renderer;
-   Window              : in out GLFW_Vulkan.Windows.Window;
-   Last_Write          : in out Terminal.App.PTY_Write.Write_All_Status;
-   Redraw              : in out Boolean;
-   Recovery            : Terminal.App.Vulkan_Recovery.Controller)
+   Recovery_Pending    : Boolean;
+   Result              : in out Frame_Completion_Result)
 is
+   Current_Core : constant not null access Terminal.Core.Terminal :=
+     Terminal.App.Session_Runtime.Core (Current_Runtime.all);
 begin
    if Render_Status = Terminal.App.Renderer.Ok
      and then
@@ -59,14 +58,15 @@ begin
                      exit when Chunk.Length = 0;
                      Terminal.App.Session_Runtime.Write
                        (Response_Runtime.all, Chunk, Write_Status);
-                     Last_Write := Write_Status;
+                     Result.Write_Attempted := True;
+                     Result.Write_Status := Write_Status;
                      if Write_Status in
                        Terminal.App.PTY_Write.Failed
                          | Terminal.App.PTY_Write.Session_Closed
                      then
                         if Terminal.App.Session_Table.Count (Runtime_Table) = 1
                         then
-                           GLFW_Vulkan.Windows.Set_Should_Close (Window, True);
+                           Result.Close_Window := True;
                         end if;
                         exit;
                      elsif Write_Status = Terminal.App.PTY_Write.Incomplete then
@@ -77,19 +77,19 @@ begin
                     or else Terminal.Core.Pending_Graphics_Event_Count
                       (Core.all) > 0;
                end if;
+               Terminal.Core.Clear_Damage (Core.all);
             end;
          end loop;
          Terminal.App.Renderer.Commit_Graphics_Events (Renderer_State);
-         Redraw := More_Graphics;
+         Result.Redraw := More_Graphics;
       end;
-      Terminal.Core.Clear_Damage (Current_Core.all);
    elsif Present_Status not in
      Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
        | Terminal.App.Vulkan_Presenter.Device_Lost
        | Terminal.App.Vulkan_Presenter.Resources_In_Flight
    then
-      Redraw := Terminal.App.Vulkan_Recovery.Is_Pending (Recovery);
+      Result.Redraw := Recovery_Pending;
    elsif Present_Status = Terminal.App.Vulkan_Presenter.Resources_In_Flight then
-      Redraw := True;
+      Result.Redraw := True;
    end if;
 end Complete_Frame_Graphics;

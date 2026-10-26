@@ -2803,6 +2803,10 @@ package body Terminal.Core is
    begin
       Snapshot (T, S);
       return S;
+   exception
+      when others =>
+         Release (S);
+         raise;
    end Snapshot;
 
    procedure Release (S : in out Render_Snapshot) is

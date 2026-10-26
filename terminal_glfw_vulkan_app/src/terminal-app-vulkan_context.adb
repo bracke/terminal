@@ -2,6 +2,7 @@ with Interfaces.C.Strings;
 with Interfaces.C;
 with GLFW_Vulkan.Surfaces;
 with System;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Status_Labels;
 
 package body Terminal.App.Vulkan_Context is
@@ -126,6 +127,7 @@ package body Terminal.App.Vulkan_Context is
    end Initialize;
 
    overriding procedure Finalize (Ctx : in out Context) is
+      Cleanup_Failed : Boolean := False;
    begin
       if Ctx.Surface /= System.Null_Address
         and then Ctx.Instance /= System.Null_Address
@@ -134,7 +136,7 @@ package body Terminal.App.Vulkan_Context is
             Vk.Destroy_Surface_KHR
               (Ctx.Instance, Ctx.Surface, System.Null_Address);
          exception
-            when others => null;
+            when others => Cleanup_Failed := True;
          end;
       end if;
       --  Clear each handle even when its destroy call failed.  Finalization
@@ -144,14 +146,20 @@ package body Terminal.App.Vulkan_Context is
          begin
             Vk.Destroy_Instance (Ctx.Instance, System.Null_Address);
          exception
-            when others => null;
+            when others => Cleanup_Failed := True;
          end;
       end if;
       Ctx.Instance := System.Null_Address;
       Ctx.Initialized := False;
+      if Cleanup_Failed then
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Vulkan_Context);
+      end if;
    exception
       when others =>
          Ctx.Initialized := False;
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Vulkan_Context);
    end Finalize;
 
    function Is_Initialized (Ctx : Context) return Boolean is

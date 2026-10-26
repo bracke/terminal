@@ -268,6 +268,9 @@ procedure Session_Hardening_Smoke is
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "composition render succeeds");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Last_Dirty_Rows = 6,
+         "composition diagnostics count dirty rows across every pane");
 
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=

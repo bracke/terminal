@@ -89,7 +89,7 @@ begin
            & Natural'Image (VS.Colour_Glyph_Vertex_Count (Batch)));
 
    declare
-      Items : constant VS.Vertex_Array_Access := VS.Vertices (Batch);
+      Items : constant VS.Vertex_Array_View := VS.Vertices (Batch);
    begin
       for Index in 1 .. VS.Vertex_Count (Batch) loop
          if Items (Index).Texture = VS.Texture_Colour_Glyphs then
@@ -193,7 +193,7 @@ begin
       Assert (Image_Status = VS.Ok, "a frame with both builds");
 
       declare
-         Items : constant VS.Vertex_Array_Access := VS.Vertices (Image_Batch);
+         Items : constant VS.Vertex_Array_View := VS.Vertices (Image_Batch);
       begin
          for Index in 1 .. VS.Vertex_Count (Image_Batch) loop
             if Items (Index).Texture = VS.Texture_Colour_Glyphs then

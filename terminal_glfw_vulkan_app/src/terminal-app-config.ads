@@ -18,7 +18,7 @@ package Terminal.App.Config is
    Max_Graphics_Pending_Bytes : constant Positive := 16 * 1024 * 1024;
    Max_Graphics_Deferred_Input_Bytes : constant Positive := 16 * 1024 * 1024;
    Max_Graphics_Image_Objects : constant Positive :=
-     Terminal.App.Vulkan_Submit.Max_Image_Atlas_Sources;
+     Terminal.App.Max_Graphics_Image_Objects;
    Max_Graphics_Image_Bytes : constant Positive := 64 * 1024 * 1024;
    Max_Graphics_Placements : constant Positive := 16 * 1024;
    Max_Graphics_Animation_Frames : constant Positive := 4_096;

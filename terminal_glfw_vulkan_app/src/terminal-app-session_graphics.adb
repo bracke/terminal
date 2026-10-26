@@ -120,6 +120,10 @@ package body Terminal.App.Session_Graphics is
                         end if;
                      end loop;
                   end if;
+               exception
+                  when others =>
+                     Terminal.Core.Release (Snapshots (1));
+                     raise;
                end;
             end if;
          end;

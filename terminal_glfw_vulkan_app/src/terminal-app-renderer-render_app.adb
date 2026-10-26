@@ -262,6 +262,19 @@ begin
    R.Last_Cell_Count := Cell_Count;
    R.Last_Frame_Width := Frame_W;
    R.Last_Frame_Height := Frame_H;
+   for I in Snapshots'Range loop
+      if Snapshots (I).Dirty /= null then
+         if Snapshots (I).Dirty'Length < Snapshots (I).Rows then
+            Set_Render_Status (R, Status, Invalid_Snapshot);
+            return;
+         end if;
+         for Row in 1 .. Snapshots (I).Rows loop
+            if Snapshots (I).Dirty (Row) then
+               R.Last_Dirty_Rows := R.Last_Dirty_Rows + 1;
+            end if;
+         end loop;
+      end if;
+   end loop;
 
    Ensure_Frame_Capacity
      (R,

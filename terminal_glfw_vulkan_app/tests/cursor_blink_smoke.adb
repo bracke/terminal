@@ -20,6 +20,9 @@ begin
    Assert
      (Terminal.App.Cursor_Blink.Tick (1.0) = 2,
       "one second returns to visible phase");
+   Assert
+     (Terminal.App.Cursor_Blink.Tick (86_400.0) = 172_800,
+      "long-running blink tick is computed directly");
 
    Snapshot.Cursor :=
      (Row      => 1,

@@ -56,6 +56,10 @@ begin
    end loop;
    R.Sixel_Palettes := null;
    Release_Text_Safely;
+   if Cleanup_Failed then
+      Terminal.App.Cleanup_Diagnostics.Note_Failure
+        (Terminal.App.Cleanup_Diagnostics.Renderer_State);
+   end if;
    if not Cleanup_Failed then
       R.Needs_Finalization := False;
    end if;
@@ -85,4 +89,6 @@ exception
       --  retry, but permanently close the public object.
       R.Closed := True;
       R.Initialized := False;
+      Terminal.App.Cleanup_Diagnostics.Note_Failure
+        (Terminal.App.Cleanup_Diagnostics.Renderer_State);
 end Finalize;

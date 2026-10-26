@@ -15,7 +15,7 @@ procedure Vulkan_Submit_Smoke is
    use type Terminal.App.Render_Model.Image_Data_Access;
    use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.App.Render_Model.Image_Protocol;
-   use type Terminal.App.Render_Model.Text_Run_Array_Access;
+   use type Terminal.App.Render_Model.Text_Run_Array_View;
    use type Terminal.App.Render_Model.Text_Run_Direction;
    use type Terminal.App.Render_Model.Text_Run_Kind;
    use type Terminal.App.Render_Model.Text_Run_Script;
@@ -23,7 +23,7 @@ procedure Vulkan_Submit_Smoke is
    use type Terminal.App.Vulkan_Submit.Build_Status;
    use type Terminal.App.Vulkan_Submit.Image_Atlas_Limits;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
-   use type Terminal.App.Vulkan_Submit.Vertex_Array_Access;
+   use type Terminal.App.Vulkan_Submit.Vertex_Array_View;
    use type Interfaces.Unsigned_64;
 
    package RM renames Terminal.App.Render_Model;
@@ -322,9 +322,9 @@ begin
      (VS.Text_Runs (Batch) (1).Fallback_Glyphs,
       "text run fallback flag");
    declare
-      Retained_Vertices : constant VS.Vertex_Array_Access :=
+      Retained_Vertices : constant VS.Vertex_Array_View :=
         VS.Vertices (Batch);
-      Retained_Runs : constant RM.Text_Run_Array_Access :=
+      Retained_Runs : constant RM.Text_Run_Array_View :=
         VS.Text_Runs (Batch);
    begin
       Frame.Colour_Sheet_Dirty := False;

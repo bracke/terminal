@@ -12,15 +12,24 @@ package body Terminal.App.Cursor_Blink is
    end Shape_Label;
 
    function Tick (Elapsed : Duration) return Natural is
-      Remaining : Duration := Elapsed;
-      Result    : Natural := 0;
+      Ticks    : Long_Long_Integer;
+      Quotient : Duration;
+      Saturation_Elapsed : constant Duration :=
+        Duration (Natural'Last) * Blink_Period;
    begin
-      while Remaining >= Blink_Period loop
-         Result := Result + 1;
-         Remaining := Remaining - Blink_Period;
-      end loop;
-
-      return Result;
+      if Elapsed <= 0.0 then
+         return 0;
+      elsif Elapsed >= Saturation_Elapsed then
+         return Natural'Last;
+      end if;
+      Quotient := Elapsed / Blink_Period;
+      Ticks := Long_Long_Integer (Quotient);
+      --  Fixed-point-to-integer conversion rounds to the nearest integer.
+      --  Correct a rounded-up quotient to obtain floor without iterating.
+      if Duration (Ticks) * Blink_Period > Elapsed then
+         Ticks := Ticks - 1;
+      end if;
+      return Natural (Ticks);
    end Tick;
 
    function Status_Label

@@ -4,6 +4,9 @@ with Terminal.Core;
 package Terminal.App is
    type App_Status is (Ok, Initialization_Failed, Runtime_Failed);
    Max_Status_Label_Length : constant := 96;
+   --  Protocol-side object retention is independent of how a renderer packs
+   --  the subset of images visible in one frame.
+   Max_Graphics_Image_Objects : constant Positive := 256;
 
    Term_Name : constant String := "xterm-256color";
    Color_Term : constant String := "truecolor";

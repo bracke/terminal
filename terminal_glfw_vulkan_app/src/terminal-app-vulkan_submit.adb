@@ -25,6 +25,7 @@ package body Terminal.App.Vulkan_Submit is
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
    use type Vertex_Array_Access;
+   use type Vertex_Array_View;
 
    function Trimmed_Natural (Value : Natural) return String is
       Text : constant String := Natural'Image (Value);
@@ -972,8 +973,8 @@ package body Terminal.App.Vulkan_Submit is
          Status := Allocation_Failed;
    end Build;
 
-   function Vertices (Batch : Submission_Batch) return Vertex_Array_Access is
-     (Batch.Items);
+   function Vertices (Batch : Submission_Batch) return Vertex_Array_View is
+     (Vertex_Array_View (Batch.Items));
 
    function Vertex_Count (Batch : Submission_Batch) return Natural is
      (Batch.Count);
@@ -1272,8 +1273,8 @@ package body Terminal.App.Vulkan_Submit is
 
    function Text_Runs
      (Batch : Submission_Batch)
-      return RM.Text_Run_Array_Access is
-     (Batch.Text_Runs);
+      return RM.Text_Run_Array_View is
+     (RM.Text_Run_Array_View (Batch.Text_Runs));
 
    function Text_Run_Count (Batch : Submission_Batch) return Natural is
      (Batch.Text_Run_Total);

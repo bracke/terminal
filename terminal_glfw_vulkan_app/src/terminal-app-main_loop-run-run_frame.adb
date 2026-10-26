@@ -8,36 +8,122 @@ separate (Terminal.App.Main_Loop.Run)
       Local_Redraw : Boolean := False;
       Current_Blink_Tick : Natural := Last_Blink_Tick;
 
+      function Frame_Diagnostic_Statuses
+        (Snaps                : Terminal.App.Renderer.Snapshot_Array;
+         Active_Render_Index  : Positive;
+         Render_Policy_Status : String)
+         return Terminal.App.Diagnostics.Runtime_Statuses
+      is
+         Statuses : Terminal.App.Diagnostics.Runtime_Statuses := (others => <>);
+
+         procedure Set
+           (Kind : Terminal.App.Diagnostics.Runtime_Status_Kind;
+            Text : String) is
+         begin
+            Terminal.App.Diagnostics.Set (Statuses, Kind, Text);
+         end Set;
+      begin
+         Set
+           (Terminal.App.Diagnostics.Grid_Status,
+            Terminal.App.Resize.Grid_Status_Label
+              (FB_Width,
+               FB_Height,
+               Terminal.App.Renderer.Cell_Width (R),
+               Terminal.App.Renderer.Cell_Height (R),
+               Terminal.App.Renderer.Content_Margin));
+         Set (Terminal.App.Diagnostics.Policy_Status, Render_Policy_Status);
+         Set
+           (Terminal.App.Diagnostics.Scrollback_Status,
+            Terminal.App.Scrollback_View.Status_Label
+              (Active_Core.all, Scroll_Offset));
+         Set
+           (Terminal.App.Diagnostics.Selection_Status,
+            Terminal.App.Selection.Status_Label (Selection));
+         Set
+           (Terminal.App.Diagnostics.Link_Status,
+            Terminal.App.Hyperlinks.Status_Label (Hovered_Link));
+         Set
+           (Terminal.App.Diagnostics.Link_Activation_Status,
+            Terminal.App.Hyperlinks.Activation_Status_Label
+              (if Has_Link_Activation
+               then Link_Activation
+               else Terminal.App.Hyperlinks.No_Link));
+         Set
+           (Terminal.App.Diagnostics.Clipboard_Status,
+            Terminal.App.Clipboard_OSC52.Status_Label
+              (Last_Clipboard_Target));
+         Set
+           (Terminal.App.Diagnostics.Tab_Status,
+            Terminal.App.Tabs.Status_Label (Tabs));
+         Set
+           (Terminal.App.Diagnostics.Split_Status,
+            Terminal.App.Splits.Status_Label (Splits));
+         Set
+           (Terminal.App.Diagnostics.Config_Status,
+            Terminal.App.Config.Status_Label (App_Config));
+         Set
+           (Terminal.App.Diagnostics.Profile_Status,
+            Terminal.App.Profile_Status_Label (Terminal.App.Profile));
+         Set
+           (Terminal.App.Diagnostics.Input_Status,
+            Terminal.App.Input_Map.Input_Status_Label
+              (Terminal.Core.Modes (Active_Core.all)));
+         Set
+           (Terminal.App.Diagnostics.Mouse_Status,
+            Terminal.App.Input_Map.Mouse_Status_Label
+              (Terminal.Core.Modes (Active_Core.all)));
+         Set
+           (Terminal.App.Diagnostics.Cursor_Status,
+            Terminal.App.Cursor_Blink.Status_Label
+              (Snaps (Active_Render_Index).Cursor, Current_Blink_Tick));
+         Set
+           (Terminal.App.Diagnostics.Text_Blink_Status,
+            Terminal.App.Text_Blink.Status_Label
+              (Snaps (Active_Render_Index), Current_Blink_Tick));
+         Set
+           (Terminal.App.Diagnostics.Theme_Status,
+            Terminal.App.Theme.Status_Label (App_Config.Color_Theme));
+         Set (Terminal.App.Diagnostics.Font_Status, Runtime_Font_Status);
+         Set
+           (Terminal.App.Diagnostics.PTY_Backend_Status,
+            Runtime_PTY_Backend_Status);
+         Set
+           (Terminal.App.Diagnostics.ConPTY_Status,
+            Runtime_ConPTY_Status);
+         Set
+           (Terminal.App.Diagnostics.Multiplexer_Status,
+            Runtime_Multiplexer_Status);
+         Set
+           (Terminal.App.Diagnostics.Graphics_Header_Status,
+            Terminal.App.Graphics.Header_Status_Label
+              (Snaps (Active_Render_Index).Graphics));
+         Set
+           (Terminal.App.Diagnostics.Graphics_Data_Status,
+            Terminal.App.Graphics.Data_Status_Label
+              (Snaps (Active_Render_Index).Graphics));
+         return Statuses;
+      end Frame_Diagnostic_Statuses;
+
+      type Frame_Completion_Result is record
+         Redraw          : Boolean;
+         Write_Attempted : Boolean := False;
+         Write_Status    : Terminal.App.PTY_Write.Write_All_Status :=
+           Terminal.App.PTY_Write.Ok;
+         Close_Window    : Boolean := False;
+      end record;
+
       procedure Handle_Input_Event (Stop : out Boolean) is separate;
       procedure Poll_Backends is separate;
       procedure Resize_Surface is separate;
       procedure Log_Frame_Diagnostics
-        (Snaps               : Terminal.App.Renderer.Snapshot_Array;
-         Active_Render_Index : Positive;
-         Render_Policy_Status : String;
-         Framebuffer_Width    : Natural;
-         Framebuffer_Height   : Natural;
-         Renderer_State       : Terminal.App.Renderer.Renderer;
-         Current_Core         : Terminal.Core.Terminal;
-         Scrollback_Offset    : Natural;
-         Selection_State      : Terminal.App.Selection.Selection_State;
-         Hovered              : Terminal.Core.Hyperlink;
-         Has_Activation       : Boolean;
-         Activation           : Terminal.App.Hyperlinks.Activation_Status;
-         Clipboard_Target     : Terminal.Core.Clipboard_Target;
-         Tab_State            : Terminal.App.Tabs.Tab_State;
-         Split_State          : Terminal.App.Splits.Split_State;
-         Configuration        : Terminal.App.Config.Config;
-         Blink_Tick           : Natural;
-         Font_Status          : String;
-         PTY_Backend_Status   : String;
-         ConPTY_Status        : String;
-         Multiplexer_Status   : String;
+        (Current_Core         : Terminal.Core.Terminal;
          PTY_Queue            : Terminal.App.Queues.PTY_Output_Queue;
          Input_Queue          : Terminal.App.Queues.Input_Event_Queue;
+         Renderer_State       : Terminal.App.Renderer.Renderer;
          Presenter_State      : Terminal.App.Vulkan_Presenter.Presenter;
          Feed_Status          : Terminal.Core.Feed_Status;
-         Write_Status         : Terminal.App.PTY_Write.Write_All_Status)
+         Write_Status         : Terminal.App.PTY_Write.Write_All_Status;
+         Statuses             : Terminal.App.Diagnostics.Runtime_Statuses)
       is separate;
       procedure Complete_Frame_Graphics
         (Snaps               : Terminal.App.Renderer.Snapshot_Array;
@@ -47,14 +133,10 @@ separate (Terminal.App.Main_Loop.Run)
          Runtime_Table       : Terminal.App.Session_Table.Runtime_Table;
          Current_Runtime     : not null access
            Terminal.App.Session_Runtime.Runtime;
-         Current_Core        : not null access Terminal.Core.Terminal;
          Scrollback_Offset   : Natural;
          Renderer_State      : in out Terminal.App.Renderer.Renderer;
-         Window              : in out GLFW_Vulkan.Windows.Window;
-         Last_Write          : in out
-           Terminal.App.PTY_Write.Write_All_Status;
-         Redraw              : in out Boolean;
-         Recovery            : Terminal.App.Vulkan_Recovery.Controller)
+         Recovery_Pending    : Boolean;
+         Result              : in out Frame_Completion_Result)
       is separate;
 
       procedure Handle_Present_Status
@@ -210,6 +292,8 @@ separate (Terminal.App.Main_Loop.Run)
             Render_Status : Terminal.App.Renderer.Render_Status;
             Present_Status : Terminal.App.Vulkan_Presenter.Present_Status;
             Can_Present : Boolean := True;
+            Completion : Frame_Completion_Result :=
+              (Redraw => Need_Redraw, others => <>);
          begin
             Resize_Visible_Runtimes;
             for I in Snaps'Range loop
@@ -348,33 +432,20 @@ separate (Terminal.App.Main_Loop.Run)
                Render_Status := Terminal.App.Renderer.Not_Initialized;
             end if;
             Handle_Present_Status (Present_Status);
+            --  Handle_Present_Status may start recovery and request another
+            --  frame.  Preserve that decision when completion has no more
+            --  specific redraw result for this presentation status.
+            Completion.Redraw := Need_Redraw;
             Log_Frame_Diagnostics
-              (Snaps,
-               Active_Render_Index,
-               Render_Policy_Status,
-               FB_Width,
-               FB_Height,
-               R,
-               Active_Core.all,
-               Scroll_Offset,
-               Selection,
-               Hovered_Link,
-               Has_Link_Activation,
-               Link_Activation,
-               Last_Clipboard_Target,
-               Tabs,
-               Splits,
-               App_Config,
-               Current_Blink_Tick,
-               Runtime_Font_Status,
-               Runtime_PTY_Backend_Status,
-               Runtime_ConPTY_Status,
-               Runtime_Multiplexer_Status,
+              (Active_Core.all,
                Active_PTY_Queue.all,
                In_Q,
+               R,
                Presenter,
                Last_Feed_Status,
-               Last_Write_Status);
+               Last_Write_Status,
+               Frame_Diagnostic_Statuses
+                 (Snaps, Active_Render_Index, Render_Policy_Status));
             Complete_Frame_Graphics
               (Snaps,
                Active_Render_Index,
@@ -382,13 +453,17 @@ separate (Terminal.App.Main_Loop.Run)
                Present_Status,
                Sessions,
                Active_Runtime,
-               Active_Core,
                Scroll_Offset,
                R,
-               W,
-               Last_Write_Status,
-               Need_Redraw,
-               Vulkan_Recovery);
+               Terminal.App.Vulkan_Recovery.Is_Pending (Vulkan_Recovery),
+               Completion);
+            Need_Redraw := Completion.Redraw;
+            if Completion.Write_Attempted then
+               Last_Write_Status := Completion.Write_Status;
+            end if;
+            if Completion.Close_Window then
+               GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+            end if;
          end;
       end if;
       end;

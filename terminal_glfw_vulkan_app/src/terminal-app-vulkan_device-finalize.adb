@@ -1,6 +1,7 @@
 separate (Terminal.App.Vulkan_Device)
    overriding procedure Finalize (Device : in out Logical_Device) is
       Deferred_Cleanup_Succeeded : Boolean;
+      Cleanup_Failed : Boolean := False;
       generic
          type Handle_Type is private;
          Null_Handle : Handle_Type;
@@ -16,7 +17,7 @@ separate (Terminal.App.Vulkan_Device)
             begin
                Destroy (Device.Device, Handle, System.Null_Address);
             exception
-               when others => null;
+               when others => Cleanup_Failed := True;
             end;
          end if;
          --  Never retry a handle after a best-effort destructor was called:
@@ -61,15 +62,16 @@ separate (Terminal.App.Vulkan_Device)
             declare
                Result : constant Vk.Result_T :=
                  Vk.Device_Wait_Idle (Device.Device);
-               pragma Unreferenced (Result);
             begin
-               null;
+               Cleanup_Failed := Cleanup_Failed or else Result /= Vk.SUCCESS;
             end;
          exception
-            when others => null;
+            when others => Cleanup_Failed := True;
          end;
 
          Destroy_Deferred_Upload (Device, Deferred_Cleanup_Succeeded);
+         Cleanup_Failed :=
+           Cleanup_Failed or else not Deferred_Cleanup_Succeeded;
          Destroy_Fence (Device.Upload_Fence);
          for I in Device.In_Flight'Range loop
             Destroy_Fence (Device.In_Flight (I));
@@ -84,7 +86,7 @@ separate (Terminal.App.Vulkan_Device)
                     (Device.Device, Device.Command_Pool, 1,
                      Device.Upload_Command_Buffer'Address);
                exception
-                  when others => null;
+                  when others => Cleanup_Failed := True;
                end;
             end if;
             Device.Upload_Command_Buffer := System.Null_Address;
@@ -96,7 +98,7 @@ separate (Terminal.App.Vulkan_Device)
                      Interfaces.Unsigned_32 (Device.Command_Buffer_Count),
                      Device.Command_Buffers'Address);
                exception
-                  when others => null;
+                  when others => Cleanup_Failed := True;
                end;
             end if;
          end if;
@@ -135,7 +137,7 @@ separate (Terminal.App.Vulkan_Device)
          begin
             Vk.Destroy_Device (Device.Device, System.Null_Address);
          exception
-            when others => null;
+            when others => Cleanup_Failed := True;
          end;
          Device.Device := System.Null_Address;
       end if;
@@ -209,6 +211,10 @@ separate (Terminal.App.Vulkan_Device)
       Device.Swapchain_Width := 0;
       Device.Swapchain_Height := 0;
       Device.Last_Status := Selection_Not_Ready;
+      if Cleanup_Failed then
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Vulkan_Device);
+      end if;
    exception
       when others =>
          --  A controlled finalizer must not replace an exception already in
@@ -216,5 +222,7 @@ separate (Terminal.App.Vulkan_Device)
          --  invariant prevented complete release.
          Device.Initialized := False;
          Device.Last_Status := Selection_Not_Ready;
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Vulkan_Device);
    end Finalize;
 

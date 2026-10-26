@@ -61,6 +61,7 @@ package Terminal.App.Vulkan_Submit is
 
    type Vertex_Array is array (Positive range <>) of Vertex;
    type Vertex_Array_Access is access all Vertex_Array;
+   type Vertex_Array_View is access constant Vertex_Array;
 
    type Submission_Batch is new Ada.Finalization.Limited_Controlled with private;
 
@@ -79,7 +80,7 @@ package Terminal.App.Vulkan_Submit is
    function Image_Atlas_Limit
      (Batch : Submission_Batch) return Image_Atlas_Limits;
 
-   function Vertices (Batch : Submission_Batch) return Vertex_Array_Access;
+   function Vertices (Batch : Submission_Batch) return Vertex_Array_View;
    function Vertex_Count (Batch : Submission_Batch) return Natural;
    function Rectangle_Vertex_Count (Batch : Submission_Batch) return Natural;
    function Glyph_Vertex_Count (Batch : Submission_Batch) return Natural;
@@ -168,7 +169,7 @@ package Terminal.App.Vulkan_Submit is
      (Batch : Submission_Batch) return Texture_Source;
    function Text_Runs
      (Batch : Submission_Batch)
-      return Terminal.App.Render_Model.Text_Run_Array_Access;
+      return Terminal.App.Render_Model.Text_Run_Array_View;
    function Text_Run_Count (Batch : Submission_Batch) return Natural;
    function Shaped_Glyph_Count (Batch : Submission_Batch) return Natural;
    function Width (Batch : Submission_Batch) return Natural;

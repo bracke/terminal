@@ -49,6 +49,11 @@ package body Terminal.App.Cleanup_Diagnostics is
         & " runtime=" & Image (Counts (Session_Runtime))
         & " table=" & Image (Counts (Session_Table))
         & " theme=" & Image (Counts (Theme_Transaction))
-        & " install=" & Image (Counts (Image_Install));
+        & " install=" & Image (Counts (Image_Install))
+        & " renderer=" & Image (Counts (Renderer_State))
+        & " frame_images=" & Image (Counts (Frame_Image_Storage))
+        & " vk_context=" & Image (Counts (Vulkan_Context))
+        & " vk_device=" & Image (Counts (Vulkan_Device))
+        & " vk_presenter=" & Image (Counts (Vulkan_Presenter));
    end Status_Label;
 end Terminal.App.Cleanup_Diagnostics;

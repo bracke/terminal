@@ -317,12 +317,17 @@ package body Terminal.App.Renderer is
    end Complete_Event_Text;
 
    function Ceiling_Positive (Value : Float) return Positive is
-      Result : Positive := 1;
+      Maximum : constant Positive := Max_Graphics_Pixel_Dimension - 1;
    begin
-      while Float (Result) < Value loop
-         Result := Result + 1;
-      end loop;
-      return Result;
+      if not (Value >= -Float'Last and then Value <= Float'Last)
+        or else Value <= 1.0
+      then
+         return 1;
+      elsif Value >= Float (Maximum) then
+         return Maximum;
+      else
+         return Positive (Float'Ceiling (Value));
+      end if;
    end Ceiling_Positive;
 
    function Measured_Cell_Width

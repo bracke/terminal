@@ -48,6 +48,30 @@ procedure Diagnostics_Smoke is
    end Set_Status;
 begin
    declare
+      Counts : Terminal.App.Cleanup_Diagnostics.Failure_Counts :=
+        (others => 0);
+   begin
+      Counts (Terminal.App.Cleanup_Diagnostics.Renderer_State) := 1;
+      Counts (Terminal.App.Cleanup_Diagnostics.Frame_Image_Storage) := 1;
+      Counts (Terminal.App.Cleanup_Diagnostics.Vulkan_Context) := 1;
+      Counts (Terminal.App.Cleanup_Diagnostics.Vulkan_Device) := 1;
+      Counts (Terminal.App.Cleanup_Diagnostics.Vulkan_Presenter) := 1;
+      declare
+         Label : constant String :=
+           Terminal.App.Cleanup_Diagnostics.Status_Label (Counts);
+      begin
+         Assert
+           (Terminal.App.Cleanup_Diagnostics.Total (Counts) = 5
+            and then Contains (Label, "renderer=1")
+            and then Contains (Label, "frame_images=1")
+            and then Contains (Label, "vk_context=1")
+            and then Contains (Label, "vk_device=1")
+            and then Contains (Label, "vk_presenter=1"),
+            "cleanup diagnostics should cover every renderer and Vulkan owner");
+      end;
+   end;
+
+   declare
       Before : constant Terminal.App.Cleanup_Diagnostics.Failure_Counts :=
         Terminal.App.Cleanup_Diagnostics.Snapshot;
       After : Terminal.App.Cleanup_Diagnostics.Failure_Counts;
