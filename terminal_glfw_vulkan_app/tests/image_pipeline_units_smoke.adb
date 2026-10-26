@@ -123,6 +123,21 @@ begin
       Assert
         (Status = Terminal.App.Image_Upload_Layout.Invalid_Layout,
          "upload layout rejects truncated padded source data");
+      Terminal.App.Image_Upload_Layout.Calculate
+        (Width                  => 4,
+         Height                 => 2,
+         Source_Bytes_Per_Pixel => 1,
+         Row_Stride_Bytes       => 4,
+         Source_Bytes           => 8,
+         Maximum_Bytes          => 64,
+         Result                 => Layout,
+         Status                 => Status,
+         Target_Bytes_Per_Pixel => 1);
+      Assert
+        (Status = Terminal.App.Image_Upload_Layout.Layout_Ok
+         and then Layout.Upload_Bytes = 8
+         and then Layout.Staging_Bytes = 8,
+         "upload layout takes a one-byte glyph atlas as it is");
    end;
    declare
       Compressed : constant Terminal.Common.Bytes.Byte_Array :=

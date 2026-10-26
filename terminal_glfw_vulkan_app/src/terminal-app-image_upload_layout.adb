@@ -7,7 +7,8 @@ package body Terminal.App.Image_Upload_Layout is
       Source_Bytes           : Natural;
       Maximum_Bytes          : Positive;
       Result                 : out Layout;
-      Status                 : out Layout_Status)
+      Status                 : out Layout_Status;
+      Target_Bytes_Per_Pixel : Positive := 4)
    is
       Source_Row : Natural;
       Target_Row : Natural;
@@ -20,14 +21,17 @@ package body Terminal.App.Image_Upload_Layout is
       Status := Invalid_Layout;
       if Width = 0
         or else Height = 0
-        or else Source_Bytes_Per_Pixel not in 3 | 4
-        or else Width > Maximum_Bytes / 4
+        or else not
+          (if Target_Bytes_Per_Pixel = 4 then Source_Bytes_Per_Pixel in 3 | 4
+           elsif Target_Bytes_Per_Pixel = 1 then Source_Bytes_Per_Pixel = 1
+           else False)
+        or else Width > Maximum_Bytes / Target_Bytes_Per_Pixel
         or else Width > Maximum_Bytes / Source_Bytes_Per_Pixel
       then
          return;
       end if;
 
-      Target_Row := Width * 4;
+      Target_Row := Width * Target_Bytes_Per_Pixel;
       Source_Row := Width * Source_Bytes_Per_Pixel;
       if Row_Stride_Bytes < Source_Row
         or else Row_Stride_Bytes > Maximum_Bytes

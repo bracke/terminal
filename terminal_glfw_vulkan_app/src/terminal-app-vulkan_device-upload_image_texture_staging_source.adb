@@ -91,7 +91,8 @@ begin
       Source_Bytes           => Bytes_Natural,
       Maximum_Bytes          => Maximum_Bytes,
       Result                 => Upload_Layout,
-      Status                 => Layout_Status);
+      Status                 => Layout_Status,
+      Target_Bytes_Per_Pixel => (if Image_Format = Format_R8_Unorm then 1 else 4));
    if Layout_Status /= Terminal.App.Image_Upload_Layout.Layout_Ok then
       Status := Atlas_Too_Large;
       return;

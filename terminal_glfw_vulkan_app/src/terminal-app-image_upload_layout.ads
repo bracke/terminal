@@ -18,5 +18,8 @@ package Terminal.App.Image_Upload_Layout is
       Source_Bytes           : Natural;
       Maximum_Bytes          : Positive;
       Result                 : out Layout;
-      Status                 : out Layout_Status);
+      Status                 : out Layout_Status;
+      Target_Bytes_Per_Pixel : Positive := 4);
+   --  A target of four bytes takes three- or four-byte sources (RGBA); a
+   --  target of one byte, as the glyph atlas's R8, takes one-byte sources.
 end Terminal.App.Image_Upload_Layout;
