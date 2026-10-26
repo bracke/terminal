@@ -61,6 +61,7 @@ begin
    R.Kitty_Placement_Count := R.Kitty_Placement_Count + 1;
    return True;
 exception
-   when Storage_Error | Constraint_Error =>
+   when Storage_Error =>
+      R.Image_Store_Allocation_Failed := True;
       return False;
 end Store_Auxiliary_Placement;

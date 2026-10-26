@@ -374,43 +374,67 @@ package body Terminal.App.Renderer is
       Height : out Natural)
       return Boolean
    is
-      Result : Terminal.App.Graphics.Graphics_Data_Preview;
+      use type Interfaces.Unsigned_32;
+      function U32_BE (Offset : Natural) return Interfaces.Unsigned_32 is
+        (Interfaces.Shift_Left
+           (Interfaces.Unsigned_32 (Data (Data'First + Offset)), 24)
+         or Interfaces.Shift_Left
+           (Interfaces.Unsigned_32 (Data (Data'First + Offset + 1)), 16)
+         or Interfaces.Shift_Left
+           (Interfaces.Unsigned_32 (Data (Data'First + Offset + 2)), 8)
+         or Interfaces.Unsigned_32 (Data (Data'First + Offset + 3)));
+      Encoded_Width  : Interfaces.Unsigned_32;
+      Encoded_Height : Interfaces.Unsigned_32;
+      Pixels         : Natural := 0;
+      Bytes          : Natural := 0;
    begin
       Width := 0;
       Height := 0;
 
-      if Data'Length = 0 then
+      --  Read only the fixed PNG signature and IHDR prefix here.  Textrender
+      --  invokes the decoder immediately after this callback, so performing a
+      --  complete decode in both callbacks doubled glyph-load work and let a
+      --  failed inflate advertise otherwise plausible dimensions.
+      if Data'Length < 24
+        or else Natural (Data (Data'First)) /= 16#89#
+        or else Natural (Data (Data'First + 1)) /= 16#50#
+        or else Natural (Data (Data'First + 2)) /= 16#4E#
+        or else Natural (Data (Data'First + 3)) /= 16#47#
+        or else Natural (Data (Data'First + 4)) /= 16#0D#
+        or else Natural (Data (Data'First + 5)) /= 16#0A#
+        or else Natural (Data (Data'First + 6)) /= 16#1A#
+        or else Natural (Data (Data'First + 7)) /= 16#0A#
+        or else U32_BE (8) /= 13
+        or else Character'Val (Natural (Data (Data'First + 12))) /= 'I'
+        or else Character'Val (Natural (Data (Data'First + 13))) /= 'H'
+        or else Character'Val (Natural (Data (Data'First + 14))) /= 'D'
+        or else Character'Val (Natural (Data (Data'First + 15))) /= 'R'
+      then
          return False;
       end if;
 
-      declare
-         Source : Terminal.Common.Bytes.Byte_Array (1 .. Data'Length);
-      begin
-         for I in Data'Range loop
-            Source (I - Data'First + 1) :=
-              Terminal.Common.Bytes.Byte (Data (I));
-         end loop;
-
-         Terminal.App.Graphics.Decode_PNG_RGBA_Data
-           (PNG    => Source,
-            Length => Source'Length,
-            Result => Result);
-      end;
-
-      Width := Result.Pixel_Width;
-      Height := Result.Pixel_Height;
-      Terminal.App.Graphics.Release (Result);
-
-      return Width > 0 and then Height > 0;
-   exception
-      when Storage_Error | Constraint_Error =>
+      Encoded_Width := U32_BE (16);
+      Encoded_Height := U32_BE (20);
+      if Encoded_Width = 0
+        or else Encoded_Height = 0
+        or else Encoded_Width > Interfaces.Unsigned_32 (Natural'Last)
+        or else Encoded_Height > Interfaces.Unsigned_32 (Natural'Last)
+      then
+         return False;
+      end if;
+      Width := Natural (Encoded_Width);
+      Height := Natural (Encoded_Height);
+      if not Terminal.App.Size_Arithmetic.Try_Multiply
+          (Width, Height, Pixels)
+        or else not Terminal.App.Size_Arithmetic.Try_Multiply
+          (Pixels, 4, Bytes)
+        or else Bytes > Terminal.App.Graphics.Max_Data_Preview_Length
+      then
          Width := 0;
          Height := 0;
-         Terminal.App.Graphics.Release (Result);
          return False;
-      when others =>
-         Terminal.App.Graphics.Release (Result);
-         raise;
+      end if;
+      return True;
    end Colour_PNG_Extent;
 
    function Decode_Colour_PNG
@@ -1605,6 +1629,56 @@ package body Terminal.App.Renderer is
       Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
       Object : Image_Object_Access :=
         Terminal.App.Image_Store.First (R.Image_Objects);
+      type Placement_Key is record
+         Stream_ID : Terminal.Core.Graphics_Stream_ID := 0;
+         Storage_Order : Interfaces.Unsigned_64 := 0;
+      end record;
+      type Placement_Key_Array is
+        array (Positive range <>) of Placement_Key;
+      Candidates : Placement_Key_Array (1 .. Max_Kitty_Image_Objects);
+      Candidate_Count : Natural := 0;
+
+      function Before (Left, Right : Placement_Key) return Boolean is
+        (Left.Stream_ID < Right.Stream_ID
+         or else
+           (Left.Stream_ID = Right.Stream_ID
+            and then Left.Storage_Order < Right.Storage_Order));
+
+      procedure Add_Candidate (Key : Placement_Key) is
+         Position : Positive;
+      begin
+         Candidate_Count := Candidate_Count + 1;
+         Position := Candidate_Count;
+         while Position > 1
+           and then Before (Key, Candidates (Position - 1))
+         loop
+            Candidates (Position) := Candidates (Position - 1);
+            Position := Position - 1;
+         end loop;
+         Candidates (Position) := Key;
+      end Add_Candidate;
+
+      function Contains (Key : Placement_Key) return Boolean is
+         Left  : Natural := 1;
+         Right : Natural := Candidate_Count;
+      begin
+         while Left <= Right loop
+            declare
+               Middle : constant Natural := Left + (Right - Left) / 2;
+            begin
+               if Candidates (Middle) = Key then
+                  return True;
+               elsif Before (Candidates (Middle), Key) then
+                  Left := Middle + 1;
+               elsif Middle = 1 then
+                  return False;
+               else
+                  Right := Middle - 1;
+               end if;
+            end;
+         end loop;
+         return False;
+      end Contains;
    begin
       while Object /= null loop
          declare
@@ -1617,7 +1691,6 @@ package body Terminal.App.Renderer is
          begin
             if Playback /= Animation_Stopped
               and then Frame_Count > 1
-              and then Has_Image_Placement (R, Object)
               and then
                 (if Deadline_Set
                  then Now >= Terminal.App.Image_Store.Next_Frame_At (Object.all)
@@ -1626,11 +1699,42 @@ package body Terminal.App.Renderer is
                      Terminal.App.Image_Store.Current_Frame (Object.all) <
                        Frame_Count)
             then
-               return True;
+               Add_Candidate
+                 ((Stream_ID => Object.Stream_ID,
+                   Storage_Order => Object.Storage_Order));
             end if;
          end;
          Object := Terminal.App.Image_Store.Next_Object (Object);
       end loop;
+
+      if Candidate_Count = 0 then
+         return False;
+      end if;
+
+      declare
+         Virtual_Current : Virtual_Placement_Access := R.Virtual_Placements;
+         Conventional_Current : Conventional_Placement_Access :=
+           R.Conventional_Placements;
+      begin
+         while Virtual_Current /= null loop
+            if Contains
+              ((Stream_ID => Virtual_Current.Stream_ID,
+                Storage_Order => Virtual_Current.Image_Storage_Order))
+            then
+               return True;
+            end if;
+            Virtual_Current := Virtual_Current.Next;
+         end loop;
+         while Conventional_Current /= null loop
+            if Contains
+              ((Stream_ID => Conventional_Current.Stream_ID,
+                Storage_Order => Conventional_Current.Image_Storage_Order))
+            then
+               return True;
+            end if;
+            Conventional_Current := Conventional_Current.Next;
+         end loop;
+      end;
       return False;
    end Animation_Frame_Due;
 
