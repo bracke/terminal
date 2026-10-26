@@ -167,19 +167,6 @@ begin
      (S, Rows, Cols, Spawn_Status, Requested_Features);
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
 
-   --  Was it still there when we spoke to it? This splits what is left in two:
-   --  gone already means the shell quits on its own with nothing to do with us,
-   --  still there means it quits because of what we sent.
-   Alive_Before_Write := Terminal.PTY.Backend.Is_Alive (S);
-
-   declare
-      Data : constant Byte_Array := To_Bytes (Command);
-   begin
-      Write_All (Data);
-   end;
-
-   Alive_After_Write := Terminal.PTY.Backend.Is_Alive (S);
-
    Alive_After_Spawn := Terminal.PTY.Backend.Is_Alive (S);
 
    --  Listen before saying anything. A shell under a pseudo-console announces
@@ -202,6 +189,20 @@ begin
 
       exit when Unprompted > 0;
    end loop;
+
+   --  Was it still there when we spoke to it? This splits what is left in two:
+   --  gone already means the shell quits on its own with nothing to do with us,
+   --  still there means it quits because of what we sent. Spoken to only now:
+   --  a shell setting up its terminal, as on macOS, takes nothing typed before.
+   Alive_Before_Write := Terminal.PTY.Backend.Is_Alive (S);
+
+   declare
+      Data : constant Byte_Array := To_Bytes (Command);
+   begin
+      Write_All (Data);
+   end;
+
+   Alive_After_Write := Terminal.PTY.Backend.Is_Alive (S);
 
    for Attempt in 1 .. 1_500 loop
       Attempts := Attempt;
