@@ -20,34 +20,17 @@ procedure Finish_OSC (T : in out Terminal) is
       return True;
    end Payload_Starts_With;
 
-   function Base64_Value (Ch : Standard.Character) return Integer is
-   begin
-      case Ch is
-         when 'A' .. 'Z' =>
-            return Standard.Character'Pos (Ch) - Standard.Character'Pos ('A');
-         when 'a' .. 'z' =>
-            return 26 + Standard.Character'Pos (Ch) - Standard.Character'Pos ('a');
-         when '0' .. '9' =>
-            return 52 + Standard.Character'Pos (Ch) - Standard.Character'Pos ('0');
-         when '+' =>
-            return 62;
-         when '/' =>
-            return 63;
-         when others =>
-            return -1;
-      end case;
-   end Base64_Value;
-
    procedure Decode_OSC52
      (First : Natural;
       Last  : Natural)
    is
       Enc_First : Natural := 0;
       Out_Len   : Natural := 0;
-      Bits      : Natural := 0;
-      Bit_Count : Natural := 0;
+      Values    : Common.Base64.Quantum := (others => 0);
+      Count     : Natural := 0;
+      Padding   : Natural := 0;
       Invalid   : Boolean := False;
-      Done      : Boolean := False;
+      Finished  : Boolean := False;
       Target    : Clipboard_Target := Clipboard_Clipboard;
 
       function Parse_Target return Boolean is
@@ -91,6 +74,27 @@ procedure Finish_OSC (T : in out Terminal) is
               Standard.Character'Val (Value);
          end if;
       end Append_Decoded;
+
+      procedure Flush_Quantum is
+         Length : Natural;
+      begin
+         if not Common.Base64.Is_Valid_Quantum
+           (Values, Count, Padding, Allow_Unpadded => True)
+         then
+            Invalid := True;
+            return;
+         end if;
+         Length := Common.Base64.Decoded_Length (Count, Padding);
+         for I in 1 .. Length loop
+            Append_Decoded
+              (Natural (Common.Base64.Decode_Byte (Values, I)));
+            exit when Invalid;
+         end loop;
+         Finished := Padding > 0;
+         Count := 0;
+         Padding := 0;
+         Values := (others => 0);
+      end Flush_Quantum;
    begin
       for I in First .. Last loop
          if T.OSC_Data (I) = ';' then
@@ -121,31 +125,44 @@ procedure Finish_OSC (T : in out Terminal) is
          for I in Enc_First .. Last loop
             declare
                Ch : constant Standard.Character := T.OSC_Data (I);
-               V  : constant Integer := Base64_Value (Ch);
+               V  : constant Integer := Common.Base64.Value (Ch);
             begin
-               if Ch = '=' then
-                  Done := True;
-               elsif Ch = ASCII.CR or else Ch = ASCII.LF or else Ch = ' ' then
+               if Common.Base64.Is_Whitespace (Ch) then
                   null;
-               elsif Done or else V < 0 then
+               elsif Finished then
+                  Invalid := True;
+               elsif Ch = '=' then
+                  Count := Count + 1;
+                  Padding := Padding + 1;
+                  if Count > 4 or else Padding > 2 then
+                     Invalid := True;
+                  else
+                     Values (Count) := 0;
+                     if Count = 4 then
+                        Flush_Quantum;
+                     end if;
+                  end if;
+               elsif V < 0 or else Padding > 0 then
                   Invalid := True;
                else
-                  Bits := Bits * 64 + Natural (V);
-                  Bit_Count := Bit_Count + 6;
-                  while Bit_Count >= 8 loop
-                     Bit_Count := Bit_Count - 8;
-                     Append_Decoded ((Bits / (2 ** Bit_Count)) mod 256);
-                  end loop;
-                  if Bit_Count = 0 then
-                     Bits := 0;
+                  Count := Count + 1;
+                  if Count > 4 then
+                     Invalid := True;
                   else
-                     Bits := Bits mod (2 ** Bit_Count);
+                     Values (Count) := Natural (V);
+                     if Count = 4 then
+                        Flush_Quantum;
+                     end if;
                   end if;
                end if;
             end;
 
             exit when Invalid;
          end loop;
+      end if;
+
+      if not Invalid and then Count > 0 then
+         Flush_Quantum;
       end if;
 
       if Invalid then

@@ -12,7 +12,7 @@ separate (Terminal.App.Graphics)
    is
       Cursor_Chunk : Positive := 1;
       Cursor_Offset : Natural := 0;
-      Cursor_Values : array (Positive range 1 .. 4) of Natural := (others => 0);
+      Cursor_Values : Terminal.Common.Base64.Quantum := (others => 0);
       Cursor_Count : Natural := 0;
       Cursor_Padding : Natural := 0;
       Cursor_Done : Boolean := False;
@@ -22,45 +22,8 @@ separate (Terminal.App.Graphics)
       Window_Last : Natural := 0;
       Window_Bytes : Terminal.Common.Bytes.Byte_Array (1 .. 3) := (others => 0);
 
-      function Base64_Group_Decoded_Length
-        (Count   : Natural;
-         Padding : Natural) return Natural
-      is
-      begin
-         if Count = 0 then
-            return 0;
-         elsif Count = 1 or else Padding > 2 then
-            return 0;
-         elsif Count = 2 then
-            return 1;
-         elsif Count = 3 then
-            return (if Padding = 0 then 2 else 1);
-         else
-            return 3 - Padding;
-         end if;
-      end Base64_Group_Decoded_Length;
-
-      function Base64_Group_Byte
-        (Values : Terminal.Common.Bytes.Byte_Array;
-         Index  : Positive) return Terminal.Common.Bytes.Byte
-      is
-         V1 : constant Natural := Natural (Values (1));
-         V2 : constant Natural := Natural (Values (2));
-         V3 : constant Natural := Natural (Values (3));
-         V4 : constant Natural := Natural (Values (4));
-      begin
-         case Index is
-            when 1 =>
-               return Terminal.Common.Bytes.Byte ((V1 * 4) + (V2 / 16));
-            when 2 =>
-               return Terminal.Common.Bytes.Byte
-                 (((V2 mod 16) * 16) + (V3 / 4));
-            when others =>
-               return Terminal.Common.Bytes.Byte (((V3 mod 4) * 64) + V4);
-         end case;
-      end Base64_Group_Byte;
-
       procedure Measure_Base64_PNG is
+         Values : Terminal.Common.Base64.Quantum := (others => 0);
          Count : Natural := 0;
          Padding : Natural := 0;
          Done : Boolean := False;
@@ -78,11 +41,13 @@ separate (Terminal.App.Graphics)
 
          procedure Flush_Group is
             Group_Length : constant Natural :=
-              Base64_Group_Decoded_Length (Count, Padding);
+              Terminal.Common.Base64.Decoded_Length (Count, Padding);
          begin
             if Count = 0 then
                return;
-            elsif Group_Length = 0 then
+            elsif not Terminal.Common.Base64.Is_Valid_Quantum
+              (Values, Count, Padding, Allow_Unpadded => True)
+            then
                Result.Decode_Status := Decode_Invalid_Byte;
                Result.Decode_Complete := False;
                Done := True;
@@ -116,9 +81,9 @@ separate (Terminal.App.Graphics)
             begin
                for Ch of Text loop
                   declare
-                     V : constant Integer := Base64_Value (Ch);
+                     V : constant Integer := Terminal.Common.Base64.Value (Ch);
                   begin
-                     if Ch = ASCII.CR or else Ch = ASCII.LF or else Ch = ' ' then
+                     if Terminal.Common.Base64.Is_Whitespace (Ch) then
                         null;
                      elsif Done then
                         Result.Decode_Status := Decode_Trailing_Data;
@@ -132,6 +97,7 @@ separate (Terminal.App.Graphics)
                            return;
                         end if;
                         Padding := Padding + 1;
+                        Values (Count) := 0;
                         if Count = 4 then
                            Flush_Group;
                            if Done then
@@ -150,11 +116,13 @@ separate (Terminal.App.Graphics)
                            Result.Decode_Complete := False;
                            return;
                         end if;
+                        Values (Count) := Natural (V);
                         if Count = 4 then
                            Flush_Group;
                            if Done then
                               return;
                            end if;
+                           Values := (others => 0);
                            Count := 0;
                         end if;
                      end if;
@@ -207,12 +175,18 @@ separate (Terminal.App.Graphics)
 
       procedure Flush_Cursor_Group is
          Group_Count : constant Natural :=
-           Base64_Group_Decoded_Length (Cursor_Count, Cursor_Padding);
+           Terminal.Common.Base64.Decoded_Length
+             (Cursor_Count, Cursor_Padding);
          Emitted_Count : Natural := 0;
       begin
          if Cursor_Count = 0 then
             return;
-         elsif Group_Count = 0 then
+         elsif not Terminal.Common.Base64.Is_Valid_Quantum
+           (Cursor_Values,
+            Cursor_Count,
+            Cursor_Padding,
+            Allow_Unpadded => True)
+         then
             Cursor_Invalid := True;
             return;
          end if;
@@ -223,12 +197,7 @@ separate (Terminal.App.Graphics)
 
          for I in 1 .. Group_Count loop
             Append_Window_Byte
-              (Base64_Group_Byte
-                 ((1 => Terminal.Common.Bytes.Byte (Cursor_Values (1)),
-                   2 => Terminal.Common.Bytes.Byte (Cursor_Values (2)),
-                   3 => Terminal.Common.Bytes.Byte (Cursor_Values (3)),
-                   4 => Terminal.Common.Bytes.Byte (Cursor_Values (4))),
-                  I),
+              (Terminal.Common.Base64.Decode_Byte (Cursor_Values, I),
                Emitted_Count);
          end loop;
 
@@ -273,10 +242,10 @@ separate (Terminal.App.Graphics)
                loop
                   declare
                      Ch : constant Character := Text (Cursor_Offset);
-                     V : constant Integer := Base64_Value (Ch);
+                     V : constant Integer := Terminal.Common.Base64.Value (Ch);
                   begin
                      Cursor_Offset := Cursor_Offset + 1;
-                     if Ch = ASCII.CR or else Ch = ASCII.LF or else Ch = ' ' then
+                     if Terminal.Common.Base64.Is_Whitespace (Ch) then
                         null;
                      elsif Ch = '=' then
                         Cursor_Count := Cursor_Count + 1;

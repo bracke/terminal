@@ -27,7 +27,7 @@ begin
                if Session_Table_Status =
                  Terminal.App.Session_Table.Ok
                then
-                  Configure_Active_Core;
+                  Configure_Visible_Cores;
                   Scroll_Offset := 0;
                   Terminal.App.Selection.Clear (Selection);
                   Apply_Hovered_Link ((others => <>));
@@ -48,7 +48,7 @@ begin
                      Terminal.App.Renderer
                        .Release_Graphics_Stream
                          (R, Closed_Stream);
-                     Configure_Active_Core;
+                     Configure_Visible_Cores;
                      Scroll_Offset := 0;
                      Terminal.App.Selection.Clear (Selection);
                      Apply_Hovered_Link ((others => <>));
@@ -67,7 +67,7 @@ begin
                   if Session_Table_Status =
                     Terminal.App.Session_Table.Ok
                   then
-                     Configure_Active_Core;
+                     Configure_Visible_Cores;
                      Scroll_Offset := 0;
                      Terminal.App.Selection.Clear (Selection);
                      Apply_Hovered_Link ((others => <>));
@@ -98,7 +98,7 @@ begin
                if Session_Table_Status =
                  Terminal.App.Session_Table.Ok
                then
-                  Configure_Active_Core;
+                  Configure_Visible_Cores;
                   Scroll_Offset := 0;
                   Terminal.App.Selection.Clear (Selection);
                   Apply_Hovered_Link ((others => <>));
@@ -121,7 +121,7 @@ begin
                      Terminal.App.Renderer
                        .Release_Graphics_Stream
                          (R, Closed_Stream);
-                     Configure_Active_Core;
+                     Configure_Visible_Cores;
                      Scroll_Offset := 0;
                      Terminal.App.Selection.Clear (Selection);
                      Apply_Hovered_Link ((others => <>));
@@ -139,7 +139,7 @@ begin
                   if Session_Table_Status =
                     Terminal.App.Session_Table.Ok
                   then
-                     Configure_Active_Core;
+                     Configure_Visible_Cores;
                      Scroll_Offset := 0;
                      Terminal.App.Selection.Clear (Selection);
                      Apply_Hovered_Link ((others => <>));

@@ -231,6 +231,10 @@ package Terminal.App.Renderer is
    function Graphics_Event_Processed
      (R     : Renderer;
       Event : Terminal.Core.Graphics_Event) return Boolean;
+   --  True when a visible animation has reached its next frame deadline.
+   --  The application loop uses this to schedule a render even when no PTY
+   --  or input event has otherwise dirtied the frame.
+   function Animation_Frame_Due (R : Renderer) return Boolean;
    overriding procedure Finalize (R : in out Renderer);
 
    function Cell_Width (R : Renderer) return Positive;

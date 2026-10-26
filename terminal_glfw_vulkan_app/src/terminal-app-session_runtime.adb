@@ -344,14 +344,31 @@ package body Terminal.App.Session_Runtime is
          Core_Status := Terminal.Core.Ok;
          PTY_Status := Terminal.PTY.Backend.Ok;
       else
-         Terminal.Core.Resize (R.T.all, Rows, Cols, Core_Status);
+         --  Resize the kernel endpoint first because it is cheap to roll back
+         --  to the previously committed dimensions when the core cannot
+         --  allocate its replacement grid.
          Terminal.PTY.Backend.Resize (R.S.all, Rows, Cols, PTY_Status);
-         if Core_Status = Terminal.Core.Ok
-           and then PTY_Status = Terminal.PTY.Backend.Ok
-         then
+         if PTY_Status /= Terminal.PTY.Backend.Ok then
+            Core_Status := Terminal.Core.Ok;
+            return;
+         end if;
+
+         Terminal.Core.Resize (R.T.all, Rows, Cols, Core_Status);
+         if Core_Status = Terminal.Core.Ok then
             R.Rows := Rows;
             R.Cols := Cols;
             R.Size_Known := True;
+         else
+            declare
+               Rollback_Status : Terminal.PTY.Backend.Resize_Status;
+            begin
+               Terminal.PTY.Backend.Resize
+                 (R.S.all, R.Rows, R.Cols, Rollback_Status);
+               if Rollback_Status /= Terminal.PTY.Backend.Ok then
+                  PTY_Status := Rollback_Status;
+                  R.Size_Known := False;
+               end if;
+            end;
          end if;
       end if;
    end Resize;

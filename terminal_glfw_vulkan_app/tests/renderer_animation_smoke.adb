@@ -292,6 +292,27 @@ begin
       end;
 
       Process
+        ("Gq=2,a=a,i=90,r=1,z=30",
+         Terminal.Core.Kitty_OK,
+         "animation redraw deadline gap");
+      Process
+        ("Gq=2,a=a,i=90,s=3,c=1,v=1",
+         Terminal.Core.Kitty_OK,
+         "animation redraw deadline playback");
+      Assert
+        (Terminal.App.Renderer.Animation_Frame_Due (R),
+         "new animation schedules deadline initialization");
+      Render_Animation ("animation deadline initialization");
+      Assert
+        (not Terminal.App.Renderer.Animation_Frame_Due (R),
+         "animation redraw waits for its frame deadline");
+      delay 0.04;
+      Assert
+        (Terminal.App.Renderer.Animation_Frame_Due (R),
+         "animation deadline schedules an otherwise idle redraw");
+      Render_Animation ("animation deadline advance");
+
+      Process
         ("Gq=2,a=d,d=f,i=90",
          Terminal.Core.Kitty_OK,
          "animation delete frames");

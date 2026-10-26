@@ -3,6 +3,7 @@ with Interfaces.C;
 with System;
 
 with Terminal.App.Platform_Media;
+with Terminal.Common.Base64;
 
 package body Terminal.App.ITerm2_Files is
    package C renames Interfaces.C;
@@ -10,21 +11,6 @@ package body Terminal.App.ITerm2_Files is
 
    use type C.int;
    use type C.long;
-
-   function Base64_Value (Ch : Character) return Integer is
-   begin
-      case Ch is
-         when 'A' .. 'Z' =>
-            return Character'Pos (Ch) - Character'Pos ('A');
-         when 'a' .. 'z' =>
-            return 26 + Character'Pos (Ch) - Character'Pos ('a');
-         when '0' .. '9' =>
-            return 52 + Character'Pos (Ch) - Character'Pos ('0');
-         when '+' => return 62;
-         when '/' => return 63;
-         when others => return -1;
-      end case;
-   end Base64_Value;
 
    function Field_Value (Fields, Name : String) return String is
       Position : Natural := Fields'First;
@@ -58,7 +44,7 @@ package body Terminal.App.ITerm2_Files is
       Too_Large     : out Boolean;
       Write_Failed  : out Boolean)
    is
-      Values : array (Positive range 1 .. 4) of Natural := (others => 0);
+      Values : Terminal.Common.Base64.Quantum := (others => 0);
       Count : Natural := 0;
       Padding : Natural := 0;
       Finished : Boolean := False;
@@ -116,21 +102,18 @@ package body Terminal.App.ITerm2_Files is
 
       procedure Flush is
       begin
-         if Count /= 4 or else Padding > 2 then
-            Valid := False;
-            return;
-         elsif (Padding = 2 and then Values (2) mod 16 /= 0)
-           or else (Padding = 1 and then Values (3) mod 4 /= 0)
+         if not Terminal.Common.Base64.Is_Valid_Quantum
+           (Values, Count, Padding, Allow_Unpadded => False)
          then
             Valid := False;
             return;
          end if;
-         Emit (Values (1) * 4 + Values (2) / 16);
+         Emit (Natural (Terminal.Common.Base64.Decode_Byte (Values, 1)));
          if Valid and then Padding < 2 then
-            Emit ((Values (2) mod 16) * 16 + Values (3) / 4);
+            Emit (Natural (Terminal.Common.Base64.Decode_Byte (Values, 2)));
          end if;
          if Valid and then Padding = 0 then
-            Emit ((Values (3) mod 4) * 64 + Values (4));
+            Emit (Natural (Terminal.Common.Base64.Decode_Byte (Values, 3)));
          end if;
       end Flush;
    begin
@@ -143,7 +126,7 @@ package body Terminal.App.ITerm2_Files is
       end if;
       for Ch of Text loop
          declare
-            Value : constant Integer := Base64_Value (Ch);
+            Value : constant Integer := Terminal.Common.Base64.Value (Ch);
          begin
             if Finished then
                Valid := False;
@@ -188,7 +171,7 @@ package body Terminal.App.ITerm2_Files is
    function Decode_Name (Encoded : String) return String is
       Result : String (1 .. Max_File_Name_Length);
       Length : Natural := 0;
-      Values : array (Positive range 1 .. 4) of Natural := (others => 0);
+      Values : Terminal.Common.Base64.Quantum := (others => 0);
       Count : Natural := 0;
       Padding : Natural := 0;
 
@@ -203,19 +186,17 @@ package body Terminal.App.ITerm2_Files is
 
       procedure Flush is
       begin
-         if Count /= 4 or else Padding > 2 then
-            raise Constraint_Error;
-         elsif (Padding = 2 and then Values (2) mod 16 /= 0)
-           or else (Padding = 1 and then Values (3) mod 4 /= 0)
+         if not Terminal.Common.Base64.Is_Valid_Quantum
+           (Values, Count, Padding, Allow_Unpadded => False)
          then
             raise Constraint_Error;
          end if;
-         Append (Values (1) * 4 + Values (2) / 16);
+         Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 1)));
          if Padding < 2 then
-            Append ((Values (2) mod 16) * 16 + Values (3) / 4);
+            Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 2)));
          end if;
          if Padding = 0 then
-            Append ((Values (3) mod 4) * 64 + Values (4));
+            Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 3)));
          end if;
       end Flush;
    begin
@@ -224,7 +205,7 @@ package body Terminal.App.ITerm2_Files is
       end if;
       for Ch of Encoded loop
          declare
-            Value : constant Integer := Base64_Value (Ch);
+            Value : constant Integer := Terminal.Common.Base64.Value (Ch);
          begin
             if Ch = '=' then
                Count := Count + 1;

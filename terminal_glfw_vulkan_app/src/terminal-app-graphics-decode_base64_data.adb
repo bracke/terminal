@@ -18,7 +18,7 @@ separate (Terminal.App.Graphics)
       Length := 0;
       Status := Decode_Not_Attempted;
       for Ch of Text loop
-         if Ch /= ASCII.CR and then Ch /= ASCII.LF and then Ch /= ' ' then
+         if not Terminal.Common.Base64.Is_Whitespace (Ch) then
             Encoded_Count := Encoded_Count + 1;
             if Ch = '=' then
                Padding := Padding + 1;

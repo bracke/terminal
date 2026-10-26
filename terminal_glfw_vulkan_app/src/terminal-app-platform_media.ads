@@ -16,6 +16,9 @@ package Terminal.App.Platform_Media is
    function Shared_Memory_Unlink (Name : String) return Boolean;
 
    function Open_Directory_No_Follow (Path : String) return C.int;
+   function Open_Read_At_No_Follow
+     (Directory : C.int;
+      Name      : String) return OS.File_Descriptor;
    function Create_File_At
      (Directory : C.int;
       Name      : String;

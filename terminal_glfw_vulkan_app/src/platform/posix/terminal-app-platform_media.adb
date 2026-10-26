@@ -32,6 +32,12 @@ package body Terminal.App.Platform_Media is
    with Import, Convention => C,
         External_Name => "terminal_media_open_directory_no_follow";
 
+   function C_Open_Read_At
+     (Directory : C.int;
+      Path      : CS.chars_ptr) return C.int
+   with Import, Convention => C,
+        External_Name => "terminal_media_open_read_at_no_follow";
+
    function C_Create_File_At
      (Directory : C.int;
       Path      : CS.chars_ptr;
@@ -122,6 +128,22 @@ package body Terminal.App.Platform_Media is
          CS.Free (Name);
          raise;
    end Open_Directory_No_Follow;
+
+   function Open_Read_At_No_Follow
+     (Directory : C.int;
+      Name      : String) return OS.File_Descriptor
+   is
+      C_Name : CS.chars_ptr := CS.New_String (Name);
+      Raw : C.int;
+   begin
+      Raw := C_Open_Read_At (Directory, C_Name);
+      CS.Free (C_Name);
+      return (if Raw < 0 then OS.Invalid_FD else OS.File_Descriptor (Raw));
+   exception
+      when others =>
+         CS.Free (C_Name);
+         raise;
+   end Open_Read_At_No_Follow;
 
    function Create_File_At
      (Directory : C.int;

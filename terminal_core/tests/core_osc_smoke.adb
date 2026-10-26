@@ -233,6 +233,15 @@ begin
 
    Terminal.Core.Feed
      (T,
+      To_Bytes (ASCII.ESC & "]52;c;/x==" & ASCII.BEL),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "invalid OSC 52 feed recovered");
+   Assert
+     (not Terminal.Core.Clipboard (T).Pending,
+      "non-canonical OSC 52 Base64 padding bits are rejected");
+
+   Terminal.Core.Feed
+     (T,
       To_Bytes (ASCII.ESC & "]52;c;" & ASCII.BEL),
       Feed_Status);
    Assert (Feed_Status = Terminal.Core.Ok, "empty OSC 52 feed failed");

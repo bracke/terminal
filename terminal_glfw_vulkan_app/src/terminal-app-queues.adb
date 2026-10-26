@@ -82,12 +82,54 @@ package body Terminal.App.Queues is
    function Next_Input (I : Positive) return Positive is
      (if I = Max_Input_Events then 1 else I + 1);
 
+   function Previous_Input (I : Positive) return Positive is
+     (if I = 1 then Max_Input_Events else I - 1);
+
    protected body Input_Event_Queue is
       procedure Push (Event : Input_Event) is
+         function Slot_At (Offset : Natural) return Positive is
+            Result : Positive := Head;
+         begin
+            for Step in 1 .. Offset loop
+               Result := Next_Input (Result);
+            end loop;
+            return Result;
+         end Slot_At;
+
+         Removed_Cursor : Boolean := False;
       begin
+         --  Motion is state, not a lossless event stream.  Replacing an
+         --  adjacent pending position bounds callback bursts without letting
+         --  them crowd out key, character, button, scroll, or focus events.
+         if Event.Kind = Cursor_Position and then Count > 0 then
+            declare
+               Previous : constant Positive := Previous_Input (Tail);
+            begin
+               if Items (Previous).Kind = Cursor_Position then
+                  Items (Previous) := Event;
+                  return;
+               end if;
+            end;
+         end if;
+
          if Count = Max_Input_Events then
+            if Event.Kind /= Cursor_Position then
+               for Offset in 0 .. Count - 1 loop
+                  if Items (Slot_At (Offset)).Kind = Cursor_Position then
+                     for Shift in Offset .. Count - 2 loop
+                        Items (Slot_At (Shift)) := Items (Slot_At (Shift + 1));
+                     end loop;
+                     Tail := Previous_Input (Tail);
+                     Count := Count - 1;
+                     Removed_Cursor := True;
+                     exit;
+                  end if;
+               end loop;
+            end if;
             Overflows := Overflows + 1;
-            return;
+            if not Removed_Cursor then
+               return;
+            end if;
          end if;
          Items (Tail) := Event;
          Tail := Next_Input (Tail);

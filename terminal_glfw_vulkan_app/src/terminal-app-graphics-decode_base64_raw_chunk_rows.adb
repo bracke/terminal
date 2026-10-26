@@ -16,7 +16,7 @@ separate (Terminal.App.Graphics)
       Row_Stride : constant Natural := Raw_Row_Stride (Raw_Format, Pixel_Width);
       Expected_Decoded_Length : constant Natural :=
         Raw_Decoded_Length (Raw_Format, Pixel_Width, Pixel_Height);
-      Values : array (Positive range 1 .. 4) of Natural := (others => 0);
+      Values : Terminal.Common.Base64.Quantum := (others => 0);
       Count  : Natural := 0;
       Padding : Natural := 0;
       Done   : Boolean := False;
@@ -96,27 +96,32 @@ separate (Terminal.App.Graphics)
          begin
             if Count = 0 then
                return;
-            elsif Count = 1 or else Padding > 2 then
+            elsif not Terminal.Common.Base64.Is_Valid_Quantum
+              (Values, Count, Padding, Allow_Unpadded => True)
+            then
                Result.Decode_Status := Decode_Invalid_Byte;
                Result.Decode_Complete := False;
                Done := True;
                return;
             end if;
 
-            Append_Byte ((Values (1) * 4) + (Values (2) / 16));
+            Append_Byte
+              (Natural (Terminal.Common.Base64.Decode_Byte (Values, 1)));
             if Done then
                return;
             end if;
 
             if Count >= 3 and then Padding < 2 then
-               Append_Byte (((Values (2) mod 16) * 16) + (Values (3) / 4));
+               Append_Byte
+                 (Natural (Terminal.Common.Base64.Decode_Byte (Values, 2)));
                if Done then
                   return;
                end if;
             end if;
 
             if Count = 4 and then Padding = 0 then
-               Append_Byte (((Values (3) mod 4) * 64) + Values (4));
+               Append_Byte
+                 (Natural (Terminal.Common.Base64.Decode_Byte (Values, 3)));
             end if;
          end Flush_Group;
       begin
@@ -128,9 +133,9 @@ separate (Terminal.App.Graphics)
             begin
                for Ch of Text loop
                   declare
-                     V : constant Integer := Base64_Value (Ch);
+                     V : constant Integer := Terminal.Common.Base64.Value (Ch);
                   begin
-                     if Ch = ASCII.CR or else Ch = ASCII.LF or else Ch = ' ' then
+                     if Terminal.Common.Base64.Is_Whitespace (Ch) then
                         null;
                      elsif Done then
                         Result.Decode_Status := Decode_Trailing_Data;

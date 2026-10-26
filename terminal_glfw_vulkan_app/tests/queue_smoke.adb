@@ -267,4 +267,28 @@ begin
    end loop;
    Input.Pop (Empty_Event, Available);
    Assert (not Available, "input overflow wrapped empty");
+
+   declare
+      Motion : Q.Input_Event :=
+        (Kind => Q.Cursor_Position, others => <>);
+   begin
+      Input.Push (Motion);
+      Input.Push (Motion);
+      Assert (Input.Length = 1, "adjacent cursor positions coalesce");
+      for I in 1 .. Q.Max_Input_Events - 1 loop
+         Push_Input_Byte (Byte (I mod 256));
+      end loop;
+      Push_Input_Byte (16#EE#);
+      Assert
+        (Input.Length = Q.Max_Input_Events,
+         "discrete input replaces queued cursor motion");
+      Assert
+        (Input.Overflow_Count = 3,
+         "discarded cursor motion is counted");
+      for I in 1 .. Q.Max_Input_Events - 1 loop
+         Assert_Input_Byte
+           (Byte (I mod 256), "cursor eviction preserves discrete order");
+      end loop;
+      Assert_Input_Byte (16#EE#, "new discrete event is retained");
+   end;
 end Queue_Smoke;

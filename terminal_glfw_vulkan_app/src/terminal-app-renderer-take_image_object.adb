@@ -16,10 +16,6 @@ procedure Take_Image_Object
    Additional_Bytes : Natural := 0)
 is
    Object : Image_Object_Access := Find_Image_Object (R, Stream_ID, ID);
-   Previous_Length : constant Natural :=
-     (if Object = null
-      then 0
-      else Terminal.App.Image_Store.Owned_Bytes (Object.all));
    Stored_Length : Natural := 0;
    Created_Object : Boolean := False;
    Created_Replacement : Boolean := False;
@@ -68,11 +64,14 @@ begin
       return;
    end if;
 
-   while Terminal.App.Image_Store.Byte_Count (R.Image_Objects)
-       - Previous_Length >
+   --  A transactional replacement keeps the old object alive until the new
+   --  placement commits.  Account for both live objects here: subtracting the
+   --  old object would make the configured resident-memory limit ineffective
+   --  during every replacement.
+   while Terminal.App.Image_Store.Byte_Count (R.Image_Objects) >
        R.Graphics_Limits.Image_Bytes - Stored_Length
      or else
-       (Object = null
+       ((Object = null or else R.Transactional_Image_Install)
         and then Terminal.App.Image_Store.Object_Count (R.Image_Objects) >=
           R.Graphics_Limits.Image_Objects)
    loop

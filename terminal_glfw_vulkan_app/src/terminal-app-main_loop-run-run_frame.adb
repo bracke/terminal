@@ -187,6 +187,12 @@ separate (Terminal.App.Main_Loop.Run)
       end if;
       Last_Blink_Tick := Current_Blink_Tick;
 
+      if Terminal.App.Renderer.Animation_Frame_Due (R) then
+         Dirty := True;
+         Need_Redraw := True;
+         Local_Redraw := True;
+      end if;
+
       Poll_Backends;
       Scroll_Offset :=
         Terminal.App.Scrollback_View.Clamp_Offset

@@ -1601,6 +1601,39 @@ package body Terminal.App.Renderer is
       elsif Object.Current_Frame = 1 then Object.Decoded_Row_Stride_Bytes
       else Object.Pixel_Width * 4);
 
+   function Animation_Frame_Due (R : Renderer) return Boolean is
+      Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+      Object : Image_Object_Access :=
+        Terminal.App.Image_Store.First (R.Image_Objects);
+   begin
+      while Object /= null loop
+         declare
+            Playback : constant Animation_Playback_State :=
+              Terminal.App.Image_Store.Playback (Object.all);
+            Frame_Count : constant Positive :=
+              Terminal.App.Image_Store.Frame_Count_Of (Object);
+            Deadline_Set : constant Boolean :=
+              Terminal.App.Image_Store.Deadline_Set (Object.all);
+         begin
+            if Playback /= Animation_Stopped
+              and then Frame_Count > 1
+              and then Has_Image_Placement (R, Object)
+              and then
+                (if Deadline_Set
+                 then Now >= Terminal.App.Image_Store.Next_Frame_At (Object.all)
+                 else Playback = Animation_Running
+                   or else
+                     Terminal.App.Image_Store.Current_Frame (Object.all) <
+                       Frame_Count)
+            then
+               return True;
+            end if;
+         end;
+         Object := Terminal.App.Image_Store.Next_Object (Object);
+      end loop;
+      return False;
+   end Animation_Frame_Due;
+
    procedure Advance_Animations (R : in out Renderer) is
       Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
       Object : Image_Object_Access :=

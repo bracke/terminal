@@ -1,4 +1,5 @@
 with Ada.Unchecked_Deallocation;
+with Terminal.Common.Base64;
 with Terminal.Common.Identity;
 with Terminal.Core.Parser;
 
@@ -913,60 +914,115 @@ package body Terminal.Core is
       Status : out Boolean)
    is
       Count : constant Positive := Rows * Cols;
+      New_Primary : Cell_Array_Access := null;
+      New_Alt : Cell_Array_Access := null;
+      New_Scrollback : Cell_Array_Access := null;
+      New_Dirty : Dirty_Row_Array_Access := null;
+      New_Tab_Stops : Tab_Stop_Array_Access := null;
+      New_Primary_Scroll : Graphics_Scroll_Event_Array_Access := null;
+      New_Alternate_Scroll : Graphics_Scroll_Event_Array_Access := null;
+
+      procedure Release_Replacements is
+      begin
+         if New_Primary /= null then
+            Free_Cells (New_Primary);
+         end if;
+         if New_Alt /= null then
+            Free_Cells (New_Alt);
+         end if;
+         if New_Scrollback /= null then
+            Free_Cells (New_Scrollback);
+         end if;
+         if New_Dirty /= null then
+            Free_Dirty (New_Dirty);
+         end if;
+         if New_Tab_Stops /= null then
+            Free_Tab_Stops (New_Tab_Stops);
+         end if;
+         if New_Primary_Scroll /= null then
+            Free_Graphics_Scroll_Events (New_Primary_Scroll);
+         end if;
+         if New_Alternate_Scroll /= null then
+            Free_Graphics_Scroll_Events (New_Alternate_Scroll);
+         end if;
+      end Release_Replacements;
    begin
+      New_Primary := new Cell_Array (1 .. Count);
+      New_Alt := new Cell_Array (1 .. Count);
+      if T.Scrollback_Limit > 0 then
+         New_Scrollback := new Cell_Array (1 .. T.Scrollback_Limit * Cols);
+      end if;
+      New_Dirty := new Dirty_Row_Array (1 .. Rows);
+      New_Tab_Stops := new Tab_Stop_Array (1 .. Cols);
+      New_Primary_Scroll :=
+        new Graphics_Scroll_Event_Array (1 .. Max_Graphics_Scroll_Events);
+      New_Alternate_Scroll :=
+        new Graphics_Scroll_Event_Array (1 .. Max_Graphics_Scroll_Events);
+
+      for I in New_Primary'Range loop
+         New_Primary (I) := Blank_Cell (T.Current_Style);
+         New_Alt (I) := Blank_Cell (T.Current_Style);
+      end loop;
+      if New_Scrollback /= null then
+         for I in New_Scrollback'Range loop
+            New_Scrollback (I) := Blank_Cell (T.Current_Style);
+         end loop;
+      end if;
+      New_Dirty.all := (others => True);
+      for C in New_Tab_Stops'Range loop
+         New_Tab_Stops (C) := C > 1 and then (C - 1) mod 8 = 0;
+      end loop;
+      New_Primary_Scroll.all := (others => <>);
+      New_Alternate_Scroll.all := (others => <>);
+
       if T.Primary_Cells /= null then
          Free_Cells (T.Primary_Cells);
-         T.Primary_Cells := null;
       end if;
       if T.Alt_Cells /= null then
          Free_Cells (T.Alt_Cells);
-         T.Alt_Cells := null;
       end if;
       if T.Scrollback /= null then
          Free_Cells (T.Scrollback);
-         T.Scrollback := null;
       end if;
       if T.Dirty /= null then
          Free_Dirty (T.Dirty);
-         T.Dirty := null;
       end if;
       if T.Tab_Stops /= null then
          Free_Tab_Stops (T.Tab_Stops);
-         T.Tab_Stops := null;
+      end if;
+      if T.Primary_Graphics_Scroll_Events /= null then
+         Free_Graphics_Scroll_Events (T.Primary_Graphics_Scroll_Events);
+      end if;
+      if T.Alternate_Graphics_Scroll_Events /= null then
+         Free_Graphics_Scroll_Events (T.Alternate_Graphics_Scroll_Events);
       end if;
 
-      if T.Primary_Graphics_Scroll_Events = null then
-         T.Primary_Graphics_Scroll_Events :=
-           new Graphics_Scroll_Event_Array (1 .. Max_Graphics_Scroll_Events);
-         T.Primary_Graphics_Scroll_Events.all := (others => <>);
-      end if;
-      if T.Alternate_Graphics_Scroll_Events = null then
-         T.Alternate_Graphics_Scroll_Events :=
-           new Graphics_Scroll_Event_Array (1 .. Max_Graphics_Scroll_Events);
-         T.Alternate_Graphics_Scroll_Events.all := (others => <>);
-      end if;
-
-      T.Primary_Cells := new Cell_Array (1 .. Count);
-      T.Alt_Cells := new Cell_Array (1 .. Count);
-      if T.Scrollback_Limit > 0 then
-         T.Scrollback := new Cell_Array (1 .. T.Scrollback_Limit * Cols);
-      else
-         T.Scrollback := null;
-      end if;
-      T.Dirty := new Dirty_Row_Array (1 .. Rows);
-      T.Tab_Stops := new Tab_Stop_Array (1 .. Cols);
+      T.Primary_Cells := New_Primary;
+      T.Alt_Cells := New_Alt;
+      T.Scrollback := New_Scrollback;
+      T.Dirty := New_Dirty;
+      T.Tab_Stops := New_Tab_Stops;
+      T.Primary_Graphics_Scroll_Events := New_Primary_Scroll;
+      T.Alternate_Graphics_Scroll_Events := New_Alternate_Scroll;
+      New_Primary := null;
+      New_Alt := null;
+      New_Scrollback := null;
+      New_Dirty := null;
+      New_Tab_Stops := null;
+      New_Primary_Scroll := null;
+      New_Alternate_Scroll := null;
       T.Rows := Rows;
       T.Cols := Cols;
       T.Bottom_Margin := Rows;
       T.Scrollback_Rows := 0;
       Status := True;
-      Reset_Tab_Stops (T);
-      Reset_Buffer (T, T.Primary_Cells);
-      Reset_Buffer (T, T.Alt_Cells);
-      Mark_All_Dirty (T);
    exception
-      when Storage_Error | Constraint_Error =>
+      when Storage_Error =>
+         Release_Replacements;
          Status := False;
+      when others =>
+         Release_Replacements;
+         raise;
    end Allocate_Buffers;
 
    procedure Initialize

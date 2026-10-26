@@ -1,4 +1,5 @@
 with Terminal.App.Image_Decode;
+with Terminal.Common.Base64;
 
 package body Terminal.App.Render_Model is
    use type Terminal.Common.Bytes.Byte;
@@ -6,43 +7,24 @@ package body Terminal.App.Render_Model is
    function Read_Only (Data : Image_Data_Access) return Image_Data_View is
      (Image_Data_View (Data));
 
-   function Base64_Value (Value : Terminal.Common.Bytes.Byte) return Integer is
-   begin
-      if Value >= Character'Pos ('A') and then Value <= Character'Pos ('Z') then
-         return Integer (Value) - Character'Pos ('A');
-      elsif Value >= Character'Pos ('a') and then Value <= Character'Pos ('z') then
-         return Integer (Value) - Character'Pos ('a') + 26;
-      elsif Value >= Character'Pos ('0') and then Value <= Character'Pos ('9') then
-         return Integer (Value) - Character'Pos ('0') + 52;
-      elsif Value = Character'Pos ('+') then
-         return 62;
-      elsif Value = Character'Pos ('/') then
-         return 63;
-      else
-         return -1;
-      end if;
-   end Base64_Value;
-
    function Base64_Source_Byte
      (Image  : Image_Command;
       Target : Positive) return Terminal.Common.Bytes.Byte
    is
-      Values : array (1 .. 4) of Natural := (others => 0);
+      Values : Terminal.Common.Base64.Quantum := (others => 0);
       Count : Natural := 0;
       Padding : Natural := 0;
       Decoded_Position : Natural := 0;
 
       function Group_Length return Natural is
       begin
-         if Count = 0 or else Count = 1 or else Padding > 2 then
+         if Count = 0
+           or else not Terminal.Common.Base64.Is_Valid_Quantum
+             (Values, Count, Padding, Allow_Unpadded => True)
+         then
             return 0;
-         elsif Count = 2 then
-            return 1;
-         elsif Count = 3 then
-            return (if Padding = 0 then 2 else 1);
-         else
-            return 3 - Padding;
          end if;
+         return Terminal.Common.Base64.Decoded_Length (Count, Padding);
       end Group_Length;
 
       function Group_Byte
@@ -51,14 +33,11 @@ package body Terminal.App.Render_Model is
       begin
          case Index is
             when 1 =>
-               return Terminal.Common.Bytes.Byte
-                 ((Values (1) * 4) + (Values (2) / 16));
+               return Terminal.Common.Base64.Decode_Byte (Values, 1);
             when 2 =>
-               return Terminal.Common.Bytes.Byte
-                 (((Values (2) mod 16) * 16) + (Values (3) / 4));
+               return Terminal.Common.Base64.Decode_Byte (Values, 2);
             when others =>
-               return Terminal.Common.Bytes.Byte
-                 (((Values (3) mod 4) * 64) + Values (4));
+               return Terminal.Common.Base64.Decode_Byte (Values, 3);
          end case;
       end Group_Byte;
 
@@ -91,12 +70,9 @@ package body Terminal.App.Render_Model is
          declare
             Ch : constant Terminal.Common.Bytes.Byte :=
               Image.Encoded_Source_Bytes (Index);
-            V : constant Integer := Base64_Value (Ch);
+            V : constant Integer := Terminal.Common.Base64.Value (Ch);
          begin
-            if Ch = Character'Pos (ASCII.CR)
-              or else Ch = Character'Pos (ASCII.LF)
-              or else Ch = Character'Pos (' ')
-            then
+            if Terminal.Common.Base64.Is_Whitespace (Ch) then
                null;
             elsif Ch = Character'Pos ('=') then
                Count := Count + 1;

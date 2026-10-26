@@ -36,6 +36,15 @@ package body Terminal.App.Platform_Media is
       return -1;
    end Open_Directory_No_Follow;
 
+   function Open_Read_At_No_Follow
+     (Directory : C.int;
+      Name      : String) return OS.File_Descriptor
+   is
+      pragma Unreferenced (Directory, Name);
+   begin
+      return OS.Invalid_FD;
+   end Open_Read_At_No_Follow;
+
    function Create_File_At
      (Directory : C.int;
       Name      : String;

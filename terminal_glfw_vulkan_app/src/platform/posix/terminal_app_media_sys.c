@@ -67,6 +67,11 @@ int terminal_media_open_directory_no_follow (const char *path)
    return open (path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
 }
 
+int terminal_media_open_read_at_no_follow (int directory, const char *name)
+{
+   return openat (directory, name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+}
+
 int terminal_media_create_file_at
   (int directory, const char *name, unsigned int mode)
 {

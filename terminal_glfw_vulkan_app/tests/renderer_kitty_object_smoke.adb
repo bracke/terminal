@@ -638,6 +638,18 @@ begin
          and then
            Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Bytes = 4,
          "failed explicit replacement preserves the prior bounded object");
+
+      Tight.Image_Bytes := 7;
+      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight);
+      Process
+        ("Gq=2,f=32,a=T,i=240,s=1,v=1,C=1,c=1,r=1;/wAA/w==",
+         "transactional replacement resident-byte quota",
+         Terminal.Core.Kitty_ENOMEM);
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count = 1
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Bytes = 4,
+         "rejected transaction never owns old and replacement bytes together");
       Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Original);
    end;
 

@@ -111,17 +111,29 @@ procedure Run is
       return Terminal.App.Session_Runtime.Core (Active_Runtime.all);
    end Active_Core;
 
-   procedure Configure_Active_Core is
+   procedure Configure_Core
+     (Runtime : not null access Terminal.App.Session_Runtime.Runtime;
+      Rows    : Positive;
+      Cols    : Positive)
+   is
+      Core : constant not null access Terminal.Core.Terminal :=
+        Terminal.App.Session_Runtime.Core (Runtime.all);
+      Cell_Width : constant Positive := Terminal.App.Renderer.Cell_Width (R);
+      Cell_Height : constant Positive := Terminal.App.Renderer.Cell_Height (R);
+      Pixel_Width : constant Natural :=
+        Natural'Min (Cols, Natural'Last / Cell_Width) * Cell_Width;
+      Pixel_Height : constant Natural :=
+        Natural'Min (Rows, Natural'Last / Cell_Height) * Cell_Height;
    begin
       Terminal.Core.Set_Graphics_Capabilities
-        (Active_Core.all,
+        (Core.all,
          Terminal.App.Core_Graphics_Profile
            (App_Config.Kitty_File_Transfer,
             App_Config.Kitty_Temporary_Transfer,
             App_Config.Kitty_Shared_Memory,
             App_Config.ITerm2_File_Downloads));
       Terminal.Core.Set_Graphics_Resource_Limits
-        (Active_Core.all,
+        (Core.all,
          (Transaction_Length => App_Config.Graphics_Transaction_Bytes,
           Pending_Events => App_Config.Graphics_Pending_Events,
           Pending_Bytes => App_Config.Graphics_Pending_Bytes,
@@ -129,12 +141,40 @@ procedure Run is
             App_Config.Graphics_Deferred_Input_Bytes,
           Pixel_Dimension => App_Config.Graphics_Pixel_Dimension));
       Terminal.Core.Set_Cell_Pixel_Size
-        (Active_Core.all,
-         Terminal.App.Renderer.Cell_Width (R),
-         Terminal.App.Renderer.Cell_Height (R));
+        (Core.all, Cell_Width, Cell_Height);
       Terminal.Core.Set_Window_Pixel_Size
-        (Active_Core.all, FB_Width, FB_Height);
-   end Configure_Active_Core;
+        (Core.all, Pixel_Width, Pixel_Height);
+   end Configure_Core;
+
+   procedure Configure_Visible_Cores is
+   begin
+      if Terminal.App.Splits.Count (Splits) <= 1 then
+         Configure_Core (Active_Runtime, Last_Rows, Last_Cols);
+      else
+         declare
+            Layout : constant Terminal.App.Splits.Pane_Layout :=
+              Terminal.App.Splits.Layout (Splits, Last_Rows, Last_Cols);
+         begin
+            for I in 1 .. Layout.Count loop
+               declare
+                  Runtime : constant access Terminal.App.Session_Runtime.Runtime :=
+                    Terminal.App.Session_Table.Runtime_At
+                      (Sessions, Terminal.App.Sessions.Session_Index (I));
+               begin
+                  if Runtime /= null
+                    and then Layout.Rects (I).Rows > 0
+                    and then Layout.Rects (I).Cols > 0
+                  then
+                     Configure_Core
+                       (Runtime,
+                        Positive (Layout.Rects (I).Rows),
+                        Positive (Layout.Rects (I).Cols));
+                  end if;
+               end;
+            end loop;
+         end;
+      end if;
+   end Configure_Visible_Cores;
 
    function Active_PTY_Queue
      return access Terminal.App.Queues.PTY_Output_Queue is
@@ -142,8 +182,13 @@ procedure Run is
       return Terminal.App.Session_Runtime.PTY_Queue (Active_Runtime.all);
    end Active_PTY_Queue;
 
-   procedure Resize_Visible_Runtimes is
+   procedure Resize_Visible_Runtimes
+     (Target_Rows : Positive;
+      Target_Cols : Positive;
+      Success     : out Boolean)
+   is
    begin
+      Success := True;
       if Terminal.App.Splits.Count (Splits) <= 1 then
          declare
             Core_Resize : Terminal.Core.Resize_Status;
@@ -151,15 +196,25 @@ procedure Run is
          begin
             Terminal.App.Session_Runtime.Resize
               (Active_Runtime.all,
-               Last_Rows,
-               Last_Cols,
+               Target_Rows,
+               Target_Cols,
                Core_Resize,
                PTY_Resize);
+            if Core_Resize /= Terminal.Core.Ok
+              or else PTY_Resize /= Terminal.PTY.Backend.Ok
+            then
+               Success := False;
+               Need_Redraw := True;
+            else
+               Configure_Core
+                 (Active_Runtime, Target_Rows, Target_Cols);
+            end if;
          end;
       else
          declare
             Layout : constant Terminal.App.Splits.Pane_Layout :=
-              Terminal.App.Splits.Layout (Splits, Last_Rows, Last_Cols);
+              Terminal.App.Splits.Layout
+                (Splits, Target_Rows, Target_Cols);
          begin
             for I in 1 .. Layout.Count loop
                declare
@@ -180,12 +235,28 @@ procedure Run is
                         Positive (Layout.Rects (I).Cols),
                         Core_Resize,
                         PTY_Resize);
+                     if Core_Resize /= Terminal.Core.Ok
+                       or else PTY_Resize /= Terminal.PTY.Backend.Ok
+                     then
+                        Success := False;
+                        Need_Redraw := True;
+                     else
+                        Configure_Core
+                          (Runtime,
+                           Positive (Layout.Rects (I).Rows),
+                           Positive (Layout.Rects (I).Cols));
+                     end if;
                   end if;
                end;
             end loop;
          end;
       end if;
-      Configure_Active_Core;
+   end Resize_Visible_Runtimes;
+
+   procedure Resize_Visible_Runtimes is
+      Success : Boolean;
+   begin
+      Resize_Visible_Runtimes (Last_Rows, Last_Cols, Success);
    end Resize_Visible_Runtimes;
 
    function Tab_Bar_Height return Natural is
@@ -484,7 +555,7 @@ begin
    end if;
    Sessions_Ready := True;
 
-   Configure_Active_Core;
+   Configure_Visible_Cores;
 
    Input_Queue := In_Q'Unchecked_Access;
    Terminal.App.Tabs.Initialize (Tabs);

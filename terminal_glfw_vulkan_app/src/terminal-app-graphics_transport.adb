@@ -1,9 +1,12 @@
+with Ada.Directories;
 with Ada.Environment_Variables;
 with Ada.Strings.Fixed;
 with Ada.Unchecked_Deallocation;
 with GNAT.OS_Lib;
+with Interfaces.C;
 
 with Terminal.App.Platform_Media;
+with Terminal.Common.Base64;
 
 package body Terminal.App.Graphics_Transport is
    package OS renames GNAT.OS_Lib;
@@ -11,6 +14,7 @@ package body Terminal.App.Graphics_Transport is
 
    use type OS.File_Descriptor;
    use type OS.Large_File_Size;
+   use type Interfaces.C.int;
 
    procedure Free_Bytes is new Ada.Unchecked_Deallocation
      (Terminal.Common.Bytes.Byte_Array, Byte_Array_Access);
@@ -22,25 +26,10 @@ package body Terminal.App.Graphics_Transport is
       end if;
    end Release;
 
-   function Base64_Value (Ch : Character) return Integer is
-   begin
-      case Ch is
-         when 'A' .. 'Z' =>
-            return Character'Pos (Ch) - Character'Pos ('A');
-         when 'a' .. 'z' =>
-            return 26 + Character'Pos (Ch) - Character'Pos ('a');
-         when '0' .. '9' =>
-            return 52 + Character'Pos (Ch) - Character'Pos ('0');
-         when '+' => return 62;
-         when '/' => return 63;
-         when others => return -1;
-      end case;
-   end Base64_Value;
-
    function Decode_Location (Text : String) return String is
       Result : String (1 .. Max_Location_Length);
       Length : Natural := 0;
-      Values : array (Positive range 1 .. 4) of Natural := (others => 0);
+      Values : Terminal.Common.Base64.Quantum := (others => 0);
       Count : Natural := 0;
       Padding : Natural := 0;
       Finished : Boolean := False;
@@ -56,15 +45,17 @@ package body Terminal.App.Graphics_Transport is
 
       procedure Flush is
       begin
-         if Count < 2 or else Padding > 2 then
+         if not Terminal.Common.Base64.Is_Valid_Quantum
+           (Values, Count, Padding, Allow_Unpadded => True)
+         then
             raise Constraint_Error;
          end if;
-         Append (Values (1) * 4 + Values (2) / 16);
+         Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 1)));
          if Count >= 3 and then Padding < 2 then
-            Append ((Values (2) mod 16) * 16 + Values (3) / 4);
+            Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 2)));
          end if;
          if Count = 4 and then Padding = 0 then
-            Append ((Values (3) mod 4) * 64 + Values (4));
+            Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 3)));
          end if;
       end Flush;
    begin
@@ -74,7 +65,7 @@ package body Terminal.App.Graphics_Transport is
 
       for Ch of Text loop
          declare
-            Value : constant Integer := Base64_Value (Ch);
+            Value : constant Integer := Terminal.Common.Base64.Value (Ch);
          begin
             if Finished then
                raise Constraint_Error;
@@ -249,6 +240,7 @@ package body Terminal.App.Graphics_Transport is
    is
       Location : constant String := Decode_Location (Encoded_Location);
       FD : OS.File_Descriptor := OS.Invalid_FD;
+      Directory_FD : Interfaces.C.int := -1;
    begin
       Bytes := null;
       Length := 0;
@@ -273,11 +265,23 @@ package body Terminal.App.Graphics_Transport is
             Canonical : constant String :=
               OS.Normalize_Pathname
                 (Location, Resolve_Links => True, Case_Sensitive => True);
+            Requested : constant String :=
+              OS.Normalize_Pathname
+                (Location, Resolve_Links => False, Case_Sensitive => True);
             Temporary : constant Boolean := Medium = 't';
-            Delete_Ok : Boolean := False;
+            Parent : constant String :=
+              (if Requested'Length = 0
+               then ""
+               else Ada.Directories.Containing_Directory (Requested));
+            Name : constant String :=
+              (if Requested'Length = 0
+               then ""
+               else Ada.Directories.Simple_Name (Requested));
          begin
             if Canonical'Length = 0
+              or else Requested'Length = 0
               or else not OS.Is_Absolute_Path (Canonical)
+              or else not OS.Is_Absolute_Path (Requested)
               or else (not Temporary and then Sensitive_Path (Canonical))
               or else (Temporary and then not Safe_Temporary_Path (Canonical))
               or else not OS.Is_Regular_File (Canonical)
@@ -286,8 +290,26 @@ package body Terminal.App.Graphics_Transport is
                return;
             end if;
 
-            FD := Platform.Open_Read_No_Follow (Location);
+            if Temporary then
+               Directory_FD := Platform.Open_Directory_No_Follow (Parent);
+               if Directory_FD < 0 then
+                  Status := Load_Access_Failed;
+                  return;
+               end if;
+               FD := Platform.Open_Read_At_No_Follow (Directory_FD, Name);
+            else
+               FD := Platform.Open_Read_No_Follow (Location);
+            end if;
             if FD = OS.Invalid_FD then
+               if Directory_FD >= 0 then
+                  declare
+                     Ignored : constant Interfaces.C.int :=
+                       Platform.Close_File (Directory_FD);
+                     pragma Unreferenced (Ignored);
+                  begin
+                     Directory_FD := -1;
+                  end;
+               end if;
                Status := Load_Access_Failed;
                return;
             end if;
@@ -304,6 +326,7 @@ package body Terminal.App.Graphics_Transport is
             begin
                if Opened_Path'Length = 0
                  or else not OS.Is_Absolute_Path (Opened_Path)
+                 or else Opened_Path /= Canonical
                  or else not OS.Is_Regular_File (Platform.Descriptor_Path (FD))
                  or else
                    (if Temporary
@@ -312,6 +335,30 @@ package body Terminal.App.Graphics_Transport is
                then
                   OS.Close (FD);
                   FD := OS.Invalid_FD;
+                  if Directory_FD >= 0 then
+                     declare
+                        Ignored : constant Interfaces.C.int :=
+                          Platform.Close_File (Directory_FD);
+                        pragma Unreferenced (Ignored);
+                     begin
+                        Directory_FD := -1;
+                     end;
+                  end if;
+                  Status := Load_Access_Failed;
+                  return;
+               end if;
+               if Temporary
+                 and then not Platform.Delete_File_At (Directory_FD, Name)
+               then
+                  OS.Close (FD);
+                  FD := OS.Invalid_FD;
+                  declare
+                     Ignored : constant Interfaces.C.int :=
+                       Platform.Close_File (Directory_FD);
+                     pragma Unreferenced (Ignored);
+                  begin
+                     Directory_FD := -1;
+                  end;
                   Status := Load_Access_Failed;
                   return;
                end if;
@@ -327,13 +374,14 @@ package body Terminal.App.Graphics_Transport is
             end;
             OS.Close (FD);
             FD := OS.Invalid_FD;
-            if Temporary and then Status = Load_Ok then
-               OS.Delete_File (Canonical, Delete_Ok);
-               if not Delete_Ok then
-                  Release (Bytes);
-                  Length := 0;
-                  Status := Load_Access_Failed;
-               end if;
+            if Directory_FD >= 0 then
+               declare
+                  Ignored : constant Interfaces.C.int :=
+                    Platform.Close_File (Directory_FD);
+                  pragma Unreferenced (Ignored);
+               begin
+                  Directory_FD := -1;
+               end;
             end if;
          end;
       elsif Medium = 's' then
@@ -373,11 +421,29 @@ package body Terminal.App.Graphics_Transport is
          if FD /= OS.Invalid_FD then
             OS.Close (FD);
          end if;
+         if Directory_FD >= 0 then
+            declare
+               Ignored : constant Interfaces.C.int :=
+                 Platform.Close_File (Directory_FD);
+               pragma Unreferenced (Ignored);
+            begin
+               null;
+            end;
+         end if;
          Release (Bytes);
          Status := Load_Allocation_Failed;
       when others =>
          if FD /= OS.Invalid_FD then
             OS.Close (FD);
+         end if;
+         if Directory_FD >= 0 then
+            declare
+               Ignored : constant Interfaces.C.int :=
+                 Platform.Close_File (Directory_FD);
+               pragma Unreferenced (Ignored);
+            begin
+               null;
+            end;
          end if;
          Release (Bytes);
          raise;
