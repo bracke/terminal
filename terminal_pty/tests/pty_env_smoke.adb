@@ -92,28 +92,6 @@ procedure PTY_Env_Smoke is
       return Result;
    end To_Bytes;
 
-   procedure Write_All (Data : Byte_Array) is
-      First : Positive := Data'First;
-      Wrote : Natural := 0;
-   begin
-      while First <= Data'Last loop
-         Terminal.PTY.Backend.Write
-           (S, Data (First .. Data'Last), Wrote, Write_Status);
-
-         case Write_Status is
-            when Terminal.PTY.Backend.Ok | Terminal.PTY.Backend.Partial =>
-               Assert (Wrote > 0, "write made no progress");
-               Written_Total := Written_Total + Wrote;
-               First := First + Wrote;
-            when Terminal.PTY.Backend.Interrupted =>
-               null;
-            when Terminal.PTY.Backend.Failed
-               | Terminal.PTY.Backend.Session_Closed =>
-               Assert (False, "pty write failed");
-         end case;
-      end loop;
-   end Write_All;
-
    procedure Append_Output is
    begin
       for I in 1 .. Last loop
@@ -137,6 +115,42 @@ procedure PTY_Env_Smoke is
 
       return False;
    end Contains;
+   --  A pseudo-terminal takes only what fits in its input queue, and on
+   --  macOS that can be nothing until the shell reads, or until what it echoed
+   --  is read; so read while waiting, and give up only after a while.
+   procedure Write_All (Data : Byte_Array) is
+      First : Positive := Data'First;
+      Wrote : Natural := 0;
+      Stalls : Natural := 0;
+   begin
+      while First <= Data'Last loop
+         Terminal.PTY.Backend.Write
+           (S, Data (First .. Data'Last), Wrote, Write_Status);
+
+         case Write_Status is
+            when Terminal.PTY.Backend.Ok | Terminal.PTY.Backend.Partial =>
+               if Wrote > 0 then
+                  Written_Total := Written_Total + Wrote;
+                  First := First + Wrote;
+                  Stalls := 0;
+               else
+                  Stalls := Stalls + 1;
+                  Assert (Stalls < 500, "write made no progress");
+                  Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
+                  if Read_Status = Terminal.PTY.Backend.Ok then
+                     Append_Output;
+                  end if;
+                  delay 0.01;
+               end if;
+            when Terminal.PTY.Backend.Interrupted =>
+               null;
+            when Terminal.PTY.Backend.Failed
+               | Terminal.PTY.Backend.Session_Closed =>
+               Assert (False, "pty write failed");
+         end case;
+      end loop;
+   end Write_All;
+
 begin
    Assert
      (Terminal.PTY.Backend.Term_Name = "xterm-256color",
