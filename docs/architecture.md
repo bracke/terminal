@@ -67,6 +67,12 @@ automatic finalization performed during scope unwinding. A failed release leaves
 the runtime in `Cleanup_Pending`; restart and table removal refuse to overwrite
 the retained owner, and finalization reports incomplete cleanup instead of
 silently marking leaked resources closed.
+Session, tab, and split mutations are prepared on copied state and committed
+only after every participating model accepts the operation; a rejected layout
+or activation therefore cannot leave their counts or active indices divergent.
+Orderly shutdown records snapshot, session-table, GLFW-window, and GLFW-context
+cleanup failures and leaves failed owners armed for controlled-finalization
+retry.
 
 The app render pipeline is staged:
 
@@ -387,6 +393,10 @@ Direct-byte and Base64 transports feed the same
 `Terminal.App.Zlib_Inflation` state machine, so output limits, trailing bytes,
 termination, exact-length checks, and allocation failures have one status
 mapping.
+All Base64 consumers use `Terminal.Common.Base64.Decoder_State`, which owns
+quantum assembly, padding, whitespace, unpadded-final-group, completion, and
+trailing-data state. Protocol adapters only supply output sinks and their
+protocol-specific size policy.
 QuickDraw PICT input is rendered to bounded RGBA through the local pictlib
 crate. The adapter borrows encoded bytes through the same checked cursor model
 used for GIF input, renders into a pictlib-owned bounded buffer, and copies the
@@ -449,6 +459,9 @@ candidates; if all retained objects are referenced, installation returns a
 quota error rather than violating lifetime. Diagnostics expose both live
 resource use and cumulative command, install, eviction, transport, decode,
 allocation, placement, animation, and cancellation counters.
+Animation wakeup checks build a bounded sorted set of due image identities and
+scan each placement list once, avoiding an image-by-placement nested search on
+every 16 ms main-loop tick.
 
 Complete bounded Kitty raw RGB/RGBA/PNG images, iTerm2 PNG/JPEG/GIF images, and
 Sixel rasters become texture-backed image commands. Valid PNG bit depths,
