@@ -383,7 +383,9 @@ procedure Run is
          begin
             Terminal.Core.Release (Snapshot_Cache (I));
          exception
-            when others => null;
+            when others =>
+               Terminal.App.Cleanup_Diagnostics.Note_Failure
+                 (Terminal.App.Cleanup_Diagnostics.Snapshot_Cache);
          end;
       end loop;
    end Release_Snapshot_Cache;
@@ -398,10 +400,12 @@ procedure Run is
       if Sessions_Ready then
          begin
             Terminal.App.Session_Table.Close_All (Sessions);
+            Sessions_Ready := False;
          exception
-            when others => null;
+            when others =>
+               Terminal.App.Cleanup_Diagnostics.Note_Failure
+                 (Terminal.App.Cleanup_Diagnostics.Session_Table);
          end;
-         Sessions_Ready := False;
       end if;
       --  Preserve the native dependency order: renderer, device/swapchain,
       --  surface/instance, window, then GLFW.  Each owner is idempotent and
@@ -413,18 +417,22 @@ procedure Run is
       if Window_Ready then
          begin
             GLFW_Vulkan.Windows.Destroy (W);
+            Window_Ready := False;
          exception
-            when others => null;
+            when others =>
+               Terminal.App.Cleanup_Diagnostics.Note_Failure
+                 (Terminal.App.Cleanup_Diagnostics.GLFW_Window);
          end;
-         Window_Ready := False;
       end if;
-      if GLFW_Ready then
+      if GLFW_Ready and then not Window_Ready then
          begin
             GLFW_Vulkan.Finalize (Ctx);
+            GLFW_Ready := False;
          exception
-            when others => null;
+            when others =>
+               Terminal.App.Cleanup_Diagnostics.Note_Failure
+                 (Terminal.App.Cleanup_Diagnostics.GLFW_Context);
          end;
-         GLFW_Ready := False;
       end if;
    end Shutdown;
 

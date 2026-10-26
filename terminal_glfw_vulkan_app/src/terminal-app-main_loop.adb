@@ -7,6 +7,7 @@ with GLFW_Vulkan.Input;
 with GLFW_Vulkan.Windows;
 with Terminal.Core;
 with Terminal.App.Clipboard_OSC52;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Config;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Diagnostics;

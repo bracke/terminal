@@ -2,6 +2,9 @@ package Terminal.App.Cleanup_Diagnostics is
    type Component is
      (Session_Runtime,
       Session_Table,
+      Snapshot_Cache,
+      GLFW_Window,
+      GLFW_Context,
       Theme_Transaction,
       Image_Install,
       Renderer_State,
