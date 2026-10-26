@@ -301,7 +301,11 @@ begin
                end if;
                T.CSI_Set (T.CSI_Count) := True;
                T.CSI_Params (T.CSI_Count) :=
-                 Natural'Min (T.CSI_Params (T.CSI_Count) * 10 + Standard.Character'Pos (Ch) - Standard.Character'Pos ('0'), Natural'Last / 2);
+                 Append_Decimal_Digit
+                   (T.CSI_Params (T.CSI_Count),
+                    Standard.Character'Pos (Ch)
+                      - Standard.Character'Pos ('0'),
+                    Natural'Last / 2);
             elsif Ch = ';' or else Ch = ':' then
                if T.CSI_Count < Parser.Max_CSI_Params then
                   T.CSI_Count := T.CSI_Count + 1;

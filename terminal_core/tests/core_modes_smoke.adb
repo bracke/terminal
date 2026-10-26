@@ -34,6 +34,10 @@ begin
    Terminal.Core.Initialize (T, 5, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "initialize failed");
 
+   Feed_Text
+     (ASCII.ESC & "[9999999999999999999999999999999999999999C",
+      "oversized CSI parameter should saturate");
+
    Terminal.Core.Feed
      (T,
       (1 => 16#1B#, 2 => Byte (Character'Pos ('[')),

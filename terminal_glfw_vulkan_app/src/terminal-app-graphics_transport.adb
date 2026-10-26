@@ -15,6 +15,7 @@ package body Terminal.App.Graphics_Transport is
    use type OS.File_Descriptor;
    use type OS.Large_File_Size;
    use type Interfaces.C.int;
+   use type Terminal.Common.Base64.Decoder_Status;
 
    procedure Free_Bytes is new Ada.Unchecked_Deallocation
      (Terminal.Common.Bytes.Byte_Array, Byte_Array_Access);
@@ -29,10 +30,10 @@ package body Terminal.App.Graphics_Transport is
    function Decode_Location (Text : String) return String is
       Result : String (1 .. Max_Location_Length);
       Length : Natural := 0;
-      Values : Terminal.Common.Base64.Quantum := (others => 0);
-      Count : Natural := 0;
-      Padding : Natural := 0;
-      Finished : Boolean := False;
+      Decoder : Terminal.Common.Base64.Decoder_State;
+      Bytes : Terminal.Common.Base64.Decoded_Quantum;
+      Byte_Count : Natural;
+      Decode_Status : Terminal.Common.Base64.Decoder_Status;
 
       procedure Append (Value : Natural) is
       begin
@@ -43,63 +44,30 @@ package body Terminal.App.Graphics_Transport is
          Result (Length) := Character'Val (Value mod 256);
       end Append;
 
-      procedure Flush is
+      procedure Append_Output is
       begin
-         if not Terminal.Common.Base64.Is_Valid_Quantum
-           (Values, Count, Padding, Allow_Unpadded => True)
-         then
+         if Decode_Status = Terminal.Common.Base64.Invalid_Data then
             raise Constraint_Error;
          end if;
-         Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 1)));
-         if Count >= 3 and then Padding < 2 then
-            Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 2)));
-         end if;
-         if Count = 4 and then Padding = 0 then
-            Append (Natural (Terminal.Common.Base64.Decode_Byte (Values, 3)));
-         end if;
-      end Flush;
+         for I in 1 .. Byte_Count loop
+            Append (Natural (Bytes (I)));
+         end loop;
+      end Append_Output;
    begin
       if Text'Length = 0 then
          return "";
       end if;
 
+      Terminal.Common.Base64.Reset
+        (Decoder, Allow_Unpadded => True, Allow_Whitespace => False);
       for Ch of Text loop
-         declare
-            Value : constant Integer := Terminal.Common.Base64.Value (Ch);
-         begin
-            if Finished then
-               raise Constraint_Error;
-            elsif Ch = '=' then
-               Count := Count + 1;
-               Padding := Padding + 1;
-               if Count > 4 then
-                  raise Constraint_Error;
-               end if;
-               Values (Count) := 0;
-               if Count = 4 then
-                  Flush;
-                  Finished := True;
-               end if;
-            elsif Value < 0 or else Padding > 0 then
-               raise Constraint_Error;
-            else
-               Count := Count + 1;
-               if Count > 4 then
-                  raise Constraint_Error;
-               end if;
-               Values (Count) := Natural (Value);
-               if Count = 4 then
-                  Flush;
-                  Values := (others => 0);
-                  Count := 0;
-               end if;
-            end if;
-         end;
+         Terminal.Common.Base64.Push
+           (Decoder, Ch, Bytes, Byte_Count, Decode_Status);
+         Append_Output;
       end loop;
-
-      if not Finished and then Count > 0 then
-         Flush;
-      end if;
+      Terminal.Common.Base64.Finish
+        (Decoder, Bytes, Byte_Count, Decode_Status);
+      Append_Output;
       if Length = 0 then
          return "";
       end if;

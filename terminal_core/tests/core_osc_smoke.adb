@@ -71,6 +71,16 @@ begin
 
    Terminal.Core.Feed
      (T,
+      To_Bytes
+        (ASCII.ESC & "]9999999999999999999999999999999999999999;x"
+         & ASCII.BEL),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "oversized OSC command should saturate");
+
+   Terminal.Core.Feed
+     (T,
       (1  => 16#1B#, 2 => Byte (Character'Pos (']')),
        3  => Byte (Character'Pos ('0')), 4 => Byte (Character'Pos (';')),
        5  => Byte (Character'Pos ('t')), 6 => Byte (Character'Pos ('i')),

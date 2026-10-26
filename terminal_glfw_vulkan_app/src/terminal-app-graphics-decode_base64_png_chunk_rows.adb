@@ -12,9 +12,10 @@ separate (Terminal.App.Graphics)
    is
       Cursor_Chunk : Positive := 1;
       Cursor_Offset : Natural := 0;
-      Cursor_Values : Terminal.Common.Base64.Quantum := (others => 0);
-      Cursor_Count : Natural := 0;
-      Cursor_Padding : Natural := 0;
+      Cursor_Decoder : Terminal.Common.Base64.Decoder_State;
+      Cursor_Bytes : Terminal.Common.Base64.Decoded_Quantum;
+      Cursor_Byte_Count : Natural := 0;
+      Cursor_Status : Terminal.Common.Base64.Decoder_Status;
       Cursor_Done : Boolean := False;
       Cursor_Invalid : Boolean := False;
       Decoded_Position : Natural := 0;
@@ -23,46 +24,34 @@ separate (Terminal.App.Graphics)
       Window_Bytes : Terminal.Common.Bytes.Byte_Array (1 .. 3) := (others => 0);
 
       procedure Measure_Base64_PNG is
-         Values : Terminal.Common.Base64.Quantum := (others => 0);
-         Count : Natural := 0;
-         Padding : Natural := 0;
+         Decoder : Terminal.Common.Base64.Decoder_State;
+         Bytes : Terminal.Common.Base64.Decoded_Quantum;
+         Byte_Count : Natural := 0;
+         Base64_Status : Terminal.Common.Base64.Decoder_Status;
          Done : Boolean := False;
 
-         procedure Append_Byte is
+         procedure Append_Output is
          begin
-            if PNG_Length = Max_Data_Preview_Length then
+            if Base64_Status = Terminal.Common.Base64.Invalid_Data then
+               if Result.Decode_Status /= Decode_Trailing_Data then
+                  Result.Decode_Status := Decode_Invalid_Byte;
+               end if;
+               Result.Decode_Complete := False;
+               Done := True;
+               return;
+            end if;
+            if Byte_Count > Max_Data_Preview_Length - PNG_Length then
                Result.Decode_Status := Decode_Preview_Truncated;
                Result.Decode_Complete := False;
                Done := True;
                return;
             end if;
-            PNG_Length := PNG_Length + 1;
-         end Append_Byte;
-
-         procedure Flush_Group is
-            Group_Length : constant Natural :=
-              Terminal.Common.Base64.Decoded_Length (Count, Padding);
-         begin
-            if Count = 0 then
-               return;
-            elsif not Terminal.Common.Base64.Is_Valid_Quantum
-              (Values, Count, Padding, Allow_Unpadded => True)
-            then
-               Result.Decode_Status := Decode_Invalid_Byte;
-               Result.Decode_Complete := False;
-               Done := True;
-               return;
-            end if;
-
-            for I in 1 .. Group_Length loop
-               Append_Byte;
-               if Done then
-                  return;
-               end if;
-            end loop;
-         end Flush_Group;
+            PNG_Length := PNG_Length + Byte_Count;
+         end Append_Output;
       begin
          Result.Header_Recognized := True;
+         Terminal.Common.Base64.Reset
+           (Decoder, Allow_Unpadded => True, Allow_Whitespace => True);
 
          for Index in 1 .. Chunk_Count loop
             declare
@@ -81,63 +70,30 @@ separate (Terminal.App.Graphics)
             begin
                for Ch of Text loop
                   declare
-                     V : constant Integer := Terminal.Common.Base64.Value (Ch);
+                     Was_Complete : constant Boolean :=
+                       Terminal.Common.Base64.Is_Complete (Decoder);
                   begin
-                     if Terminal.Common.Base64.Is_Whitespace (Ch) then
-                        null;
-                     elsif Done then
+                     Terminal.Common.Base64.Push
+                       (Decoder, Ch, Bytes, Byte_Count, Base64_Status);
+                     if Base64_Status = Terminal.Common.Base64.Invalid_Data
+                       and then Was_Complete
+                     then
                         Result.Decode_Status := Decode_Trailing_Data;
-                        Result.Decode_Complete := False;
+                     end if;
+                     Append_Output;
+                     if Done then
                         return;
-                     elsif Ch = '=' then
-                        Count := Count + 1;
-                        if Count > 4 then
-                           Result.Decode_Status := Decode_Trailing_Data;
-                           Result.Decode_Complete := False;
-                           return;
-                        end if;
-                        Padding := Padding + 1;
-                        Values (Count) := 0;
-                        if Count = 4 then
-                           Flush_Group;
-                           if Done then
-                              return;
-                           end if;
-                           Done := True;
-                        end if;
-                     elsif V < 0 or else Padding > 0 then
-                        Result.Decode_Status := Decode_Invalid_Byte;
-                        Result.Decode_Complete := False;
-                        return;
-                     else
-                        Count := Count + 1;
-                        if Count > 4 then
-                           Result.Decode_Status := Decode_Trailing_Data;
-                           Result.Decode_Complete := False;
-                           return;
-                        end if;
-                        Values (Count) := Natural (V);
-                        if Count = 4 then
-                           Flush_Group;
-                           if Done then
-                              return;
-                           end if;
-                           Values := (others => 0);
-                           Count := 0;
-                        end if;
                      end if;
                   end;
                end loop;
             end;
          end loop;
 
-         if Count > 0 and then not Done then
-            Flush_Group;
-            if Done
-              and then Result.Decode_Status /= Decode_Preview_Truncated
-            then
-               return;
-            end if;
+         Terminal.Common.Base64.Finish
+           (Decoder, Bytes, Byte_Count, Base64_Status);
+         Append_Output;
+         if Done then
+            return;
          end if;
 
          Result.Decode_Complete := Result.Has_Data;
@@ -149,9 +105,12 @@ separate (Terminal.App.Graphics)
       begin
          Cursor_Chunk := 1;
          Cursor_Offset := 0;
-         Cursor_Values := (others => 0);
-         Cursor_Count := 0;
-         Cursor_Padding := 0;
+         Terminal.Common.Base64.Reset
+           (Cursor_Decoder,
+            Allow_Unpadded => True,
+            Allow_Whitespace => True);
+         Cursor_Bytes := (others => 0);
+         Cursor_Byte_Count := 0;
          Cursor_Done := False;
          Cursor_Invalid := False;
          Decoded_Position := 0;
@@ -160,54 +119,23 @@ separate (Terminal.App.Graphics)
          Window_Bytes := (others => 0);
       end Reset_Base64_Cursor;
 
-      procedure Append_Window_Byte
-        (Value : Terminal.Common.Bytes.Byte;
-         Count : in out Natural)
-      is
+      procedure Capture_Cursor_Output is
       begin
-         Count := Count + 1;
-         if Count <= Window_Bytes'Length then
-            Window_Bytes (Count) := Value;
-         else
-            Cursor_Invalid := True;
-         end if;
-      end Append_Window_Byte;
-
-      procedure Flush_Cursor_Group is
-         Group_Count : constant Natural :=
-           Terminal.Common.Base64.Decoded_Length
-             (Cursor_Count, Cursor_Padding);
-         Emitted_Count : Natural := 0;
-      begin
-         if Cursor_Count = 0 then
-            return;
-         elsif not Terminal.Common.Base64.Is_Valid_Quantum
-           (Cursor_Values,
-            Cursor_Count,
-            Cursor_Padding,
-            Allow_Unpadded => True)
-         then
+         if Cursor_Status = Terminal.Common.Base64.Invalid_Data then
             Cursor_Invalid := True;
             return;
          end if;
-
+         if Cursor_Byte_Count = 0 then
+            return;
+         end if;
          Window_First := Decoded_Position + 1;
-         Window_Last := 0;
          Window_Bytes := (others => 0);
-
-         for I in 1 .. Group_Count loop
-            Append_Window_Byte
-              (Terminal.Common.Base64.Decode_Byte (Cursor_Values, I),
-               Emitted_Count);
+         for I in 1 .. Cursor_Byte_Count loop
+            Window_Bytes (I) := Cursor_Bytes (I);
          end loop;
-
-         if Cursor_Invalid then
-            return;
-         end if;
-
-         Decoded_Position := Decoded_Position + Emitted_Count;
+         Decoded_Position := Decoded_Position + Cursor_Byte_Count;
          Window_Last := Decoded_Position;
-      end Flush_Cursor_Group;
+      end Capture_Cursor_Output;
 
       function Base64_PNG_Byte
         (Target : Positive) return Terminal.Common.Bytes.Byte
@@ -242,36 +170,17 @@ separate (Terminal.App.Graphics)
                loop
                   declare
                      Ch : constant Character := Text (Cursor_Offset);
-                     V : constant Integer := Terminal.Common.Base64.Value (Ch);
                   begin
                      Cursor_Offset := Cursor_Offset + 1;
-                     if Terminal.Common.Base64.Is_Whitespace (Ch) then
-                        null;
-                     elsif Ch = '=' then
-                        Cursor_Count := Cursor_Count + 1;
-                        if Cursor_Count > 4 then
-                           return 0;
-                        end if;
-                        Cursor_Padding := Cursor_Padding + 1;
-                        Cursor_Values (Cursor_Count) := 0;
-                        if Cursor_Count = 4 then
-                           Flush_Cursor_Group;
-                           Cursor_Done := True;
-                        end if;
-                     elsif V < 0 or else Cursor_Padding > 0 then
-                        return 0;
-                     else
-                        Cursor_Count := Cursor_Count + 1;
-                        if Cursor_Count > 4 then
-                           return 0;
-                        end if;
-                        Cursor_Values (Cursor_Count) := Natural (V);
-                        if Cursor_Count = 4 then
-                           Flush_Cursor_Group;
-                           Cursor_Values := (others => 0);
-                           Cursor_Count := 0;
-                        end if;
-                     end if;
+                     Terminal.Common.Base64.Push
+                       (Cursor_Decoder,
+                        Ch,
+                        Cursor_Bytes,
+                        Cursor_Byte_Count,
+                        Cursor_Status);
+                     Capture_Cursor_Output;
+                     Cursor_Done :=
+                       Terminal.Common.Base64.Is_Complete (Cursor_Decoder);
                   end;
                end loop;
 
@@ -285,9 +194,13 @@ separate (Terminal.App.Graphics)
          if Decoded_Position < Target
            and then not Cursor_Done
            and then not Cursor_Invalid
-           and then Cursor_Count > 0
          then
-            Flush_Cursor_Group;
+            Terminal.Common.Base64.Finish
+              (Cursor_Decoder,
+               Cursor_Bytes,
+               Cursor_Byte_Count,
+               Cursor_Status);
+            Capture_Cursor_Output;
             Cursor_Done := True;
          end if;
 
@@ -309,6 +222,7 @@ separate (Terminal.App.Graphics)
          return;
       end if;
 
+      Reset_Base64_Cursor;
       Decode_PNG_RGBA_Source_Rows
         (PNG_Length, Base64_PNG_Byte'Access, Row_Sink, Result);
    end Decode_Base64_PNG_Chunk_Rows;

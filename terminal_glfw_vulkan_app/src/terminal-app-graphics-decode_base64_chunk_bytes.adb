@@ -7,9 +7,10 @@ separate (Terminal.App.Graphics)
          Continue : in out Boolean);
       Result      : in out Graphics_Data_Preview)
    is
-      Values : Terminal.Common.Base64.Quantum := (others => 0);
-      Count  : Natural := 0;
-      Padding : Natural := 0;
+      Decoder : Terminal.Common.Base64.Decoder_State;
+      Bytes : Terminal.Common.Base64.Decoded_Quantum;
+      Byte_Count : Natural := 0;
+      Base64_Status : Terminal.Common.Base64.Decoder_Status;
       Done   : Boolean := False;
 
       procedure Append_Byte (Value : Natural) is
@@ -33,41 +34,26 @@ separate (Terminal.App.Graphics)
          Result.Decoded_Length := Result.Decoded_Length + 1;
       end Append_Byte;
 
-      procedure Flush_Group is
+      procedure Append_Output is
       begin
-         if Count = 0 then
-            return;
-         elsif not Terminal.Common.Base64.Is_Valid_Quantum
-           (Values, Count, Padding, Allow_Unpadded => True)
-         then
-            Result.Decode_Status := Decode_Invalid_Byte;
+         if Base64_Status = Terminal.Common.Base64.Invalid_Data then
+            if Result.Decode_Status /= Decode_Trailing_Data then
+               Result.Decode_Status := Decode_Invalid_Byte;
+            end if;
             Result.Decode_Complete := False;
             Done := True;
             return;
          end if;
-
-         Append_Byte
-           (Natural (Terminal.Common.Base64.Decode_Byte (Values, 1)));
-         if Done then
-            return;
-         end if;
-
-         if Count >= 3 and then Padding < 2 then
-            Append_Byte
-              (Natural (Terminal.Common.Base64.Decode_Byte (Values, 2)));
-            if Done then
-               return;
-            end if;
-         end if;
-
-         if Count = 4 and then Padding = 0 then
-            Append_Byte
-              (Natural (Terminal.Common.Base64.Decode_Byte (Values, 3)));
-         end if;
-      end Flush_Group;
+         for I in 1 .. Byte_Count loop
+            Append_Byte (Natural (Bytes (I)));
+            exit when Done;
+         end loop;
+      end Append_Output;
    begin
       Release (Result);
       Result.Header_Recognized := True;
+      Terminal.Common.Base64.Reset
+        (Decoder, Allow_Unpadded => True, Allow_Whitespace => True);
 
       for Index in 1 .. Chunk_Count loop
          declare
@@ -86,63 +72,30 @@ separate (Terminal.App.Graphics)
          begin
             for Ch of Text loop
                declare
-                  V : constant Integer := Terminal.Common.Base64.Value (Ch);
+                  Was_Complete : constant Boolean :=
+                    Terminal.Common.Base64.Is_Complete (Decoder);
                begin
-                  if Terminal.Common.Base64.Is_Whitespace (Ch) then
-                     null;
-                  elsif Done then
+                  Terminal.Common.Base64.Push
+                    (Decoder, Ch, Bytes, Byte_Count, Base64_Status);
+                  if Base64_Status = Terminal.Common.Base64.Invalid_Data
+                    and then Was_Complete
+                  then
                      Result.Decode_Status := Decode_Trailing_Data;
-                     Result.Decode_Complete := False;
+                  end if;
+                  Append_Output;
+                  if Done then
                      return;
-                  elsif Ch = '=' then
-                     Count := Count + 1;
-                     if Count > 4 then
-                        Result.Decode_Status := Decode_Trailing_Data;
-                        Result.Decode_Complete := False;
-                        return;
-                     end if;
-                     Padding := Padding + 1;
-                     Values (Count) := 0;
-                     if Count = 4 then
-                        Flush_Group;
-                        if Done then
-                           return;
-                        end if;
-                        Done := True;
-                     end if;
-                  elsif V < 0 or else Padding > 0 then
-                     Result.Decode_Status := Decode_Invalid_Byte;
-                     Result.Decode_Complete := False;
-                     return;
-                  else
-                     Count := Count + 1;
-                     if Count > 4 then
-                        Result.Decode_Status := Decode_Trailing_Data;
-                        Result.Decode_Complete := False;
-                        return;
-                     end if;
-                     Values (Count) := Natural (V);
-                     if Count = 4 then
-                        Flush_Group;
-                        if Done then
-                           return;
-                        end if;
-                        Values := (others => 0);
-                        Count := 0;
-                     end if;
                   end if;
                end;
             end loop;
          end;
       end loop;
 
-      if Count > 0 and then not Done then
-         Flush_Group;
-         if Done
-           and then Result.Decode_Status /= Decode_Preview_Truncated
-         then
-            return;
-         end if;
+      Terminal.Common.Base64.Finish
+        (Decoder, Bytes, Byte_Count, Base64_Status);
+      Append_Output;
+      if Done then
+         return;
       end if;
 
       Result.Decode_Complete := Result.Has_Data;

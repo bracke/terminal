@@ -26,11 +26,11 @@ procedure Finish_OSC (T : in out Terminal) is
    is
       Enc_First : Natural := 0;
       Out_Len   : Natural := 0;
-      Values    : Common.Base64.Quantum := (others => 0);
-      Count     : Natural := 0;
-      Padding   : Natural := 0;
+      Decoder   : Common.Base64.Decoder_State;
+      Bytes     : Common.Base64.Decoded_Quantum;
+      Byte_Count : Natural := 0;
+      Decode_Status : Common.Base64.Decoder_Status;
       Invalid   : Boolean := False;
-      Finished  : Boolean := False;
       Target    : Clipboard_Target := Clipboard_Clipboard;
 
       function Parse_Target return Boolean is
@@ -75,26 +75,17 @@ procedure Finish_OSC (T : in out Terminal) is
          end if;
       end Append_Decoded;
 
-      procedure Flush_Quantum is
-         Length : Natural;
+      procedure Append_Output is
       begin
-         if not Common.Base64.Is_Valid_Quantum
-           (Values, Count, Padding, Allow_Unpadded => True)
-         then
+         if Decode_Status = Common.Base64.Invalid_Data then
             Invalid := True;
             return;
          end if;
-         Length := Common.Base64.Decoded_Length (Count, Padding);
-         for I in 1 .. Length loop
-            Append_Decoded
-              (Natural (Common.Base64.Decode_Byte (Values, I)));
+         for I in 1 .. Byte_Count loop
+            Append_Decoded (Natural (Bytes (I)));
             exit when Invalid;
          end loop;
-         Finished := Padding > 0;
-         Count := 0;
-         Padding := 0;
-         Values := (others => 0);
-      end Flush_Quantum;
+      end Append_Output;
    begin
       for I in First .. Last loop
          if T.OSC_Data (I) = ';' then
@@ -121,48 +112,26 @@ procedure Finish_OSC (T : in out Terminal) is
          return;
       end if;
 
+      Common.Base64.Reset
+        (Decoder, Allow_Unpadded => True, Allow_Whitespace => True);
+
       if Enc_First <= Last then
          for I in Enc_First .. Last loop
-            declare
-               Ch : constant Standard.Character := T.OSC_Data (I);
-               V  : constant Integer := Common.Base64.Value (Ch);
-            begin
-               if Common.Base64.Is_Whitespace (Ch) then
-                  null;
-               elsif Finished then
-                  Invalid := True;
-               elsif Ch = '=' then
-                  Count := Count + 1;
-                  Padding := Padding + 1;
-                  if Count > 4 or else Padding > 2 then
-                     Invalid := True;
-                  else
-                     Values (Count) := 0;
-                     if Count = 4 then
-                        Flush_Quantum;
-                     end if;
-                  end if;
-               elsif V < 0 or else Padding > 0 then
-                  Invalid := True;
-               else
-                  Count := Count + 1;
-                  if Count > 4 then
-                     Invalid := True;
-                  else
-                     Values (Count) := Natural (V);
-                     if Count = 4 then
-                        Flush_Quantum;
-                     end if;
-                  end if;
-               end if;
-            end;
-
+            Common.Base64.Push
+              (Decoder,
+               T.OSC_Data (I),
+               Bytes,
+               Byte_Count,
+               Decode_Status);
+            Append_Output;
             exit when Invalid;
          end loop;
       end if;
 
-      if not Invalid and then Count > 0 then
-         Flush_Quantum;
+      if not Invalid then
+         Common.Base64.Finish
+           (Decoder, Bytes, Byte_Count, Decode_Status);
+         Append_Output;
       end if;
 
       if Invalid then
@@ -284,10 +253,10 @@ begin
          exit;
       elsif T.OSC_Data (I) in '0' .. '9' then
          Command :=
-           Natural'Min
-             (Command * 10
-              + Standard.Character'Pos (T.OSC_Data (I))
-              - Standard.Character'Pos ('0'),
+           Append_Decimal_Digit
+             (Command,
+              Standard.Character'Pos (T.OSC_Data (I))
+                - Standard.Character'Pos ('0'),
               Natural'Last / 2);
       else
          T.State := Ground;

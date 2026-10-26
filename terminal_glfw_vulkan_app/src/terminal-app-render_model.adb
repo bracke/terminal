@@ -3,6 +3,7 @@ with Terminal.Common.Base64;
 
 package body Terminal.App.Render_Model is
    use type Terminal.Common.Bytes.Byte;
+   use type Terminal.Common.Base64.Decoder_Status;
 
    function Read_Only (Data : Image_Data_Access) return Image_Data_View is
      (Image_Data_View (Data));
@@ -11,52 +12,30 @@ package body Terminal.App.Render_Model is
      (Image  : Image_Command;
       Target : Positive) return Terminal.Common.Bytes.Byte
    is
-      Values : Terminal.Common.Base64.Quantum := (others => 0);
-      Count : Natural := 0;
-      Padding : Natural := 0;
+      Decoder : Terminal.Common.Base64.Decoder_State;
+      Bytes : Terminal.Common.Base64.Decoded_Quantum;
+      Byte_Count : Natural := 0;
+      Decode_Status : Terminal.Common.Base64.Decoder_Status;
       Decoded_Position : Natural := 0;
+      Result : Terminal.Common.Bytes.Byte := 0;
+      Found : Boolean := False;
 
-      function Group_Length return Natural is
+      procedure Consume_Output is
       begin
-         if Count = 0
-           or else not Terminal.Common.Base64.Is_Valid_Quantum
-             (Values, Count, Padding, Allow_Unpadded => True)
-         then
-            return 0;
+         if Decode_Status = Terminal.Common.Base64.Invalid_Data then
+            Found := True;
+            Result := 0;
+            return;
          end if;
-         return Terminal.Common.Base64.Decoded_Length (Count, Padding);
-      end Group_Length;
-
-      function Group_Byte
-        (Index : Positive) return Terminal.Common.Bytes.Byte
-      is
-      begin
-         case Index is
-            when 1 =>
-               return Terminal.Common.Base64.Decode_Byte (Values, 1);
-            when 2 =>
-               return Terminal.Common.Base64.Decode_Byte (Values, 2);
-            when others =>
-               return Terminal.Common.Base64.Decode_Byte (Values, 3);
-         end case;
-      end Group_Byte;
-
-      function Flush_Group return Terminal.Common.Bytes.Byte is
-         Length : constant Natural := Group_Length;
-      begin
-         if Length = 0 then
-            return 0;
-         end if;
-
-         for I in 1 .. Length loop
+         for I in 1 .. Byte_Count loop
             Decoded_Position := Decoded_Position + 1;
             if Decoded_Position = Target then
-               return Group_Byte (I);
+               Result := Bytes (I);
+               Found := True;
+               return;
             end if;
          end loop;
-
-         return 0;
-      end Flush_Group;
+      end Consume_Output;
    begin
       if Image.Encoded_Source_Bytes = null
         or else Target > Image.Decoded_Byte_Length
@@ -64,54 +43,27 @@ package body Terminal.App.Render_Model is
          return 0;
       end if;
 
+      Terminal.Common.Base64.Reset
+        (Decoder, Allow_Unpadded => True, Allow_Whitespace => True);
+
       for Index in 1 .. Natural'Min
         (Image.Encoded_Source_Length, Image.Encoded_Source_Bytes'Length)
       loop
-         declare
-            Ch : constant Terminal.Common.Bytes.Byte :=
-              Image.Encoded_Source_Bytes (Index);
-            V : constant Integer := Terminal.Common.Base64.Value (Ch);
-         begin
-            if Terminal.Common.Base64.Is_Whitespace (Ch) then
-               null;
-            elsif Ch = Character'Pos ('=') then
-               Count := Count + 1;
-               if Count > 4 then
-                  return 0;
-               end if;
-               Padding := Padding + 1;
-               Values (Count) := 0;
-               if Count = 4 then
-                  return Flush_Group;
-               end if;
-            elsif V < 0 or else Padding > 0 then
-               return 0;
-            else
-               Count := Count + 1;
-               if Count > 4 then
-                  return 0;
-               end if;
-               Values (Count) := Natural (V);
-               if Count = 4 then
-                  declare
-                     Result : constant Terminal.Common.Bytes.Byte := Flush_Group;
-                  begin
-                     if Decoded_Position >= Target then
-                        return Result;
-                     end if;
-                  end;
-                  Values := (others => 0);
-                  Count := 0;
-               end if;
-            end if;
-         end;
+         Terminal.Common.Base64.Push
+           (Decoder,
+            Image.Encoded_Source_Bytes (Index),
+            Bytes,
+            Byte_Count,
+            Decode_Status);
+         Consume_Output;
+         exit when Found;
       end loop;
-
-      if Count > 0 then
-         return Flush_Group;
+      if not Found then
+         Terminal.Common.Base64.Finish
+           (Decoder, Bytes, Byte_Count, Decode_Status);
+         Consume_Output;
       end if;
-
-      return 0;
+      return Result;
    end Base64_Source_Byte;
 
    function Image_Decode_Status_Suffix

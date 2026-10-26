@@ -6,6 +6,7 @@ with Terminal.Core.Parser;
 package body Terminal.Core is
    use Common;
    use Common.Bytes;
+   use type Common.Base64.Decoder_Status;
 
    procedure Free_Cells is new Ada.Unchecked_Deallocation
      (Cell_Array, Cell_Array_Access);
@@ -21,6 +22,21 @@ package body Terminal.Core is
      (Graphics_Event_Node, Graphics_Event_Node_Access);
    procedure Free_Deferred_Input is new Ada.Unchecked_Deallocation
      (Core_Byte_Array, Core_Byte_Array_Access);
+
+   function Append_Decimal_Digit
+     (Value : Natural;
+      Digit : Natural;
+      Limit : Natural) return Natural
+   is
+   begin
+      if Digit > 9
+        or else Digit > Limit
+        or else Value > (Limit - Digit) / 10
+      then
+         return Limit;
+      end if;
+      return Value * 10 + Digit;
+   end Append_Decimal_Digit;
 
    procedure Clear_Deferred_Input (T : in out Terminal) is
    begin
