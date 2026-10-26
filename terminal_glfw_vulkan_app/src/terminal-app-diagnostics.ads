@@ -1,5 +1,6 @@
 with Terminal.Core;
 with Terminal.App.Clipboard_OSC52;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Config;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Fonts;
@@ -63,6 +64,8 @@ package Terminal.App.Diagnostics is
       Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
         Terminal.App.PTY_Write.Ok;
       Statuses       : Runtime_Statuses := (others => <>);
+      Cleanup        : Terminal.App.Cleanup_Diagnostics.Failure_Counts :=
+        (others => 0);
       PTY_Length    : Natural := 0;
       PTY_Overflows : Natural := 0;
       Input_Length  : Natural := 0;

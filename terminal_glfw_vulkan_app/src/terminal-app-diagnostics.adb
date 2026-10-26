@@ -24,6 +24,7 @@ package body Terminal.App.Diagnostics is
    use type Terminal.Core.Diagnostic_Snapshot;
    use type Terminal.Common.Bytes.Byte_Array;
    use type Terminal.App.PTY_Write.Write_All_Status;
+   use type Terminal.App.Cleanup_Diagnostics.Failure_Counts;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Renderer.Renderer_Diagnostics;
@@ -64,144 +65,6 @@ package body Terminal.App.Diagnostics is
       Kind     : Runtime_Status_Kind) return String is
      (Statuses (Kind).Text (1 .. Statuses (Kind).Length));
 
-   subtype Grid_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Resize.Max_Status_Label_Length;
-   subtype Policy_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Render_Policy.Max_Status_Label_Length;
-   subtype Scrollback_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Scrollback_View.Max_Status_Label_Length;
-   subtype Selection_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Selection.Max_Status_Label_Length;
-   subtype Link_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Hyperlinks.Max_Status_Label_Length;
-   subtype Clipboard_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Clipboard_OSC52.Max_Status_Label_Length;
-   subtype Tab_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Tabs.Max_Status_Label_Length;
-   subtype Split_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Splits.Max_Status_Label_Length;
-   subtype Config_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Config.Max_Status_Label_Length;
-   subtype Profile_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Max_Status_Label_Length;
-   subtype Input_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Input_Map.Max_Input_Status_Label_Length;
-   subtype Mouse_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Input_Map.Max_Mouse_Status_Label_Length;
-   subtype Cursor_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Cursor_Blink.Max_Status_Label_Length;
-   subtype Text_Blink_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Text_Blink.Max_Status_Label_Length;
-   subtype Theme_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Theme.Max_Status_Label_Length;
-   subtype Font_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Fonts.Max_Status_Label_Length;
-   subtype PTY_Backend_Status_Length_Range is
-     Natural range 0 .. Terminal.PTY.Backend.Max_Status_Label_Length;
-   subtype Multiplexer_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Max_Status_Label_Length;
-   subtype Graphics_Header_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Graphics.Max_Status_Label_Length;
-   subtype Graphics_Data_Status_Length_Range is
-     Natural range 0 .. Terminal.App.Graphics.Max_Status_Label_Length;
-
-   function Bounded_Length (Text : String) return Grid_Status_Length_Range is
-     (Grid_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Resize.Max_Status_Label_Length));
-
-   function Bounded_Policy_Length
-     (Text : String) return Policy_Status_Length_Range is
-     (Policy_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Render_Policy.Max_Status_Label_Length));
-
-   function Bounded_Scrollback_Length
-     (Text : String) return Scrollback_Status_Length_Range is
-     (Scrollback_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Scrollback_View.Max_Status_Label_Length));
-
-   function Bounded_Selection_Length
-     (Text : String) return Selection_Status_Length_Range is
-     (Selection_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Selection.Max_Status_Label_Length));
-
-   function Bounded_Link_Length (Text : String) return Link_Status_Length_Range is
-     (Link_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Hyperlinks.Max_Status_Label_Length));
-
-   function Bounded_Clipboard_Length
-     (Text : String) return Clipboard_Status_Length_Range is
-     (Clipboard_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Clipboard_OSC52.Max_Status_Label_Length));
-
-   function Bounded_Tab_Length (Text : String) return Tab_Status_Length_Range is
-     (Tab_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Tabs.Max_Status_Label_Length));
-
-   function Bounded_Split_Length
-     (Text : String) return Split_Status_Length_Range is
-     (Split_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Splits.Max_Status_Label_Length));
-
-   function Bounded_Config_Length
-     (Text : String) return Config_Status_Length_Range is
-     (Config_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Config.Max_Status_Label_Length));
-
-   function Bounded_Profile_Length
-     (Text : String) return Profile_Status_Length_Range is
-     (Profile_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Max_Status_Label_Length));
-
-   function Bounded_Input_Length
-     (Text : String) return Input_Status_Length_Range is
-     (Input_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Input_Map.Max_Input_Status_Label_Length));
-
-   function Bounded_Mouse_Length
-     (Text : String) return Mouse_Status_Length_Range is
-     (Mouse_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Input_Map.Max_Mouse_Status_Label_Length));
-
-   function Bounded_Cursor_Length
-     (Text : String) return Cursor_Status_Length_Range is
-     (Cursor_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Cursor_Blink.Max_Status_Label_Length));
-
-   function Bounded_Text_Blink_Length
-     (Text : String) return Text_Blink_Status_Length_Range is
-     (Text_Blink_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Text_Blink.Max_Status_Label_Length));
-
-   function Bounded_Theme_Length
-     (Text : String) return Theme_Status_Length_Range is
-     (Theme_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Theme.Max_Status_Label_Length));
-
-   function Bounded_Font_Length
-     (Text : String) return Font_Status_Length_Range is
-     (Font_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Fonts.Max_Status_Label_Length));
-
-   function Bounded_PTY_Backend_Length
-     (Text : String) return PTY_Backend_Status_Length_Range is
-     (PTY_Backend_Status_Length_Range'Min
-        (Text'Length, Terminal.PTY.Backend.Max_Status_Label_Length));
-
-   function Bounded_Multiplexer_Length
-     (Text : String) return Multiplexer_Status_Length_Range is
-     (Multiplexer_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Max_Status_Label_Length));
-
-   function Bounded_Graphics_Header_Length
-     (Text : String) return Graphics_Header_Status_Length_Range is
-     (Graphics_Header_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Graphics.Max_Status_Label_Length));
-
-   function Bounded_Graphics_Data_Length
-     (Text : String) return Graphics_Data_Status_Length_Range is
-     (Graphics_Data_Status_Length_Range'Min
-        (Text'Length, Terminal.App.Graphics.Max_Status_Label_Length));
-
    function Collect
      (Core     : Terminal.Core.Terminal;
       PTY      : Terminal.App.Queues.PTY_Output_Queue;
@@ -214,218 +77,13 @@ package body Terminal.App.Diagnostics is
       Statuses : Runtime_Statuses := (others => <>))
       return Snapshot
    is
-      Grid_Status : constant String := Value (Statuses, Diagnostics.Grid_Status);
-      Policy_Status : constant String := Value (Statuses, Diagnostics.Policy_Status);
-      Scrollback_Status : constant String := Value (Statuses, Diagnostics.Scrollback_Status);
-      Selection_Status : constant String := Value (Statuses, Diagnostics.Selection_Status);
-      Link_Status : constant String := Value (Statuses, Diagnostics.Link_Status);
-      Link_Activation_Status : constant String :=
-        Value (Statuses, Diagnostics.Link_Activation_Status);
-      Clipboard_Status : constant String := Value (Statuses, Diagnostics.Clipboard_Status);
-      Tab_Status : constant String := Value (Statuses, Diagnostics.Tab_Status);
-      Split_Status : constant String := Value (Statuses, Diagnostics.Split_Status);
-      Config_Status : constant String := Value (Statuses, Diagnostics.Config_Status);
-      Profile_Status : constant String := Value (Statuses, Diagnostics.Profile_Status);
-      Input_Status : constant String := Value (Statuses, Diagnostics.Input_Status);
-      Mouse_Status : constant String := Value (Statuses, Diagnostics.Mouse_Status);
-      Cursor_Status : constant String := Value (Statuses, Diagnostics.Cursor_Status);
-      Text_Blink_Status : constant String := Value (Statuses, Diagnostics.Text_Blink_Status);
-      Theme_Status : constant String := Value (Statuses, Diagnostics.Theme_Status);
-      Font_Status : constant String := Value (Statuses, Diagnostics.Font_Status);
-      PTY_Backend_Status : constant String :=
-        Value (Statuses, Diagnostics.PTY_Backend_Status);
-      ConPTY_Status : constant String := Value (Statuses, Diagnostics.ConPTY_Status);
-      Multiplexer_Status : constant String :=
-        Value (Statuses, Diagnostics.Multiplexer_Status);
-      Graphics_Header_Status : constant String :=
-        Value (Statuses, Diagnostics.Graphics_Header_Status);
-      Graphics_Data_Status : constant String :=
-        Value (Statuses, Diagnostics.Graphics_Data_Status);
-      Grid_Length : constant Grid_Status_Length_Range :=
-        Bounded_Length (Grid_Status);
-      Grid_Text : String (1 .. Terminal.App.Resize.Max_Status_Label_Length) :=
-        (others => ' ');
-      Policy_Length : constant Policy_Status_Length_Range :=
-        Bounded_Policy_Length (Policy_Status);
-      Policy_Text :
-        String (1 .. Terminal.App.Render_Policy.Max_Status_Label_Length) :=
-          (others => ' ');
-      Scrollback_Length : constant Scrollback_Status_Length_Range :=
-        Bounded_Scrollback_Length (Scrollback_Status);
-      Scrollback_Text :
-        String (1 .. Terminal.App.Scrollback_View.Max_Status_Label_Length) :=
-          (others => ' ');
-      Selection_Length : constant Selection_Status_Length_Range :=
-        Bounded_Selection_Length (Selection_Status);
-      Selection_Text :
-        String (1 .. Terminal.App.Selection.Max_Status_Label_Length) :=
-          (others => ' ');
-      Link_Length : constant Link_Status_Length_Range :=
-        Bounded_Link_Length (Link_Status);
-      Link_Text : String (1 .. Terminal.App.Hyperlinks.Max_Status_Label_Length) :=
-        (others => ' ');
-      Link_Activation_Length : constant Link_Status_Length_Range :=
-        Bounded_Link_Length (Link_Activation_Status);
-      Link_Activation_Text :
-        String (1 .. Terminal.App.Hyperlinks.Max_Status_Label_Length) :=
-          (others => ' ');
-      Clipboard_Length : constant Clipboard_Status_Length_Range :=
-        Bounded_Clipboard_Length (Clipboard_Status);
-      Clipboard_Text :
-        String (1 .. Terminal.App.Clipboard_OSC52.Max_Status_Label_Length) :=
-          (others => ' ');
-      Tab_Length : constant Tab_Status_Length_Range :=
-        Bounded_Tab_Length (Tab_Status);
-      Tab_Text : String (1 .. Terminal.App.Tabs.Max_Status_Label_Length) :=
-        (others => ' ');
-      Split_Length : constant Split_Status_Length_Range :=
-        Bounded_Split_Length (Split_Status);
-      Split_Text : String (1 .. Terminal.App.Splits.Max_Status_Label_Length) :=
-        (others => ' ');
-      Config_Length : constant Config_Status_Length_Range :=
-        Bounded_Config_Length (Config_Status);
-      Config_Text : String (1 .. Terminal.App.Config.Max_Status_Label_Length) :=
-        (others => ' ');
-      Profile_Length : constant Profile_Status_Length_Range :=
-        Bounded_Profile_Length (Profile_Status);
-      Profile_Text : String (1 .. Terminal.App.Max_Status_Label_Length) :=
-        (others => ' ');
-      Input_Length : constant Input_Status_Length_Range :=
-        Bounded_Input_Length (Input_Status);
-      Input_Text :
-        String (1 .. Terminal.App.Input_Map.Max_Input_Status_Label_Length) :=
-          (others => ' ');
-      Mouse_Length : constant Mouse_Status_Length_Range :=
-        Bounded_Mouse_Length (Mouse_Status);
-      Mouse_Text :
-        String (1 .. Terminal.App.Input_Map.Max_Mouse_Status_Label_Length) :=
-          (others => ' ');
-      Cursor_Length : constant Cursor_Status_Length_Range :=
-        Bounded_Cursor_Length (Cursor_Status);
-      Cursor_Text :
-        String (1 .. Terminal.App.Cursor_Blink.Max_Status_Label_Length) :=
-          (others => ' ');
-      Text_Blink_Length : constant Text_Blink_Status_Length_Range :=
-        Bounded_Text_Blink_Length (Text_Blink_Status);
-      Text_Blink_Text :
-        String (1 .. Terminal.App.Text_Blink.Max_Status_Label_Length) :=
-          (others => ' ');
-      Theme_Length : constant Theme_Status_Length_Range :=
-        Bounded_Theme_Length (Theme_Status);
-      Theme_Text :
-        String (1 .. Terminal.App.Theme.Max_Status_Label_Length) :=
-          (others => ' ');
-      Font_Length : constant Font_Status_Length_Range :=
-        Bounded_Font_Length (Font_Status);
-      Font_Text :
-        String (1 .. Terminal.App.Fonts.Max_Status_Label_Length) :=
-          (others => ' ');
-      PTY_Backend_Length : constant PTY_Backend_Status_Length_Range :=
-        Bounded_PTY_Backend_Length (PTY_Backend_Status);
-      PTY_Backend_Text :
-        String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
-          (others => ' ');
-      ConPTY_Length : constant PTY_Backend_Status_Length_Range :=
-        Bounded_PTY_Backend_Length (ConPTY_Status);
-      ConPTY_Text :
-        String (1 .. Terminal.PTY.Backend.Max_Status_Label_Length) :=
-          (others => ' ');
-      Multiplexer_Length : constant Multiplexer_Status_Length_Range :=
-        Bounded_Multiplexer_Length (Multiplexer_Status);
-      Multiplexer_Text :
-        String (1 .. Terminal.App.Max_Status_Label_Length) :=
-          (others => ' ');
-      Graphics_Header_Length : constant Graphics_Header_Status_Length_Range :=
-        Bounded_Graphics_Header_Length (Graphics_Header_Status);
-      Graphics_Header_Text :
-        String (1 .. Terminal.App.Graphics.Max_Status_Label_Length) :=
-          (others => ' ');
-      Graphics_Data_Length : constant Graphics_Data_Status_Length_Range :=
-        Bounded_Graphics_Data_Length (Graphics_Data_Status);
-      Graphics_Data_Text :
-        String (1 .. Terminal.App.Graphics.Max_Status_Label_Length) :=
-          (others => ' ');
    begin
-      for I in 1 .. Grid_Length loop
-         Grid_Text (I) := Grid_Status (Grid_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Policy_Length loop
-         Policy_Text (I) := Policy_Status (Policy_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Scrollback_Length loop
-         Scrollback_Text (I) :=
-           Scrollback_Status (Scrollback_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Selection_Length loop
-         Selection_Text (I) := Selection_Status (Selection_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Link_Length loop
-         Link_Text (I) := Link_Status (Link_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Link_Activation_Length loop
-         Link_Activation_Text (I) :=
-           Link_Activation_Status (Link_Activation_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Clipboard_Length loop
-         Clipboard_Text (I) :=
-           Clipboard_Status (Clipboard_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Tab_Length loop
-         Tab_Text (I) := Tab_Status (Tab_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Split_Length loop
-         Split_Text (I) := Split_Status (Split_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Config_Length loop
-         Config_Text (I) := Config_Status (Config_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Profile_Length loop
-         Profile_Text (I) := Profile_Status (Profile_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Input_Length loop
-         Input_Text (I) := Input_Status (Input_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Mouse_Length loop
-         Mouse_Text (I) := Mouse_Status (Mouse_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Cursor_Length loop
-         Cursor_Text (I) := Cursor_Status (Cursor_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Text_Blink_Length loop
-         Text_Blink_Text (I) :=
-           Text_Blink_Status (Text_Blink_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Theme_Length loop
-         Theme_Text (I) := Theme_Status (Theme_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Font_Length loop
-         Font_Text (I) := Font_Status (Font_Status'First + I - 1);
-      end loop;
-      for I in 1 .. PTY_Backend_Length loop
-         PTY_Backend_Text (I) :=
-           PTY_Backend_Status (PTY_Backend_Status'First + I - 1);
-      end loop;
-      for I in 1 .. ConPTY_Length loop
-         ConPTY_Text (I) := ConPTY_Status (ConPTY_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Multiplexer_Length loop
-         Multiplexer_Text (I) :=
-           Multiplexer_Status (Multiplexer_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Graphics_Header_Length loop
-         Graphics_Header_Text (I) :=
-           Graphics_Header_Status (Graphics_Header_Status'First + I - 1);
-      end loop;
-      for I in 1 .. Graphics_Data_Length loop
-         Graphics_Data_Text (I) :=
-           Graphics_Data_Status (Graphics_Data_Status'First + I - 1);
-      end loop;
-
       return
         (Core            => Terminal.Core.Diagnostics (Core),
          Last_Feed_Status => Last_Feed_Status,
          Last_Write_Status => Last_Write_Status,
          Statuses        => Statuses,
+         Cleanup         => Terminal.App.Cleanup_Diagnostics.Snapshot,
          PTY_Length      => PTY.Length,
          PTY_Overflows   => PTY.Overflow_Count,
          Input_Length    => Input.Length,
@@ -446,6 +104,7 @@ package body Terminal.App.Diagnostics is
       return S.Last_Feed_Status /= Last_Snapshot.Last_Feed_Status
         or else S.Last_Write_Status /= Last_Snapshot.Last_Write_Status
         or else S.Statuses /= Last_Snapshot.Statuses
+        or else S.Cleanup /= Last_Snapshot.Cleanup
         or else S.Core /= Last_Snapshot.Core;
    end Core_Changed;
 
@@ -647,6 +306,8 @@ package body Terminal.App.Diagnostics is
            S.Input_Length,
            Terminal.App.Queues.Max_Input_Events,
            S.Input_Overflows);
+      Cleanup_Status : constant String :=
+        Terminal.App.Cleanup_Diagnostics.Status_Label (S.Cleanup);
    begin
       return
         ("diag"
@@ -670,6 +331,9 @@ package body Terminal.App.Diagnostics is
          & " input_queue_status=" & Input_Queue_Status
          & " feed_status=" & Feed_Status
          & " write_status=" & Write_Status
+         & (if Terminal.App.Cleanup_Diagnostics.Total (S.Cleanup) = 0
+            then ""
+            else " cleanup_status=" & Cleanup_Status)
          & Field ("grid_status", Grid_Status)
          & Field ("render_policy", Policy_Status)
          & Field ("scrollback_status", Scrollback_Status)

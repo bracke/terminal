@@ -1,50 +1,7 @@
+with Terminal.App.Cleanup_Diagnostics;
+
 package body Terminal.App.Image_Store.Themes is
-   function Descriptor
-     (Operation : Theme_Operation) return Theme_Operation_Descriptor is
-     (Terminal.App.Image_Store.Descriptor (Operation));
-   function Bytes (Operation : Theme_Operation)
-     return Terminal.App.Render_Model.Image_Data_View is
-     (Terminal.App.Image_Store.Bytes (Operation));
-   function Length (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Length (Operation));
-   function Is_Composition (Operation : Theme_Operation) return Boolean is
-     (Terminal.App.Image_Store.Is_Composition (Operation));
-   function Archived_Frames (Operation : Theme_Operation) return Boolean is
-     (Terminal.App.Image_Store.Archived_Frames (Operation));
-   function New_Frame (Operation : Theme_Operation) return Boolean is
-     (Terminal.App.Image_Store.New_Frame (Operation));
-   function Target_Frame (Operation : Theme_Operation) return Positive is
-     (Terminal.App.Image_Store.Target_Frame (Operation));
-   function Base_Frame (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Base_Frame (Operation));
-   function Source_Frame (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Source_Frame (Operation));
-   function Raw_Format (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Raw_Format (Operation));
-   function Data_Width (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Data_Width (Operation));
-   function Data_Height (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Data_Height (Operation));
-   function Data_Row_Stride_Bytes
-     (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Data_Row_Stride_Bytes (Operation));
-   function Target_X (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Target_X (Operation));
-   function Target_Y (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Target_Y (Operation));
-   function Source_X (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Source_X (Operation));
-   function Source_Y (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Source_Y (Operation));
-   function Region_Width (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Region_Width (Operation));
-   function Region_Height (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Region_Height (Operation));
-   function Composition_Mode (Operation : Theme_Operation) return Natural is
-     (Terminal.App.Image_Store.Composition_Mode (Operation));
-   function Background_Color (Operation : Theme_Operation)
-     return Terminal.Core.Graphics_ID is
-     (Terminal.App.Image_Store.Background_Color (Operation));
+   use type Terminal.App.Render_Model.Image_Data_Access;
 
    procedure Create
      (Description : Theme_Operation_Descriptor;
@@ -102,4 +59,72 @@ package body Terminal.App.Image_Store.Themes is
       Terminal.App.Image_Store.Archive_Root_Theme_Operations
         (Container, Object, Max_Operations);
    end Archive_Root;
+
+   procedure Start
+     (Transaction : in out Append_Transaction;
+      Object      : Image_Object_Access;
+      Operation   : in out Theme_Operation_Access)
+   is
+      Previous : constant Theme_Operation_Access :=
+        (if Object = null then null else Object.Theme_Operations_Tail);
+   begin
+      if Transaction.Operation /= null then
+         raise Program_Error with "theme append transaction is already active";
+      end if;
+      Append_Theme_Operation (Transaction.Container.all, Object, Operation);
+      Transaction.Object := Object;
+      Transaction.Previous_Tail := Previous;
+      Transaction.Operation := Object.Theme_Operations_Tail;
+   end Start;
+
+   procedure Commit (Transaction : in out Append_Transaction) is
+   begin
+      Transaction.Object := null;
+      Transaction.Previous_Tail := null;
+      Transaction.Operation := null;
+   end Commit;
+
+   procedure Rollback (Transaction : in out Append_Transaction) is
+      Object : constant Image_Object_Access := Transaction.Object;
+      Operation : Theme_Operation_Access := Transaction.Operation;
+   begin
+      if Operation = null then
+         return;
+      elsif not Is_Owned (Transaction.Container.all, Object)
+        or else Object.Theme_Operations_Tail /= Operation
+        or else Operation.Next /= null
+      then
+         raise Program_Error with "theme append transaction invariant violated";
+      end if;
+
+      if Transaction.Previous_Tail = null then
+         Object.Theme_Operations := null;
+      else
+         Transaction.Previous_Tail.Next := null;
+      end if;
+      Object.Theme_Operations_Tail := Transaction.Previous_Tail;
+      Object.Theme_Operation_Count := Object.Theme_Operation_Count - 1;
+      Object.Theme_Operation_Bytes :=
+        Object.Theme_Operation_Bytes - Operation.Length;
+      if Operation.Bytes /= null then
+         Object.Theme_Addresses.Delete (Operation.Bytes.all'Address);
+      end if;
+      Synchronize (Transaction.Container.all, Object);
+      Transaction.Object := null;
+      Transaction.Previous_Tail := null;
+      Transaction.Operation := null;
+      Release_Theme_Operation_List (Operation);
+   end Rollback;
+
+   overriding procedure Finalize
+     (Transaction : in out Append_Transaction) is
+   begin
+      if Transaction.Operation /= null then
+         Rollback (Transaction);
+      end if;
+   exception
+      when others =>
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Theme_Transaction);
+   end Finalize;
 end Terminal.App.Image_Store.Themes;

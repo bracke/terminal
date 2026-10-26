@@ -1,4 +1,5 @@
 with Ada.Unchecked_Deallocation;
+with Terminal.App.Cleanup_Diagnostics;
 package body Terminal.App.Session_Runtime is
    use type Terminal.App.PTY_Write.Write_All_Status;
    use type Terminal.Core.Feed_Status;
@@ -136,11 +137,17 @@ package body Terminal.App.Session_Runtime is
    overriding procedure Finalize (R : in out Runtime) is
    begin
       Close (R);
+      if R.Current_State /= Closed then
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Session_Runtime);
+      end if;
    exception
       --  Finalization must never replace an active exception during scope
       --  unwinding.  Explicit Close leaves Cleanup_Pending observable to
       --  callers that need to report an incomplete teardown.
-      when others => null;
+      when others =>
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Session_Runtime);
    end Finalize;
 
    procedure Start

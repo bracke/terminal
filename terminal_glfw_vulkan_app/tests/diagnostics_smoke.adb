@@ -4,6 +4,7 @@ with AUnit.Assertions;
 with Terminal.Common.Bytes;
 with Terminal.App;
 with Terminal.App.Clipboard_OSC52;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Config;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Diagnostics;
@@ -46,6 +47,26 @@ procedure Diagnostics_Smoke is
       Terminal.App.Diagnostics.Set (S.Statuses, Kind, Text);
    end Set_Status;
 begin
+   declare
+      Before : constant Terminal.App.Cleanup_Diagnostics.Failure_Counts :=
+        Terminal.App.Cleanup_Diagnostics.Snapshot;
+      After : Terminal.App.Cleanup_Diagnostics.Failure_Counts;
+   begin
+      Terminal.App.Cleanup_Diagnostics.Note_Failure
+        (Terminal.App.Cleanup_Diagnostics.Image_Install);
+      After := Terminal.App.Cleanup_Diagnostics.Snapshot;
+      Assert
+        (After (Terminal.App.Cleanup_Diagnostics.Image_Install) =
+           Before (Terminal.App.Cleanup_Diagnostics.Image_Install) + 1,
+         "cleanup failure counters should remain observable");
+      Assert
+        (Contains
+           (Terminal.App.Cleanup_Diagnostics.Status_Label (After),
+            "install=1"),
+         "cleanup status should identify the failing component");
+      S.Cleanup := After;
+   end;
+
    Terminal.App.Tabs.Initialize (Tabs);
    Terminal.App.Splits.Initialize (Splits);
    declare
@@ -259,6 +280,9 @@ begin
       Assert
         (Contains (Line, "input_queue_status=input queue 0/256"),
          "empty input queue status should be included");
+      Assert
+        (Contains (Line, "cleanup_status=cleanup failures=1"),
+         "cleanup failures should be included in runtime diagnostics");
       Assert
         (Contains (Line, "feed_status=Feed: Ok"),
          "default feed status should be included");

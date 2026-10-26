@@ -58,7 +58,9 @@ is
    begin
       Rollback (Guard);
    exception
-      when others => null;
+      when others =>
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Image_Install);
    end Finalize;
 
    function Emit_Raw_Kitty

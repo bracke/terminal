@@ -1,5 +1,6 @@
 with Ada.Exceptions;
 with Ada.Unchecked_Deallocation;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.PTY_Write;
 
 package body Terminal.App.Session_Table is
@@ -34,24 +35,47 @@ package body Terminal.App.Session_Table is
    is
       First_Error : Ada.Exceptions.Exception_Occurrence;
       Failed      : Boolean := False;
+      Have_Error  : Boolean := False;
    begin
+      --  Do not free individual slots until every runtime is closed.  On a
+      --  partial failure the logical session table and runtime indices must
+      --  continue to describe the same objects so cleanup can be retried.
       for I in Table.Runtimes'Range loop
          if Table.Runtimes (I) /= null then
             begin
-               Release_Runtime (Table.Runtimes (I));
+               Terminal.App.Session_Runtime.Close (Table.Runtimes (I).all);
+               Failed := Failed or else
+                 Terminal.App.Session_Runtime.State (Table.Runtimes (I).all) /=
+                   Terminal.App.Session_Runtime.Closed;
             exception
                when Error : others =>
-                  if not Failed then
+                  if not Have_Error then
                      Ada.Exceptions.Save_Occurrence (First_Error, Error);
-                     Failed := True;
+                     Have_Error := True;
                   end if;
+                  Failed := True;
             end;
          end if;
       end loop;
-      Terminal.App.Sessions.Initialize (Table.Sessions);
-      if Failed and then Raise_Errors then
-         Ada.Exceptions.Reraise_Occurrence (First_Error);
+
+      if Failed then
+         if Raise_Errors then
+            if Have_Error then
+               Ada.Exceptions.Reraise_Occurrence (First_Error);
+            else
+               raise Program_Error with
+                 "one or more session runtimes remain owned";
+            end if;
+         end if;
+         return;
       end if;
+
+      for I in Table.Runtimes'Range loop
+         if Table.Runtimes (I) /= null then
+            Free_Runtime (Table.Runtimes (I));
+         end if;
+      end loop;
+      Terminal.App.Sessions.Initialize (Table.Sessions);
    end Close_All_Internal;
 
    function Convert
@@ -415,9 +439,18 @@ package body Terminal.App.Session_Table is
    overriding procedure Finalize (Table : in out Runtime_Table) is
    begin
       Close_All_Internal (Table, Raise_Errors => False);
+      for Slot of Table.Runtimes loop
+         if Slot /= null then
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Session_Table);
+            exit;
+         end if;
+      end loop;
    exception
       --  A finalizer is a last-resort cleanup path and must not mask the
       --  exception that caused its enclosing scope to unwind.
-      when others => null;
+      when others =>
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Session_Table);
    end Finalize;
 end Terminal.App.Session_Table;

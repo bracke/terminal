@@ -8,6 +8,7 @@ with Terminal.Common;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
 with Terminal.App.Fonts;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Graphics;
 with Terminal.App.Graphics_Transport;
 with Terminal.App.Frame_Image_Storage;

@@ -396,11 +396,51 @@ package body Terminal.App.Vulkan_Submit is
    is
       Max_Vertices : Natural;
 
+      function Finite (Value : Float) return Boolean is
+        (Value >= -Float'Last and then Value <= Float'Last);
+
+      function Color_Valid (Value : RM.Pixel_Color) return Boolean is
+        (Value.R in 0.0 .. 1.0
+         and then Value.G in 0.0 .. 1.0
+         and then Value.B in 0.0 .. 1.0
+         and then Value.A in 0.0 .. 1.0);
+
+      function Texture_Coordinates_Valid
+        (U0, V0, U1, V1 : Float) return Boolean is
+        (U0 in 0.0 .. 1.0
+         and then V0 in 0.0 .. 1.0
+         and then U1 in 0.0 .. 1.0
+         and then V1 in 0.0 .. 1.0);
+
+      --  Append_Quad adds each extent to its origin and maps both results to
+      --  clip space with a final multiplication by two.  Validate those
+      --  operations up front so malformed finite values cannot overflow after
+      --  the frame has already mutated the retained batch.
+      function Quad_Geometry_Valid
+        (X, Y, Width, Height : Float) return Boolean
+      is
+         Clip_Limit : constant Float := Float'Last / 2.0;
+      begin
+         return Finite (X)
+           and then Finite (Y)
+           and then Width >= 0.0
+           and then Height >= 0.0
+           and then X >= -Clip_Limit
+           and then X <= Clip_Limit
+           and then Y >= -Clip_Limit
+           and then Y <= Clip_Limit
+           and then Width <= Clip_Limit - X
+           and then Height <= Clip_Limit - Y;
+      end Quad_Geometry_Valid;
+
       function Geometry_Valid (Image : RM.Image_Command) return Boolean is
-        (Image.Width >= 0.0
+        (Quad_Geometry_Valid
+           (Image.X, Image.Y, Image.Width, Image.Height)
          and then Image.Width <= Float (Natural'Last)
-         and then Image.Height >= 0.0
-         and then Image.Height <= Float (Natural'Last));
+         and then Image.Height <= Float (Natural'Last)
+         and then Texture_Coordinates_Valid
+           (Image.U0, Image.V0, Image.U1, Image.V1)
+         and then Color_Valid (Image.Tint));
 
       function Command_Count_Valid return Boolean is
         ((Frame.Rectangle_Count = 0
@@ -452,24 +492,105 @@ package body Terminal.App.Vulkan_Submit is
          return Total <= Natural'Last / 6;
       end Vertex_Capacity_Valid;
 
-      function Image_Geometry_Valid return Boolean is
+      function Command_Geometry_Valid return Boolean is
       begin
+         for I in 1 .. Frame.Rectangle_Count loop
+            if not Quad_Geometry_Valid
+              (Frame.Rectangles (I).X,
+               Frame.Rectangles (I).Y,
+               Frame.Rectangles (I).Width,
+               Frame.Rectangles (I).Height)
+              or else not Color_Valid (Frame.Rectangles (I).Color)
+            then
+               return False;
+            end if;
+         end loop;
+         for I in 1 .. Frame.Glyph_Count loop
+            if not Quad_Geometry_Valid
+              (Frame.Glyphs (I).X,
+               Frame.Glyphs (I).Y,
+               Frame.Glyphs (I).Width,
+               Frame.Glyphs (I).Height)
+              or else not Texture_Coordinates_Valid
+                (Frame.Glyphs (I).U0,
+                 Frame.Glyphs (I).V0,
+                 Frame.Glyphs (I).U1,
+                 Frame.Glyphs (I).V1)
+              or else not Color_Valid (Frame.Glyphs (I).Color)
+            then
+               return False;
+            end if;
+         end loop;
+         for I in 1 .. Frame.Colour_Glyph_Count loop
+            if not Quad_Geometry_Valid
+              (Frame.Colour_Glyphs (I).X,
+               Frame.Colour_Glyphs (I).Y,
+               Float (Frame.Colour_Glyphs (I).Width),
+               Float (Frame.Colour_Glyphs (I).Height))
+              or else not Texture_Coordinates_Valid
+                (Frame.Colour_Glyphs (I).U0,
+                 Frame.Colour_Glyphs (I).V0,
+                 Frame.Colour_Glyphs (I).U1,
+                 Frame.Colour_Glyphs (I).V1)
+            then
+               return False;
+            end if;
+         end loop;
          for I in 1 .. Frame.Image_Count loop
             if not Geometry_Valid (Frame.Images (I)) then
                return False;
             end if;
          end loop;
+         for I in 1 .. Frame.Text_Run_Count loop
+            if not Finite (Frame.Text_Runs (I).X)
+              or else not Finite (Frame.Text_Runs (I).Y)
+              or else not Finite (Frame.Text_Runs (I).Cell_Width)
+              or else Frame.Text_Runs (I).Cell_Width < 0.0
+              or else not Finite (Frame.Text_Runs (I).Cell_Height)
+              or else Frame.Text_Runs (I).Cell_Height < 0.0
+              or else not Color_Valid (Frame.Text_Runs (I).Color)
+            then
+               return False;
+            end if;
+            for J in 1 .. Frame.Text_Runs (I).Shaped_Glyph_Count loop
+               if not Finite (Frame.Text_Runs (I).Shaped_Glyphs (J).X_Offset)
+                 or else not Finite
+                   (Frame.Text_Runs (I).Shaped_Glyphs (J).Y_Offset)
+                 or else not Finite
+                   (Frame.Text_Runs (I).Shaped_Glyphs (J).X_Advance)
+                 or else not Finite
+                   (Frame.Text_Runs (I).Shaped_Glyphs (J).Y_Advance)
+               then
+                  return False;
+               end if;
+            end loop;
+         end loop;
          return True;
-      end Image_Geometry_Valid;
+      end Command_Geometry_Valid;
 
       function Colour_Atlas_Size_Valid return Boolean is
-        (Frame.Colour_Sheet_Pixels = System.Null_Address
+        (Frame.Colour_Glyph_Count = 0
          or else
-           (Frame.Colour_Sheet_Width > 0
+           (Frame.Colour_Sheet_Pixels /= System.Null_Address
+            and then Frame.Colour_Sheet_Width > 0
             and then Frame.Colour_Sheet_Height > 0
             and then Frame.Colour_Sheet_Width <= Natural'Last / 4
             and then Frame.Colour_Sheet_Height <=
               Natural'Last / (Frame.Colour_Sheet_Width * 4)));
+
+      function Shaped_Glyph_Total_Valid return Boolean is
+         Total : Natural := 0;
+      begin
+         for I in 1 .. Frame.Text_Run_Count loop
+            if Natural (Frame.Text_Runs (I).Shaped_Glyph_Count) >
+              Natural'Last - Total
+            then
+               return False;
+            end if;
+            Total := Total + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
+         end loop;
+         return True;
+      end Shaped_Glyph_Total_Valid;
 
       procedure Copy_Text_Runs is
       begin
@@ -496,11 +617,6 @@ package body Terminal.App.Vulkan_Submit is
          end if;
          for I in 1 .. Frame.Text_Run_Count loop
             Batch.Text_Runs (I) := Frame.Text_Runs (I);
-            if Natural (Frame.Text_Runs (I).Shaped_Glyph_Count) >
-              Natural'Last - Batch.Shaped_Glyph_Total
-            then
-               raise Constraint_Error with "shaped glyph count overflow";
-            end if;
             Batch.Shaped_Glyph_Total :=
               Batch.Shaped_Glyph_Total
               + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
@@ -733,8 +849,9 @@ package body Terminal.App.Vulkan_Submit is
         or else Frame.Height = 0
         or else not Command_Count_Valid
         or else not Vertex_Capacity_Valid
-        or else not Image_Geometry_Valid
+        or else not Command_Geometry_Valid
         or else not Colour_Atlas_Size_Valid
+        or else not Shaped_Glyph_Total_Valid
       then
          Status := Invalid_Frame;
          return;
@@ -853,9 +970,6 @@ package body Terminal.App.Vulkan_Submit is
       when Storage_Error =>
          Release (Batch);
          Status := Allocation_Failed;
-      when Constraint_Error =>
-         Release (Batch);
-         Status := Invalid_Frame;
    end Build;
 
    function Vertices (Batch : Submission_Batch) return Vertex_Array_Access is

@@ -28,7 +28,7 @@ is
       Row_Quota_Failed : Boolean := False;
       Row_Allocation_Failed : Boolean := False;
       Prepared_Operation : Theme_Operation_Access := null;
-      Theme_Transaction : Terminal.App.Image_Store.Theme_Append_Transaction
+      Theme_Transaction : Themes.Append_Transaction
         (R.Image_Objects'Access);
 
       function Data_Start return Natural is
@@ -111,8 +111,7 @@ is
          Canvas := null;
          Themes.Release_Unowned
            (Prepared_Operation);
-         Terminal.App.Image_Store.Rollback_Theme_Append
-           (Theme_Transaction);
+         Themes.Rollback (Theme_Transaction);
       end Release_Local;
 
       procedure Begin_Theme_Transaction is
@@ -123,8 +122,7 @@ is
             then
                raise Storage_Error with "theme append allocation rejected";
             end if;
-            Terminal.App.Image_Store.Begin_Theme_Append
-              (Theme_Transaction, Object, Prepared_Operation);
+            Themes.Start (Theme_Transaction, Object, Prepared_Operation);
          end if;
       end Begin_Theme_Transaction;
    begin
@@ -542,7 +540,7 @@ is
             Terminal.App.Image_Store.Set_Usage_Hint (Existing, 1);
          end if;
       end if;
-      Terminal.App.Image_Store.Commit (Theme_Transaction);
+      Themes.Commit (Theme_Transaction);
       Touch_Image_Object (R, Object);
       R.Last_Animation_Result := Terminal.Core.Kitty_OK;
       Release_Local;

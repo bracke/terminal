@@ -14,12 +14,47 @@ separate (Terminal.App.Main_Loop.Run)
       procedure Log_Frame_Diagnostics
         (Snaps               : Terminal.App.Renderer.Snapshot_Array;
          Active_Render_Index : Positive;
-         Render_Policy_Status : String) is separate;
+         Render_Policy_Status : String;
+         Framebuffer_Width    : Natural;
+         Framebuffer_Height   : Natural;
+         Renderer_State       : Terminal.App.Renderer.Renderer;
+         Current_Core         : Terminal.Core.Terminal;
+         Scrollback_Offset    : Natural;
+         Selection_State      : Terminal.App.Selection.Selection_State;
+         Hovered              : Terminal.Core.Hyperlink;
+         Has_Activation       : Boolean;
+         Activation           : Terminal.App.Hyperlinks.Activation_Status;
+         Clipboard_Target     : Terminal.Core.Clipboard_Target;
+         Tab_State            : Terminal.App.Tabs.Tab_State;
+         Split_State          : Terminal.App.Splits.Split_State;
+         Configuration        : Terminal.App.Config.Config;
+         Blink_Tick           : Natural;
+         Font_Status          : String;
+         PTY_Backend_Status   : String;
+         ConPTY_Status        : String;
+         Multiplexer_Status   : String;
+         PTY_Queue            : Terminal.App.Queues.PTY_Output_Queue;
+         Input_Queue          : Terminal.App.Queues.Input_Event_Queue;
+         Presenter_State      : Terminal.App.Vulkan_Presenter.Presenter;
+         Feed_Status          : Terminal.Core.Feed_Status;
+         Write_Status         : Terminal.App.PTY_Write.Write_All_Status)
+      is separate;
       procedure Complete_Frame_Graphics
         (Snaps               : Terminal.App.Renderer.Snapshot_Array;
          Active_Render_Index : Positive;
          Render_Status       : Terminal.App.Renderer.Render_Status;
-         Present_Status      : Terminal.App.Vulkan_Presenter.Present_Status)
+         Present_Status      : Terminal.App.Vulkan_Presenter.Present_Status;
+         Runtime_Table       : Terminal.App.Session_Table.Runtime_Table;
+         Current_Runtime     : not null access
+           Terminal.App.Session_Runtime.Runtime;
+         Current_Core        : not null access Terminal.Core.Terminal;
+         Scrollback_Offset   : Natural;
+         Renderer_State      : in out Terminal.App.Renderer.Renderer;
+         Window              : in out GLFW_Vulkan.Windows.Window;
+         Last_Write          : in out
+           Terminal.App.PTY_Write.Write_All_Status;
+         Redraw              : in out Boolean;
+         Recovery            : Terminal.App.Vulkan_Recovery.Controller)
       is separate;
 
       procedure Handle_Present_Status
@@ -314,9 +349,46 @@ separate (Terminal.App.Main_Loop.Run)
             end if;
             Handle_Present_Status (Present_Status);
             Log_Frame_Diagnostics
-              (Snaps, Active_Render_Index, Render_Policy_Status);
+              (Snaps,
+               Active_Render_Index,
+               Render_Policy_Status,
+               FB_Width,
+               FB_Height,
+               R,
+               Active_Core.all,
+               Scroll_Offset,
+               Selection,
+               Hovered_Link,
+               Has_Link_Activation,
+               Link_Activation,
+               Last_Clipboard_Target,
+               Tabs,
+               Splits,
+               App_Config,
+               Current_Blink_Tick,
+               Runtime_Font_Status,
+               Runtime_PTY_Backend_Status,
+               Runtime_ConPTY_Status,
+               Runtime_Multiplexer_Status,
+               Active_PTY_Queue.all,
+               In_Q,
+               Presenter,
+               Last_Feed_Status,
+               Last_Write_Status);
             Complete_Frame_Graphics
-              (Snaps, Active_Render_Index, Render_Status, Present_Status);
+              (Snaps,
+               Active_Render_Index,
+               Render_Status,
+               Present_Status,
+               Sessions,
+               Active_Runtime,
+               Active_Core,
+               Scroll_Offset,
+               R,
+               W,
+               Last_Write_Status,
+               Need_Redraw,
+               Vulkan_Recovery);
          end;
       end if;
       end;

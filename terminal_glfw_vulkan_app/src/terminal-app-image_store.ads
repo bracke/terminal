@@ -240,19 +240,6 @@ package Terminal.App.Image_Store is
    procedure Clear_Frames
      (Container : in out Store;
       Object    : Image_Object_Access);
-   --  A theme append may need to precede the corresponding pixel mutation so
-   --  allocation failure cannot publish pixels without replay history.  The
-   --  transaction owns the appended operation until Commit and removes it on
-   --  Rollback.
-   type Theme_Append_Transaction
-     (Container : not null access Store) is limited private;
-   procedure Begin_Theme_Append
-     (Transaction : in out Theme_Append_Transaction;
-      Object      : Image_Object_Access;
-      Operation   : in out Theme_Operation_Access);
-   procedure Commit (Transaction : in out Theme_Append_Transaction);
-   procedure Rollback_Theme_Append
-     (Transaction : in out Theme_Append_Transaction);
    procedure Delete_Object
      (Container : in out Store;
       Object    : in out Image_Object_Access);
@@ -308,6 +295,10 @@ private
      (Container      : in out Store;
       Object         : Image_Object_Access;
       Max_Operations : Positive);
+   function Is_Owned
+     (Container : Store; Object : Image_Object_Access) return Boolean;
+   procedure Release_Theme_Operation_List
+     (Head : in out Theme_Operation_Access);
 
    type Image_Frame is tagged record
       Number     : Positive := 2;
@@ -412,13 +403,4 @@ private
       Remaining_Attempts : Natural := 0;
    end record;
 
-   type Theme_Append_Transaction
-     (Container : not null access Store) is
-     new Ada.Finalization.Limited_Controlled with record
-      Object        : Image_Object_Access := null;
-      Previous_Tail : Theme_Operation_Access := null;
-      Operation     : Theme_Operation_Access := null;
-   end record;
-   overriding procedure Finalize
-     (Transaction : in out Theme_Append_Transaction);
 end Terminal.App.Image_Store;

@@ -191,17 +191,17 @@ begin
       Data : Terminal.App.Render_Model.Image_Data_Access :=
         new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#31#);
       Operation : Store.Theme_Operation_Access;
-      Transaction : Store.Theme_Append_Transaction (Container'Access);
+      Transaction : Themes.Append_Transaction (Container'Access);
    begin
       Themes.Create
         ((Target_Frame => 1, others => <>), Data, Operation);
-      Store.Begin_Theme_Append (Transaction, Original, Operation);
+      Themes.Start (Transaction, Original, Operation);
       Assert
         (Operation = null
          and then Themes.Count (Original) = 1
          and then Store.Byte_Count (Container) = 8,
          "theme append transaction publishes provisional accounting");
-      Store.Rollback_Theme_Append (Transaction);
+      Themes.Rollback (Transaction);
       Assert
         (Themes.Count (Original) = 0
          and then Store.Byte_Count (Container) = 4,
@@ -212,13 +212,13 @@ begin
       Data : Terminal.App.Render_Model.Image_Data_Access :=
         new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#32#);
       Operation : Store.Theme_Operation_Access;
-      Transaction : Store.Theme_Append_Transaction (Container'Access);
+      Transaction : Themes.Append_Transaction (Container'Access);
    begin
       Themes.Create
         ((Target_Frame => 1, others => <>), Data, Operation);
-      Store.Begin_Theme_Append (Transaction, Original, Operation);
-      Store.Commit (Transaction);
-      Store.Rollback_Theme_Append (Transaction);
+      Themes.Start (Transaction, Original, Operation);
+      Themes.Commit (Transaction);
+      Themes.Rollback (Transaction);
       Assert
         (Themes.Count (Original) = 1
          and then Store.Byte_Count (Container) = 8,
@@ -233,11 +233,11 @@ begin
          Data : Terminal.App.Render_Model.Image_Data_Access :=
            new Terminal.Common.Bytes.Byte_Array'(1 .. 4 => 16#33#);
          Operation : Store.Theme_Operation_Access;
-         Transaction : Store.Theme_Append_Transaction (Container'Access);
+         Transaction : Themes.Append_Transaction (Container'Access);
       begin
          Themes.Create
            ((Target_Frame => 1, others => <>), Data, Operation);
-         Store.Begin_Theme_Append (Transaction, Original, Operation);
+         Themes.Start (Transaction, Original, Operation);
          Assert
            (Themes.Count (Original) = 1,
             "uncommitted theme append is provisionally visible");
