@@ -8,25 +8,11 @@ procedure Text_Blink_Smoke is
 
    Cells : constant Terminal.Core.Cell_Array_Access :=
      new Terminal.Core.Cell_Array (1 .. 2);
-   Snapshot : Terminal.Core.Render_Snapshot :=
-     (Rows   => 1,
-      Cols   => 2,
-      Cells  => Cells,
-      Image_Cell_Count => <>,
-      Dirty  => null,
-      Cursor => <>,
-      Graphics_Stream => <>,
-      Graphics_Transaction => <>,
-      Alternate_Screen => <>,
-      Screen_Generation => <>,
-      Scrollback_Offset => <>,
-      Scrollback_Rows => <>,
-      Graphics_Scroll_Current => <>,
-      Graphics_Scroll_Oldest => <>,
-      Graphics_Scroll_Count => <>,
-      Graphics_Scroll_Events => <>,
-      Graphics => <>);
+   Snapshot : Terminal.Core.Render_Snapshot;
 begin
+   Snapshot.Rows := 1;
+   Snapshot.Cols := 2;
+   Snapshot.Cells := Cells;
    Cells.all (1).Kind := Terminal.Core.Character;
    Cells.all (1).Text.Code_Point := Character'Pos ('a');
    Cells.all (1).Style.Blink := True;

@@ -612,7 +612,7 @@ begin
           Cursor_To_Line_Start => True,
           Placement_Rows => 1,
           others => <>));
-      S := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, S);
       Assert
         (Terminal.Core.Cell_At (S, 2, 1).Text.Code_Point = 16#78#,
          "iTerm2 trailing input resumes at the line below the image");

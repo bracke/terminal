@@ -9,7 +9,8 @@ is
    Y : constant Float :=
      Float (Origin_Y (R) + (Item.Row - 1) * R.CH);
    Data : Terminal.App.Graphics.Graphics_Data_Preview :=
-     (Header_Recognized => Header.Recognized,
+     (Ada.Finalization.Limited_Controlled with
+      Header_Recognized => Header.Recognized,
       Has_Data          => Header.Has_Data,
       Raw_Format        => Header.Raw_Format,
       Pixel_Width       => Header.Pixel_Width,

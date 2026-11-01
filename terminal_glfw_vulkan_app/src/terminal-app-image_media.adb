@@ -21,6 +21,7 @@ with Pictlib.Limits;
 with Pictlib.Pictures;
 with Pictlib.Results;
 with Pictlib.Streams;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Fonts;
 
 package body Terminal.App.Image_Media is
@@ -391,8 +392,29 @@ package body Terminal.App.Image_Media is
       if Result.Bytes /= null then
          Free_Image_Data (Result.Bytes);
       end if;
-      Result := (others => <>);
+      Result.Pixel_Width := 0;
+      Result.Pixel_Height := 0;
+      Result.Frame_Count := 0;
+      Result.Loop_Count := 1;
+      Result.Frame_Bytes := 0;
+      Result.Total_Bytes := 0;
+      Result.Adapter_Buffer_Bytes := 0;
+      Result.Decoder_Configured_Bytes := 0;
+      Result.Delays_MS := (others => 100);
+      Result.Bytes := null;
+      Result.Diagnostic := (others => <>);
+      Result.Warning_Count := 0;
+      Result.First_Warning := (others => <>);
    end Release;
+
+   overriding procedure Finalize (Result : in out Decoded_Image) is
+   begin
+      Release (Result);
+   exception
+      when others =>
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Media_Decoder);
+   end Finalize;
 
    procedure Decode_GIF
      (Data                    : Terminal.Common.Bytes.Byte_Array;
@@ -439,13 +461,29 @@ package body Terminal.App.Image_Media is
       end Bounded_Multiple;
 
       procedure Clean_Up is
+         Failed : Boolean := False;
       begin
          if Decoder_Initialized then
-            Giflib.Decoding.Finalize (Decoder);
+            begin
+               Giflib.Decoding.Finalize (Decoder);
+            exception
+               when others =>
+                  Failed := True;
+            end;
             Decoder_Initialized := False;
          end if;
          if Canvas /= null then
-            Free_GIF_Data (Canvas);
+            begin
+               Free_GIF_Data (Canvas);
+            exception
+               when others =>
+                  Failed := True;
+            end;
+            Canvas := null;
+         end if;
+         if Failed then
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Media_Decoder);
          end if;
       end Clean_Up;
 
@@ -700,13 +738,29 @@ package body Terminal.App.Image_Media is
         Saturating_Multiply (Maximum_Decoded_Bytes, 2);
 
       procedure Clean_Up is
+         Failed : Boolean := False;
       begin
          if Decoder_Initialized then
-            Pictlib.Decoding.Finalize (Decoder);
+            begin
+               Pictlib.Decoding.Finalize (Decoder);
+            exception
+               when others =>
+                  Failed := True;
+            end;
             Decoder_Initialized := False;
          end if;
          if Output /= null then
-            Free_PICT_Data (Output);
+            begin
+               Free_PICT_Data (Output);
+            exception
+               when others =>
+                  Failed := True;
+            end;
+            Output := null;
+         end if;
+         if Failed then
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Media_Decoder);
          end if;
       end Clean_Up;
 

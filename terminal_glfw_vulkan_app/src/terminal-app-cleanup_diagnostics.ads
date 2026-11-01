@@ -7,6 +7,7 @@ package Terminal.App.Cleanup_Diagnostics is
       GLFW_Context,
       Theme_Transaction,
       Image_Install,
+      Media_Decoder,
       Renderer_State,
       Frame_Image_Storage,
       Vulkan_Context,

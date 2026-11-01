@@ -53,6 +53,7 @@ package body Terminal.App.Cleanup_Diagnostics is
         & " glfw=" & Image (Counts (GLFW_Context))
         & " theme=" & Image (Counts (Theme_Transaction))
         & " install=" & Image (Counts (Image_Install))
+        & " media=" & Image (Counts (Media_Decoder))
         & " renderer=" & Image (Counts (Renderer_State))
         & " frame_images=" & Image (Counts (Frame_Image_Storage))
         & " vk_context=" & Image (Counts (Vulkan_Context))

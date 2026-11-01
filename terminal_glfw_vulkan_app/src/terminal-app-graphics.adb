@@ -1,6 +1,7 @@
 with Ada.Streams;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
+with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Image_Decode;
 with Terminal.App.Image_Media;
 with Terminal.App.Zlib_Inflation;
@@ -125,6 +126,61 @@ package body Terminal.App.Graphics is
       Data.Decoded_Length := 0;
       Data.Decoded_Row_Stride_Bytes := 0;
    end Release;
+
+   overriding procedure Finalize (Data : in out Graphics_Data_Preview) is
+   begin
+      Release (Data);
+   exception
+      when others =>
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Media_Decoder);
+   end Finalize;
+
+   procedure Move
+     (Source : in out Graphics_Data_Preview;
+      Target : in out Graphics_Data_Preview)
+   is
+   begin
+      Release (Target);
+      Target.Header_Recognized := Source.Header_Recognized;
+      Target.Has_Data := Source.Has_Data;
+      Target.Encoded_Length := Source.Encoded_Length;
+      Target.Raw_Format := Source.Raw_Format;
+      Target.Pixel_Width := Source.Pixel_Width;
+      Target.Pixel_Height := Source.Pixel_Height;
+      Target.Decoded_Length := Source.Decoded_Length;
+      Target.Decoded_Row_Stride_Bytes := Source.Decoded_Row_Stride_Bytes;
+      Target.Decode_Complete := Source.Decode_Complete;
+      Target.Decode_Status := Source.Decode_Status;
+      Target.Bytes := Source.Bytes;
+      Source.Bytes := null;
+      Source.Decoded_Length := 0;
+      Source.Decoded_Row_Stride_Bytes := 0;
+   end Move;
+
+   function Take
+     (Data : in out Graphics_Data_Preview) return Graphics_Data_Preview
+   is
+   begin
+      return Result : Graphics_Data_Preview :=
+        (Ada.Finalization.Limited_Controlled with
+         Header_Recognized => Data.Header_Recognized,
+         Has_Data => Data.Has_Data,
+         Encoded_Length => Data.Encoded_Length,
+         Raw_Format => Data.Raw_Format,
+         Pixel_Width => Data.Pixel_Width,
+         Pixel_Height => Data.Pixel_Height,
+         Decoded_Length => Data.Decoded_Length,
+         Decoded_Row_Stride_Bytes => Data.Decoded_Row_Stride_Bytes,
+         Decode_Complete => Data.Decode_Complete,
+         Decode_Status => Data.Decode_Status,
+         Bytes => Data.Bytes)
+      do
+         Data.Bytes := null;
+         Data.Decoded_Length := 0;
+         Data.Decoded_Row_Stride_Bytes := 0;
+      end return;
+   end Take;
 
    function Parse_Natural (Text : String) return Natural is
       Value : Natural := 0;
@@ -1177,20 +1233,18 @@ package body Terminal.App.Graphics is
               and then Media.Frame_Bytes > 0
             then
                Release (Result);
-               Result :=
-                 (Header_Recognized => True,
-                  Has_Data => True,
-                  Raw_Format => 32,
-                  Pixel_Width => Media.Pixel_Width,
-                  Pixel_Height => Media.Pixel_Height,
-                  Decoded_Length => Media.Frame_Bytes,
-                  Decoded_Row_Stride_Bytes => Media.Pixel_Width * 4,
-                  Decode_Complete => True,
-                  Decode_Status => Decode_Ok,
-                  Bytes =>
-                    new Terminal.Common.Bytes.Byte_Array
-                      (1 .. Media.Frame_Bytes),
-                  others => <>);
+               Result.Header_Recognized := True;
+               Result.Has_Data := True;
+               Result.Encoded_Length := 0;
+               Result.Raw_Format := 32;
+               Result.Pixel_Width := Media.Pixel_Width;
+               Result.Pixel_Height := Media.Pixel_Height;
+               Result.Decoded_Length := Media.Frame_Bytes;
+               Result.Decoded_Row_Stride_Bytes := Media.Pixel_Width * 4;
+               Result.Decode_Complete := True;
+               Result.Decode_Status := Decode_Ok;
+               Result.Bytes :=
+                 new Terminal.Common.Bytes.Byte_Array (1 .. Media.Frame_Bytes);
                Result.Bytes.all :=
                  Media.Bytes
                    (Media.Bytes'First
@@ -1368,18 +1422,19 @@ package body Terminal.App.Graphics is
         Header_Text (Terminal.Core.ITerm2_Graphics, Text);
       From : Natural := 0;
       Result : Graphics_Data_Preview :=
-        (Header_Recognized => H.Recognized,
+        (Ada.Finalization.Limited_Controlled with
+         Header_Recognized => H.Recognized,
          Has_Data          => H.Has_Data,
          others            => <>);
    begin
       if not H.Recognized or else not H.Has_Data or else Text = "" then
-         return Result;
+         return Take (Result);
       end if;
 
       From := Data_First (Terminal.Core.ITerm2_Graphics, Text);
       if From = 0 then
          Result.Has_Data := False;
-         return Result;
+         return Take (Result);
       end if;
 
       Result.Encoded_Length := Text'Last - From + 1;
@@ -1396,7 +1451,7 @@ package body Terminal.App.Graphics is
          then
             Result.Decode_Status := Decode_Preview_Truncated;
             Result.Decode_Complete := False;
-            return Result;
+            return Take (Result);
          end if;
 
          Decode_Base64_Preview
@@ -1430,18 +1485,18 @@ package body Terminal.App.Graphics is
          end;
       end if;
 
-      return Result;
+      return Take (Result);
    exception
       when Storage_Error =>
          Release (Result);
          Result.Decode_Status := Decode_Allocation_Failed;
          Result.Decode_Complete := False;
-         return Result;
+         return Take (Result);
       when Constraint_Error =>
          Release (Result);
          Result.Decode_Status := Decode_Preview_Truncated;
          Result.Decode_Complete := False;
-         return Result;
+         return Take (Result);
       when others =>
          Release (Result);
          raise;
@@ -1781,7 +1836,8 @@ package body Terminal.App.Graphics is
       H    : constant Graphics_Header := Header_Text (Protocol, Text);
       From : Natural;
       Result : Graphics_Data_Preview :=
-        (Header_Recognized => H.Recognized,
+        (Ada.Finalization.Limited_Controlled with
+         Header_Recognized => H.Recognized,
          Has_Data          => H.Has_Data,
          Raw_Format        => H.Raw_Format,
          Pixel_Width       => H.Pixel_Width,
@@ -1789,13 +1845,13 @@ package body Terminal.App.Graphics is
          others            => <>);
    begin
       if not H.Recognized or else not H.Has_Data or else Text = "" then
-         return Result;
+         return Take (Result);
       end if;
 
       From := Data_First (Protocol, Text);
       if From = 0 then
          Result.Has_Data := False;
-         return Result;
+         return Take (Result);
       end if;
 
       Result.Encoded_Length := Text'Last - From + 1;
@@ -1821,11 +1877,11 @@ package body Terminal.App.Graphics is
                      then Decode_Not_Attempted
                      else Decode_Unsupported_Format);
                   Result.Decode_Complete := False;
-                  return Result;
+                  return Take (Result);
                elsif Has_Raw_Metadata and then Expected_Decoded_Length = 0 then
                   Result.Decode_Status := Decode_Preview_Truncated;
                   Result.Decode_Complete := False;
-                  return Result;
+                  return Take (Result);
                else
                   Decode_Base64_Preview
                     (Text (From .. Text'Last),
@@ -1922,7 +1978,7 @@ package body Terminal.App.Graphics is
             null;
       end case;
 
-      return Result;
+      return Take (Result);
    end Data_Preview_Text;
 
    function Data_Preview
@@ -1930,9 +1986,19 @@ package body Terminal.App.Graphics is
    is
    begin
       if not Event.Pending then
-         return (others => <>);
+         return
+           (Ada.Finalization.Limited_Controlled with others => <>);
       end if;
       return Data_Preview_Text (Event.Protocol, Preview_Text (Event));
+   end Data_Preview;
+
+   procedure Data_Preview
+     (Event  : Terminal.Core.Graphics_Event;
+      Result : in out Graphics_Data_Preview)
+   is
+      Value : Graphics_Data_Preview := Data_Preview (Event);
+   begin
+      Move (Value, Result);
    end Data_Preview;
 
    function Data_Status_Label
@@ -1993,6 +2059,10 @@ package body Terminal.App.Graphics is
          Release (Data);
          return Label;
       end;
+   exception
+      when others =>
+         Release (Data);
+         raise;
    end Data_Status_Label;
 
    function Header_Status_Label

@@ -106,24 +106,23 @@ begin
             "placeholder index resolves conventional placements");
 
          declare
-            Cells : aliased Terminal.Core.Cell_Array :=
-              (1 .. 4 => (others => <>));
-            Snapshot : Terminal.Core.Render_Snapshot :=
-              (Rows => 2,
-               Cols => 2,
-               Graphics_Stream => 9,
-               Image_Cell_Count => 1,
-               others => <>);
+            Cells : constant Terminal.Core.Cell_Array_Access :=
+              new Terminal.Core.Cell_Array'(1 .. 4 => (others => <>));
+            Snapshot : Terminal.Core.Render_Snapshot;
             Row : Integer;
             Col : Integer;
          begin
-            Cells (2).Image :=
+            Snapshot.Rows := 2;
+            Snapshot.Cols := 2;
+            Snapshot.Graphics_Stream := 9;
+            Snapshot.Image_Cell_Count := 1;
+            Snapshot.Cells := Cells;
+            Cells.all (2).Image :=
               (Is_Placeholder => True,
                Image_ID_Valid => True,
                Image_ID       => 7,
                Placement_ID   => 2,
                others         => <>);
-            Snapshot.Cells := Cells'Unchecked_Access;
             Terminal.App.Placeholder_Index.Index_Cells (Index, Snapshot);
             Assert
               (Terminal.App.Placeholder_Index.Find_Origin

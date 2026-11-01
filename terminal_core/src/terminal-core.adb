@@ -2871,14 +2871,16 @@ package body Terminal.Core is
       S : in out Render_Snapshot) is separate;
 
    function Snapshot (T : Terminal) return Render_Snapshot is
-      S : Render_Snapshot;
    begin
-      Snapshot (T, S);
-      return S;
-   exception
-      when others =>
-         Release (S);
-         raise;
+      return S : Render_Snapshot do
+         begin
+            Snapshot (T, S);
+         exception
+            when others =>
+               Release (S);
+               raise;
+         end;
+      end return;
    end Snapshot;
 
    procedure Release (S : in out Render_Snapshot) is
@@ -2908,6 +2910,16 @@ package body Terminal.Core is
       S.Image_Cell_Count := 0;
       S.Cursor := (others => <>);
    end Release;
+
+   overriding procedure Finalize (S : in out Render_Snapshot) is
+   begin
+      Release (S);
+   exception
+      --  A finalizer must not replace an exception already propagating from a
+      --  snapshot consumer. Release remains available for explicit diagnostics.
+      when others =>
+         null;
+   end Finalize;
 
    procedure Set_Cell_Pixel_Size
      (T      : in out Terminal;

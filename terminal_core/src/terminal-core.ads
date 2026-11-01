@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Terminal.Common;
 with Terminal.Common.Bytes;
 
@@ -339,7 +340,9 @@ package Terminal.Core is
    type Dirty_Row_Array_Access is access all Dirty_Row_Array;
    type Tab_Stop_Array_Access is access all Tab_Stop_Array;
 
-   type Render_Snapshot is record
+   --  Owns its backing arrays. Limited control prevents shallow copies and
+   --  releases storage automatically during normal and exceptional unwinding.
+   type Render_Snapshot is new Ada.Finalization.Limited_Controlled with record
       Rows   : Natural := 0;
       Cols   : Natural := 0;
       Graphics_Stream : Graphics_Stream_ID := 0;
@@ -358,6 +361,8 @@ package Terminal.Core is
       Cursor : Cursor_State;
       Graphics : Graphics_Event;
    end record;
+
+   overriding procedure Finalize (S : in out Render_Snapshot);
 
    type Terminal is limited private;
 

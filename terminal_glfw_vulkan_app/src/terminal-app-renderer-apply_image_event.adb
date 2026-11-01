@@ -229,8 +229,12 @@ begin
    Add_Image_Event
      (R,
       Event,
-      Resolved_Image_ID     => Header.Kitty_ID,
-      Resolved_Image_Number => Header.Kitty_Image_Number);
+      Resolved_Image_ID     =>
+        (if Event.Protocol = Terminal.Core.Kitty_Graphics
+         then Header.Kitty_ID else 0),
+      Resolved_Image_Number =>
+        (if Event.Protocol = Terminal.Core.Kitty_Graphics
+         then Header.Kitty_Image_Number else 0));
    R.Transactional_Image_Install := False;
    if R.Last_Stored_Image_Order /= 0 then
       --  Installation and replacement can change the object address retained

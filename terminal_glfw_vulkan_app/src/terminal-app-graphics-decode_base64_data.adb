@@ -9,7 +9,8 @@ separate (Terminal.App.Graphics)
       Encoded_Count : Natural := 0;
       Padding       : Natural := 0;
       Result : Graphics_Data_Preview :=
-        (Header_Recognized => True,
+        (Ada.Finalization.Limited_Controlled with
+         Header_Recognized => True,
          Has_Data          => Text'Length > 0,
          others            => <>);
       Expected : Natural := 0;

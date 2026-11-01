@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Ada.Unchecked_Deallocation;
 with Terminal.Common.Bytes;
 with Terminal.App.Graphics;
@@ -10,6 +11,7 @@ with Terminal.Core;
 package body Terminal.App.Image_Ingestion is
    use type Terminal.App.Graphics_Transport.Byte_Array_Access;
    use type Terminal.App.Graphics.ITerm2_Size_Unit;
+   use type Terminal.App.Graphics.Graphics_Protocol;
    use type Terminal.App.Render_Model.Image_Data_Access;
    procedure Free_Image_Data is new Ada.Unchecked_Deallocation
      (Terminal.Common.Bytes.Byte_Array,
@@ -146,45 +148,53 @@ package body Terminal.App.Image_Ingestion is
          end case;
       end Requested;
 
-      Box_Width : constant Float := Requested
-        (Header.ITerm2_Width_Specified,
-         Header.ITerm2_Width_Value,
-         Header.ITerm2_Width_Unit,
-         Intrinsic_Width,
-         Cell_Width,
-         View_Width);
-      Box_Height : constant Float := Requested
-        (Header.ITerm2_Height_Specified,
-         Header.ITerm2_Height_Value,
-         Header.ITerm2_Height_Unit,
-         Intrinsic_Height,
-         Cell_Height,
-         View_Height);
-      Scale : constant Float :=
-        (if not Header.ITerm2_Preserve_Aspect_Ratio
-         then 1.0
-         elsif Header.ITerm2_Width_Specified
-           and then Header.ITerm2_Height_Specified
-         then Float'Min
-           (Box_Width / Float (Intrinsic_Width),
-            Box_Height / Float (Intrinsic_Height))
-         elsif Header.ITerm2_Width_Specified
-         then Box_Width / Float (Intrinsic_Width)
-         elsif Header.ITerm2_Height_Specified
-         then Box_Height / Float (Intrinsic_Height)
-         else 1.0);
    begin
-      return
-        (Width => Float'Max
-           (1.0,
-            (if Header.ITerm2_Preserve_Aspect_Ratio
-             then Float (Intrinsic_Width) * Scale
-             else Box_Width)),
-         Height => Float'Max
-           (1.0,
-            (if Header.ITerm2_Preserve_Aspect_Ratio
-             then Float (Intrinsic_Height) * Scale
-             else Box_Height)));
+      if Header.Protocol /= Terminal.App.Graphics.ITerm2 then
+         return
+           (Width  => Float (Intrinsic_Width),
+            Height => Float (Intrinsic_Height));
+      end if;
+      declare
+         Box_Width : constant Float := Requested
+           (Header.ITerm2_Width_Specified,
+            Header.ITerm2_Width_Value,
+            Header.ITerm2_Width_Unit,
+            Intrinsic_Width,
+            Cell_Width,
+            View_Width);
+         Box_Height : constant Float := Requested
+           (Header.ITerm2_Height_Specified,
+            Header.ITerm2_Height_Value,
+            Header.ITerm2_Height_Unit,
+            Intrinsic_Height,
+            Cell_Height,
+            View_Height);
+         Scale : constant Float :=
+           (if not Header.ITerm2_Preserve_Aspect_Ratio
+            then 1.0
+            elsif Header.ITerm2_Width_Specified
+              and then Header.ITerm2_Height_Specified
+            then Float'Min
+              (Box_Width / Float (Intrinsic_Width),
+               Box_Height / Float (Intrinsic_Height))
+            elsif Header.ITerm2_Width_Specified
+            then Box_Width / Float (Intrinsic_Width)
+            elsif Header.ITerm2_Height_Specified
+            then Box_Height / Float (Intrinsic_Height)
+            else 1.0);
+      begin
+         return
+           (Width => Float'Max
+              (1.0,
+               (if Header.ITerm2_Preserve_Aspect_Ratio
+                then Float (Intrinsic_Width) * Scale
+                else Box_Width)),
+            Height => Float'Max
+              (1.0,
+               (if Header.ITerm2_Preserve_Aspect_Ratio
+                then Float (Intrinsic_Height) * Scale
+                else Box_Height)));
+      end;
    end ITerm2_Render_Size;
 
    function Validate_Kitty_Query
@@ -200,13 +210,37 @@ package body Terminal.App.Image_Ingestion is
       Data : Terminal.App.Graphics.Graphics_Data_Preview :=
         (if Header.Kitty_Transmission in 'f' | 't' | 's'
          then
-           (Header_Recognized => Header.Recognized,
+           (Ada.Finalization.Limited_Controlled with
+            Header_Recognized => Header.Recognized,
             Has_Data => Header.Has_Data,
             others => <>)
          else Terminal.App.Graphics.Data_Preview_Text
            (Terminal.Core.Kitty_Graphics, Text));
       Row_Failed : Boolean := False;
       Decoded_Bytes : Natural := 0;
+
+      procedure Set_Data
+        (Has_Data     : Boolean;
+         Raw_Format   : Natural;
+         Pixel_Width  : Natural;
+         Pixel_Height : Natural;
+         Length       : Natural;
+         Row_Stride   : Natural;
+         Status       : Terminal.App.Graphics.Data_Decode_Status;
+         Complete     : Boolean)
+      is
+      begin
+         Terminal.App.Graphics.Release (Data);
+         Data.Header_Recognized := True;
+         Data.Has_Data := Has_Data;
+         Data.Raw_Format := Raw_Format;
+         Data.Pixel_Width := Pixel_Width;
+         Data.Pixel_Height := Pixel_Height;
+         Data.Decoded_Length := Length;
+         Data.Decoded_Row_Stride_Bytes := Row_Stride;
+         Data.Decode_Status := Status;
+         Data.Decode_Complete := Complete;
+      end Set_Data;
 
       function One_Chunk (Index : Positive) return String is
          First : constant Natural := Payload_Start (Kitty, Text);
@@ -380,18 +414,15 @@ package body Terminal.App.Image_Ingestion is
                            else Terminal.Core.Kitty_EINVAL);
                      end if;
                      if Pixel_Size > 0 then
-                        Data :=
-                          (Header_Recognized => True,
-                           Has_Data => True,
-                           Raw_Format => Header.Kitty_Format,
-                           Pixel_Width => Header.Pixel_Width,
-                           Pixel_Height => Header.Pixel_Height,
-                           Decoded_Length => Inflated_Length,
-                           Decoded_Row_Stride_Bytes =>
-                             Header.Pixel_Width * Pixel_Size,
-                           Decode_Status => Terminal.App.Graphics.Decode_Ok,
-                           Decode_Complete => True,
-                           others => <>);
+                        Set_Data
+                          (True,
+                           Header.Kitty_Format,
+                           Header.Pixel_Width,
+                           Header.Pixel_Height,
+                           Inflated_Length,
+                           Header.Pixel_Width * Pixel_Size,
+                           Terminal.App.Graphics.Decode_Ok,
+                           True);
                      else
                         Terminal.App.Graphics.Decode_PNG_RGBA_Rows
                           (Inflated.all, Inflated_Length,
@@ -425,20 +456,17 @@ package body Terminal.App.Image_Ingestion is
                      end if;
                      Expected :=
                        Header.Pixel_Width * Header.Pixel_Height * Pixel_Size;
-                     Data :=
-                       (Header_Recognized => True,
-                        Has_Data => Loaded_Length > 0,
-                        Raw_Format => Header.Kitty_Format,
-                        Pixel_Width => Header.Pixel_Width,
-                        Pixel_Height => Header.Pixel_Height,
-                        Decoded_Length => Loaded_Length,
-                        Decoded_Row_Stride_Bytes => Header.Pixel_Width * Pixel_Size,
-                        Decode_Status =>
-                          (if Loaded_Length = Expected
-                           then Terminal.App.Graphics.Decode_Ok
-                           else Terminal.App.Graphics.Decode_Invalid_Byte),
-                        Decode_Complete => Loaded_Length = Expected,
-                        others => <>);
+                     Set_Data
+                       (Loaded_Length > 0,
+                        Header.Kitty_Format,
+                        Header.Pixel_Width,
+                        Header.Pixel_Height,
+                        Loaded_Length,
+                        Header.Pixel_Width * Pixel_Size,
+                        (if Loaded_Length = Expected
+                         then Terminal.App.Graphics.Decode_Ok
+                         else Terminal.App.Graphics.Decode_Invalid_Byte),
+                        Loaded_Length = Expected);
                      Terminal.App.Graphics_Transport.Release (Loaded);
                   end;
                elsif Header.Kitty_Format = 100 then
@@ -464,15 +492,15 @@ package body Terminal.App.Image_Ingestion is
                         Positive'Last, Media, Media_Status);
                      Terminal.App.Graphics_Transport.Release (Loaded);
                      if Media_Status = Terminal.App.Image_Media.Decode_Ok then
-                        Data :=
-                          (Header_Recognized => True, Has_Data => True,
-                           Raw_Format => 32,
-                           Pixel_Width => Media.Pixel_Width,
-                           Pixel_Height => Media.Pixel_Height,
-                           Decoded_Length => Media.Frame_Bytes,
-                           Decoded_Row_Stride_Bytes => Media.Pixel_Width * 4,
-                           Decode_Status => Terminal.App.Graphics.Decode_Ok,
-                           Decode_Complete => True, others => <>);
+                        Set_Data
+                          (True,
+                           32,
+                           Media.Pixel_Width,
+                           Media.Pixel_Height,
+                           Media.Frame_Bytes,
+                           Media.Pixel_Width * 4,
+                           Terminal.App.Graphics.Decode_Ok,
+                           True);
                      else
                         Data.Decode_Status :=
                            (case Media_Status is

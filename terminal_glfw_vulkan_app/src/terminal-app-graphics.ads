@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Terminal.Common.Bytes;
 with Terminal.App.Image_Decode;
 with Terminal.App.Render_Model;
@@ -45,83 +46,88 @@ package Terminal.App.Graphics is
    type ITerm2_Size_Unit is
      (ITerm2_Auto, ITerm2_Cells, ITerm2_Pixels, ITerm2_Percent);
 
-   type Graphics_Header is record
+   type Graphics_Header (Protocol : Graphics_Protocol := Kitty) is record
       Recognized       : Boolean := False;
       Has_Data         : Boolean := False;
-      Kitty_Control_Data_Valid : Boolean := True;
-      Kitty_Action_Controls_Valid : Boolean := True;
-      Kitty_More       : Boolean := False;
-      Kitty_More_Specified : Boolean := False;
-      Kitty_More_Valid : Boolean := True;
-      Kitty_Action     : Character := ASCII.NUL;
-      Kitty_Transmission : Character := ASCII.NUL;
-      Kitty_Transmission_Specified : Boolean := False;
-      Kitty_Transmission_Valid : Boolean := True;
-      Kitty_Compression : Character := ASCII.NUL;
-      Kitty_Compression_Specified : Boolean := False;
-      Kitty_Compression_Valid : Boolean := True;
-      Kitty_Delete     : Character := ASCII.NUL;
-      Kitty_Delete_Controls_Valid : Boolean := True;
-      Kitty_Delete_Range_First : Terminal.Core.Graphics_ID := 0;
-      Kitty_Delete_Range_Last  : Terminal.Core.Graphics_ID := 0;
-      Kitty_ID         : Terminal.Core.Graphics_ID := 0;
-      Kitty_Image_Number : Terminal.Core.Graphics_ID := 0;
-      Kitty_Placement_ID : Terminal.Core.Graphics_ID := 0;
-      Kitty_Quiet      : Natural := 0;
-      Kitty_Usage_Hint : Natural := 0;
-      Kitty_Format     : Natural := 0;
       Raw_Format       : Natural := 0;
       Pixel_Width      : Natural := 0;
       Pixel_Height     : Natural := 0;
-      Sixel_Transparent : Boolean := False;
-      Kitty_Data_Size  : Natural := 0;
-      Kitty_Data_Size_Specified : Boolean := False;
-      Kitty_Data_Size_Valid : Boolean := True;
-      Kitty_Data_Offset : Natural := 0;
-      Kitty_Data_Offset_Specified : Boolean := False;
-      Kitty_Data_Offset_Valid : Boolean := True;
-      Kitty_Source_X   : Natural := 0;
-      Kitty_Source_Y   : Natural := 0;
-      Kitty_Source_Width : Natural := 0;
-      Kitty_Source_Height : Natural := 0;
-      Kitty_Cell_X     : Natural := 0;
-      Kitty_Cell_Y     : Natural := 0;
-      Kitty_Z_Index    : Integer := 0;
-      Kitty_No_Cursor_Move : Boolean := False;
-      Kitty_Virtual_Placement : Boolean := False;
-      Kitty_Parent_ID  : Terminal.Core.Graphics_ID := 0;
-      Kitty_Parent_Placement_ID : Terminal.Core.Graphics_ID := 0;
-      Kitty_Parent_Offset_X : Integer := 0;
-      Kitty_Parent_Offset_Y : Integer := 0;
-      Kitty_Frame_Number : Natural := 0;
-      Kitty_Base_Frame : Natural := 0;
-      Kitty_Frame_Gap : Integer := 0;
-      Kitty_Composition_Mode : Natural := 0;
-      Kitty_Background_Color : Terminal.Core.Graphics_ID := 0;
-      Kitty_Animation_State : Natural := 0;
-      Kitty_Loop_Count : Natural := 0;
-      ITerm2_Inline    : Boolean := False;
-      ITerm2_Control_Data_Valid : Boolean := True;
-      ITerm2_Name_Length : Natural := 0;
-      ITerm2_Declared_Size : Natural := 0;
-      ITerm2_Declared_Size_Valid : Boolean := True;
-      ITerm2_Preserve_Aspect_Ratio : Boolean := True;
-      ITerm2_Do_Not_Move_Cursor : Boolean := False;
-      ITerm2_Width_Specified : Boolean := False;
-      ITerm2_Height_Specified : Boolean := False;
-      ITerm2_Width_Valid : Boolean := True;
-      ITerm2_Height_Valid : Boolean := True;
-      ITerm2_Width_Value : Natural := 0;
-      ITerm2_Height_Value : Natural := 0;
-      ITerm2_Width_Unit : ITerm2_Size_Unit := ITerm2_Auto;
-      ITerm2_Height_Unit : ITerm2_Size_Unit := ITerm2_Auto;
-      Kitty_Columns_Specified : Boolean := False;
-      Kitty_Columns_Valid : Boolean := True;
-      Kitty_Rows_Specified : Boolean := False;
-      Kitty_Rows_Valid : Boolean := True;
-      Kitty_Geometry_Controls_Valid : Boolean := True;
       Placeholder_Cols : Positive := 4;
       Placeholder_Rows : Positive := 2;
+      case Protocol is
+         when Kitty =>
+            Kitty_Control_Data_Valid : Boolean := True;
+            Kitty_Action_Controls_Valid : Boolean := True;
+            Kitty_More       : Boolean := False;
+            Kitty_More_Specified : Boolean := False;
+            Kitty_More_Valid : Boolean := True;
+            Kitty_Action     : Character := ASCII.NUL;
+            Kitty_Transmission : Character := ASCII.NUL;
+            Kitty_Transmission_Specified : Boolean := False;
+            Kitty_Transmission_Valid : Boolean := True;
+            Kitty_Compression : Character := ASCII.NUL;
+            Kitty_Compression_Specified : Boolean := False;
+            Kitty_Compression_Valid : Boolean := True;
+            Kitty_Delete     : Character := ASCII.NUL;
+            Kitty_Delete_Controls_Valid : Boolean := True;
+            Kitty_Delete_Range_First : Terminal.Core.Graphics_ID := 0;
+            Kitty_Delete_Range_Last  : Terminal.Core.Graphics_ID := 0;
+            Kitty_ID         : Terminal.Core.Graphics_ID := 0;
+            Kitty_Image_Number : Terminal.Core.Graphics_ID := 0;
+            Kitty_Placement_ID : Terminal.Core.Graphics_ID := 0;
+            Kitty_Quiet      : Natural := 0;
+            Kitty_Usage_Hint : Natural := 0;
+            Kitty_Format     : Natural := 0;
+            Kitty_Data_Size  : Natural := 0;
+            Kitty_Data_Size_Specified : Boolean := False;
+            Kitty_Data_Size_Valid : Boolean := True;
+            Kitty_Data_Offset : Natural := 0;
+            Kitty_Data_Offset_Specified : Boolean := False;
+            Kitty_Data_Offset_Valid : Boolean := True;
+            Kitty_Source_X   : Natural := 0;
+            Kitty_Source_Y   : Natural := 0;
+            Kitty_Source_Width : Natural := 0;
+            Kitty_Source_Height : Natural := 0;
+            Kitty_Cell_X     : Natural := 0;
+            Kitty_Cell_Y     : Natural := 0;
+            Kitty_Z_Index    : Integer := 0;
+            Kitty_No_Cursor_Move : Boolean := False;
+            Kitty_Virtual_Placement : Boolean := False;
+            Kitty_Parent_ID  : Terminal.Core.Graphics_ID := 0;
+            Kitty_Parent_Placement_ID : Terminal.Core.Graphics_ID := 0;
+            Kitty_Parent_Offset_X : Integer := 0;
+            Kitty_Parent_Offset_Y : Integer := 0;
+            Kitty_Frame_Number : Natural := 0;
+            Kitty_Base_Frame : Natural := 0;
+            Kitty_Frame_Gap : Integer := 0;
+            Kitty_Composition_Mode : Natural := 0;
+            Kitty_Background_Color : Terminal.Core.Graphics_ID := 0;
+            Kitty_Animation_State : Natural := 0;
+            Kitty_Loop_Count : Natural := 0;
+            Kitty_Columns_Specified : Boolean := False;
+            Kitty_Columns_Valid : Boolean := True;
+            Kitty_Rows_Specified : Boolean := False;
+            Kitty_Rows_Valid : Boolean := True;
+            Kitty_Geometry_Controls_Valid : Boolean := True;
+         when ITerm2 =>
+            ITerm2_Inline    : Boolean := False;
+            ITerm2_Control_Data_Valid : Boolean := True;
+            ITerm2_Name_Length : Natural := 0;
+            ITerm2_Declared_Size : Natural := 0;
+            ITerm2_Declared_Size_Valid : Boolean := True;
+            ITerm2_Preserve_Aspect_Ratio : Boolean := True;
+            ITerm2_Do_Not_Move_Cursor : Boolean := False;
+            ITerm2_Width_Specified : Boolean := False;
+            ITerm2_Height_Specified : Boolean := False;
+            ITerm2_Width_Valid : Boolean := True;
+            ITerm2_Height_Valid : Boolean := True;
+            ITerm2_Width_Value : Natural := 0;
+            ITerm2_Height_Value : Natural := 0;
+            ITerm2_Width_Unit : ITerm2_Size_Unit := ITerm2_Auto;
+            ITerm2_Height_Unit : ITerm2_Size_Unit := ITerm2_Auto;
+         when Sixel =>
+            Sixel_Transparent : Boolean := False;
+      end case;
    end record;
 
    subtype Data_Preview_Length_Range is Natural range 0 .. Max_Data_Preview_Length;
@@ -146,7 +152,10 @@ package Terminal.App.Graphics is
    Decode_Unsupported_Format : constant Data_Decode_Status :=
      Terminal.App.Image_Decode.Decode_Unsupported_Format;
 
-   type Graphics_Data_Preview is record
+   --  Bytes is owned by the preview.  Controlled finalization releases it,
+   --  while limiting the record prevents accidental shallow copies.
+   type Graphics_Data_Preview is
+     new Ada.Finalization.Limited_Controlled with record
       Header_Recognized : Boolean := False;
       Has_Data          : Boolean := False;
       Encoded_Length    : Natural := 0;
@@ -159,6 +168,8 @@ package Terminal.App.Graphics is
       Decode_Status     : Data_Decode_Status := Decode_Not_Attempted;
       Bytes             : Terminal.App.Render_Model.Image_Data_Access := null;
    end record;
+
+   overriding procedure Finalize (Data : in out Graphics_Data_Preview);
 
    function Capability
      (Protocol : Graphics_Protocol) return Protocol_Capability;
@@ -174,6 +185,9 @@ package Terminal.App.Graphics is
       Text     : String) return Graphics_Header;
    function Data_Preview
      (Event : Terminal.Core.Graphics_Event) return Graphics_Data_Preview;
+   procedure Data_Preview
+     (Event  : Terminal.Core.Graphics_Event;
+      Result : in out Graphics_Data_Preview);
    function Data_Preview_Text
      (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
       Text     : String) return Graphics_Data_Preview;
@@ -306,6 +320,9 @@ package Terminal.App.Graphics is
          Continue : in out Boolean);
       Result         : in out Graphics_Data_Preview);
    procedure Release (Data : in out Graphics_Data_Preview);
+   procedure Move
+     (Source : in out Graphics_Data_Preview;
+      Target : in out Graphics_Data_Preview);
    function Data_Decode_Status_Suffix
      (Status : Data_Decode_Status) return String;
    function Image_Decode_Status

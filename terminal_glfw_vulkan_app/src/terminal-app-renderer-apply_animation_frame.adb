@@ -9,7 +9,8 @@ is
       Object : constant Image_Object_Access :=
         Find_Image_Object (R, Event.Stream_ID, Header.Kitty_ID);
       Data : Terminal.App.Graphics.Graphics_Data_Preview :=
-        (Header_Recognized => Header.Recognized,
+        (Ada.Finalization.Limited_Controlled with
+         Header_Recognized => Header.Recognized,
          Has_Data          => Header.Has_Data,
          Raw_Format        => Header.Raw_Format,
          Pixel_Width       => Header.Pixel_Width,

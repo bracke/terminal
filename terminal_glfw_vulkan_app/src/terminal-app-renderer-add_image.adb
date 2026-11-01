@@ -420,7 +420,10 @@ begin
          end if;
       end;
    end if;
-   if Header.Recognized and then Header.Kitty_Action in 'T' | 'p' then
+   if Event.Protocol = Terminal.Core.Kitty_Graphics
+     and then Header.Recognized
+     and then Header.Kitty_Action in 'T' | 'p'
+   then
       Placement_Image_ID := Header.Kitty_ID;
       if Placement_Image_ID = 0
         and then Header.Kitty_Image_Number /= 0

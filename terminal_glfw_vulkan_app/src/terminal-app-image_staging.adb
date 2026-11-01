@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Terminal.App.Graphics;
 with Terminal.Common.Bytes;
 
@@ -17,7 +18,8 @@ package body Terminal.App.Image_Staging is
       Status : out Decode_Status)
    is
       Data : Terminal.App.Graphics.Graphics_Data_Preview :=
-        (Header_Recognized => True,
+        (Ada.Finalization.Limited_Controlled with
+         Header_Recognized => True,
          Has_Data          => True,
          Raw_Format        => Source.Raw_Format,
          Pixel_Width       => Source.Pixel_Width,

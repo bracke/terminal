@@ -14,7 +14,8 @@ is
    Encoded_Length : Natural := 0;
    PNG_Length : Natural := 0;
    Data : Terminal.App.Graphics.Graphics_Data_Preview :=
-     (Header_Recognized => Header.Recognized,
+     (Ada.Finalization.Limited_Controlled with
+      Header_Recognized => Header.Recognized,
       Has_Data          => Header.Has_Data,
       Raw_Format        => 0,
       Pixel_Width       => 0,
@@ -149,10 +150,15 @@ begin
         Terminal.App.Graphics.Decode_Unsupported_Format
       then
          Terminal.App.Graphics.Release (Data);
-         Data := Terminal.App.Graphics.JPEG_Data_Preview_Text
-           (Image_Text,
-            R.Graphics_Limits.Per_Image_Bytes,
-            R.Graphics_Limits.Pixel_Dimension);
+         declare
+            JPEG_Data : Terminal.App.Graphics.Graphics_Data_Preview :=
+              Terminal.App.Graphics.JPEG_Data_Preview_Text
+                (Image_Text,
+                 R.Graphics_Limits.Per_Image_Bytes,
+                 R.Graphics_Limits.Pixel_Dimension);
+         begin
+            Terminal.App.Graphics.Move (JPEG_Data, Data);
+         end;
          if Data.Bytes /= null then
             Image_Bytes := Data.Bytes;
             Data.Bytes := null;
@@ -205,18 +211,17 @@ begin
                         R.Graphics_Limits.Animation_Frames)
                then
                   Terminal.App.Graphics.Release (Data);
-                  Data :=
-                    (Header_Recognized => True,
-                     Has_Data => True,
-                     Encoded_Length => Encoded_Length,
-                     Raw_Format => 32,
-                     Pixel_Width => Media.Pixel_Width,
-                     Pixel_Height => Media.Pixel_Height,
-                     Decoded_Length => Media.Frame_Bytes,
-                     Decoded_Row_Stride_Bytes => Media.Pixel_Width * 4,
-                     Decode_Complete => True,
-                     Decode_Status => Terminal.App.Graphics.Decode_Ok,
-                     Bytes => null);
+                  Data.Header_Recognized := True;
+                  Data.Has_Data := True;
+                  Data.Encoded_Length := Encoded_Length;
+                  Data.Raw_Format := 32;
+                  Data.Pixel_Width := Media.Pixel_Width;
+                  Data.Pixel_Height := Media.Pixel_Height;
+                  Data.Decoded_Length := Media.Frame_Bytes;
+                  Data.Decoded_Row_Stride_Bytes := Media.Pixel_Width * 4;
+                  Data.Decode_Complete := True;
+                  Data.Decode_Status := Terminal.App.Graphics.Decode_Ok;
+                  Data.Bytes := null;
                   if Media.Frame_Count = 1 then
                      --  Static native media already has the exact buffer
                      --  layout the image store owns. Transfer it instead
@@ -480,20 +485,24 @@ begin
            (R, Data.Pixel_Width, Data.Pixel_Height, Header)
          else (others => <>));
       Available_Width : constant Natural :=
-        (if Header.Kitty_Source_X < Data.Pixel_Width
+        (if Item.Protocol = Terminal.Core.Kitty_Graphics
+          and then Header.Kitty_Source_X < Data.Pixel_Width
          then Data.Pixel_Width - Header.Kitty_Source_X
-         else 0);
+         else Data.Pixel_Width);
       Available_Height : constant Natural :=
-        (if Header.Kitty_Source_Y < Data.Pixel_Height
+        (if Item.Protocol = Terminal.Core.Kitty_Graphics
+          and then Header.Kitty_Source_Y < Data.Pixel_Height
          then Data.Pixel_Height - Header.Kitty_Source_Y
-         else 0);
+         else Data.Pixel_Height);
       Source_Width : constant Natural :=
-        (if Header.Kitty_Source_Width = 0
+        (if Item.Protocol /= Terminal.Core.Kitty_Graphics
+         or else Header.Kitty_Source_Width = 0
          then Available_Width
          else Natural'Min
            (Header.Kitty_Source_Width, Available_Width));
       Source_Height : constant Natural :=
-        (if Header.Kitty_Source_Height = 0
+        (if Item.Protocol /= Terminal.Core.Kitty_Graphics
+         or else Header.Kitty_Source_Height = 0
          then Available_Height
          else Natural'Min
            (Header.Kitty_Source_Height, Available_Height));

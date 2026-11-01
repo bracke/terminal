@@ -327,7 +327,8 @@ begin
      (Ingestion.Payload_Start (Ingestion.Kitty, "a=T;") = 0,
       "empty payload is rejected");
    declare
-      Header : Terminal.App.Graphics.Graphics_Header := (others => <>);
+      Header : Terminal.App.Graphics.Graphics_Header :=
+        (Protocol => Terminal.App.Graphics.ITerm2, others => <>);
       Size : Ingestion.Pixel_Size;
    begin
       Header.ITerm2_Width_Specified := True;

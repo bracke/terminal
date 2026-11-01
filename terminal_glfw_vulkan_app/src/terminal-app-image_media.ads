@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with Terminal.Common.Bytes;
 with Terminal.App.Image_Decode;
 with Terminal.App.Render_Model;
@@ -65,7 +66,9 @@ package Terminal.App.Image_Media is
 
    function Diagnostic_Identifier (Item : Decode_Diagnostic) return String;
 
-   type Decoded_Image is record
+   --  Bytes is uniquely owned by the decoded result. Limited control makes
+   --  transfer explicit and releases storage during exception unwinding.
+   type Decoded_Image is new Ada.Finalization.Limited_Controlled with record
       Pixel_Width  : Natural := 0;
       Pixel_Height : Natural := 0;
       Frame_Count  : Natural range 0 .. Max_Frames := 0;
@@ -86,6 +89,8 @@ package Terminal.App.Image_Media is
       Warning_Count : Natural := 0;
       First_Warning : Decode_Diagnostic;
    end record;
+
+   overriding procedure Finalize (Result : in out Decoded_Image);
 
    --  Native GIF and PICT decoding is always available.
    function Available return Boolean;

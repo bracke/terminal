@@ -3,7 +3,12 @@ separate (Terminal.App.Graphics)
      (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
       Text     : String) return Graphics_Header
    is
-      Result : Graphics_Header;
+      Result : Graphics_Header
+        ((case Protocol is
+            when Terminal.Core.Sixel_Graphics => Sixel,
+            when Terminal.Core.Kitty_Graphics => Kitty,
+            when Terminal.Core.ITerm2_Graphics => ITerm2,
+            when Terminal.Core.No_Graphics => Kitty));
    begin
       if Text = "" then
          return Result;

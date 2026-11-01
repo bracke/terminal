@@ -210,7 +210,7 @@ begin
    begin
       Terminal.Core.Resize (T, 3, 6, Resize_Result);
       Assert (Resize_Result = Terminal.Core.Ok, "placeholder resize");
-      S := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, S);
       Assert
         (Terminal.Core.Cell_At (S, 1, 2).Image.Is_Placeholder
          and then Terminal.Core.Cell_At (S, 1, 2).Image.Image_ID = 42,
