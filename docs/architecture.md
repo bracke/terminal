@@ -67,16 +67,21 @@ automatic finalization performed during scope unwinding. A failed release leaves
 the runtime in `Cleanup_Pending`; restart and table removal refuse to overwrite
 the retained owner, and finalization reports incomplete cleanup instead of
 silently marking leaked resources closed.
-Session, tab, and split mutations are prepared on copied state and committed
-only after every participating model accepts the operation; a rejected layout
-or activation therefore cannot leave their counts or active indices divergent.
+The runtime table owns session, tab, and split activation state. Mutations are
+prepared on copied state and committed only after every participating model
+accepts the operation; a rejected layout or activation therefore cannot leave
+their counts or active indices divergent. The main loop consumes read-only tab
+and split snapshots and cannot independently mutate an active index.
 Orderly shutdown records snapshot, session-table, GLFW-window, and GLFW-context
 cleanup failures and leaves failed owners armed for controlled-finalization
 retry.
 
 The app render pipeline is staged:
 
-1. `Terminal.Core.Render_Snapshot` is copied out of the terminal core.
+1. A limited controlled `Terminal.Core.Render_Snapshot` is constructed from
+   the terminal core. Its backing arrays cannot be shallow-copied; refresh uses
+   the explicit snapshot procedure, while controlled finalization guarantees
+   release at scope exit.
 2. `Terminal.App.Renderer` loads `textrender`, rasterizes glyphs, and builds
    renderer-neutral `Terminal.App.Render_Model.Frame_Commands`. The frame
    contains fallback glyph quads plus bounded text-run commands prepared for
@@ -103,6 +108,18 @@ emission, text shaping and glyph drawing, diagnostics, and teardown live in
 named subunits. This preserves direct access to the renderer's invariants without
 introducing another crate or exposing backend types, while keeping each state
 transition independently reviewable.
+
+Production callers use the narrow `Terminal.App.Renderer.Graphics`,
+`Terminal.App.Renderer.Layout`, and `Terminal.App.Renderer.Presentation` child
+interfaces. Their parent implementation primitives are private to the renderer
+hierarchy. Tests and the
+application loop use the same focused interfaces and cannot bypass the graphics,
+layout, and presentation boundaries.
+
+The corresponding large smoke coverage is partitioned into Ada subunits:
+renderer baseline, protocol transaction, quota/failure, and composition/lifetime
+cases are independently navigable, and graphics capability diagnostics are
+separate from the media decoding matrix.
 
 Renderer command arrays and Vulkan submission arrays retain their capacity
 between frames and grow geometrically when the grid requires more space. Image
@@ -621,6 +638,11 @@ suffix across iterations, delegates backend polling and framebuffer/grid resize
 to named frame phases, snapshots, and renders. Presenter recovery is handled by
 one shared status path for retained and newly built frames.
 
+GLFW callback ownership is keyed by the raw window handle. Each live window has
+its own key, character, mouse-button, cursor, scroll, and focus callbacks;
+window destruction unregisters the native callbacks and releases the registry
+slot. Creating a second window therefore cannot redirect events from the first.
+
 Input-event overflow is explicit: newest events are dropped, existing ordering
 is preserved, and overflow counters are exposed. PTY output instead applies
 lossless backpressure.
@@ -632,6 +654,14 @@ to give every pane at least one cell; layout remains total for transient tiny
 framebuffer sizes.
 
 ## Ownership
+
+Heap-owning snapshots, decoded media values, and graphics previews are limited
+controlled types. Their buffers are finalized automatically, and ownership
+transfer is explicit (`Move` for graphics previews). GIF and PICT adapter
+cleanup independently finalizes decoder state and releases temporary buffers
+even if either cleanup step raises. Cleanup failures are recorded under the
+media-decoder diagnostic component rather than masking the original decode
+failure.
 
 `Terminal.Core.Terminal` owns heap-backed primary and alternate screen buffers.
 Snapshots are deep copies of visible cells plus cursor and dirty-row state.

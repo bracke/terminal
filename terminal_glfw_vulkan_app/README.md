@@ -13,6 +13,12 @@ The renderer package is deliberately an adapter boundary: it consumes
 mutates terminal state. Protocol framing and encoded-source allocation are
 delegated to `Terminal.App.Image_Ingestion`, which also performs bounded Kitty
 query validation; format decoders remain separate application-layer packages.
+The application loop reaches that owner through focused
+`Renderer.Graphics`, `Renderer.Layout`, and `Renderer.Presentation` child
+interfaces. Heap-backed snapshots, decoded media, and graphics previews are
+limited controlled values, so their buffers cannot be shallow-copied and are
+released automatically; explicit move and release operations remain available
+where ownership changes before scope exit.
 
 Graphics helpers keep protocol-independent responsibilities out of the main
 renderer body. `Terminal.App.Image_Decode` supplies the canonical decode status
@@ -65,3 +71,6 @@ remain visible as `Cleanup_Pending`, prevent restart or deallocation from
 overwriting live resources, and are reported by finalization rather than being
 silently converted to a closed state. Runtime diagnostic labels are grouped in
 one bounded `Runtime_Statuses` value at the collection boundary.
+The runtime table also owns the tab and split models, committing their active
+indices together with session activation so the main loop cannot maintain a
+second, divergent layout state.

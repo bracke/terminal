@@ -5,7 +5,7 @@ It is capability-first: a protocol name is not treated as a promise that every
 feature of another terminal is present. The implementation advertises only the
 surface that the core, decoder, resource store, and Vulkan backend can provide.
 
-Baseline date: 2026-10-24. The target is the current Kitty 0.50.0
+Baseline date: 2026-11-01. The target is the current Kitty 0.50.0
 [graphics protocol specification](https://sw.kovidgoyal.net/kitty/graphics-protocol/),
 including its indexed-color formats.
 The auxiliary protocol references are the
@@ -36,7 +36,7 @@ Status meanings:
 | M7 — capability and tmux interoperability | Supported | Kitty queries and iTerm2 feature reports are truthful. tmux DCS passthrough, fragmentation, response ordering, placeholder cells, PTY identity, and environment propagation have automated coverage. A dedicated released-tmux stream has also reached a live GLFW/Vulkan presenter. |
 | M8 — auxiliary protocols | Supported for the advertised subsets | Sixel raster/palette/aspect/cursor semantics and iTerm2 inline PNG/JPEG/native GIF/PICT, arbitrary-file downloads, sizing, aspect ratio, cursor policy, and multipart delivery are implemented. FILE reporting is policy-gated. |
 | M9 — security, performance, diagnostics | Supported | Bounded parsing/decoding, overflow-safe arithmetic, strict PNG structure/CRC validation, heap-backed large row buffers, deterministic malformed-input tests, scheduled AFL++ edge-coverage fuzzing, transfer-media policy, counters, cache diagnostics, and a deterministic rapid-replacement benchmark are present. |
-| M10 — end-to-end validation | Pending final host validation | Chafa, libsixel, and a dedicated released-tmux server have been exercised, including live Vulkan readback for the Kitty stream. The updated independent PICT framebuffer oracle still needs the host rerun recorded in `graphics_release_validation.md`; completion is not claimed until it succeeds. |
+| M10 — end-to-end validation | Supported | Chafa, libsixel, and a dedicated released-tmux server have been exercised. Enforced live Vulkan framebuffer readback independently verifies both Kitty raw pixels and native PICT decode/upload on the recorded release-validation host. |
 
 ## Kitty graphics protocol
 

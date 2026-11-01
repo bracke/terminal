@@ -1,6 +1,6 @@
 # Graphics release validation
 
-Validation date: 2026-10-24.
+Validation date: 2026-11-01.
 
 This record separates deterministic protocol evidence from checks that require
 a graphical login session. A skipped graphical check is not reported as a
@@ -16,6 +16,8 @@ pass.
 - Window/graphics packages: GLFW 3.3.10, Vulkan loader 1.4.315, and Vulkan
   tools 1.3.275.
 - Available headless Vulkan device: llvmpipe, Mesa 26.1.6, Vulkan API 1.4.354.
+- Enforced graphical validation: Wayland desktop with GLFW/X11 through
+  XWayland, AMD Radeon 780M Graphics, RADV Mesa 26.1.6, Vulkan API 1.4.354.
 - Interoperability tools: tmux 3.4, Chafa 1.14.0, and libsixel 1.10.3.
 
 The repository's Alire-selected compiler was used unchanged.
@@ -34,12 +36,12 @@ The repository's Alire-selected compiler was used unchanged.
 | Released tmux passthrough | Pass | The Ada `tools/bin/tmux_graphics_passthrough_probe` uses a dedicated tmux 3.4 socket, enables passthrough, verifies `TERM`/`TERM_PROGRAM` updating, and observes the unwrapped Kitty APC at the outer pseudo-terminal. No persistent tmux server is touched. |
 | Released tmux to Vulkan presentation | Pass | `tools/bin/tmux_graphics_passthrough_probe --present` incrementally feeds the actual outer tmux capture and requires its decoded image frame to reach the live GLFW/Vulkan presenter before tmux exit cleanup. |
 | Kitty indexed formats | Pass | `renderer_kitty_object_smoke` covers `f=8`, `f=16`, special palette entries, alpha, byte quotas, and theme-change texture regeneration. |
-| iTerm2 media | Pending live rerun | Deterministic tests cover native GIF87a/GIF89a behavior, PICT raster/vector/text/QuickTime-JPEG decoding, compatibility warnings, structured failures, explicit adapter buffers, configured decoder limits, unsupported-format rejection, and stale-diagnostic clearing. The updated live test now requires both Kitty raw and native PICT pixels to pass Vulkan framebuffer readback; that changed path still requires an enforced graphical run. |
+| iTerm2 media | Pass | Deterministic tests cover native GIF87a/GIF89a behavior, PICT raster/vector/text/QuickTime-JPEG decoding, compatibility warnings, structured failures, explicit adapter buffers, configured decoder limits, unsupported-format rejection, and stale-diagnostic clearing. The enforced graphical run additionally required the native PICT fixture to pass Vulkan framebuffer readback. |
 | Deterministic graphics parser soak | Pass | 1,000,000 randomized inputs across four seeds completed without invalid parser state, crash, or failed recovery. |
 | Replacement/resource soak | Pass | 50,000 same-ID decoded-image replacements completed in 2.787659586 seconds (17,936 updates/s), ending with exactly one four-byte object and one placement. This is an observation, not a timing gate. |
 | Vulkan loader/device enumeration | Pass | `vulkaninfo --summary` enumerates llvmpipe through the selected Vulkan ICD without surface creation. |
-| GLFW/Vulkan surface presentation | Pending rerun | The previously validated path changed to present both Kitty and native PICT fixtures. Run `gui_present_smoke` with `TERMINAL_REQUIRE_GUI_PRESENT=1` before recording a new pass. |
-| Vulkan framebuffer pixel comparison | Pending rerun | The updated oracle independently requires opaque-red pixels from Kitty raw input and an iTerm2 PICT decode/upload. The `--present` tmux path continues to use the same readback mechanism. |
+| GLFW/Vulkan surface presentation | Pass | On 2026-11-01, `gui_present_smoke` completed with `TERMINAL_REQUIRE_GUI_PRESENT=1` on the recorded Wayland/XWayland and RADV host; a skipped presentation path would have failed the run. |
+| Vulkan framebuffer pixel comparison | Pass | The enforced oracle independently observed the required opaque-red Kitty raw pixels and native iTerm2 PICT decode/upload through the live Vulkan presenter. The `--present` tmux path continues to use the same readback mechanism. |
 
 ## Reproduction
 
