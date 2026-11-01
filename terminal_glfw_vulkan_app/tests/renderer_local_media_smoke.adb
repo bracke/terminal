@@ -4,6 +4,8 @@ with GNAT.OS_Lib;
 with Terminal.App.Graphics_Transport;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Layout;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
@@ -82,9 +84,9 @@ begin
             Local_Feed);
          Assert (Local_Feed = Terminal.Core.Ok, Label_Text & " feed");
          Terminal.Core.Peek_Graphics_Event (Local_T, Event);
-         Snaps (1) := Terminal.Core.Snapshot (Local_T);
+         Terminal.Core.Snapshot (Local_T, Snaps (1));
          Snaps (1).Graphics := Event;
-         Terminal.App.Renderer.Render_App
+         Terminal.App.Renderer.Layout.Render_App
            (R,
             Snaps,
             1,
@@ -93,10 +95,10 @@ begin
             Render_Status);
          Terminal.Core.Release (Snaps (1));
          Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
-         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Result := Terminal.App.Renderer.Graphics.Result (R, Event);
          Assert (Result.Code = Expected, Label_Text & " result");
          Terminal.Core.Complete_Graphics_Event (Local_T, Event, Result);
-         Terminal.App.Renderer.Commit_Graphics_Events (R);
+         Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
       end Process;
 
    begin
@@ -109,7 +111,7 @@ begin
       Terminal.Core.Initialize (Local_T, 1, 2, 10, Local_Init);
       Assert (Local_Init = Terminal.Core.Ok, "local graphics core initialize");
       Terminal.Core.Set_Graphics_Stream_ID (Local_T, 2_101);
-      Terminal.App.Renderer.Set_Graphics_Access_Policy
+      Terminal.App.Renderer.Graphics.Set_Access_Policy
         (R, Terminal.App.Graphics_Transport.Trusted_Access_Policy);
       Terminal.App.Tabs.Initialize (Tabs);
       Terminal.App.Splits.Initialize (Splits);
@@ -151,8 +153,8 @@ begin
          Terminal.Core.Kitty_OK,
          "local compressed PNG query self-sizes inflated data");
       GNAT.OS_Lib.Delete_File (Path, Deleted);
-      Terminal.App.Renderer.Release_Graphics_Stream (R, 2_101);
-      Terminal.App.Renderer.Set_Graphics_Access_Policy
+      Terminal.App.Renderer.Graphics.Release_Stream (R, 2_101);
+      Terminal.App.Renderer.Graphics.Set_Access_Policy
         (R, Terminal.App.Graphics_Transport.Default_Access_Policy);
       Terminal.Core.Finalize (Local_T);
    exception
@@ -161,7 +163,7 @@ begin
          if Local_Init = Terminal.Core.Ok then
             Terminal.Core.Finalize (Local_T);
          end if;
-         Terminal.App.Renderer.Set_Graphics_Access_Policy
+         Terminal.App.Renderer.Graphics.Set_Access_Policy
            (R, Terminal.App.Graphics_Transport.Default_Access_Policy);
          raise;
    end;

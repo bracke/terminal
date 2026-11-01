@@ -3,6 +3,7 @@ with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 
 procedure Renderer_Graphics_Cells_Smoke is
@@ -49,10 +50,10 @@ procedure Renderer_Graphics_Cells_Smoke is
             begin
                Snap.Graphics := Event;
                Terminal.App.Renderer.Render (R, Snap, Render_Status);
-               Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+               Result := Terminal.App.Renderer.Graphics.Result (R, Event);
                Terminal.Core.Release (Snap);
                Terminal.Core.Complete_Graphics_Event (Target, Event, Result);
-               Terminal.App.Renderer.Commit_Graphics_Events (R);
+               Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
                Rendered := True;
             end;
             exit when Render_Status /= Terminal.App.Renderer.Ok;
@@ -185,10 +186,10 @@ begin
       Result : Terminal.Core.Kitty_Graphics_Result;
    begin
       Terminal.App.Renderer.Render (R, Snap, Render_Status);
-      Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Result := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snap);
       Terminal.Core.Complete_Graphics_Event (T, Event, Result);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
    end;
    Assert
      (Render_Status = Terminal.App.Renderer.Ok,
@@ -251,7 +252,7 @@ begin
          Assert (Palette_Feed = Terminal.Core.Ok, Label_Text & " feed");
          Terminal.Core.Peek_Graphics_Event (Palette_T, Event);
          Assert (Event.Pending, Label_Text & " event");
-         Snap := Terminal.Core.Snapshot (Palette_T);
+         Terminal.Core.Snapshot (Palette_T, Snap);
          Snap.Graphics := Event;
          Terminal.App.Renderer.Render (R, Snap, Render_Status);
          Terminal.Core.Release (Snap);
@@ -298,7 +299,7 @@ begin
             and then Frame.Images (1).Decoded_Bytes (3) = 16#FF#,
             "private sixel palettes should not inherit shared registers");
       end;
-      Terminal.App.Renderer.Release_Graphics_Stream (R, 3_100);
+      Terminal.App.Renderer.Graphics.Release_Stream (R, 3_100);
       Terminal.Core.Finalize (Palette_T);
    end;
 

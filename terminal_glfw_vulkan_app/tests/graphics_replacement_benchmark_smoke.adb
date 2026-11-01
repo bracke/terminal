@@ -8,6 +8,7 @@ with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 
 procedure Graphics_Replacement_Benchmark_Smoke is
@@ -72,7 +73,7 @@ procedure Graphics_Replacement_Benchmark_Smoke is
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "replacement event");
 
-      Snapshot := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshot);
       Snapshot.Graphics := Event;
       Terminal.App.Renderer.Render (R, Snapshot, Render_Result);
       Terminal.Core.Release (Snapshot);
@@ -93,9 +94,9 @@ procedure Graphics_Replacement_Benchmark_Smoke is
          end if;
       end;
 
-      Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Result := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Complete_Graphics_Event (T, Event, Result);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
    end Replace;
 
    Started : Ada.Real_Time.Time;
@@ -141,6 +142,6 @@ begin
          & Natural'Image (Rate) & " updates/s)");
    end;
 
-   Terminal.App.Renderer.Release_Graphics_Stream (R, Stream_ID);
+   Terminal.App.Renderer.Graphics.Release_Stream (R, Stream_ID);
    Terminal.Core.Finalize (T);
 end Graphics_Replacement_Benchmark_Smoke;

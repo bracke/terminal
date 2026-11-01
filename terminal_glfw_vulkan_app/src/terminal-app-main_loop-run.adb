@@ -46,8 +46,6 @@ procedure Run is
    Scroll_Offset : Natural := 0;
    Clipboard_Targets : Terminal.App.Clipboard_OSC52.Target_Store;
    Selection : Terminal.App.Selection.Selection_State;
-   Splits : Terminal.App.Splits.Split_State;
-   Tabs : Terminal.App.Tabs.Tab_State;
    Hovered_Link : Terminal.Core.Hyperlink;
    Has_Link_Activation : Boolean := False;
    Link_Activation :
@@ -105,6 +103,12 @@ procedure Run is
    begin
       return Terminal.App.Session_Table.Active_Runtime (Sessions);
    end Active_Runtime;
+
+   function Tabs return Terminal.App.Tabs.Tab_State is
+     (Terminal.App.Session_Table.Tabs (Sessions));
+
+   function Splits return Terminal.App.Splits.Split_State is
+     (Terminal.App.Session_Table.Splits (Sessions));
 
    function Active_Core return access Terminal.Core.Terminal is
    begin
@@ -503,7 +507,7 @@ begin
         ("theme", Terminal.App.Renderer.Theme_Update_Status'Image
            (Theme_Status));
    end if;
-   Terminal.App.Renderer.Set_Graphics_Access_Policy
+   Terminal.App.Renderer.Graphics.Set_Access_Policy
      (R,
       (Allow_Regular_Files   => App_Config.Kitty_File_Transfer,
        Allow_Temporary_Files => App_Config.Kitty_Temporary_Transfer,
@@ -515,9 +519,9 @@ begin
         (Policy,
          App_Config.ITerm2_File_Downloads,
          Terminal.App.ITerm2_Files.Default_Download_Directory);
-      Terminal.App.Renderer.Set_ITerm2_Download_Policy (R, Policy);
+      Terminal.App.Renderer.Graphics.Set_ITerm2_Download_Policy (R, Policy);
    end;
-   Terminal.App.Renderer.Set_Graphics_Resource_Limits
+   Terminal.App.Renderer.Graphics.Set_Resource_Limits
      (R,
       (Image_Objects => App_Config.Graphics_Image_Objects,
        Image_Bytes => App_Config.Graphics_Image_Bytes,
@@ -566,8 +570,6 @@ begin
    Configure_Visible_Cores;
 
    Input_Queue := In_Q'Unchecked_Access;
-   Terminal.App.Tabs.Initialize (Tabs);
-   Terminal.App.Splits.Initialize (Splits);
    GLFW_Vulkan.Input.Set_Key_Callback (W, On_Key'Access);
    GLFW_Vulkan.Input.Set_Character_Callback (W, On_Character'Access);
    GLFW_Vulkan.Input.Set_Mouse_Button_Callback (W, On_Mouse_Button'Access);

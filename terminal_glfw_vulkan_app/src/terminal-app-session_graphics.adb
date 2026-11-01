@@ -1,6 +1,9 @@
 with Terminal.App.Queues;
+with Terminal.App.Renderer.Graphics;
+with Terminal.App.Renderer.Layout;
 with Terminal.App.Session_Runtime;
 with Terminal.App.Sessions;
+with Terminal.App.Splits;
 with Terminal.App.Tabs;
 with Terminal.Core;
 
@@ -15,7 +18,6 @@ package body Terminal.App.Session_Graphics is
 
    procedure Process_Hidden
      (Table         : in out Terminal.App.Session_Table.Runtime_Table;
-      Splits        : Terminal.App.Splits.Split_State;
       Renderer      : in out Terminal.App.Renderer.Renderer;
       Processed     : out Boolean;
       Render_Status : out Terminal.App.Renderer.Render_Status;
@@ -23,6 +25,8 @@ package body Terminal.App.Session_Graphics is
    is
       Dummy_Tabs   : Terminal.App.Tabs.Tab_State;
       Dummy_Splits : Terminal.App.Splits.Split_State;
+      Splits : constant Terminal.App.Splits.Split_State :=
+        Terminal.App.Session_Table.Splits (Table);
    begin
       Processed := False;
       Render_Status := Terminal.App.Renderer.Ok;
@@ -55,19 +59,19 @@ package body Terminal.App.Session_Graphics is
                     and then Terminal.Core.Pending_Graphics_Event_Count
                       (Core.all) > 0
                   then
-                     Snapshots (1) := Terminal.Core.Snapshot (Core.all);
+                     Terminal.Core.Snapshot (Core.all, Snapshots (1));
                      Terminal.Core.Peek_Graphics_Event (Core.all, Event);
                      Snapshots (1).Graphics := Event;
                      if Event.Pending
                        and then Event.Payload_Length > Event.Preview_Length
                      then
-                        Terminal.App.Renderer.Stage_Graphics_Event
+                        Terminal.App.Renderer.Graphics.Stage_Event
                           (Renderer,
                            Event,
                            Terminal.Core.Graphics_Event_Payload
                              (Core.all, Event));
                      end if;
-                     Terminal.App.Renderer.Render_App
+                     Terminal.App.Renderer.Layout.Render_App
                        (Renderer,
                         Snapshots,
                         1,
@@ -77,7 +81,7 @@ package body Terminal.App.Session_Graphics is
                      Terminal.Core.Release (Snapshots (1));
 
                      if Status = Terminal.App.Renderer.Ok
-                       or else Terminal.App.Renderer.Graphics_Event_Processed
+                       or else Terminal.App.Renderer.Graphics.Event_Processed
                          (Renderer, Event)
                      then
                         --  Batch allocation may fail after the protocol
@@ -87,13 +91,13 @@ package body Terminal.App.Session_Graphics is
                         Terminal.Core.Complete_Graphics_Event
                           (Core.all,
                            Event,
-                           Terminal.App.Renderer.Graphics_Result
+                           Terminal.App.Renderer.Graphics.Result
                              (Renderer, Event));
-                        Terminal.App.Renderer.Commit_Offscreen_Graphics_Events
+                        Terminal.App.Renderer.Graphics.Commit_Offscreen_Events
                           (Renderer);
                         Processed := True;
                      else
-                        Terminal.App.Renderer.Commit_Offscreen_Graphics_Events
+                        Terminal.App.Renderer.Graphics.Commit_Offscreen_Events
                           (Renderer);
                         Render_Status := Status;
                         return;

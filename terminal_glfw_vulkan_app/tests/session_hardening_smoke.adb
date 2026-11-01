@@ -4,6 +4,7 @@ with AUnit.Assertions;
 with Terminal.App.PTY_Write;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Layout;
 with Terminal.App.Renderer.Testing;
 with Terminal.App.Session_Graphics;
 with Terminal.App.Session_Runtime;
@@ -107,12 +108,12 @@ procedure Session_Hardening_Smoke is
 
       for I in 2 .. Tabs.Max_Tabs loop
          Tables.New_Tab
-           (Table, Tab_State, Split_State, 8, 32, 32, Status);
+           (Table, 8, 32, 32, Status);
          Assert (Status = Tables.Ok, "churn new tab" & Natural'Image (I));
       end loop;
       Assert (Tables.Count (Table) = Tabs.Max_Tabs, "churn reaches tab capacity");
       Tables.New_Tab
-        (Table, Tab_State, Split_State, 8, 32, 32, Status);
+        (Table, 8, 32, 32, Status);
       Assert (Status = Tables.At_Capacity, "churn tab capacity guarded");
 
       for I in 1 .. Tables.Count (Table) loop
@@ -160,10 +161,10 @@ procedure Session_Hardening_Smoke is
       end loop;
 
       while Tables.Count (Table) > 1 loop
-         Tables.Close_Tab (Table, Tab_State, Status);
+         Tables.Close_Tab (Table, Status);
          Assert (Status = Tables.Ok, "churn close tab");
       end loop;
-      Tables.Close_Tab (Table, Tab_State, Status);
+      Tables.Close_Tab (Table, Status);
       Assert (Status = Tables.Last_Session, "churn last tab guarded");
       Assert
         (Runtime.State (Tables.Active_Runtime (Table).all) = Runtime.Active,
@@ -177,9 +178,7 @@ procedure Session_Hardening_Smoke is
       for I in 2 .. Splits.Max_Panes loop
          Tables.Split_Pane
            (Table,
-            Tab_State,
-            Split_State,
-            Splits.Split_Vertical,
+         Splits.Split_Vertical,
             12,
             48,
             32,
@@ -187,12 +186,10 @@ procedure Session_Hardening_Smoke is
          Assert (Status = Tables.Ok, "churn split pane" & Natural'Image (I));
       end loop;
       Assert
-        (Splits.Count (Split_State) = Splits.Max_Panes,
+        (Splits.Count (Tables.Splits (Table)) = Splits.Max_Panes,
          "churn reaches split capacity");
       Tables.Split_Pane
         (Table,
-         Tab_State,
-         Split_State,
          Splits.Split_Vertical,
          12,
          48,
@@ -200,10 +197,10 @@ procedure Session_Hardening_Smoke is
          Status);
       Assert (Status = Tables.At_Capacity, "churn split capacity guarded");
       while Tables.Count (Table) > 1 loop
-         Tables.Close_Pane (Table, Split_State, Status);
+         Tables.Close_Pane (Table, Status);
          Assert (Status = Tables.Ok, "churn close pane");
       end loop;
-      Tables.Close_Pane (Table, Split_State, Status);
+      Tables.Close_Pane (Table, Status);
       Assert (Status = Tables.Last_Session, "churn last pane guarded");
       Tables.Close_All (Table);
    end Runtime_Table_Churn;
@@ -254,7 +251,7 @@ procedure Session_Hardening_Smoke is
             2 => Terminal.Core.Snapshot (T2),
             3 => Terminal.Core.Snapshot (T3));
       begin
-         Terminal.App.Renderer.Render_App
+         Terminal.App.Renderer.Layout.Render_App
            (R,
             Snaps,
             3,
@@ -303,7 +300,7 @@ procedure Session_Hardening_Smoke is
               (1 => Terminal.Core.Snapshot (Tiny));
          begin
             Render_Status := Terminal.App.Renderer.Invalid_Snapshot;
-            Terminal.App.Renderer.Render_App
+            Terminal.App.Renderer.Layout.Render_App
               (R,
                Snaps,
                1,
@@ -314,7 +311,7 @@ procedure Session_Hardening_Smoke is
               (Render_Status = Terminal.App.Renderer.Ok,
                "narrow frame safely divides a full tab bar");
             Render_Status := Terminal.App.Renderer.Invalid_Snapshot;
-            Terminal.App.Renderer.Render_App
+            Terminal.App.Renderer.Layout.Render_App
               (R,
                Snaps,
                1,
@@ -354,7 +351,7 @@ procedure Session_Hardening_Smoke is
       Tables.Initialize (Table, 4, 12, 16, Table_Status);
       Assert (Table_Status = Tables.Ok, "background table initialize");
       Tables.New_Tab
-        (Table, Tab_State, Split_State, 4, 12, 16, Table_Status);
+        (Table, 4, 12, 16, Table_Status);
       Assert (Table_Status = Tables.Ok, "background tab initialize");
       Hidden := Tables.Runtime_At (Table, 1);
       Visible := Tables.Runtime_At (Table, 2);
@@ -371,7 +368,6 @@ procedure Session_Hardening_Smoke is
       Assert (Init_Status = Terminal.App.Renderer.Ok, "background renderer init");
       Terminal.App.Session_Graphics.Process_Hidden
         (Table,
-         Split_State,
          R,
          Processed,
          Render_Status,
@@ -425,7 +421,7 @@ procedure Session_Hardening_Smoke is
       Tables.Initialize (Table, 4, 12, 16, Table_Status);
       Assert (Table_Status = Tables.Ok, "exit isolation table initialize");
       Tables.New_Tab
-        (Table, Tab_State, Split_State, 4, 12, 16, Table_Status);
+        (Table, 4, 12, 16, Table_Status);
       Assert (Table_Status = Tables.Ok, "exit isolation second tab");
       Hidden := Tables.Runtime_At (Table, 1);
       Visible := Tables.Runtime_At (Table, 2);

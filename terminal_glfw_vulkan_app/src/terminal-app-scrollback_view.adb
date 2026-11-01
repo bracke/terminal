@@ -84,14 +84,16 @@ package body Terminal.App.Scrollback_View is
      (T      : Terminal.Core.Terminal;
       Offset : Natural) return Terminal.Core.Render_Snapshot
    is
-      Result : Terminal.Core.Render_Snapshot;
    begin
-      Snapshot (T, Offset, Result);
-      return Result;
-   exception
-      when Storage_Error =>
-         Terminal.Core.Release (Result);
-         return Terminal.Core.Snapshot (T);
+      return Result : Terminal.Core.Render_Snapshot do
+         begin
+            Snapshot (T, Offset, Result);
+         exception
+            when Storage_Error =>
+               Terminal.Core.Release (Result);
+               Terminal.Core.Snapshot (T, Result);
+         end;
+      end return;
    end Snapshot;
 
    function Status_Label

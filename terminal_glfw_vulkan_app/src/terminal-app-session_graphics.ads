@@ -1,7 +1,6 @@
 with Terminal.App.PTY_Write;
 with Terminal.App.Renderer;
 with Terminal.App.Session_Table;
-with Terminal.App.Splits;
 
 package Terminal.App.Session_Graphics is
    --  Consume at most one graphics command from each non-visible session.
@@ -9,7 +8,6 @@ package Terminal.App.Session_Graphics is
    --  while another tab is selected.
    procedure Process_Hidden
      (Table        : in out Terminal.App.Session_Table.Runtime_Table;
-      Splits       : Terminal.App.Splits.Split_State;
       Renderer     : in out Terminal.App.Renderer.Renderer;
       Processed    : out Boolean;
       Render_Status : out Terminal.App.Renderer.Render_Status;

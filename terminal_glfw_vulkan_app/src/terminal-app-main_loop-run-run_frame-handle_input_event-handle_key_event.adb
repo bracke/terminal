@@ -6,20 +6,16 @@ begin
         Terminal.Core.Modes (Active_Core.all);
       Tab_Command : constant Terminal.App.Tabs.Tab_Command :=
         Terminal.App.Input_Map.Tab_Command (Event.Key_Event);
-      Tab_Status : Terminal.App.Tabs.Tab_Status;
       Split_Command : constant
         Terminal.App.Splits.Split_Command :=
           Terminal.App.Input_Map.Split_Command
             (Event.Key_Event);
-      Split_Status : Terminal.App.Splits.Split_Status;
    begin
       if Tab_Command /= Terminal.App.Tabs.No_Command then
          case Tab_Command is
             when Terminal.App.Tabs.New_Tab =>
                Terminal.App.Session_Table.New_Tab
                  (Sessions,
-                  Tabs,
-                  Splits,
                   Last_Rows,
                   Last_Cols,
                   App_Config.Scrollback_Limit,
@@ -41,12 +37,12 @@ begin
                           (Active_Runtime.all);
                begin
                   Terminal.App.Session_Table.Close_Tab
-                    (Sessions, Tabs, Session_Table_Status);
+                    (Sessions, Session_Table_Status);
                   if Session_Table_Status =
                     Terminal.App.Session_Table.Ok
                   then
-                     Terminal.App.Renderer
-                       .Release_Graphics_Stream
+                     Terminal.App.Renderer.Graphics
+                       .Release_Stream
                          (R, Closed_Stream);
                      Configure_Visible_Cores;
                      Scroll_Offset := 0;
@@ -56,28 +52,14 @@ begin
                end;
             when Terminal.App.Tabs.Next_Tab
                | Terminal.App.Tabs.Previous_Tab =>
-               declare
-                  Next_Tabs : Terminal.App.Tabs.Tab_State := Tabs;
-               begin
-               Terminal.App.Tabs.Apply
-                 (Next_Tabs, Tab_Command, Tab_Status);
-               if Tab_Status = Terminal.App.Tabs.Ok then
-                  Terminal.App.Session_Table.Activate
-                    (Sessions,
-                     Terminal.App.Sessions.Session_Index
-                       (Terminal.App.Tabs.Active (Next_Tabs)),
-                     Session_Table_Status);
-                  if Session_Table_Status =
-                    Terminal.App.Session_Table.Ok
-                  then
-                     Tabs := Next_Tabs;
-                     Configure_Visible_Cores;
-                     Scroll_Offset := 0;
-                     Terminal.App.Selection.Clear (Selection);
-                     Apply_Hovered_Link ((others => <>));
-                  end if;
+               Terminal.App.Session_Table.Apply_Tab_Navigation
+                 (Sessions, Tab_Command, Session_Table_Status);
+               if Session_Table_Status = Terminal.App.Session_Table.Ok then
+                  Configure_Visible_Cores;
+                  Scroll_Offset := 0;
+                  Terminal.App.Selection.Clear (Selection);
+                  Apply_Hovered_Link ((others => <>));
                end if;
-               end;
             when Terminal.App.Tabs.No_Command =>
                null;
          end case;
@@ -93,8 +75,6 @@ begin
                | Terminal.App.Splits.Split_Vertical =>
                Terminal.App.Session_Table.Split_Pane
                  (Sessions,
-                  Tabs,
-                  Splits,
                   Split_Command,
                   Last_Rows,
                   Last_Cols,
@@ -118,13 +98,12 @@ begin
                begin
                   Terminal.App.Session_Table.Close_Pane
                     (Sessions,
-                     Splits,
                      Session_Table_Status);
                   if Session_Table_Status =
                     Terminal.App.Session_Table.Ok
                   then
-                     Terminal.App.Renderer
-                       .Release_Graphics_Stream
+                     Terminal.App.Renderer.Graphics
+                       .Release_Stream
                          (R, Closed_Stream);
                      Configure_Visible_Cores;
                      Scroll_Offset := 0;
@@ -133,28 +112,14 @@ begin
                   end if;
                end;
             when Terminal.App.Splits.Next_Pane =>
-               declare
-                  Next_Splits : Terminal.App.Splits.Split_State := Splits;
-               begin
-               Terminal.App.Splits.Apply
-                 (Next_Splits, Split_Command, Split_Status);
-               if Split_Status = Terminal.App.Splits.Ok then
-                  Terminal.App.Session_Table.Activate
-                    (Sessions,
-                     Terminal.App.Sessions.Session_Index
-                       (Terminal.App.Splits.Active (Next_Splits)),
-                     Session_Table_Status);
-                  if Session_Table_Status =
-                    Terminal.App.Session_Table.Ok
-                  then
-                     Splits := Next_Splits;
-                     Configure_Visible_Cores;
-                     Scroll_Offset := 0;
-                     Terminal.App.Selection.Clear (Selection);
-                     Apply_Hovered_Link ((others => <>));
-                  end if;
+               Terminal.App.Session_Table.Apply_Pane_Navigation
+                 (Sessions, Split_Command, Session_Table_Status);
+               if Session_Table_Status = Terminal.App.Session_Table.Ok then
+                  Configure_Visible_Cores;
+                  Scroll_Offset := 0;
+                  Terminal.App.Selection.Clear (Selection);
+                  Apply_Hovered_Link ((others => <>));
                end if;
-               end;
             when Terminal.App.Splits.No_Command =>
                null;
          end case;

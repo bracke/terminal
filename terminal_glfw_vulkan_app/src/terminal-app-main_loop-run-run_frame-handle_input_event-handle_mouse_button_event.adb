@@ -76,8 +76,7 @@ begin
                      Hovered_Link,
                      Has_Link_Activation,
                      Link_Activation,
-                     Tabs,
-                     Splits);
+                     Sessions);
                end;
             elsif Event.Button_Event.Modifiers.Alt then
                Terminal.App.Selection

@@ -187,7 +187,7 @@ separate (Terminal.App.Main_Loop.Run)
       end if;
       Last_Blink_Tick := Current_Blink_Tick;
 
-      if Terminal.App.Renderer.Animation_Frame_Due (R) then
+      if Terminal.App.Renderer.Graphics.Animation_Frame_Due (R) then
          Dirty := True;
          Need_Redraw := True;
          Local_Redraw := True;
@@ -203,8 +203,7 @@ separate (Terminal.App.Main_Loop.Run)
          Hovered_Link,
          Has_Link_Activation,
          Link_Activation,
-         Tabs,
-         Splits);
+         Sessions);
       declare
          Clipboard_Ok : Boolean;
       begin
@@ -279,7 +278,7 @@ separate (Terminal.App.Main_Loop.Run)
             Present_Status :
               Terminal.App.Vulkan_Presenter.Present_Status;
          begin
-            Terminal.App.Renderer.Present_Retained
+            Terminal.App.Renderer.Presentation.Present_Retained
               (R, Vk_Ctx, Presenter, Present_Status);
             Handle_Present_Status (Present_Status);
          end;
@@ -343,7 +342,7 @@ separate (Terminal.App.Main_Loop.Run)
                        and then Snaps (I).Graphics.Payload_Length >
                          Snaps (I).Graphics.Preview_Length
                      then
-                        Terminal.App.Renderer.Stage_Graphics_Event
+                        Terminal.App.Renderer.Graphics.Stage_Event
                           (R,
                            Snaps (I).Graphics,
                            Terminal.Core.Graphics_Event_Payload
@@ -421,7 +420,7 @@ separate (Terminal.App.Main_Loop.Run)
             end if;
 
             if Can_Present then
-               Terminal.App.Renderer.Render_App
+               Terminal.App.Renderer.Layout.Render_App
                  (R,
                   Snaps,
                   Active_Render_Index,
@@ -429,7 +428,7 @@ separate (Terminal.App.Main_Loop.Run)
                   Terminal.App.Splits.Snapshot (Splits),
                   Render_Status);
                if Render_Status = Terminal.App.Renderer.Ok then
-                  Terminal.App.Renderer.Present
+                  Terminal.App.Renderer.Presentation.Present
                     (R, Vk_Ctx, Presenter, Present_Status);
                else
                   Present_Status := Terminal.App.Vulkan_Presenter.Invalid_Batch;

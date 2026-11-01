@@ -164,6 +164,38 @@ package Terminal.App.Renderer is
    procedure Initialize_Headless
      (R      : out Renderer;
       Status : out Init_Status);
+   procedure Render
+     (R        : in out Renderer;
+      Snapshot : Terminal.Core.Render_Snapshot;
+      Status   : out Render_Status);
+   procedure Set_Framebuffer_Size
+     (R      : in out Renderer;
+      Width  : Natural;
+      Height : Natural);
+   procedure Set_Theme
+     (R : in out Renderer;
+      T : Terminal.App.Theme.Theme;
+      Status : out Theme_Update_Status);
+   procedure Set_Hovered_Link
+     (R    : in out Renderer;
+      Link : Terminal.Core.Hyperlink);
+   overriding procedure Finalize (R : in out Renderer);
+
+   function Cell_Width (R : Renderer) return Positive;
+   function Cell_Height (R : Renderer) return Positive;
+   function Diagnostics (R : Renderer) return Renderer_Diagnostics;
+   function Color_Emoji_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String;
+   function Paragraph_Bidi_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String;
+   function Image_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String;
+   function Media_Status_Label
+     (Diagnostics : Renderer_Diagnostics) return String;
+private
+   --  Domain child packages expose these implementation primitives through
+   --  focused public interfaces.  Keeping them private prevents production
+   --  callers from bypassing the graphics/layout/presentation boundaries.
    procedure Set_Graphics_Resource_Limits
      (R      : in out Renderer;
       Limits : Graphics_Resource_Limits);
@@ -183,10 +215,6 @@ package Terminal.App.Renderer is
      (R       : in out Renderer;
       Event   : Terminal.Core.Graphics_Event;
       Payload : String);
-   procedure Render
-     (R        : in out Renderer;
-      Snapshot : Terminal.Core.Render_Snapshot;
-      Status   : out Render_Status);
    procedure Render_App
      (R              : in out Renderer;
       Snapshots      : Snapshot_Array;
@@ -194,17 +222,6 @@ package Terminal.App.Renderer is
       Tabs           : Terminal.App.Tabs.Tab_Snapshot;
       Splits         : Terminal.App.Splits.Split_Snapshot;
       Status         : out Render_Status);
-   procedure Set_Framebuffer_Size
-     (R      : in out Renderer;
-      Width  : Natural;
-      Height : Natural);
-   procedure Set_Theme
-     (R : in out Renderer;
-      T : Terminal.App.Theme.Theme;
-      Status : out Theme_Update_Status);
-   procedure Set_Hovered_Link
-     (R    : in out Renderer;
-      Link : Terminal.Core.Hyperlink);
    procedure Present
      (R         : Renderer;
       Context   : Terminal.App.Vulkan_Context.Context;
@@ -215,11 +232,7 @@ package Terminal.App.Renderer is
       Context   : Terminal.App.Vulkan_Context.Context;
       Presenter : in out Terminal.App.Vulkan_Presenter.Presenter;
       Status    : out Terminal.App.Vulkan_Presenter.Present_Status);
-   --  Forget retry guards only after the frame containing the corresponding
-   --  graphics events has been accepted by the presentation backend.
    procedure Commit_Graphics_Events (R : in out Renderer);
-   --  Finish protocol processing performed for a non-visible session.  Image
-   --  atlas changes stay dirty so the next presented frame uploads them.
    procedure Commit_Offscreen_Graphics_Events (R : in out Renderer);
    procedure Release_Graphics_Stream
      (R         : in out Renderer;
@@ -231,24 +244,8 @@ package Terminal.App.Renderer is
    function Graphics_Event_Processed
      (R     : Renderer;
       Event : Terminal.Core.Graphics_Event) return Boolean;
-   --  True when a visible animation has reached its next frame deadline.
-   --  The application loop uses this to schedule a render even when no PTY
-   --  or input event has otherwise dirtied the frame.
    function Animation_Frame_Due (R : Renderer) return Boolean;
-   overriding procedure Finalize (R : in out Renderer);
 
-   function Cell_Width (R : Renderer) return Positive;
-   function Cell_Height (R : Renderer) return Positive;
-   function Diagnostics (R : Renderer) return Renderer_Diagnostics;
-   function Color_Emoji_Status_Label
-     (Diagnostics : Renderer_Diagnostics) return String;
-   function Paragraph_Bidi_Status_Label
-     (Diagnostics : Renderer_Diagnostics) return String;
-   function Image_Status_Label
-     (Diagnostics : Renderer_Diagnostics) return String;
-   function Media_Status_Label
-     (Diagnostics : Renderer_Diagnostics) return String;
-private
    --  Borrowed frame storage is intentionally private.  The Testing child
    --  exposes it to white-box tests, while production callers receive frame
    --  commands only through the presentation path that owns their lifetime.

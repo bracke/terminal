@@ -1,6 +1,8 @@
 with AUnit.Assertions;
 
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Layout;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
@@ -58,9 +60,9 @@ procedure Renderer_Transaction_Smoke is
 
       Terminal.App.Renderer.Testing.Fail_Image_Allocation_After
         (R, Failure_Attempt);
-      Snapshots (1) := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshots (1));
       Snapshots (1).Graphics := Event;
-      Terminal.App.Renderer.Render_App
+      Terminal.App.Renderer.Layout.Render_App
         (R,
          Snapshots,
          1,
@@ -77,9 +79,9 @@ procedure Renderer_Transaction_Smoke is
          and then D.Image_Object_Bytes = 0,
          Label_Text & " rejection rolls back retained state");
 
-      Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Result := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Complete_Graphics_Event (T, Event, Result);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
    end Reject_At_Allocation;
 
    procedure Process_Kitty
@@ -97,9 +99,9 @@ procedure Renderer_Transaction_Smoke is
       Assert (Feed_Status = Terminal.Core.Ok, Label_Text & " feed");
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, Label_Text & " event");
-      Snapshots (1) := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshots (1));
       Snapshots (1).Graphics := Event;
-      Terminal.App.Renderer.Render_App
+      Terminal.App.Renderer.Layout.Render_App
         (R,
          Snapshots,
          1,
@@ -108,7 +110,7 @@ procedure Renderer_Transaction_Smoke is
          Render_Status);
       Terminal.Core.Release (Snapshots (1));
       Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
-      Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Result := Terminal.App.Renderer.Graphics.Result (R, Event);
       if Result.Code /= Expected then
          raise Program_Error with
            Label_Text & " result: expected "
@@ -117,7 +119,7 @@ procedure Renderer_Transaction_Smoke is
            & Terminal.Core.Kitty_Graphics_Result_Code'Image (Result.Code);
       end if;
       Terminal.Core.Complete_Graphics_Event (T, Event, Result);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
    end Process_Kitty;
 begin
    Terminal.App.Renderer.Initialize_Headless (R, Renderer_Init);
@@ -153,7 +155,7 @@ begin
 
    declare
       Original : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
-        Terminal.App.Renderer.Graphics_Resource_Limit (R);
+        Terminal.App.Renderer.Graphics.Resource_Limits (R);
       Tight : Terminal.App.Renderer.Graphics_Resource_Limits := Original;
       D : Terminal.App.Renderer.Renderer_Diagnostics;
       Original_X : Float;
@@ -161,7 +163,7 @@ begin
       Original_Width : Float;
    begin
       Tight.Placements := 1;
-      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight);
       Process_Kitty
         ("Gq=2,a=T,i=10,p=1,f=32,s=1,v=1,c=1,r=1,C=1;/wAA/w==",
          Terminal.Core.Kitty_OK,
@@ -222,7 +224,7 @@ begin
          "failed combined replacement preserves prior image and placement");
 
       Tight.Placements := 2;
-      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight);
       Process_Kitty
         ("Gq=2,a=t,i=20,f=32,s=1,v=1;/wAA/w==",
          Terminal.Core.Kitty_OK,
@@ -236,7 +238,7 @@ begin
       Assert
         (D.Image_Object_Count = 2 and then D.Placement_Count = 1,
          "placement allocation failure preserves existing objects");
-      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Original);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Original);
    end;
 
    Terminal.Core.Finalize (T);

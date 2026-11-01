@@ -3,6 +3,8 @@ with AUnit.Assertions;
 with Terminal.App.Image_Media;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Layout;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
@@ -61,9 +63,9 @@ begin
             Animation_Feed);
          Assert (Animation_Feed = Terminal.Core.Ok, Label_Text & " feed");
          Terminal.Core.Peek_Graphics_Event (Animation_T, Event);
-         Snaps (1) := Terminal.Core.Snapshot (Animation_T);
+         Terminal.Core.Snapshot (Animation_T, Snaps (1));
          Snaps (1).Graphics := Event;
-         Terminal.App.Renderer.Render_App
+         Terminal.App.Renderer.Layout.Render_App
            (R,
             Snaps,
             1,
@@ -72,10 +74,10 @@ begin
             Render_Status);
          Terminal.Core.Release (Snaps (1));
          Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
-         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Result := Terminal.App.Renderer.Graphics.Result (R, Event);
          Assert (Result.Code = Expected, Label_Text & " result");
          Terminal.Core.Complete_Graphics_Event (Animation_T, Event, Result);
-         Terminal.App.Renderer.Commit_Graphics_Events (R);
+         Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
       end Process;
 
       procedure Process_ITerm2
@@ -93,9 +95,9 @@ begin
             Animation_Feed);
          Assert (Animation_Feed = Terminal.Core.Ok, Label_Text & " feed");
          Terminal.Core.Peek_Graphics_Event (Animation_T, Event);
-         Snaps (1) := Terminal.Core.Snapshot (Animation_T);
+         Terminal.Core.Snapshot (Animation_T, Snaps (1));
          Snaps (1).Graphics := Event;
-         Terminal.App.Renderer.Render_App
+         Terminal.App.Renderer.Layout.Render_App
            (R,
             Snaps,
             1,
@@ -104,9 +106,9 @@ begin
             Render_Status);
          Terminal.Core.Release (Snaps (1));
          Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
-         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Result := Terminal.App.Renderer.Graphics.Result (R, Event);
          Terminal.Core.Complete_Graphics_Event (Animation_T, Event, Result);
-         Terminal.App.Renderer.Commit_Graphics_Events (R);
+         Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
       end Process_ITerm2;
 
       procedure Assert_Pixel
@@ -130,9 +132,9 @@ begin
       procedure Render_Animation (Label_Text : String) is
          Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
       begin
-         Snaps (1) := Terminal.Core.Snapshot (Animation_T);
+         Terminal.Core.Snapshot (Animation_T, Snaps (1));
          Snaps (1).Graphics := (others => <>);
-         Terminal.App.Renderer.Render_App
+         Terminal.App.Renderer.Layout.Render_App
            (R,
             Snaps,
             1,
@@ -245,12 +247,12 @@ begin
 
       declare
          Original : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
-           Terminal.App.Renderer.Graphics_Resource_Limit (R);
+           Terminal.App.Renderer.Graphics.Resource_Limits (R);
          Tight_Limits : Terminal.App.Renderer.Graphics_Resource_Limits :=
            Original;
       begin
          Tight_Limits.Animation_Frames := 1;
-         Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight_Limits);
+         Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight_Limits);
          Process_ITerm2
            ("R0lGODlhAQABAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEBAAAh+QQA"
             & "BQAAACwAAAAAAQABAAACAkQBACH5BAAHAAAALAAAAAABAAEAgAAA/wAA"
@@ -267,7 +269,7 @@ begin
             "lowered animation quota reports media too large");
 
          Tight_Limits.Animation_Frames := 2;
-         Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight_Limits);
+         Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight_Limits);
          Process
            ("Gq=2,a=f,i=90,f=32,s=2,v=1;/////wAAAP8=",
             Terminal.Core.Kitty_ENOSPC,
@@ -279,7 +281,7 @@ begin
 
          Tight_Limits.Animation_Frames := Original.Animation_Frames;
          Tight_Limits.Per_Image_Bytes := 7;
-         Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Tight_Limits);
+         Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight_Limits);
          Process
            ("Gq=2,a=f,i=90,f=32,r=2,s=2,v=1,X=1;/////wAAAP8=",
             Terminal.Core.Kitty_ENOSPC,
@@ -288,7 +290,7 @@ begin
            (Terminal.App.Renderer.Diagnostics (R).
               Kitty_Animation_Frame_Count = 2,
             "rejected animation edit preserves frame accounting");
-         Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Original);
+         Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Original);
       end;
 
       Process
@@ -300,15 +302,15 @@ begin
          Terminal.Core.Kitty_OK,
          "animation redraw deadline playback");
       Assert
-        (Terminal.App.Renderer.Animation_Frame_Due (R),
+        (Terminal.App.Renderer.Graphics.Animation_Frame_Due (R),
          "new animation schedules deadline initialization");
       Render_Animation ("animation deadline initialization");
       Assert
-        (not Terminal.App.Renderer.Animation_Frame_Due (R),
+        (not Terminal.App.Renderer.Graphics.Animation_Frame_Due (R),
          "animation redraw waits for its frame deadline");
       delay 0.04;
       Assert
-        (Terminal.App.Renderer.Animation_Frame_Due (R),
+        (Terminal.App.Renderer.Graphics.Animation_Frame_Due (R),
          "animation deadline schedules an otherwise idle redraw");
       Render_Animation ("animation deadline advance");
 
@@ -336,7 +338,7 @@ begin
          Terminal.Core.Kitty_ENOENT,
          "animation deleted frame missing");
 
-      Terminal.App.Renderer.Release_Graphics_Stream (R, 2_102);
+      Terminal.App.Renderer.Graphics.Release_Stream (R, 2_102);
       Terminal.Core.Finalize (Animation_T);
    end;
 

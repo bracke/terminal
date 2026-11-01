@@ -2,6 +2,7 @@ with AUnit.Assertions;
 
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 with Terminal.Common.Bytes;
 with Terminal.Core;
@@ -110,16 +111,16 @@ procedure ITerm2_Media_Smoke is
       begin
          Terminal.Core.Peek_Graphics_Event (T, Event);
          Assert (Event.Pending, Label_Text & " event queued");
-         Snap := Terminal.Core.Snapshot (T);
+         Terminal.Core.Snapshot (T, Snap);
          Snap.Graphics := Event;
          Terminal.App.Renderer.Render (R, Snap, Render_Status);
          Terminal.Core.Release (Snap);
          Assert
            (Render_Status = Terminal.App.Renderer.Ok,
             Label_Text & " event render");
-         Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+         Result := Terminal.App.Renderer.Graphics.Result (R, Event);
          Terminal.Core.Complete_Graphics_Event (T, Event, Result);
-         Terminal.App.Renderer.Commit_Graphics_Events (R);
+         Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
       end;
 
       Render_Retained;
@@ -152,7 +153,7 @@ procedure ITerm2_Media_Smoke is
             Assert_Pixel (0, 0, 16#FF#, "stops after two plays");
       end case;
 
-      Terminal.App.Renderer.Release_Graphics_Stream (R, Stream_ID);
+      Terminal.App.Renderer.Graphics.Release_Stream (R, Stream_ID);
       Assert
         (Terminal.App.Renderer.Diagnostics (R).Image_Object_Count = 0
          and then Terminal.App.Renderer.Diagnostics (R).Placement_Count = 0

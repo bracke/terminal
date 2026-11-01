@@ -19,6 +19,9 @@ with Terminal.App.ITerm2_Files;
 with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
+with Terminal.App.Renderer.Layout;
+with Terminal.App.Renderer.Presentation;
 with Terminal.App.Render_Policy;
 with Terminal.App.Resize;
 with Terminal.App.Scrollback_View;
@@ -225,10 +228,13 @@ package body Terminal.App.Main_Loop is
       Has_Link_Activation : Boolean;
       Link_Activation :
         Terminal.App.Hyperlinks.Activation_Status;
-      Tabs       : in out Terminal.App.Tabs.Tab_State;
-      Splits     : Terminal.App.Splits.Split_State)
+      Sessions   : in out Terminal.App.Session_Table.Runtime_Table)
    is
-      Status : Terminal.App.Tabs.Tab_Status;
+      Status : Terminal.App.Session_Table.Table_Status;
+      Tabs : constant Terminal.App.Tabs.Tab_State :=
+        Terminal.App.Session_Table.Tabs (Sessions);
+      Splits : constant Terminal.App.Splits.Split_State :=
+        Terminal.App.Session_Table.Splits (Sessions);
       Base_Title : constant String :=
         Title_String (New_Title)
         & Terminal.App.Tabs.Title_Suffix (Tabs)
@@ -241,11 +247,8 @@ package body Terminal.App.Main_Loop is
                (Link_Activation)
          else Base_Title);
    begin
-      Terminal.App.Tabs.Set_Label
-        (Tabs,
-         Terminal.App.Tabs.Active (Tabs),
-         Title_String (New_Title),
-         Status);
+      Terminal.App.Session_Table.Set_Active_Tab_Label
+        (Sessions, Title_String (New_Title), Status);
       GLFW_Vulkan.Windows.Set_Title
         (W,
          Terminal.App.Hyperlinks.Hover_Title

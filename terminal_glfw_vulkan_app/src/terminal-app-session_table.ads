@@ -33,8 +33,6 @@ package Terminal.App.Session_Table is
 
    procedure New_Tab
      (Table            : in out Runtime_Table;
-      Tabs             : in out Terminal.App.Tabs.Tab_State;
-      Splits           : Terminal.App.Splits.Split_State;
       Rows             : Positive;
       Cols             : Positive;
       Scrollback_Limit : Natural;
@@ -42,13 +40,10 @@ package Terminal.App.Session_Table is
 
    procedure Close_Tab
      (Table  : in out Runtime_Table;
-      Tabs   : in out Terminal.App.Tabs.Tab_State;
       Status : out Table_Status);
 
    procedure Split_Pane
      (Table            : in out Runtime_Table;
-      Tabs             : Terminal.App.Tabs.Tab_State;
-      Splits           : in out Terminal.App.Splits.Split_State;
       Command          : Terminal.App.Splits.Split_Command;
       Rows             : Positive;
       Cols             : Positive;
@@ -57,7 +52,21 @@ package Terminal.App.Session_Table is
 
    procedure Close_Pane
      (Table  : in out Runtime_Table;
-      Splits : in out Terminal.App.Splits.Split_State;
+      Status : out Table_Status);
+
+   procedure Apply_Tab_Navigation
+     (Table   : in out Runtime_Table;
+      Command : Terminal.App.Tabs.Tab_Command;
+      Status  : out Table_Status);
+
+   procedure Apply_Pane_Navigation
+     (Table   : in out Runtime_Table;
+      Command : Terminal.App.Splits.Split_Command;
+      Status  : out Table_Status);
+
+   procedure Set_Active_Tab_Label
+     (Table  : in out Runtime_Table;
+      Label  : String;
       Status : out Table_Status);
 
    procedure Activate
@@ -67,6 +76,10 @@ package Terminal.App.Session_Table is
 
    function Count (Table : Runtime_Table) return Terminal.App.Sessions.Session_Count;
    function Active (Table : Runtime_Table) return Terminal.App.Sessions.Session_Index;
+   function Tabs
+     (Table : Runtime_Table) return Terminal.App.Tabs.Tab_State;
+   function Splits
+     (Table : Runtime_Table) return Terminal.App.Splits.Split_State;
    function Active_Runtime
      (Table : Runtime_Table)
       return access Terminal.App.Session_Runtime.Runtime;
@@ -90,6 +103,8 @@ private
 
    type Runtime_Table is new Ada.Finalization.Limited_Controlled with record
       Sessions : Terminal.App.Sessions.Session_Table;
+      Tabs     : Terminal.App.Tabs.Tab_State;
+      Splits   : Terminal.App.Splits.Split_State;
       Runtimes : Runtime_Array := (others => null);
       Graphics_Profile : Terminal.Core.Graphics_Capability_Profile :=
         Terminal.App.Core_Graphics_Profile;

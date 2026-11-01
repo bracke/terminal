@@ -3,6 +3,7 @@ with Ada.Streams;
 with Ada.Streams.Stream_IO;
 
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 with Terminal.Common.Bytes;
 with Terminal.Core;
 
@@ -35,16 +36,16 @@ procedure Graphics_Pipeline_Fuzz_Target is
             Snapshot : Terminal.Core.Render_Snapshot;
          begin
             Terminal.Core.Peek_Graphics_Event (T, Event);
-            Snapshot := Terminal.Core.Snapshot (T);
+            Terminal.Core.Snapshot (T, Snapshot);
             Snapshot.Graphics := Event;
             Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
             Terminal.Core.Release (Snapshot);
             if Render_Status /= Terminal.App.Renderer.Ok then
                raise Program_Error with "graphics renderer entered failure state";
             end if;
-            Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+            Result := Terminal.App.Renderer.Graphics.Result (R, Event);
             Terminal.Core.Complete_Graphics_Event (T, Event, Result);
-            Terminal.App.Renderer.Commit_Graphics_Events (R);
+            Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
          end;
       end loop;
       while Terminal.Core.Pending_Response_Length (T) > 0 loop
@@ -124,7 +125,7 @@ begin
       Limits.Animation_Frames := 64;
       Limits.Per_Image_Bytes := 1 * 1_024 * 1_024;
       Limits.Pixel_Dimension := 1_024;
-      Terminal.App.Renderer.Set_Graphics_Resource_Limits (R, Limits);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Limits);
    end;
 
    declare
@@ -187,7 +188,7 @@ begin
       Snapshot : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
       Diagnostics : Terminal.App.Renderer.Renderer_Diagnostics;
       Limits : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
-        Terminal.App.Renderer.Graphics_Resource_Limit (R);
+        Terminal.App.Renderer.Graphics.Resource_Limits (R);
    begin
       Snapshot.Graphics := (others => <>);
       Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
@@ -204,7 +205,7 @@ begin
          raise Program_Error with "graphics resource limit was exceeded";
       end if;
    end;
-   Terminal.App.Renderer.Release_Graphics_Stream (R, 16#F022#);
+   Terminal.App.Renderer.Graphics.Release_Stream (R, 16#F022#);
    Terminal.App.Renderer.Finalize (R);
    Terminal.Core.Finalize (T);
 end Graphics_Pipeline_Fuzz_Target;

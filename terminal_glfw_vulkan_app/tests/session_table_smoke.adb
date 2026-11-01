@@ -33,17 +33,24 @@ begin
       "runtime table active runtime state");
 
    Tables.New_Tab
-     (Table, Tab_State, Split_State, 24, 80, 100, Status);
+     (Table, 24, 80, 100, Status);
    Assert (Status = Tables.Ok, "runtime table new tab");
    Assert (Tables.Count (Table) = 2, "runtime table tab session count");
-   Assert (Tabs.Count (Tab_State) = 2, "runtime table tab model count");
+   Assert (Tabs.Count (Tables.Tabs (Table)) = 2, "runtime table tab model count");
    Assert (Tables.Active (Table) = 2, "runtime table new tab active");
+
+   Tables.Apply_Tab_Navigation (Table, Tabs.Previous_Tab, Status);
+   Assert (Status = Tables.Ok, "runtime table previous tab");
+   Assert
+     (Tables.Active (Table) = 1
+      and then Tabs.Active (Tables.Tabs (Table)) = 1,
+      "tab and session activation remain synchronized");
+   Tables.Apply_Tab_Navigation (Table, Tabs.Next_Tab, Status);
+   Assert (Status = Tables.Ok, "runtime table next tab");
 
    Tables.Split_Pane
      (Table,
-      Tab_State,
-      Split_State,
-      Splits.Split_Horizontal,
+         Splits.Split_Horizontal,
       24,
       80,
       100,
@@ -55,39 +62,47 @@ begin
 
    Tables.Activate (Table, 1, Status);
    Assert (Status = Tables.Ok, "runtime table activate first");
-   Assert (Tables.Active (Table) = 1, "runtime table active first");
+   Assert
+     (Tables.Active (Table) = 1
+      and then Tabs.Active (Tables.Tabs (Table)) = 1,
+      "runtime table active first synchronizes tab model");
 
-   Tables.Close_Tab (Table, Tab_State, Status);
+   Tables.Close_Tab (Table, Status);
    Assert (Status = Tables.Ok, "runtime table close tab");
    Assert (Tables.Count (Table) = 1, "runtime table close tab count");
-   Assert (Tabs.Count (Tab_State) = 1, "runtime table close tab model count");
+   Assert (Tabs.Count (Tables.Tabs (Table)) = 1, "runtime table close tab model count");
 
    Tables.Split_Pane
      (Table,
-      Tab_State,
-      Split_State,
-      Splits.Split_Horizontal,
+         Splits.Split_Horizontal,
       24,
       80,
       100,
       Status);
    Assert (Status = Tables.Ok, "runtime table split pane");
    Assert (Tables.Count (Table) = 2, "runtime table split count");
-   Assert (Splits.Count (Split_State) = 2, "runtime table split model count");
+   Assert (Splits.Count (Tables.Splits (Table)) = 2, "runtime table split model count");
+
+   Tables.Apply_Pane_Navigation (Table, Splits.Next_Pane, Status);
+   Assert (Status = Tables.Ok, "runtime table next pane");
+   Assert
+     (Tables.Active (Table) = 1
+      and then Splits.Active (Tables.Splits (Table)) = 1,
+      "pane and session activation remain synchronized");
 
    Tables.New_Tab
-     (Table, Tab_State, Split_State, 24, 80, 100, Status);
+     (Table, 24, 80, 100, Status);
    Assert
      (Status = Tables.Layout_Conflict,
       "tab layout is rejected while splits are active");
    Assert (Tables.Count (Table) = 2, "reverse conflict preserves sessions");
 
-   Tables.Close_Pane (Table, Split_State, Status);
+   Tables.Close_Pane (Table, Status);
    Assert (Status = Tables.Ok, "runtime table close pane");
    Assert (Tables.Count (Table) = 1, "runtime table close pane count");
-   Assert (Splits.Count (Split_State) = 1, "runtime table close pane model count");
+   Assert (Splits.Count (Tables.Splits (Table)) = 1, "runtime table close pane model count");
 
-   Tables.Close_Tab (Table, Tab_State, Status);
+   Tables.Close_Tab (Table, Status);
    Assert (Status = Tables.Last_Session, "runtime table last session guarded");
    Assert
      (Tables.Count (Table) = 1,
@@ -104,8 +119,6 @@ begin
    for I in 2 .. Splits.Max_Panes loop
       Tables.Split_Pane
         (Table,
-         Tab_State,
-         Split_State,
          Splits.Split_Vertical,
          24,
          80,
@@ -115,9 +128,7 @@ begin
    end loop;
    Tables.Split_Pane
      (Table,
-      Tab_State,
-      Split_State,
-      Splits.Split_Vertical,
+         Splits.Split_Vertical,
       24,
       80,
       100,
@@ -136,9 +147,7 @@ begin
    Assert (Status = Tables.Ok, "tiny runtime table initialize");
    Tables.Split_Pane
      (Table,
-      Tab_State,
-      Split_State,
-      Splits.Split_Horizontal,
+         Splits.Split_Horizontal,
       1,
       1,
       10,
@@ -148,9 +157,7 @@ begin
       "horizontal split rejects a one-row grid");
    Tables.Split_Pane
      (Table,
-      Tab_State,
-      Split_State,
-      Splits.Split_Vertical,
+         Splits.Split_Vertical,
       1,
       1,
       10,

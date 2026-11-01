@@ -6,6 +6,7 @@ with AUnit.Assertions;
 with Interfaces;
 
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 with Terminal.Common.Bytes;
 with Terminal.Core;
@@ -49,7 +50,7 @@ procedure External_Graphics_Stream_Probe is
                & Terminal.Core.Ignored_Graphics_Protocol'Image (Event.Protocol)
                & " cancelled=" & Boolean'Image (Event.Cancelled)
                & " bytes=" & Natural'Image (Event.Payload_Length));
-            Snapshot := Terminal.Core.Snapshot (T);
+            Terminal.Core.Snapshot (T, Snapshot);
             Snapshot.Graphics := Event;
             Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
             Terminal.Core.Release (Snapshot);
@@ -60,7 +61,7 @@ procedure External_Graphics_Stream_Probe is
             Assert
               (Render_Status = Terminal.App.Renderer.Ok,
                "external graphics stream renders");
-            Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+            Result := Terminal.App.Renderer.Graphics.Result (R, Event);
             Ada.Text_IO.Put_Line
               (Ada.Command_Line.Argument (1)
                & ": graphics_result="
@@ -69,7 +70,7 @@ procedure External_Graphics_Stream_Probe is
                & Natural'Image
                    (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count));
             Terminal.Core.Complete_Graphics_Event (T, Event, Result);
-            Terminal.App.Renderer.Commit_Graphics_Events (R);
+            Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
          end;
       end loop;
    end Render_Pending;
@@ -199,7 +200,7 @@ begin
          "external client produced a retained decoded image");
    end if;
 
-   Terminal.App.Renderer.Release_Graphics_Stream (R, 9_001);
+   Terminal.App.Renderer.Graphics.Release_Stream (R, 9_001);
    Terminal.App.Renderer.Finalize (R);
    Terminal.Core.Finalize (T);
 end External_Graphics_Stream_Probe;

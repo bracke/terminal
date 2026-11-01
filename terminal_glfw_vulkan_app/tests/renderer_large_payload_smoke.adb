@@ -3,6 +3,7 @@ with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 
 procedure Renderer_Large_Payload_Smoke is
    use AUnit.Assertions;
@@ -59,7 +60,7 @@ begin
 
    Terminal.Core.Peek_Graphics_Event (T, Event);
    Assert (Event.Pending, "large graphics event pending");
-   Terminal.App.Renderer.Stage_Graphics_Event
+   Terminal.App.Renderer.Graphics.Stage_Event
      (R, Event, Terminal.Core.Graphics_Event_Payload (T, Event));
    declare
       Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
@@ -87,7 +88,7 @@ begin
          "renderer consumes complete staged payload beyond snapshot preview");
    end;
 
-   Terminal.App.Renderer.Release_Graphics_Stream (R, 3_101);
+   Terminal.App.Renderer.Graphics.Release_Stream (R, 3_101);
    Terminal.Core.Finalize (T);
    Terminal.App.Renderer.Finalize (R);
 end Renderer_Large_Payload_Smoke;

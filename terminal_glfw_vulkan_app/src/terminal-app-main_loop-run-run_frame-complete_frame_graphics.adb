@@ -46,7 +46,7 @@ begin
                   Terminal.Core.Complete_Graphics_Event
                     (Core.all,
                      Snaps (I).Graphics,
-                     Terminal.App.Renderer.Graphics_Result
+                     Terminal.App.Renderer.Graphics.Result
                        (Renderer_State, Snaps (I).Graphics));
                   while not Terminal.App.Session_Runtime.Has_Pending_Write
                     (Response_Runtime.all)
@@ -80,7 +80,7 @@ begin
                Terminal.Core.Clear_Damage (Core.all);
             end;
          end loop;
-         Terminal.App.Renderer.Commit_Graphics_Events (Renderer_State);
+         Terminal.App.Renderer.Graphics.Commit_Visible_Events (Renderer_State);
          Result.Redraw := More_Graphics;
       end;
    elsif Present_Status not in

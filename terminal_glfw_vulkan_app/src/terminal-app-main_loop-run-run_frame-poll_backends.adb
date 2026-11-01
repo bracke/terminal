@@ -39,7 +39,6 @@ begin
 
    Terminal.App.Session_Graphics.Process_Hidden
      (Sessions,
-      Splits,
       R,
       Graphics_Processed,
       Graphics_Render,

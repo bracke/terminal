@@ -11,6 +11,9 @@ with GLFW_Vulkan.Events;
 with GLFW_Vulkan.Windows;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Presentation;
+with Terminal.App.Renderer.Layout;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
@@ -125,9 +128,9 @@ procedure GUI_Present_Smoke is
             --  Render commits its frame's graphics events, forgetting their
             --  results; Render_App leaves the commit to the caller, so the
             --  result can be read first.
-            Snaps (1) := Terminal.Core.Snapshot (T);
+            Terminal.Core.Snapshot (T, Snaps (1));
             Snaps (1).Graphics := Event;
-            Terminal.App.Renderer.Render_App
+            Terminal.App.Renderer.Layout.Render_App
               (R,
                Snaps,
                1,
@@ -138,13 +141,13 @@ procedure GUI_Present_Smoke is
             Assert
               (Render_Status = Terminal.App.Renderer.Ok,
                "tmux graphics event should render");
-            Result := Terminal.App.Renderer.Graphics_Result (R, Event);
+            Result := Terminal.App.Renderer.Graphics.Result (R, Event);
             Terminal.Core.Complete_Graphics_Event (T, Event, Result);
-            Terminal.App.Renderer.Commit_Graphics_Events (R);
+            Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
 
             --  Render immediately after commit, before subsequent bytes can
             --  switch screens or erase the placement as tmux exits.
-            Snap := Terminal.Core.Snapshot (T);
+            Terminal.Core.Snapshot (T, Snap);
             Snap.Graphics := (others => <>);
             Terminal.App.Renderer.Render (R, Snap, Render_Status);
             Terminal.Core.Release (Snap);
@@ -192,7 +195,7 @@ procedure GUI_Present_Smoke is
                           Event.Protocol = Terminal.Core.ITerm2_Graphics;
                      begin
                         Saw_Stream_Image := True;
-                        Terminal.App.Renderer.Present
+                        Terminal.App.Renderer.Presentation.Present
                           (R, Vk_Ctx, Presenter, Present_Status);
                         Assert
                           (Present_Status = Terminal.App.Vulkan_Presenter.Ok,
@@ -443,7 +446,7 @@ begin
      (Terminal.App.Renderer.Diagnostics (R).Last_Vertex_Count > 0,
       "render should produce Vulkan vertices");
 
-   Terminal.App.Renderer.Present (R, Vk_Ctx, Presenter, Present_Status);
+   Terminal.App.Renderer.Presentation.Present (R, Vk_Ctx, Presenter, Present_Status);
    Assert
      (Present_Status = Terminal.App.Vulkan_Presenter.Ok
       or else Present_Status = Terminal.App.Vulkan_Presenter.Validated_Not_Presented,
@@ -456,7 +459,7 @@ begin
          Before : constant Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot :=
            Terminal.App.Vulkan_Presenter.Diagnostics (Presenter);
       begin
-         Terminal.App.Renderer.Present_Retained
+         Terminal.App.Renderer.Presentation.Present_Retained
            (R, Vk_Ctx, Presenter, Present_Status);
          declare
             After : constant Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot :=
@@ -495,7 +498,7 @@ begin
    Assert
      (Presenter_Status = Terminal.App.Vulkan_Presenter.Ok,
       "presenter should reconstruct after device teardown");
-   Terminal.App.Renderer.Present (R, Vk_Ctx, Presenter, Present_Status);
+   Terminal.App.Renderer.Presentation.Present (R, Vk_Ctx, Presenter, Present_Status);
    Assert
      (Present_Status = Terminal.App.Vulkan_Presenter.Ok
       or else Present_Status = Terminal.App.Vulkan_Presenter.Validated_Not_Presented,

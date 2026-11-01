@@ -1,6 +1,8 @@
 with AUnit.Assertions;
 
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Layout;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
@@ -53,8 +55,8 @@ procedure Renderer_Relative_Placement_Smoke is
    begin
       Terminal.Core.Feed (T, To_Bytes (Command), Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, Label_Text & " feed");
-      Snapshots (1) := Terminal.Core.Snapshot (T);
-      Terminal.App.Renderer.Render_App
+      Terminal.Core.Snapshot (T, Snapshots (1));
+      Terminal.App.Renderer.Layout.Render_App
         (R,
          Snapshots,
          1,
@@ -62,13 +64,13 @@ procedure Renderer_Relative_Placement_Smoke is
          Terminal.App.Splits.Snapshot (Splits),
          Render_Status);
       Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
-      Outcome := Terminal.App.Renderer.Graphics_Result
+      Outcome := Terminal.App.Renderer.Graphics.Result
         (R, Snapshots (1).Graphics);
       Assert (Outcome.Code = Expected, Label_Text & " result");
       Assert (not Outcome.Move_Cursor, Label_Text & " cursor movement");
       Terminal.Core.Complete_Graphics_Event
         (T, Snapshots (1).Graphics, Outcome);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
       Terminal.Core.Release (Snapshots (1));
    end Process;
 begin
@@ -93,17 +95,17 @@ begin
         (1 => Terminal.Core.Snapshot (T));
       Outcome : Terminal.Core.Kitty_Graphics_Result;
    begin
-      Terminal.App.Renderer.Render_App
+      Terminal.App.Renderer.Layout.Render_App
         (R, Snapshots, 1,
          Terminal.App.Tabs.Snapshot (Tabs),
          Terminal.App.Splits.Snapshot (Splits), Render_Status);
       Assert (Render_Status = Terminal.App.Renderer.Ok, "initial render");
-      Terminal.App.Renderer.Render_App
+      Terminal.App.Renderer.Layout.Render_App
         (R, Snapshots, 1,
          Terminal.App.Tabs.Snapshot (Tabs),
          Terminal.App.Splits.Snapshot (Splits), Render_Status);
       Assert (Render_Status = Terminal.App.Renderer.Ok, "retry render");
-      Outcome := Terminal.App.Renderer.Graphics_Result
+      Outcome := Terminal.App.Renderer.Graphics.Result
         (R, Snapshots (1).Graphics);
       Assert
         (Outcome.Code = Terminal.Core.Kitty_OK
@@ -122,7 +124,7 @@ begin
       and then Terminal.App.Renderer.Diagnostics (R).Placement_Count = 1
       and then Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1,
       "retry does not duplicate graphics state");
-   Terminal.App.Renderer.Commit_Graphics_Events (R);
+   Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
 
    Process
      (ASCII.ESC & "_Gq=2,a=p,I=700,p=2,P=999,Q=1,H=1,V=0,c=1,r=1;"

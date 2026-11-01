@@ -6,6 +6,7 @@ with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.App.ITerm2_Files;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 with Test_Support;
 
 procedure ITerm2_File_Smoke is
@@ -124,7 +125,7 @@ begin
       Assert
         (Renderer_Init = Terminal.App.Renderer.Ok,
          "renderer integration initialize");
-      Terminal.App.Renderer.Set_ITerm2_Download_Policy (R, Policy);
+      Terminal.App.Renderer.Graphics.Set_ITerm2_Download_Policy (R, Policy);
       Terminal.Core.Initialize (T, 2, 4, 10, Core_Init);
       Assert (Core_Init = Terminal.Core.Ok, "core integration initialize");
       Terminal.Core.Set_Graphics_Stream_ID (T, 8_1337);
@@ -138,16 +139,16 @@ begin
       Assert (Feed_Status = Terminal.Core.Ok, "iTerm2 FILE event feed");
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "iTerm2 FILE event queued");
-      Snapshot := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshot);
       Snapshot.Graphics := Event;
       Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
       Terminal.Core.Release (Snapshot);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "renderer accepts iTerm2 FILE download");
-      Outcome := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Complete_Graphics_Event (T, Event, Outcome);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
       Assert
         (Contents (Directory & "/integration.bin") = "ABCD",
          "renderer writes the complete FILE payload");
@@ -165,14 +166,14 @@ begin
       Assert (Feed_Status = Terminal.Core.Ok, "multipart FILE event feed");
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "multipart FILE event queued");
-      Snapshot := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshot);
       Snapshot.Graphics := Event;
       Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
       Terminal.Core.Release (Snapshot);
       Assert
         (Render_Status = Terminal.App.Renderer.Ok,
          "renderer accepts multipart FILE download");
-      Outcome := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Complete_Graphics_Event (T, Event, Outcome);
       Assert
         (Contents (Directory & "/multipart.dat") = "ABCD",

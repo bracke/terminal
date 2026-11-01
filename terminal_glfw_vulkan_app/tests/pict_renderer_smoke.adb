@@ -4,6 +4,7 @@ with AUnit.Assertions;
 with Terminal.App.Image_Media;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
 with Terminal.App.Vulkan_Submit;
 with Terminal.Common.Bytes;
@@ -99,14 +100,14 @@ begin
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "PICT graphics event");
-      Snapshot := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshot);
       Snapshot.Graphics := Event;
       Terminal.App.Renderer.Render (R, Snapshot, Render);
-      Outcome := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
       Assert (Render = Terminal.App.Renderer.Ok, "PICT renderer render");
       Terminal.Core.Complete_Graphics_Event (T, Event, Outcome);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
    end;
 
    declare
@@ -181,14 +182,14 @@ begin
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "compatible PICT graphics event");
-      Snapshot := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshot);
       Snapshot.Graphics := Event;
       Terminal.App.Renderer.Render (R, Snapshot, Render);
-      Outcome := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
       Assert (Render = Terminal.App.Renderer.Ok, "compatible PICT render");
       Terminal.Core.Complete_Graphics_Event (T, Event, Outcome);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
       declare
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
            Terminal.App.Renderer.Diagnostics (R);
@@ -216,14 +217,14 @@ begin
       Outcome : Terminal.Core.Kitty_Graphics_Result;
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
-      Snapshot := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshot);
       Snapshot.Graphics := Event;
       Terminal.App.Renderer.Render (R, Snapshot, Render);
-      Outcome := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
       Assert (Render = Terminal.App.Renderer.Ok, "PNG after PICT render");
       Terminal.Core.Complete_Graphics_Event (T, Event, Outcome);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
       Assert
         (Terminal.App.Renderer.Media_Status_Label
            (Terminal.App.Renderer.Diagnostics (R)) = "",
@@ -245,10 +246,10 @@ begin
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "truncated PICT graphics event");
-      Snapshot := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshot);
       Snapshot.Graphics := Event;
       Terminal.App.Renderer.Render (R, Snapshot, Render);
-      Outcome := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
       declare
          Diagnostics : constant Terminal.App.Renderer.Renderer_Diagnostics :=
@@ -268,7 +269,7 @@ begin
       Image_Count_Before :=
         Terminal.App.Renderer.Diagnostics (R).Last_Image_Count;
       Terminal.Core.Complete_Graphics_Event (T, Event, Outcome);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
 
       Terminal.Core.Feed
         (T,
@@ -280,10 +281,10 @@ begin
       Assert (Feed = Terminal.Core.Ok, "invalid iTerm2 dimensions feed");
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "invalid iTerm2 dimensions graphics event");
-      Snapshot := Terminal.Core.Snapshot (T);
+      Terminal.Core.Snapshot (T, Snapshot);
       Snapshot.Graphics := Event;
       Terminal.App.Renderer.Render (R, Snapshot, Render);
-      Outcome := Terminal.App.Renderer.Graphics_Result (R, Event);
+      Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
       Assert
         (Terminal.App.Renderer.Diagnostics (R).Last_Image_Count =
@@ -294,7 +295,7 @@ begin
            (Terminal.App.Renderer.Diagnostics (R)) = "",
          "iTerm2 commands bypassing decode clear stale media diagnostics");
       Terminal.Core.Complete_Graphics_Event (T, Event, Outcome);
-      Terminal.App.Renderer.Commit_Graphics_Events (R);
+      Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
    end;
 
    Terminal.App.Renderer.Finalize (R);
