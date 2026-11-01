@@ -7,12 +7,49 @@ package body GLFW_Vulkan.Input is
    use type Interfaces.C.unsigned;
    use type GLFW_Vulkan.Raw.GLFW_Window_Handle;
 
-   Global_Key_Callback  : Key_Callback := null;
-   Global_Char_Callback : Character_Callback := null;
-   Global_Mouse_Button_Callback : Mouse_Button_Callback := null;
-   Global_Cursor_Position_Callback : Cursor_Position_Callback := null;
-   Global_Scroll_Callback : Scroll_Callback := null;
-   Global_Focus_Callback : Focus_Callback := null;
+   Max_Callback_Windows : constant := 16;
+   subtype Callback_Slot is Positive range 1 .. Max_Callback_Windows;
+   type Window_Callbacks is record
+      Window          : Raw.GLFW_Window_Handle := Raw.Null_Window;
+      Key             : Key_Callback := null;
+      Character       : Character_Callback := null;
+      Mouse_Button    : Mouse_Button_Callback := null;
+      Cursor_Position : Cursor_Position_Callback := null;
+      Scroll          : Scroll_Callback := null;
+      Focus           : Focus_Callback := null;
+   end record;
+   type Callback_Table is array (Callback_Slot) of Window_Callbacks;
+   Callbacks : Callback_Table := (others => <>);
+
+   function Find_Slot (Window : Raw.GLFW_Window_Handle) return Natural is
+   begin
+      if Window = Raw.Null_Window then
+         return 0;
+      end if;
+      for I in Callbacks'Range loop
+         if Callbacks (I).Window = Window then
+            return I;
+         end if;
+      end loop;
+      return 0;
+   end Find_Slot;
+
+   function Ensure_Slot (Window : Raw.GLFW_Window_Handle) return Callback_Slot is
+      Existing : constant Natural := Find_Slot (Window);
+   begin
+      if Existing > 0 then
+         return Callback_Slot (Existing);
+      elsif Window = Raw.Null_Window then
+         raise Constraint_Error with "cannot register callbacks for a null window";
+      end if;
+      for I in Callbacks'Range loop
+         if Callbacks (I).Window = Raw.Null_Window then
+            Callbacks (I).Window := Window;
+            return I;
+         end if;
+      end loop;
+      raise Storage_Error with "GLFW callback window capacity exceeded";
+   end Ensure_Slot;
 
    function Has_Mod (Mods : Interfaces.C.int; Flag : Interfaces.C.int) return Boolean is
      (((Mods / Flag) mod 2) = 1);
@@ -183,7 +220,7 @@ package body GLFW_Vulkan.Input is
       Action   : Interfaces.C.int;
       Mods     : Interfaces.C.int)
    is
-      pragma Unreferenced (Window);
+      Slot : constant Natural := Find_Slot (Window);
       Event : constant Key_Event :=
         (Key       => To_Key (Raw_Key),
          Raw_Key   => Integer (Raw_Key),
@@ -195,8 +232,8 @@ package body GLFW_Vulkan.Input is
             Alt     => Has_Mod (Mods, Raw.GLFW_MOD_ALT),
             Super   => Has_Mod (Mods, Raw.GLFW_MOD_SUPER)));
    begin
-      if Global_Key_Callback /= null then
-         Global_Key_Callback.all (Event);
+      if Slot > 0 and then Callbacks (Slot).Key /= null then
+         Callbacks (Slot).Key.all (Event);
       end if;
    end Dispatch_Key;
 
@@ -204,12 +241,13 @@ package body GLFW_Vulkan.Input is
      (Window     : Raw.GLFW_Window_Handle;
       Code_Point : Interfaces.C.unsigned)
    is
-      pragma Unreferenced (Window);
+      Slot : constant Natural := Find_Slot (Window);
    begin
-      if Global_Char_Callback /= null
+      if Slot > 0
+        and then Callbacks (Slot).Character /= null
         and then Natural (Code_Point) <= Wide_Wide_Character'Pos (Wide_Wide_Character'Last)
       then
-         Global_Char_Callback.all
+         Callbacks (Slot).Character.all
            ((Code_Point => Wide_Wide_Character'Val (Natural (Code_Point))));
       end if;
    end Dispatch_Char;
@@ -222,10 +260,11 @@ package body GLFW_Vulkan.Input is
    is
       X_Pos : Interfaces.C.double := 0.0;
       Y_Pos : Interfaces.C.double := 0.0;
+      Slot : constant Natural := Find_Slot (Window);
    begin
-      if Global_Mouse_Button_Callback /= null then
+      if Slot > 0 and then Callbacks (Slot).Mouse_Button /= null then
          Raw.Get_Cursor_Pos (Window, X_Pos, Y_Pos);
-         Global_Mouse_Button_Callback.all
+         Callbacks (Slot).Mouse_Button.all
            ((Button     => To_Mouse_Button (Button),
              Raw_Button => Integer (Button),
              Action     => To_Action (Action),
@@ -244,10 +283,10 @@ package body GLFW_Vulkan.Input is
       X_Pos  : Interfaces.C.double;
       Y_Pos  : Interfaces.C.double)
    is
-      pragma Unreferenced (Window);
+      Slot : constant Natural := Find_Slot (Window);
    begin
-      if Global_Cursor_Position_Callback /= null then
-         Global_Cursor_Position_Callback.all
+      if Slot > 0 and then Callbacks (Slot).Cursor_Position /= null then
+         Callbacks (Slot).Cursor_Position.all
            ((X => Float (X_Pos), Y => Float (Y_Pos)));
       end if;
    end Dispatch_Cursor_Position;
@@ -259,10 +298,11 @@ package body GLFW_Vulkan.Input is
    is
       X_Pos : Interfaces.C.double := 0.0;
       Y_Pos : Interfaces.C.double := 0.0;
+      Slot : constant Natural := Find_Slot (Window);
    begin
-      if Global_Scroll_Callback /= null then
+      if Slot > 0 and then Callbacks (Slot).Scroll /= null then
          Raw.Get_Cursor_Pos (Window, X_Pos, Y_Pos);
-         Global_Scroll_Callback.all
+         Callbacks (Slot).Scroll.all
            ((X_Offset => Float (X_Offset),
              Y_Offset => Float (Y_Offset),
              X        => Float (X_Pos),
@@ -274,10 +314,10 @@ package body GLFW_Vulkan.Input is
      (Window  : Raw.GLFW_Window_Handle;
       Focused : Interfaces.C.int)
    is
-      pragma Unreferenced (Window);
+      Slot : constant Natural := Find_Slot (Window);
    begin
-      if Global_Focus_Callback /= null then
-         Global_Focus_Callback.all ((Focused => Focused /= 0));
+      if Slot > 0 and then Callbacks (Slot).Focus /= null then
+         Callbacks (Slot).Focus.all ((Focused => Focused /= 0));
       end if;
    end Dispatch_Focus;
 
@@ -286,9 +326,11 @@ package body GLFW_Vulkan.Input is
       Callback : Key_Callback)
    is
       Previous : Raw.Key_Callback_Access;
+      Slot : constant Callback_Slot := Ensure_Slot
+        (GLFW_Vulkan.Windows.Internal.Handle (W));
       pragma Unreferenced (Previous);
    begin
-      Global_Key_Callback := Callback;
+      Callbacks (Slot).Key := Callback;
       Previous := Raw.Set_Key_Callback
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Key'Access);
@@ -299,9 +341,11 @@ package body GLFW_Vulkan.Input is
       Callback : Character_Callback)
    is
       Previous : Raw.Char_Callback_Access;
+      Slot : constant Callback_Slot := Ensure_Slot
+        (GLFW_Vulkan.Windows.Internal.Handle (W));
       pragma Unreferenced (Previous);
    begin
-      Global_Char_Callback := Callback;
+      Callbacks (Slot).Character := Callback;
       Previous := Raw.Set_Char_Callback
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Char'Access);
@@ -312,9 +356,11 @@ package body GLFW_Vulkan.Input is
       Callback : Mouse_Button_Callback)
    is
       Previous : Raw.Mouse_Button_Callback_Access;
+      Slot : constant Callback_Slot := Ensure_Slot
+        (GLFW_Vulkan.Windows.Internal.Handle (W));
       pragma Unreferenced (Previous);
    begin
-      Global_Mouse_Button_Callback := Callback;
+      Callbacks (Slot).Mouse_Button := Callback;
       Previous := Raw.Set_Mouse_Button_Callback
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Mouse_Button'Access);
@@ -325,9 +371,11 @@ package body GLFW_Vulkan.Input is
       Callback : Cursor_Position_Callback)
    is
       Previous : Raw.Cursor_Pos_Callback_Access;
+      Slot : constant Callback_Slot := Ensure_Slot
+        (GLFW_Vulkan.Windows.Internal.Handle (W));
       pragma Unreferenced (Previous);
    begin
-      Global_Cursor_Position_Callback := Callback;
+      Callbacks (Slot).Cursor_Position := Callback;
       Previous := Raw.Set_Cursor_Pos_Callback
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Cursor_Position'Access);
@@ -338,9 +386,11 @@ package body GLFW_Vulkan.Input is
       Callback : Scroll_Callback)
    is
       Previous : Raw.Scroll_Callback_Access;
+      Slot : constant Callback_Slot := Ensure_Slot
+        (GLFW_Vulkan.Windows.Internal.Handle (W));
       pragma Unreferenced (Previous);
    begin
-      Global_Scroll_Callback := Callback;
+      Callbacks (Slot).Scroll := Callback;
       Previous := Raw.Set_Scroll_Callback
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Scroll'Access);
@@ -351,11 +401,41 @@ package body GLFW_Vulkan.Input is
       Callback : Focus_Callback)
    is
       Previous : Raw.Window_Focus_Callback_Access;
+      Slot : constant Callback_Slot := Ensure_Slot
+        (GLFW_Vulkan.Windows.Internal.Handle (W));
       pragma Unreferenced (Previous);
    begin
-      Global_Focus_Callback := Callback;
+      Callbacks (Slot).Focus := Callback;
       Previous := Raw.Set_Window_Focus_Callback
         (GLFW_Vulkan.Windows.Internal.Handle (W),
          Dispatch_Focus'Access);
    end Set_Focus_Callback;
+
+   procedure Clear_Callbacks (W : in out GLFW_Vulkan.Windows.Window) is
+      Window : constant Raw.GLFW_Window_Handle :=
+        GLFW_Vulkan.Windows.Internal.Handle (W);
+      Slot : constant Natural := Find_Slot (Window);
+      Previous_Key : Raw.Key_Callback_Access;
+      Previous_Char : Raw.Char_Callback_Access;
+      Previous_Mouse : Raw.Mouse_Button_Callback_Access;
+      Previous_Cursor : Raw.Cursor_Pos_Callback_Access;
+      Previous_Scroll : Raw.Scroll_Callback_Access;
+      Previous_Focus : Raw.Window_Focus_Callback_Access;
+      pragma Unreferenced
+        (Previous_Key, Previous_Char, Previous_Mouse, Previous_Cursor,
+         Previous_Scroll, Previous_Focus);
+   begin
+      if Window = Raw.Null_Window then
+         return;
+      end if;
+      Previous_Key := Raw.Set_Key_Callback (Window, null);
+      Previous_Char := Raw.Set_Char_Callback (Window, null);
+      Previous_Mouse := Raw.Set_Mouse_Button_Callback (Window, null);
+      Previous_Cursor := Raw.Set_Cursor_Pos_Callback (Window, null);
+      Previous_Scroll := Raw.Set_Scroll_Callback (Window, null);
+      Previous_Focus := Raw.Set_Window_Focus_Callback (Window, null);
+      if Slot > 0 then
+         Callbacks (Slot) := (others => <>);
+      end if;
+   end Clear_Callbacks;
 end GLFW_Vulkan.Input;

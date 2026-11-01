@@ -95,4 +95,8 @@ package GLFW_Vulkan.Input is
    procedure Set_Focus_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
       Callback : Focus_Callback);
+
+   --  Remove every callback associated with W.  Window destruction calls this
+   --  automatically so nested Ada callbacks cannot outlive their scope.
+   procedure Clear_Callbacks (W : in out GLFW_Vulkan.Windows.Window);
 end GLFW_Vulkan.Input;

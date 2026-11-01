@@ -1,6 +1,7 @@
 with Interfaces.C;
 with Interfaces.C.Strings;
 with System;
+with GLFW_Vulkan.Input;
 with GLFW_Vulkan.Raw;
 
 package body GLFW_Vulkan.Windows is
@@ -40,6 +41,7 @@ package body GLFW_Vulkan.Windows is
    procedure Destroy (W : in out Window) is
    begin
       if W.Handle /= Raw.Null_Window then
+         GLFW_Vulkan.Input.Clear_Callbacks (W);
          if W.Cursor /= Raw.Null_Cursor then
             Raw.Set_Cursor (W.Handle, Raw.Null_Cursor);
             Raw.Destroy_Cursor (W.Cursor);
