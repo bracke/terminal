@@ -1,11 +1,14 @@
+with Terminal.Core.Snapshot_Editing;
 with AUnit.Assertions;
 
 with Terminal.App.Renderer;
 with Terminal.App.Renderer.Layout;
 with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Testing;
+with Terminal.App.Renderer.Testing.Image_Transactions;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
+with Terminal.App.Vulkan_Submit;
 with Terminal.Common.Bytes;
 with Terminal.Core;
 
@@ -16,11 +19,11 @@ procedure Renderer_Transaction_Smoke is
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
-   use type Terminal.Core.Kitty_Graphics_Result_Code;
+   use type Terminal.Core.Graphics_Completion_Code;
 
    Red_PNG_Base64 : constant String :=
-     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4"
-     & "z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==";
+     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4"
+     & "z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
    Animated_GIF_Base64 : constant String :=
      "R0lGODlhAQABAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEBAAAh+QQABQAAACwA"
      & "AAAAAQABAAACAkQBACH5BAAHAAAALAAAAAABAAEAgAAA/wAAAAICRAEAOw==";
@@ -42,6 +45,8 @@ procedure Renderer_Transaction_Smoke is
    Render_Status : Terminal.App.Renderer.Render_Status;
    Tabs : Terminal.App.Tabs.Tab_State;
    Splits : Terminal.App.Splits.Split_State;
+   Limit_Status :
+     Terminal.App.Renderer.Graphics.Resource_Limit_Update_Status;
 
    procedure Reject_At_Allocation
      (Command : String;
@@ -50,7 +55,7 @@ procedure Renderer_Transaction_Smoke is
    is
       Event : Terminal.Core.Graphics_Event;
       Snapshots : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
-      Result : Terminal.Core.Kitty_Graphics_Result;
+      Result : Terminal.Core.Graphics_Completion;
       D : Terminal.App.Renderer.Renderer_Diagnostics;
    begin
       Terminal.Core.Feed (T, To_Bytes (Command), Feed_Status);
@@ -61,7 +66,7 @@ procedure Renderer_Transaction_Smoke is
       Terminal.App.Renderer.Testing.Fail_Image_Allocation_After
         (R, Failure_Attempt);
       Terminal.Core.Snapshot (T, Snapshots (1));
-      Snapshots (1).Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshots (1), Event);
       Terminal.App.Renderer.Layout.Render_App
         (R,
          Snapshots,
@@ -86,12 +91,12 @@ procedure Renderer_Transaction_Smoke is
 
    procedure Process_Kitty
      (Command  : String;
-      Expected : Terminal.Core.Kitty_Graphics_Result_Code;
+      Expected : Terminal.Core.Graphics_Completion_Code;
       Label_Text : String)
    is
       Event : Terminal.Core.Graphics_Event;
       Snapshots : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
-      Result : Terminal.Core.Kitty_Graphics_Result;
+      Result : Terminal.Core.Graphics_Completion;
    begin
       Terminal.Core.Feed
         (T, To_Bytes (ASCII.ESC & "_" & Command & ASCII.ESC & "\"),
@@ -100,7 +105,7 @@ procedure Renderer_Transaction_Smoke is
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, Label_Text & " event");
       Terminal.Core.Snapshot (T, Snapshots (1));
-      Snapshots (1).Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshots (1), Event);
       Terminal.App.Renderer.Layout.Render_App
         (R,
          Snapshots,
@@ -114,9 +119,9 @@ procedure Renderer_Transaction_Smoke is
       if Result.Code /= Expected then
          raise Program_Error with
            Label_Text & " result: expected "
-           & Terminal.Core.Kitty_Graphics_Result_Code'Image (Expected)
+           & Terminal.Core.Graphics_Completion_Code'Image (Expected)
            & ", got "
-           & Terminal.Core.Kitty_Graphics_Result_Code'Image (Result.Code);
+           & Terminal.Core.Graphics_Completion_Code'Image (Result.Code);
       end if;
       Terminal.Core.Complete_Graphics_Event (T, Event, Result);
       Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
@@ -129,6 +134,20 @@ begin
    Terminal.Core.Set_Graphics_Stream_ID (T, 8_201);
    Terminal.App.Tabs.Initialize (Tabs);
    Terminal.App.Splits.Initialize (Splits);
+
+   Assert
+     (Terminal.App.Renderer.Testing.Submission_Render_Status
+        (Terminal.App.Vulkan_Submit.Allocation_Failed) =
+          Terminal.App.Renderer.Allocation_Failed
+      and then
+        Terminal.App.Renderer.Testing.Submission_Render_Status
+          (Terminal.App.Vulkan_Submit.Invalid_Frame) =
+            Terminal.App.Renderer.Batch_Build_Failed
+      and then
+        Terminal.App.Renderer.Testing.Submission_Render_Status
+          (Terminal.App.Vulkan_Submit.Capacity_Exceeded) =
+            Terminal.App.Renderer.Batch_Build_Failed,
+      "submission failures preserve retry semantics");
 
    Reject_At_Allocation
      (ASCII.ESC & "]1337;File=inline=1;doNotMoveCursor=1:"
@@ -163,11 +182,15 @@ begin
       Original_Width : Float;
    begin
       Tight.Placements := 1;
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Tight, Limit_Status);
       Process_Kitty
         ("Gq=2,a=T,i=10,p=1,f=32,s=1,v=1,c=1,r=1,C=1;/wAA/w==",
-         Terminal.Core.Kitty_OK,
+         Terminal.Core.Graphics_OK,
          "initial combined placement");
+      Terminal.App.Renderer.Testing.Image_Transactions
+        .Verify_Index_Failure_Preserves_Placements
+        (R, 8_202, 10);
       Original_X :=
         Terminal.App.Renderer.Testing.Last_Frame (R).Images (1).X;
       Original_Y :=
@@ -182,7 +205,7 @@ begin
          "failed replacement cursor movement feed");
       Process_Kitty
         ("Gq=2,a=T,i=10,p=1,f=32,s=1,v=1,c=2,r=1,C=1;!!!!",
-         Terminal.Core.Kitty_EINVAL,
+         Terminal.Core.Graphics_EINVAL,
          "malformed combined replacement");
       Assert
         (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count = 1
@@ -198,7 +221,7 @@ begin
          "failed combined replacement preserves exact placement");
       Process_Kitty
         ("Gq=2,a=T,i=11,p=1,f=32,s=1,v=1,c=1,r=1,C=1;AP8A/w==",
-         Terminal.Core.Kitty_ENOMEM,
+         Terminal.Core.Graphics_ENOMEM,
          "placement quota rejection");
       D := Terminal.App.Renderer.Diagnostics (R);
       Assert
@@ -209,7 +232,7 @@ begin
 
       Process_Kitty
         ("Gq=2,a=T,i=10,p=1,f=32,s=1,v=1,x=2,c=1,r=1,C=1;AP8A/w==",
-         Terminal.Core.Kitty_EINVAL,
+         Terminal.Core.Graphics_EINVAL,
          "invalid replacement geometry");
       D := Terminal.App.Renderer.Diagnostics (R);
       Assert
@@ -224,21 +247,27 @@ begin
          "failed combined replacement preserves prior image and placement");
 
       Tight.Placements := 2;
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Tight, Limit_Status);
       Process_Kitty
         ("Gq=2,a=t,i=20,f=32,s=1,v=1;/wAA/w==",
-         Terminal.Core.Kitty_OK,
+         Terminal.Core.Graphics_OK,
          "unplaced object for allocation test");
       Terminal.App.Renderer.Testing.Fail_Image_Allocation_After (R, 1);
       Process_Kitty
         ("Gq=2,a=p,i=20,p=1,c=1,r=1,C=1",
-         Terminal.Core.Kitty_ENOMEM,
+         Terminal.Core.Graphics_ENOMEM,
          "placement allocation rejection");
       D := Terminal.App.Renderer.Diagnostics (R);
       Assert
         (D.Image_Object_Count = 2 and then D.Placement_Count = 1,
          "placement allocation failure preserves existing objects");
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Original);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Original, Limit_Status);
+      Terminal.App.Renderer.Testing.Image_Transactions
+        .Verify_Delete_Rejection_Preserves_Placements (R, 8_202, 10);
+      Terminal.App.Renderer.Testing.Image_Transactions
+        .Verify_Placement_Preflight_Preserves_All (R, 8_202, 10);
    end;
 
    Terminal.Core.Finalize (T);

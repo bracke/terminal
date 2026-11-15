@@ -9,11 +9,11 @@ begin
    for I in 1 .. Count loop
       declare
          Object : constant Image_Object_Access :=
-           Find_Image_Object_By_Storage_Order
+           Image_Objects.Find_By_Storage_Order
              (R, Stream_ID, Orders (I));
       begin
-         if Object /= null and then not Has_Image_Placement (R, Object) then
-            Delete_Image_Object_By_Storage_Order
+         if Object /= null and then not Placements_State.Has_Image_Placement (R, Object) then
+            Image_Objects.Delete_By_Storage_Order
               (R, Stream_ID, Orders (I));
          end if;
       end;

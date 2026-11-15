@@ -51,4 +51,21 @@ package Terminal.App.Graphics_Transport is
       Status          : out Load_Status);
 
    procedure Release (Bytes : in out Byte_Array_Access);
+
+private
+   type Shared_Memory_Unlinker_Access is access function
+     (Name : String) return Boolean;
+
+   procedure Load_With_Unlinker
+     (Medium           : Character;
+      Encoded_Location : String;
+      Offset           : Natural;
+      Size             : Natural;
+      Size_Specified   : Boolean;
+      Policy           : Access_Policy;
+      Maximum_Bytes    : Positive;
+      Bytes            : out Byte_Array_Access;
+      Length           : out Natural;
+      Status           : out Load_Status;
+      Unlinker         : not null Shared_Memory_Unlinker_Access);
 end Terminal.App.Graphics_Transport;

@@ -1,4 +1,8 @@
 with Terminal.Common.Bytes;
+with Terminal.Common.Status;
+with Terminal.App.Input_Map.Mouse;
+with Terminal.App.Input_Map.Paste;
+with Terminal.App.Input_Map.Status;
 
 package body Terminal.App.Input_Map is
    use Terminal.Common.Bytes;
@@ -43,12 +47,11 @@ package body Terminal.App.Input_Map is
      (Chunk : in out Terminal.App.Queues.Byte_Chunk;
       Value : Natural)
    is
-      Text : constant String := Natural'Image (Value);
+      Text : constant String :=
+        Terminal.Common.Status.Trimmed_Natural (Value);
    begin
       for Ch of Text loop
-         if Ch /= ' ' then
-            Append (Chunk, Byte (Character'Pos (Ch)));
-         end if;
+         Append (Chunk, Byte (Character'Pos (Ch)));
       end loop;
    end Append_Natural;
 
@@ -163,87 +166,6 @@ package body Terminal.App.Input_Map is
          Append (Chunk, 16#0A#);
       end if;
    end Append_Return;
-
-   function Mouse_Button_Code
-     (Button : GLFW_Vulkan.Input.Mouse_Button) return Natural
-   is
-   begin
-      case Button is
-         when Left   => return 0;
-         when Middle => return 1;
-         when Right  => return 2;
-         when others => return 0;
-      end case;
-   end Mouse_Button_Code;
-
-   function Mouse_Modifier_Code
-     (Modifiers : GLFW_Vulkan.Input.Modifier_Set) return Natural
-   is
-      Code : Natural := 0;
-   begin
-      if Modifiers.Shift then
-         Code := Code + 4;
-      end if;
-      if Modifiers.Alt then
-         Code := Code + 8;
-      end if;
-      if Modifiers.Control then
-         Code := Code + 16;
-      end if;
-      return Code;
-   end Mouse_Modifier_Code;
-
-   procedure Append_Mouse
-     (Chunk     : in out Terminal.App.Queues.Byte_Chunk;
-      Modes     : Terminal.Core.Mode_Snapshot;
-      Code      : Natural;
-      Row       : Positive;
-      Col       : Positive;
-      Release   : Boolean)
-   is
-      procedure Append_UTF8_Value (Value : Natural) is
-         Encoded : constant Natural := Value + 32;
-      begin
-         if Encoded <= 16#7F# then
-            Append (Chunk, Byte (Encoded));
-         elsif Encoded <= 16#7FF# then
-            Append (Chunk, Byte (16#C0# + Encoded / 64));
-            Append (Chunk, Byte (16#80# + Encoded mod 64));
-         elsif Encoded <= 16#FFFF# then
-            Append (Chunk, Byte (16#E0# + Encoded / 4096));
-            Append (Chunk, Byte (16#80# + (Encoded / 64) mod 64));
-            Append (Chunk, Byte (16#80# + Encoded mod 64));
-         end if;
-      end Append_UTF8_Value;
-   begin
-      if Modes.Mouse_SGR then
-         Append_String (Chunk, ASCII.ESC & "[<");
-         Append_Natural (Chunk, Code);
-         Append (Chunk, Byte (Character'Pos (';')));
-         Append_Natural (Chunk, Col);
-         Append (Chunk, Byte (Character'Pos (';')));
-         Append_Natural (Chunk, Row);
-         Append (Chunk, Byte (Character'Pos ((if Release then 'm' else 'M'))));
-      elsif Modes.Mouse_URXVT then
-         Append_String (Chunk, ASCII.ESC & "[");
-         Append_Natural (Chunk, Code + 32);
-         Append (Chunk, Byte (Character'Pos (';')));
-         Append_Natural (Chunk, Col);
-         Append (Chunk, Byte (Character'Pos (';')));
-         Append_Natural (Chunk, Row);
-         Append (Chunk, Byte (Character'Pos ('M')));
-      elsif Modes.Mouse_UTF8 then
-         Append_String (Chunk, ASCII.ESC & "[M");
-         Append_UTF8_Value (Code);
-         Append_UTF8_Value (Col);
-         Append_UTF8_Value (Row);
-      elsif Col <= 223 and then Row <= 223 and then Code <= 223 then
-         Append_String (Chunk, ASCII.ESC & "[M");
-         Append (Chunk, Byte (Code + 32));
-         Append (Chunk, Byte (Col + 32));
-         Append (Chunk, Byte (Row + 32));
-      end if;
-   end Append_Mouse;
 
    procedure Encode_UTF8 (CP : Natural; Chunk : in out Terminal.App.Queues.Byte_Chunk) is
    begin
@@ -743,121 +665,30 @@ package body Terminal.App.Input_Map is
       Chunk : out Terminal.App.Queues.Byte_Chunk)
    is
    begin
-      Chunk := (others => <>);
-      if Modes.Bracketed_Paste then
-         Append_String (Chunk, ASCII.ESC & "[200~");
-      end if;
-
-      Append_String (Chunk, Text);
-
-      if Modes.Bracketed_Paste then
-         Append_String (Chunk, ASCII.ESC & "[201~");
-      end if;
+      Terminal.App.Input_Map.Paste.Encode (Text, Modes, Chunk);
    end Encode_Paste_Text;
 
    function Paste_Status_Label
      (Modes : Terminal.Core.Mode_Snapshot) return String is
-   begin
-      if Modes.Bracketed_Paste then
-         return "Bracketed paste active";
-      else
-         return "Plain paste active";
-      end if;
-   end Paste_Status_Label;
-
+     (Terminal.App.Input_Map.Status.Paste_Label (Modes));
    function Focus_Status_Label
      (Modes : Terminal.Core.Mode_Snapshot) return String is
-   begin
-      if Modes.Focus_Reporting then
-         return "Focus reporting active";
-      else
-         return "Focus reporting inactive";
-      end if;
-   end Focus_Status_Label;
-
+     (Terminal.App.Input_Map.Status.Focus_Label (Modes));
    function Keyboard_Status_Label
      (Modes : Terminal.Core.Mode_Snapshot) return String is
-   begin
-      if Modes.Keyboard_Locked then
-         return "Keyboard input locked";
-      else
-         return "Keyboard input active";
-      end if;
-   end Keyboard_Status_Label;
-
+     (Terminal.App.Input_Map.Status.Keyboard_Label (Modes));
    function Key_Mode_Status_Label
-     (Modes : Terminal.Core.Mode_Snapshot) return String
-   is
-      Result : String (1 .. Max_Input_Status_Label_Length);
-      Last   : Natural := 0;
-
-      procedure Append (Text : String) is
-      begin
-         for Ch of Text loop
-            exit when Last = Result'Last;
-            Last := Last + 1;
-            Result (Last) := Ch;
-         end loop;
-      end Append;
-   begin
-      Append ("Keys: ");
-      Append
-        (if Modes.Application_Cursor
-         then "app cursor"
-         else "normal cursor");
-      Append (", ");
-      Append
-        (if Modes.Application_Keypad
-         then "app keypad"
-         else "numeric keypad");
-      Append (", ");
-      Append
-        (if Modes.Backarrow_Key_Backspace
-         then "Backspace=BS"
-         else "Backspace=DEL");
-      Append (", ");
-      Append
-        (if Modes.Linefeed_New_Line
-         then "LF sends CRLF"
-         else "LF sends LF");
-
-      return Result (1 .. Last);
-   end Key_Mode_Status_Label;
-
+     (Modes : Terminal.Core.Mode_Snapshot) return String is
+     (Terminal.App.Input_Map.Status.Key_Mode_Label (Modes));
    function Input_Status_Label
      (Modes : Terminal.Core.Mode_Snapshot) return String is
-      Keyboard : constant String :=
-        (if Modes.Keyboard_Locked then "keyboard locked" else "keyboard active");
-      Paste : constant String :=
-        (if Modes.Bracketed_Paste then "bracketed paste" else "plain paste");
-      Focus : constant String :=
-        (if Modes.Focus_Reporting then "focus reporting" else "focus local");
-      Mouse : constant String :=
-        (if Mouse_Reporting_Enabled (Modes)
-         then "mouse reporting"
-         else "local mouse");
-   begin
-      return
-        "Input: " & Keyboard & ", " & Paste & ", " & Focus & ", " & Mouse;
-   end Input_Status_Label;
-
+     (Terminal.App.Input_Map.Status.Input_Label (Modes));
    function Mouse_Reporting_Enabled
      (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
-   begin
-      return Modes.Mouse_Button
-        or else Modes.Mouse_Drag
-        or else Modes.Mouse_Any_Event;
-   end Mouse_Reporting_Enabled;
-
+     (Terminal.App.Input_Map.Status.Mouse_Reporting_Enabled (Modes));
    function Mouse_Status_Label
      (Modes : Terminal.Core.Mode_Snapshot) return String is
-   begin
-      if Mouse_Reporting_Enabled (Modes) then
-         return "Mouse reporting active; Shift+Left keeps local selection";
-      else
-         return "Local selection active; wheel scrolls scrollback";
-      end if;
-   end Mouse_Status_Label;
+     (Terminal.App.Input_Map.Status.Mouse_Label (Modes));
 
    procedure Encode_Mouse_Button
      (Event : GLFW_Vulkan.Input.Mouse_Button_Event;
@@ -866,23 +697,9 @@ package body Terminal.App.Input_Map is
       Col   : Positive;
       Chunk : out Terminal.App.Queues.Byte_Chunk)
    is
-      Release : constant Boolean := Event.Action = GLFW_Vulkan.Input.Release;
-      Code    : Natural;
    begin
-      Chunk := (others => <>);
-      if not Mouse_Reporting_Enabled (Modes)
-        or else Event.Action = GLFW_Vulkan.Input.Repeat
-        or else Event.Button = GLFW_Vulkan.Input.Other
-      then
-         return;
-      end if;
-
-      Code :=
-        (if Release
-         then 3
-         else Mouse_Button_Code (Event.Button))
-        + Mouse_Modifier_Code (Event.Modifiers);
-      Append_Mouse (Chunk, Modes, Code, Row, Col, Release);
+      Terminal.App.Input_Map.Mouse.Encode_Button
+        (Event, Modes, Row, Col, Chunk);
    end Encode_Mouse_Button;
 
    procedure Encode_Mouse_Motion
@@ -895,19 +712,9 @@ package body Terminal.App.Input_Map is
       Modifiers   : GLFW_Vulkan.Input.Modifier_Set;
       Chunk       : out Terminal.App.Queues.Byte_Chunk)
    is
-      Code : Natural;
    begin
-      Chunk := (others => <>);
-      if Modes.Mouse_Any_Event then
-         Code := (if Button_Down then Button_Code else 3);
-      elsif Modes.Mouse_Drag and then Button_Down then
-         Code := Button_Code;
-      else
-         return;
-      end if;
-
-      Code := Code + 32 + Mouse_Modifier_Code (Modifiers);
-      Append_Mouse (Chunk, Modes, Code, Row, Col, False);
+      Terminal.App.Input_Map.Mouse.Encode_Motion
+        (Event, Modes, Row, Col, Button_Down, Button_Code, Modifiers, Chunk);
    end Encode_Mouse_Motion;
 
    procedure Encode_Mouse_Wheel
@@ -917,23 +724,9 @@ package body Terminal.App.Input_Map is
       Col   : Positive;
       Chunk : out Terminal.App.Queues.Byte_Chunk)
    is
-      Code : Natural;
    begin
-      Chunk := (others => <>);
-      if not Mouse_Reporting_Enabled (Modes)
-        or else (Event.X_Offset = 0.0 and then Event.Y_Offset = 0.0)
-      then
-         return;
-      end if;
-
-      if Event.X_Offset > 0.0 then
-         Code := 66;
-      elsif Event.X_Offset < 0.0 then
-         Code := 67;
-      else
-         Code := (if Event.Y_Offset > 0.0 then 64 else 65);
-      end if;
-      Append_Mouse (Chunk, Modes, Code, Row, Col, False);
+      Terminal.App.Input_Map.Mouse.Encode_Wheel
+        (Event, Modes, Row, Col, Chunk);
    end Encode_Mouse_Wheel;
 
    procedure Encode_Focus
@@ -945,9 +738,7 @@ package body Terminal.App.Input_Map is
       Chunk := (others => <>);
       if Modes.Focus_Reporting then
          Append_String
-           (Chunk,
-            ASCII.ESC & "["
-            & (if Event.Focused then "I" else "O"));
+           (Chunk, ASCII.ESC & "[" & (if Event.Focused then "I" else "O"));
       end if;
    end Encode_Focus;
 end Terminal.App.Input_Map;

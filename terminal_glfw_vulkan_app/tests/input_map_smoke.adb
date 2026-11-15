@@ -468,6 +468,20 @@ begin
      (Chunk,
       To_Bytes (ASCII.ESC & "[200~abc" & ASCII.ESC & "[201~"),
       "bracketed paste");
+   declare
+      Oversized : constant String
+        (1 .. Q.Max_Chunk_Length) := (others => 'x');
+      Rejected : Boolean := False;
+   begin
+      begin
+         IM.Encode_Paste_Text (Oversized, Modes, Chunk);
+      exception
+         when Constraint_Error => Rejected := True;
+      end;
+      Assert
+        (Rejected,
+         "bounded paste encoder must reject input that would lose framing");
+   end;
    Assert
      (IM.Paste_Status_Label (Modes) = "Bracketed paste active",
       "bracketed paste status label");

@@ -2,6 +2,8 @@ with AUnit.Assertions;
 
 with GLFW_Vulkan.Input;
 with Terminal.App;
+with Terminal.App.Graphics_Profile;
+with Terminal.App.Graphics_Transport;
 with Terminal.App.Clipboard_OSC52;
 with Terminal.App.Input_Map;
 with Terminal.App.Platform_Media;
@@ -82,17 +84,15 @@ begin
    Assert (Profile.Tmux_DCS_Passthrough, "profile tmux DCS passthrough");
    Assert
      (Profile.Kitty_Direct_Graphics
-      and then Profile.Kitty_Unicode_Placeholders
-      and then not Profile.Kitty_File_Transfer
-      and then Profile.Kitty_Temporary_Transfer =
-        Terminal.App.Platform_Media.Local_File_Transfers_Available
-      and then Profile.Kitty_Shared_Memory =
-        Terminal.App.Platform_Media.Shared_Memory_Transfers_Available
-      and then not Profile.ITerm2_File_Downloads,
+      and then Profile.Kitty_Unicode_Placeholders,
       "truthful Kitty graphics profile");
    declare
+      Runtime : constant Terminal.App.Graphics_Profile.Runtime_Profile :=
+        Terminal.App.Graphics_Profile.Default;
       Graphics : constant Terminal.Core.Graphics_Capability_Profile :=
-        Terminal.App.Core_Graphics_Profile;
+        Terminal.App.Graphics_Profile.Core_Capabilities (Runtime);
+      Transport_Policy : constant Terminal.App.Graphics_Transport.Access_Policy :=
+        Terminal.App.Graphics_Profile.Access_Policy (Runtime);
    begin
       Assert
         (Graphics.Kitty_Direct_RGB
@@ -108,13 +108,23 @@ begin
            Terminal.App.Platform_Media.Shared_Memory_Transfers_Available
          and then not Graphics.ITerm2_File_Downloads,
          "core Kitty query capabilities");
+      Assert
+        (Transport_Policy.Allow_Regular_Files = Graphics.Kitty_File_Transfer
+         and then Transport_Policy.Allow_Temporary_Files =
+           Graphics.Kitty_Temporary_Transfer
+         and then Transport_Policy.Allow_Shared_Memory =
+           Graphics.Kitty_Shared_Memory
+         and then Terminal.App.Graphics_Profile.Downloads_Enabled (Runtime) =
+           Graphics.ITerm2_File_Downloads,
+         "core replies and graphics access policy should share one profile");
       declare
          Downloads_Enabled : constant Terminal.Core.Graphics_Capability_Profile :=
-           Terminal.App.Core_Graphics_Profile
-             (Kitty_File_Transfer      => False,
-              Kitty_Temporary_Transfer => True,
-              Kitty_Shared_Memory      => True,
-              ITerm2_File_Downloads    => True);
+           Terminal.App.Graphics_Profile.Core_Capabilities
+             (Terminal.App.Graphics_Profile.Create
+                (Kitty_File_Transfer      => False,
+                 Kitty_Temporary_Transfer => True,
+                 Kitty_Shared_Memory      => True,
+                 ITerm2_File_Downloads    => True));
       begin
          Assert
            (Downloads_Enabled.ITerm2_Inline_Images
@@ -142,13 +152,15 @@ begin
       "profile multiplexer status label should be bounded");
    Assert
      (Terminal.App.Graphics_Feature_Report
-        (Terminal.App.Core_Graphics_Profile) = "Sx"
+        (Terminal.App.Graphics_Profile.Core_Capabilities
+           (Terminal.App.Graphics_Profile.Default)) = "Sx"
       and then Terminal.App.Graphics_Feature_Report
-        (Terminal.App.Core_Graphics_Profile
-           (Kitty_File_Transfer      => False,
-            Kitty_Temporary_Transfer => True,
-            Kitty_Shared_Memory      => True,
-            ITerm2_File_Downloads    => True)) =
+        (Terminal.App.Graphics_Profile.Core_Capabilities
+           (Terminal.App.Graphics_Profile.Create
+              (Kitty_File_Transfer      => False,
+               Kitty_Temporary_Transfer => True,
+               Kitty_Shared_Memory      => True,
+               ITerm2_File_Downloads    => True))) =
               (if Terminal.App.Platform_Media.File_Downloads_Available
                then "FSx"
                else "Sx"),

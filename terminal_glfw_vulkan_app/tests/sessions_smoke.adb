@@ -93,4 +93,11 @@ begin
    end loop;
    Sessions.New_Session (Table, Status);
    Assert (Status = Sessions.At_Capacity, "session capacity bounded");
+   Sessions.Clear (Table);
+   Assert
+     (Sessions.Count (Table) = 0
+      and then Sessions.Status_Label (Table) = "No live sessions",
+      "cleared session table is empty");
+   Sessions.Close_Active (Table, Status);
+   Assert (Status = Sessions.Invalid_Index, "empty session close is rejected");
 end Sessions_Smoke;

@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
 with AUnit.Assertions;
@@ -82,6 +83,15 @@ begin
    Assert (Saved = "report.txt.1", "download never overwrites existing file");
 
    Files.Save
+     ("File=name=Y29tbWEudHh0,size=4,inline=0:QUJDRA==",
+      Policy, 1_024, Status, Saved_Name, Saved_Length);
+   Assert
+     (Status = Files.Save_Ok
+      and then Saved = "comma.txt"
+      and then Contents (Directory & "/" & Saved) = "ABCD",
+      "rendering and download policy share comma-separated controls");
+
+   Files.Save
      ("File=name=Li4vZXZpbA==;size=4:QUJDRA==",
       Policy, 1_024, Status, Saved_Name, Saved_Length);
    Assert (Status = Files.Save_Invalid_Name, "path traversal name rejected");
@@ -118,7 +128,7 @@ begin
       Feed_Status : Terminal.Core.Feed_Status;
       Render_Status : Terminal.App.Renderer.Render_Status;
       Event : Terminal.Core.Graphics_Event;
-      Outcome : Terminal.Core.Kitty_Graphics_Result;
+      Outcome : Terminal.Core.Graphics_Completion;
       Snapshot : Terminal.Core.Render_Snapshot;
    begin
       Terminal.App.Renderer.Initialize_Headless (R, Renderer_Init);
@@ -140,7 +150,7 @@ begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "iTerm2 FILE event queued");
       Terminal.Core.Snapshot (T, Snapshot);
-      Snapshot.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
       Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
       Terminal.Core.Release (Snapshot);
       Assert
@@ -167,7 +177,7 @@ begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "multipart FILE event queued");
       Terminal.Core.Snapshot (T, Snapshot);
-      Snapshot.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
       Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
       Terminal.Core.Release (Snapshot);
       Assert

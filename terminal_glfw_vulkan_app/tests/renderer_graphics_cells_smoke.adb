@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with AUnit.Assertions;
 with Terminal.Common.Bytes;
 with Terminal.Core;
@@ -11,8 +12,8 @@ procedure Renderer_Graphics_Cells_Smoke is
    use Terminal.Common.Bytes;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
-   use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.App.Render_Model.Rectangle_Layer;
+   use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
 
@@ -46,9 +47,9 @@ procedure Renderer_Graphics_Cells_Smoke is
             declare
                Snap : Terminal.Core.Render_Snapshot :=
                  Terminal.Core.Snapshot (Target);
-               Result : Terminal.Core.Kitty_Graphics_Result;
+               Result : Terminal.Core.Graphics_Completion;
             begin
-               Snap.Graphics := Event;
+               Terminal.Core.Snapshot_Editing.Set_Graphics (Snap, Event);
                Terminal.App.Renderer.Render (R, Snap, Render_Status);
                Result := Terminal.App.Renderer.Graphics.Result (R, Event);
                Terminal.Core.Release (Snap);
@@ -183,7 +184,7 @@ begin
    declare
       Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
       Event : constant Terminal.Core.Graphics_Event := Snap.Graphics;
-      Result : Terminal.Core.Kitty_Graphics_Result;
+      Result : Terminal.Core.Graphics_Completion;
    begin
       Terminal.App.Renderer.Render (R, Snap, Render_Status);
       Result := Terminal.App.Renderer.Graphics.Result (R, Event);
@@ -224,7 +225,7 @@ begin
    declare
       Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
-      Snap.Graphics := (others => <>);
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snap, (others => <>));
       Terminal.App.Renderer.Render (R, Snap, Render_Status);
       Terminal.Core.Release (Snap);
    end;
@@ -253,7 +254,7 @@ begin
          Terminal.Core.Peek_Graphics_Event (Palette_T, Event);
          Assert (Event.Pending, Label_Text & " event");
          Terminal.Core.Snapshot (Palette_T, Snap);
-         Snap.Graphics := Event;
+         Terminal.Core.Snapshot_Editing.Set_Graphics (Snap, Event);
          Terminal.App.Renderer.Render (R, Snap, Render_Status);
          Terminal.Core.Release (Snap);
          Terminal.Core.Discard_Graphics_Event (Palette_T);

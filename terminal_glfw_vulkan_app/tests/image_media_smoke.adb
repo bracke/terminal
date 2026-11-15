@@ -1,21 +1,54 @@
 with Ada.Text_IO;
 with AUnit.Assertions;
+with Interfaces;
+with Terminal.App.Graphics.Decoder_Testing;
 
 with Terminal.App.Graphics;
 with Terminal.App.Image_Media;
+with Terminal.App.Owned_Image_Data;
 with Terminal.App.Render_Model;
 with Terminal.Common.Bytes;
+with Terminal.Common.Graphics_Limits;
 
 procedure Image_Media_Smoke is
    use AUnit.Assertions;
    use type Terminal.App.Graphics.Data_Decode_Status;
+   use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.App.Image_Media.Decode_Status;
-   use type Terminal.App.Render_Model.Image_Data_Access;
+   use type Terminal.App.Image_Media.Decode_Limit_Kind;
+   use type Interfaces.Unsigned_64;
    use type Terminal.Common.Bytes.Byte;
    use type Terminal.Common.Bytes.Byte_Array;
 
    subtype Byte is Terminal.Common.Bytes.Byte;
    subtype Byte_Array is Terminal.Common.Bytes.Byte_Array;
+
+   procedure Decode_Blob
+     (Blob                  : Terminal.App.Owned_Image_Data.Owner;
+      Declared_Length       : Natural;
+      Maximum_Decoded_Bytes : Terminal.App.Image_Media.Decode_Byte_Limit;
+      Maximum_Dimension     : Positive;
+      Image                 : in out Terminal.App.Image_Media.Decoded_Image;
+      Status                : out Terminal.App.Image_Media.Decode_Status;
+      Offset                : Natural := 0;
+      View_Length           : Natural := 0)
+   is
+      procedure Decode (Bytes : Terminal.Common.Bytes.Byte_Array) is
+         First : constant Positive := Bytes'First + Offset;
+         Count : constant Natural :=
+           (if View_Length = 0 then Bytes'Length - Offset else View_Length);
+      begin
+         Terminal.App.Image_Media.Decode
+           (Bytes (First .. First + Count - 1),
+            Declared_Length,
+            Maximum_Decoded_Bytes,
+            Maximum_Dimension,
+            Image,
+            Status);
+      end Decode;
+   begin
+      Terminal.App.Owned_Image_Data.Read (Blob, Decode'Access);
+   end Decode_Blob;
 
    GIF_Base64 : constant String :=
      "R0lGODlhAQABAPAAAP8AAAAAACH/C05FVFNDQVBFMi4wAwEBAAAh+QQABQAAACwA"
@@ -108,43 +141,39 @@ procedure Image_Media_Smoke is
       Expected_Width : Positive := 1;
       Expected_Height : Positive := 1)
    is
-      Blob : Terminal.App.Render_Model.Image_Data_Access := null;
+      Blob : Terminal.App.Owned_Image_Data.Owner;
       Blob_Length : Natural := 0;
       Base64_Status : Terminal.App.Graphics.Data_Decode_Status;
-      Holder : Terminal.App.Graphics.Graphics_Data_Preview;
       Image : Terminal.App.Image_Media.Decoded_Image;
       Status : Terminal.App.Image_Media.Decode_Status;
    begin
-      Terminal.App.Graphics.Decode_Base64_Data
+      Terminal.App.Graphics.Decoder_Testing.Decode_Base64_Data
         (Encoded, 1_048_576, Blob, Blob_Length, Base64_Status);
       Ada.Text_IO.Put_Line
         (Label_Text & " base64="
          & Terminal.App.Graphics.Data_Decode_Status'Image (Base64_Status)
          & " bytes=" & Natural'Image (Blob_Length));
       Assert
-        (Base64_Status = Terminal.App.Graphics.Decode_Ok and then Blob /= null,
+        (Base64_Status = Terminal.App.Graphics.Decode_Ok
+         and then not Terminal.App.Owned_Image_Data.Is_Empty (Blob),
          Label_Text & " base64 decode");
-      Terminal.App.Image_Media.Decode
-        (Blob.all, Blob_Length, 1_048_576, 4_096, Image, Status);
+      Decode_Blob (Blob, Blob_Length, 1_048_576, 4_096, Image, Status);
       Ada.Text_IO.Put_Line
         (Label_Text & " media="
          & Terminal.App.Image_Media.Decode_Status'Image (Status)
          & " frames=" & Natural'Image (Image.Frame_Count));
-      Holder.Bytes := Blob;
-      Blob := null;
-      Terminal.App.Graphics.Release (Holder);
       Assert (Status = Terminal.App.Image_Media.Decode_Ok, Label_Text & " decode");
       Assert
         (Image.Pixel_Width = Expected_Width
          and then Image.Pixel_Height = Expected_Height
          and then Image.Frame_Bytes = Expected_Width * Expected_Height * 4
-         and then Image.Bytes /= null,
+         and then Image.Has_Bytes,
          Label_Text & " geometry");
       Assert
-        (Natural (Image.Bytes (1)) = Expected_Red
-         and then Natural (Image.Bytes (2)) = Expected_Green
-         and then Natural (Image.Bytes (3)) = Expected_Blue
-         and then Natural (Image.Bytes (4)) = 255,
+        (Natural (Image.Byte_At (1)) = Expected_Red
+         and then Natural (Image.Byte_At (2)) = Expected_Green
+         and then Natural (Image.Byte_At (3)) = Expected_Blue
+         and then Natural (Image.Byte_At (4)) = 255,
          Label_Text & " first frame pixel");
       Assert
         (Image.Adapter_Buffer_Bytes >= Image.Total_Bytes
@@ -166,42 +195,63 @@ procedure Image_Media_Smoke is
          Assert
            (Image.Frame_Count = 2
             and then Image.Total_Bytes = 8
+            and then Image.Adapter_Buffer_Bytes >
+              Image.Frame_Bytes + Image.Total_Bytes
             and then Image.Loop_Count = 2
-            and then Image.Delays_MS (1) = 50
-            and then Image.Delays_MS (2) = 70
-            and then Natural (Image.Bytes (7)) = 255,
+            and then Image.Delay_MS (1) = 50
+            and then Image.Delay_MS (2) = 70
+            and then Natural (Image.Byte_At (7)) = 255,
             "animated GIF frames and timing");
+         declare
+            Rejected : Boolean := False;
+         begin
+            begin
+               declare
+                  Ignored : constant Natural :=
+                    Image.Delay_MS (Image.Frame_Count + 1);
+                  pragma Unreferenced (Ignored);
+               begin
+                  null;
+               end;
+            exception
+               when Constraint_Error =>
+                  Rejected := True;
+            end;
+            Assert
+              (Rejected,
+               "frame timing rejects a frame beyond the decoded image");
+         end;
       else
          Assert (Image.Frame_Count = 1, Label_Text & " frame count");
       end if;
       Terminal.App.Image_Media.Release (Image);
+      Assert
+        (not Image.Has_Bytes,
+         Label_Text & " release clears private byte storage");
    end Check;
 
    procedure Check_GIF_Limits is
-      Blob : Terminal.App.Render_Model.Image_Data_Access := null;
+      Blob : Terminal.App.Owned_Image_Data.Owner;
       Blob_Length : Natural := 0;
       Base64_Status : Terminal.App.Graphics.Data_Decode_Status;
-      Holder : Terminal.App.Graphics.Graphics_Data_Preview;
       Image : Terminal.App.Image_Media.Decoded_Image;
       Status : Terminal.App.Image_Media.Decode_Status;
       Truncated : constant Terminal.Common.Bytes.Byte_Array :=
         [Character'Pos ('G'), Character'Pos ('I'), Character'Pos ('F'),
          Character'Pos ('8'), Character'Pos ('9'), Character'Pos ('a')];
    begin
-      Terminal.App.Graphics.Decode_Base64_Data
+      Terminal.App.Graphics.Decoder_Testing.Decode_Base64_Data
         (GIF_Base64, 1_048_576, Blob, Blob_Length, Base64_Status);
       Assert
-        (Base64_Status = Terminal.App.Graphics.Decode_Ok and then Blob /= null,
+        (Base64_Status = Terminal.App.Graphics.Decode_Ok
+         and then not Terminal.App.Owned_Image_Data.Is_Empty (Blob),
          "GIF limit fixture decode");
-      Terminal.App.Image_Media.Decode
-        (Blob.all, Blob_Length, 4, 4_096, Image, Status);
+      Decode_Blob (Blob, Blob_Length, 4, 4_096, Image, Status);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Too_Large
-         and then Image.Bytes = null,
+         and then not Image.Has_Bytes
+         and then Terminal.App.Image_Media.Diagnostic (Image).Present,
          "GIF animation must respect the total decoded-byte limit");
-      Holder.Bytes := Blob;
-      Blob := null;
-      Terminal.App.Graphics.Release (Holder);
 
       Terminal.App.Image_Media.Decode
         (Truncated,
@@ -212,7 +262,11 @@ procedure Image_Media_Smoke is
          Status);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Invalid
-         and then Image.Bytes = null,
+         and then not Image.Has_Bytes
+         and then Image.Diagnostic.Present
+         and then Terminal.App.Image_Media.Diagnostic_Identifier
+           (Image.Diagnostic)'Length > 0
+         and then Image.Diagnostic.Source_Offset > 0,
          "truncated GIF must fail without publishing pixels");
    end Check_GIF_Limits;
 
@@ -232,7 +286,7 @@ procedure Image_Media_Smoke is
          Status);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Unavailable
-         and then Image.Bytes = null,
+         and then not Image.Has_Bytes,
          "unsupported inline media must not use an optional runtime decoder");
    end Check_Unsupported_Media;
 
@@ -290,15 +344,14 @@ procedure Image_Media_Smoke is
          Label_Text : String)
       is
          First : constant Positive :=
-           Image.Bytes'First
-           + (Frame - 1) * Image.Frame_Bytes
+           1 + (Frame - 1) * Image.Frame_Bytes
            + (X - 1) * 4;
       begin
          Assert
-           (Natural (Image.Bytes (First)) = Red
-            and then Natural (Image.Bytes (First + 1)) = Green
-            and then Natural (Image.Bytes (First + 2)) = Blue
-            and then Natural (Image.Bytes (First + 3)) = Alpha,
+           (Natural (Image.Byte_At (First)) = Red
+            and then Natural (Image.Byte_At (First + 1)) = Green
+            and then Natural (Image.Byte_At (First + 2)) = Blue
+            and then Natural (Image.Byte_At (First + 3)) = Alpha,
             Label_Text);
       end Assert_Pixel;
    begin
@@ -312,7 +365,7 @@ procedure Image_Media_Smoke is
          and then Image.Loop_Count = 0
          and then Image.Frame_Bytes = 8
          and then Image.Total_Bytes = 32
-         and then Image.Bytes /= null,
+         and then Image.Has_Bytes,
          "GIF compositing fixture metadata");
       Assert_Pixel (1, 1, 255, 0, 0, 255, "GIF initial left pixel");
       Assert_Pixel (1, 2, 255, 0, 0, 255, "GIF initial right pixel");
@@ -326,10 +379,9 @@ procedure Image_Media_Smoke is
    end Check_GIF_Compositing;
 
    procedure Check_Interlaced_GIF is
-      Blob : Terminal.App.Render_Model.Image_Data_Access := null;
+      Blob : Terminal.App.Owned_Image_Data.Owner;
       Blob_Length : Natural := 0;
       Base64_Status : Terminal.App.Graphics.Data_Decode_Status;
-      Holder : Terminal.App.Graphics.Graphics_Data_Preview;
       Image : Terminal.App.Image_Media.Decoded_Image;
       Status : Terminal.App.Image_Media.Decode_Status;
 
@@ -339,30 +391,27 @@ procedure Image_Media_Smoke is
          Label_Text : String)
       is
          First : constant Positive :=
-           Image.Bytes'First + (Y * Image.Pixel_Width + X) * 4;
+           1 + (Y * Image.Pixel_Width + X) * 4;
       begin
          Assert
-           (Natural (Image.Bytes (First)) = Red
-            and then Natural (Image.Bytes (First + 1)) = Green
-            and then Natural (Image.Bytes (First + 2)) = Blue
-            and then Natural (Image.Bytes (First + 3)) = 255,
+           (Natural (Image.Byte_At (First)) = Red
+            and then Natural (Image.Byte_At (First + 1)) = Green
+            and then Natural (Image.Byte_At (First + 2)) = Blue
+            and then Natural (Image.Byte_At (First + 3)) = 255,
             Label_Text);
       end Assert_Pixel;
    begin
-      Terminal.App.Graphics.Decode_Base64_Data
+      Terminal.App.Graphics.Decoder_Testing.Decode_Base64_Data
         (Interlaced_GIF_Base64,
          1_048_576,
          Blob,
          Blob_Length,
          Base64_Status);
       Assert
-        (Base64_Status = Terminal.App.Graphics.Decode_Ok and then Blob /= null,
+        (Base64_Status = Terminal.App.Graphics.Decode_Ok
+         and then not Terminal.App.Owned_Image_Data.Is_Empty (Blob),
          "interlaced GIF fixture decode");
-      Terminal.App.Image_Media.Decode
-        (Blob.all, Blob_Length, 1_048_576, 4_096, Image, Status);
-      Holder.Bytes := Blob;
-      Blob := null;
-      Terminal.App.Graphics.Release (Holder);
+      Decode_Blob (Blob, Blob_Length, 1_048_576, 4_096, Image, Status);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Ok
          and then Image.Pixel_Width = 9
@@ -370,7 +419,7 @@ procedure Image_Media_Smoke is
          and then Image.Frame_Count = 1
          and then Image.Loop_Count = 0
          and then Image.Frame_Bytes = 324
-         and then Image.Bytes /= null,
+         and then Image.Has_Bytes,
          "interlaced GIF metadata and single-play policy");
       Assert_Pixel (0, 0, 27, 22, 35, "interlaced GIF first pass row");
       Assert_Pixel (7, 1, 213, 77, 184, "interlaced GIF second row");
@@ -399,11 +448,11 @@ procedure Image_Media_Smoke is
          and then Image.Loop_Count = 0
          and then Image.Frame_Bytes = 4
          and then Image.Total_Bytes = 4
-         and then Image.Bytes /= null
-         and then Natural (Image.Bytes (Image.Bytes'First)) = 255
-         and then Natural (Image.Bytes (Image.Bytes'First + 1)) = 0
-         and then Natural (Image.Bytes (Image.Bytes'First + 2)) = 0
-         and then Natural (Image.Bytes (Image.Bytes'First + 3)) = 255,
+         and then Image.Has_Bytes
+         and then Natural (Image.Byte_At (1)) = 255
+         and then Natural (Image.Byte_At (2)) = 0
+         and then Natural (Image.Byte_At (3)) = 0
+         and then Natural (Image.Byte_At (4)) = 255,
          "GIF87a still-image decoding");
       Terminal.App.Image_Media.Release (Image);
    end Check_GIF87a_Still;
@@ -426,15 +475,15 @@ procedure Image_Media_Smoke is
          and then Image.Pixel_Height = 1
          and then Image.Frame_Count = 1
          and then Image.Frame_Bytes = 8
-         and then Image.Bytes /= null
-         and then Natural (Image.Bytes (Image.Bytes'First)) = 0
-         and then Natural (Image.Bytes (Image.Bytes'First + 1)) = 0
-         and then Natural (Image.Bytes (Image.Bytes'First + 2)) = 0
-         and then Natural (Image.Bytes (Image.Bytes'First + 3)) = 0
-         and then Natural (Image.Bytes (Image.Bytes'First + 4)) = 255
-         and then Natural (Image.Bytes (Image.Bytes'First + 5)) = 255
-         and then Natural (Image.Bytes (Image.Bytes'First + 6)) = 255
-         and then Natural (Image.Bytes (Image.Bytes'First + 7)) = 255,
+         and then Image.Has_Bytes
+         and then Natural (Image.Byte_At (1)) = 0
+         and then Natural (Image.Byte_At (2)) = 0
+         and then Natural (Image.Byte_At (3)) = 0
+         and then Natural (Image.Byte_At (4)) = 0
+         and then Natural (Image.Byte_At (5)) = 255
+         and then Natural (Image.Byte_At (6)) = 255
+         and then Natural (Image.Byte_At (7)) = 255
+         and then Natural (Image.Byte_At (8)) = 255,
          "GIF initial canvas preserves transparent alpha");
       Terminal.App.Image_Media.Release (Image);
    end Check_Transparent_Initial_Canvas;
@@ -464,7 +513,8 @@ procedure Image_Media_Smoke is
       Status : Terminal.App.Image_Media.Decode_Status;
    begin
       Terminal.App.Image_Media.Decode
-        (At_Limit, At_Limit'Length, 1_048_576, 4_096, Image, Status);
+        (At_Limit, At_Limit'Length, 1_048_576, 4_096, Image, Status,
+         Maximum_Frames => 256);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Ok
          and then Image.Frame_Count = 256
@@ -472,7 +522,7 @@ procedure Image_Media_Smoke is
          and then Image.Pixel_Height = 1
          and then Image.Frame_Bytes = 8
          and then Image.Total_Bytes = 2_048
-         and then Image.Bytes /= null,
+         and then Image.Has_Bytes,
          "GIF accepts the compiled 256-frame boundary");
       Terminal.App.Image_Media.Release (Image);
 
@@ -482,12 +532,29 @@ procedure Image_Media_Smoke is
          1_048_576,
          4_096,
          Image,
-         Status);
+         Status,
+         Maximum_Frames => 256);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Too_Large
-         and then Image.Bytes = null
-         and then Image.Frame_Count = 0,
-         "GIF rejects frame 257 without publishing pixels");
+         and then not Image.Has_Bytes
+         and then Image.Frame_Count = 0
+         and then Terminal.App.Image_Media.Diagnostic (Image).Present
+         and then Terminal.App.Image_Media.Diagnostic (Image).Limit =
+           Terminal.App.Image_Media.Frame_Count_Limit,
+         "GIF respects the configured frame boundary");
+
+      Terminal.App.Image_Media.Decode
+        (Over_Limit,
+         Over_Limit'Length,
+         1_048_576,
+         4_096,
+         Image,
+         Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Ok
+         and then Image.Frame_Count = 257,
+         "GIF does not impose a hidden 256-frame boundary");
+      Terminal.App.Image_Media.Release (Image);
    end Check_GIF_Frame_Boundary;
 
    procedure Check_PICT_Vector_And_Text is
@@ -512,11 +579,11 @@ procedure Image_Media_Smoke is
         (Status = Terminal.App.Image_Media.Decode_Ok
          and then Image.Pixel_Width = 6
          and then Image.Pixel_Height = 4
-         and then Image.Bytes /= null
-         and then Image.Bytes (Vector_Pixel) = 0
-         and then Image.Bytes (Vector_Pixel + 1) = 0
-         and then Image.Bytes (Vector_Pixel + 2) = 0
-         and then Image.Bytes (Vector_Pixel + 3) = 255,
+         and then Image.Has_Bytes
+         and then Image.Byte_At (Vector_Pixel) = 0
+         and then Image.Byte_At (Vector_Pixel + 1) = 0
+         and then Image.Byte_At (Vector_Pixel + 2) = 0
+         and then Image.Byte_At (Vector_Pixel + 3) = 255,
          "PICT QuickDraw vector paint is rasterized");
       Terminal.App.Image_Media.Release (Image);
 
@@ -529,15 +596,15 @@ procedure Image_Media_Smoke is
          Status);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Ok
-         and then Image.Bytes /= null,
+         and then Image.Has_Bytes,
          "PICT QuickDraw text and classic Helvetica mapping decode");
       for I in 0 .. Image.Pixel_Width * Image.Pixel_Height - 1 loop
          declare
-            First : constant Positive := Image.Bytes'First + I * 4;
+            First : constant Positive := 1 + I * 4;
          begin
-            if Image.Bytes (First) < 250
-              or else Image.Bytes (First + 1) < 250
-              or else Image.Bytes (First + 2) < 250
+            if Image.Byte_At (First) < 250
+              or else Image.Byte_At (First + 1) < 250
+              or else Image.Byte_At (First + 2) < 250
             then
                Ink_Found := True;
                exit;
@@ -563,7 +630,7 @@ procedure Image_Media_Smoke is
         (Fixture, Fixture'Length, 1_048_576, 4_096, Image, Status);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Ok
-         and then Image.Bytes /= null
+         and then Image.Has_Bytes
          and then Image.Warning_Count > 0
          and then Image.First_Warning.Present
          and then Terminal.App.Image_Media.Diagnostic_Identifier
@@ -573,33 +640,40 @@ procedure Image_Media_Smoke is
    end Check_PICT_Compatibility_Warning;
 
    procedure Check_PICT_Bounds_And_Headers is
-      Blob : Terminal.App.Render_Model.Image_Data_Access := null;
+      Blob : Terminal.App.Owned_Image_Data.Owner;
       Blob_Length : Natural := 0;
       Base64_Status : Terminal.App.Graphics.Data_Decode_Status;
-      Holder : Terminal.App.Graphics.Graphics_Data_Preview;
       Image : Terminal.App.Image_Media.Decoded_Image;
       Status : Terminal.App.Image_Media.Decode_Status;
    begin
-      Terminal.App.Graphics.Decode_Base64_Data
+      Terminal.App.Graphics.Decoder_Testing.Decode_Base64_Data
         (PICT_Base64, 1_048_576, Blob, Blob_Length, Base64_Status);
       Assert
-        (Base64_Status = Terminal.App.Graphics.Decode_Ok and then Blob /= null,
+        (Base64_Status = Terminal.App.Graphics.Decode_Ok
+         and then not Terminal.App.Owned_Image_Data.Is_Empty (Blob),
          "PICT bounds fixture decode");
 
-      Terminal.App.Image_Media.Decode
-        (Blob.all, Blob_Length, 4, 4_096, Image, Status);
+      Decode_Blob (Blob, Blob_Length, 4, 4_096, Image, Status);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Too_Large
-         and then Image.Bytes = null,
+         and then not Image.Has_Bytes
+         and then Image.Diagnostic.Present
+         and then Image.Diagnostic.Limit =
+           Terminal.App.Image_Media.Canvas_Pixel_Limit,
          "PICT canvas obeys the decoded-byte limit");
 
-      Terminal.App.Image_Media.Decode
-        (Blob.all (Blob.all'First + 512 .. Blob.all'First + Blob_Length - 1),
-         Blob_Length - 512,
-         1_048_576,
-         4_096,
-         Image,
-         Status);
+      Decode_Blob
+        (Blob, Blob_Length + 1, 1_048_576, 4_096, Image, Status);
+      Assert
+        (Status = Terminal.App.Image_Media.Decode_Invalid
+         and then Image.Diagnostic.Present
+         and then Terminal.App.Image_Media.Diagnostic_Identifier
+           (Image.Diagnostic) = "media_input_length_invalid",
+         "invalid media lengths carry a structured diagnostic");
+
+      Decode_Blob
+        (Blob, Blob_Length - 512, 1_048_576, 4_096, Image, Status,
+         Offset => 512);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Ok
          and then Image.Pixel_Width = 21
@@ -607,27 +681,24 @@ procedure Image_Media_Smoke is
          "headerless PICT is decoded natively");
       Terminal.App.Image_Media.Release (Image);
 
-      Terminal.App.Image_Media.Decode
-        (Blob.all (Blob.all'First .. Blob.all'First + 521),
-         522,
-         1_048_576,
-         4_096,
-         Image,
-         Status);
+      Decode_Blob
+        (Blob, 522, 1_048_576, 4_096, Image, Status,
+         View_Length => 522);
       Assert
         (Status = Terminal.App.Image_Media.Decode_Invalid
-         and then Image.Bytes = null
+         and then not Image.Has_Bytes
          and then Image.Diagnostic.Present
          and then Image.Diagnostic.Identifier_Length > 0
          and then Terminal.App.Image_Media.Diagnostic_Identifier
            (Image.Diagnostic)'Length > 0,
          "truncated headered PICT fails without fallback pixels");
 
-      Holder.Bytes := Blob;
-      Blob := null;
-      Terminal.App.Graphics.Release (Holder);
    end Check_PICT_Bounds_And_Headers;
 begin
+   Assert
+     (Terminal.App.Image_Media.Decode_Byte_Limit'Last =
+        Terminal.Common.Graphics_Limits.Max_Image_Bytes,
+      "media decode budget is capped by the shared image-byte limit");
    Assert
      (Terminal.App.Image_Media.Available,
       "native GIF media decoder should always be available");

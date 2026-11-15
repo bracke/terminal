@@ -1,5 +1,6 @@
 with Ada.Strings.Fixed;
 with AUnit.Assertions;
+with GLFW_Vulkan.Input;
 
 with Terminal.Common.Bytes;
 with Terminal.App;
@@ -23,11 +24,15 @@ with Terminal.App.Tabs;
 with Terminal.App.Text_Blink;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Submit;
+with Terminal.App.Vulkan_Device;
+with Terminal.App.Vulkan_Device_Diagnostics;
+with Terminal.App.Vulkan_Presenter;
 with Terminal.Core;
 with Terminal.PTY.Backend;
 
 procedure Diagnostics_Smoke is
    use AUnit.Assertions;
+   use type Terminal.App.Cleanup_Diagnostics.Component;
 
    function Contains (Text : String; Pattern : String) return Boolean is
      (Ada.Strings.Fixed.Index (Text, Pattern) /= 0);
@@ -48,6 +53,57 @@ procedure Diagnostics_Smoke is
    end Set_Status;
 begin
    declare
+      Renderer_Left : Terminal.App.Renderer.Renderer_Diagnostics :=
+        (others => <>);
+      Renderer_Right : Terminal.App.Renderer.Renderer_Diagnostics :=
+        (others => <>);
+      Device_Left : Terminal.App.Vulkan_Device.Device_Diagnostic_Snapshot :=
+        (others => <>);
+      Device_Right : Terminal.App.Vulkan_Device.Device_Diagnostic_Snapshot :=
+        (others => <>);
+      Presenter_Left : Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot :=
+        (others => <>);
+      Presenter_Right : Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot :=
+        (others => <>);
+   begin
+      Renderer_Right.Graphics_Event_Count := 1;
+      Renderer_Right.Last_Image_Decoded_Preview_Bytes (1) := 1;
+      Assert
+        (Terminal.App.Renderer.Operationally_Equivalent
+           (Renderer_Left, Renderer_Right),
+         "renderer transient diagnostics are operationally equivalent");
+      Renderer_Right.Last_Render_Status := Terminal.App.Renderer.Failed;
+      Assert
+        (not Terminal.App.Renderer.Operationally_Equivalent
+           (Renderer_Left, Renderer_Right),
+         "renderer status changes are operational");
+
+      Device_Right.Rendered_Frame_Count := 1;
+      Device_Right.Uploaded_Image_Decoded_Preview_Bytes (1) := 1;
+      Assert
+        (Terminal.App.Vulkan_Device_Diagnostics.Operationally_Equivalent
+           (Device_Left, Device_Right),
+         "device transient diagnostics are operationally equivalent");
+      Device_Right.Last_Status := Terminal.App.Vulkan_Device.Device_Lost;
+      Assert
+        (not Terminal.App.Vulkan_Device_Diagnostics.Operationally_Equivalent
+           (Device_Left, Device_Right),
+         "device status changes are operational");
+
+      Presenter_Right.Accepted_Frames := 1;
+      Presenter_Right.Last_Image_Decoded_Preview_Bytes (1) := 1;
+      Assert
+        (Terminal.App.Vulkan_Presenter.Operationally_Equivalent
+           (Presenter_Left, Presenter_Right),
+         "presenter transient diagnostics are operationally equivalent");
+      Presenter_Right.Surface_Ready := True;
+      Assert
+        (not Terminal.App.Vulkan_Presenter.Operationally_Equivalent
+           (Presenter_Left, Presenter_Right),
+         "presenter readiness changes are operational");
+   end;
+
+   declare
       Counts : Terminal.App.Cleanup_Diagnostics.Failure_Counts :=
         (others => 0);
    begin
@@ -60,18 +116,25 @@ begin
       Counts (Terminal.App.Cleanup_Diagnostics.Vulkan_Device) := 1;
       Counts (Terminal.App.Cleanup_Diagnostics.Vulkan_Presenter) := 1;
       Counts (Terminal.App.Cleanup_Diagnostics.Media_Decoder) := 1;
+      Counts (Terminal.App.Cleanup_Diagnostics.Platform_Launcher) := 1;
+      Counts (Terminal.App.Cleanup_Diagnostics.PTY_Backend) := 1;
+      Counts (Terminal.App.Cleanup_Diagnostics.Cleanup_Lifecycle) := 1;
       declare
          Label : constant String :=
-           Terminal.App.Cleanup_Diagnostics.Status_Label (Counts);
+           Terminal.App.Cleanup_Diagnostics.Status_Label
+             ((Counts => Counts, Detail => (others => <>)));
       begin
          Assert
-           (Terminal.App.Cleanup_Diagnostics.Total (Counts) = 9
+           (Terminal.App.Cleanup_Diagnostics.Total (Counts) = 12
+            and then Contains (Label, "lifecycle=1")
             and then Contains (Label, "renderer=1")
             and then Contains (Label, "frame_images=1")
             and then Contains (Label, "snapshots=1")
             and then Contains (Label, "window=1")
             and then Contains (Label, "glfw=1")
             and then Contains (Label, "media=1")
+            and then Contains (Label, "launcher=1")
+            and then Contains (Label, "pty=1")
             and then Contains (Label, "vk_context=1")
             and then Contains (Label, "vk_device=1")
             and then Contains (Label, "vk_presenter=1"),
@@ -81,22 +144,54 @@ begin
 
    declare
       Before : constant Terminal.App.Cleanup_Diagnostics.Failure_Counts :=
-        Terminal.App.Cleanup_Diagnostics.Snapshot;
+        Terminal.App.Cleanup_Diagnostics.Capture.Counts;
       After : Terminal.App.Cleanup_Diagnostics.Failure_Counts;
    begin
       Terminal.App.Cleanup_Diagnostics.Note_Failure
         (Terminal.App.Cleanup_Diagnostics.Image_Install);
-      After := Terminal.App.Cleanup_Diagnostics.Snapshot;
+      After := Terminal.App.Cleanup_Diagnostics.Capture.Counts;
       Assert
         (After (Terminal.App.Cleanup_Diagnostics.Image_Install) =
            Before (Terminal.App.Cleanup_Diagnostics.Image_Install) + 1,
          "cleanup failure counters should remain observable");
       Assert
         (Contains
-           (Terminal.App.Cleanup_Diagnostics.Status_Label (After),
+           (Terminal.App.Cleanup_Diagnostics.Status_Label
+              ((Counts => After, Detail => (others => <>))),
             "install=1"),
          "cleanup status should identify the failing component");
-      S.Cleanup := After;
+      S.Cleanup := (Counts => After, Detail => (others => <>));
+   end;
+
+   declare
+      Detail : Terminal.App.Cleanup_Diagnostics.Failure_Detail;
+   begin
+      begin
+         raise Constraint_Error with "diagnostic detail probe";
+      exception
+         when E : Constraint_Error =>
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Renderer_State,
+               E,
+               "release test resource");
+      end;
+      Detail := Terminal.App.Cleanup_Diagnostics.Capture.Detail;
+      Assert
+        (Detail.Present
+         and then Detail.Source =
+           Terminal.App.Cleanup_Diagnostics.Renderer_State
+         and then Detail.Operation
+           (1 .. Detail.Operation_Length) = "release test resource"
+         and then Contains
+           (Detail.Exception_Name (1 .. Detail.Exception_Length),
+            "CONSTRAINT_ERROR"),
+         "cleanup diagnostics should retain operation and exception context");
+      Assert
+        (Contains
+           (Terminal.App.Cleanup_Diagnostics.Status_Label
+              (Terminal.App.Cleanup_Diagnostics.Capture),
+            "detail=renderer:release test resource:CONSTRAINT_ERROR"),
+         "cleanup status should expose the latest failure context");
    end;
 
    Terminal.App.Tabs.Initialize (Tabs);
@@ -286,6 +381,17 @@ begin
       S.Presenter.Logical_Device.Image_Texture_Upload_Count := 12;
       S.Presenter.Logical_Device.Image_Texture_Cache_Hit_Count := 34;
    end;
+   S.Callback_Failures := 1;
+   S.Last_Callback_Failure.Source :=
+     GLFW_Vulkan.Input.Character_Callback_Failure;
+   S.Last_Callback_Failure.Name_Length := 16;
+   S.Last_Callback_Failure.Exception_Name (1 .. 16) := "CONSTRAINT_ERROR";
+   S.Input_Infrastructure_Failures := 1;
+   S.Last_Input_Infrastructure_Failure.Source :=
+     GLFW_Vulkan.Input.Registry_Infrastructure_Failure;
+   S.Last_Input_Infrastructure_Failure.Name_Length := 13;
+   S.Last_Input_Infrastructure_Failure.Exception_Name (1 .. 13) :=
+     "PROGRAM_ERROR";
 
    declare
       Line : constant String := Terminal.App.Diagnostics.Status_Line (S);
@@ -312,6 +418,19 @@ begin
       Assert
         (Contains (Line, "input_queue_status=input queue 0/256"),
          "empty input queue status should be included");
+      Assert
+        (Contains
+           (Line,
+            "callback_failures= 1 last_callback_failure=" &
+              "CHARACTER_CALLBACK_FAILURE:CONSTRAINT_ERROR"),
+         "callback failure source and exception should be included");
+      Assert
+        (Contains
+           (Line,
+            "input_infrastructure_failures= 1 " &
+              "last_input_infrastructure_failure=" &
+              "REGISTRY_INFRASTRUCTURE_FAILURE:PROGRAM_ERROR"),
+         "input infrastructure failure details should be included");
       Assert
         (Contains (Line, "cleanup_status=cleanup failures=1"),
          "cleanup failures should be included in runtime diagnostics");
@@ -542,8 +661,8 @@ begin
    end;
    S.Core.Malformed_UTF8 := 1;
    S.Core.Ignored_Escape := 2;
-   S.Core.Graphics_Protocol_Ignored := 1;
-   S.Core.Sixel_Ignored := 1;
+   S.Core.Graphics_Commands_Received := 1;
+   S.Core.Sixel_Commands_Received := 1;
    S.Core.Last_Graphics_Protocol := Terminal.Core.Sixel_Graphics;
    S.Core.Last_Graphics_Payload_Length := 42;
    S.Core.Multiplexer_Passthrough := 1;
@@ -593,8 +712,8 @@ begin
       Assert
         (Contains
            (Line,
-            "graphics_status=Ignored sixel graphics payload (42 bytes)"),
-         "graphics ignored label should be included");
+            "graphics_status=Received sixel graphics payload (42 bytes)"),
+         "graphics received label should be included");
       Assert
         (Contains
            (Line,

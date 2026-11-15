@@ -91,7 +91,9 @@ begin
       S    : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
       Cell : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
    begin
-      Assert (S.Image_Cell_Count = 1, "snapshot placeholder count");
+      Assert
+        (Terminal.Core.Image_Cell_Count (S) = 1,
+         "snapshot placeholder count");
       Assert (Cell.Image.Is_Placeholder, "placeholder classification");
       Assert (Cell.Image.Image_ID_Valid, "RGB image ID validity");
       Assert
@@ -128,7 +130,9 @@ begin
       Second : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
       Third : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 3);
    begin
-      Assert (S.Image_Cell_Count = 3, "inherited placeholder count");
+      Assert
+        (Terminal.Core.Image_Cell_Count (S) = 3,
+         "inherited placeholder count");
       Assert
         (First.Image.Image_ID = 16#0200_002A#
          and then First.Image.Image_Row = 0
@@ -147,6 +151,33 @@ begin
          and then not Third.Image.Row_Specified
          and then not Third.Image.Column_Specified,
          "empty metadata inherits row and next column");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 4, 100, Init);
+   Assert (Init = Terminal.Core.Ok, "placeholder REP initialize");
+   Feed_Text (ASCII.ESC & "[38;5;42m");
+   Feed_Placeholder (16#0305#, 16#0305#);
+   Feed_Text (ASCII.ESC & "[2b");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      for Col in 1 .. 3 loop
+         declare
+            Cell : constant Terminal.Core.Cell :=
+              Terminal.Core.Cell_At (S, 1, Col);
+         begin
+            Assert
+              (Cell.Image.Is_Placeholder
+               and then Cell.Image.Image_Column = Col - 1,
+               "REP placeholder column inference");
+            if Col > 1 then
+               Assert
+                 (Cell.Text.Attachment_Count = 0,
+                  "REP omits placeholder coordinate diacritics");
+            end if;
+         end;
+      end loop;
       Terminal.Core.Release (S);
    end;
 
@@ -173,7 +204,7 @@ begin
       Cell : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
    begin
       Assert
-        (S.Image_Cell_Count = 0
+        (Terminal.Core.Image_Cell_Count (S) = 0
          and then not Cell.Image.Is_Placeholder
          and then Cell.Text.Attachment_Count = 1
          and then Cell.Text.Attachments (1) = 16#0305#,
@@ -245,7 +276,7 @@ begin
       S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
       Assert
-        (S.Image_Cell_Count = 0
+        (Terminal.Core.Image_Cell_Count (S) = 0
          and then not Terminal.Core.Cell_At (S, 1, 2).Image.Is_Placeholder,
          "erase clears placeholder metadata");
       Terminal.Core.Release (S);

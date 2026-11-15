@@ -3,6 +3,7 @@ with Interfaces.C;
 with System;
 
 with Terminal.App.Platform_Media;
+with Terminal.App.ITerm2_Controls;
 with Terminal.Common.Base64;
 
 package body Terminal.App.ITerm2_Files is
@@ -12,29 +13,6 @@ package body Terminal.App.ITerm2_Files is
    use type C.int;
    use type C.long;
    use type Terminal.Common.Base64.Decoder_Status;
-
-   function Field_Value (Fields, Name : String) return String is
-      Position : Natural := Fields'First;
-   begin
-      while Position <= Fields'Last loop
-         declare
-            Last : Natural := Position;
-         begin
-            while Last <= Fields'Last and then Fields (Last) /= ';' loop
-               Last := Last + 1;
-            end loop;
-            if Last > Position + Name'Length
-              and then
-                Fields (Position .. Position + Name'Length - 1) = Name
-              and then Fields (Position + Name'Length) = '='
-            then
-               return Fields (Position + Name'Length + 1 .. Last - 1);
-            end if;
-            Position := Last + 1;
-         end;
-      end loop;
-      return "";
-   end Field_Value;
 
    procedure Decode_Base64
      (Text          : String;
@@ -236,7 +214,7 @@ package body Terminal.App.ITerm2_Files is
       Saved_Name    : out String;
       Saved_Length  : out Natural)
    is
-      Colon : Natural := 0;
+      Controls : Terminal.App.ITerm2_Controls.Parsed_Controls;
       Directory_FD : C.int := -1;
       File_FD : C.int := -1;
       Decoded_Length : Natural := 0;
@@ -292,27 +270,19 @@ package body Terminal.App.ITerm2_Files is
          Status := Save_Disabled;
          return;
       end if;
-      if Command'Length < 6
-        or else Command (Command'First .. Command'First + 4) /= "File="
+      Terminal.App.ITerm2_Controls.Parse (Command, Controls);
+      if not Terminal.App.ITerm2_Controls.Recognized (Controls)
+        or else not Terminal.App.ITerm2_Controls.Valid (Controls)
+        or else Terminal.App.ITerm2_Controls.Data_First (Controls) = 0
       then
          Status := Save_Invalid_Command;
          return;
       end if;
-      for I in Command'Range loop
-         if Command (I) = ':' then
-            Colon := I;
-            exit;
-         end if;
-      end loop;
-      if Colon = 0 then
-         Status := Save_Invalid_Command;
-         return;
-      end if;
       declare
-         Fields : constant String :=
-           Command (Command'First + 5 .. Colon - 1);
-         Inline : constant String := Field_Value (Fields, "inline");
-         Encoded_Name : constant String := Field_Value (Fields, "name");
+         Inline : constant String := Terminal.App.ITerm2_Controls.Value
+           (Command, Controls, Terminal.App.ITerm2_Controls.Inline_Field);
+         Encoded_Name : constant String := Terminal.App.ITerm2_Controls.Value
+           (Command, Controls, Terminal.App.ITerm2_Controls.Name_Field);
          Name : constant String :=
            (if Encoded_Name'Length = 0 then "Unnamed file"
             else Decode_Name (Encoded_Name));
@@ -368,7 +338,9 @@ package body Terminal.App.ITerm2_Files is
          end if;
 
          Decode_Base64
-           (Command (Colon + 1 .. Command'Last),
+           (Command
+              (Terminal.App.ITerm2_Controls.Data_First (Controls)
+               .. Command'Last),
             Maximum_Bytes,
             File_FD,
             Decoded_Length,

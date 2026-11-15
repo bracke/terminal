@@ -57,18 +57,13 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
                Result :=
                  Vk.Create_Image_View
                    (Handle, Create_Info'Address, System.Null_Address, View'Address);
+               if View /= System.Null_Address then
+                  Device.Swapchain_Views (I) := View;
+                  Device.Swapchain_View_Count := I;
+               end if;
                if Result /= Vk.SUCCESS or else View = System.Null_Address then
-                  for J in 1 .. Device.Swapchain_View_Count loop
-                     Vk.Destroy_Image_View
-                       (Handle, Device.Swapchain_Views (J), System.Null_Address);
-                     Device.Swapchain_Views (J) := System.Null_Address;
-                  end loop;
-                  Device.Swapchain_View_Count := 0;
                   return Create_Image_View_Failed;
                end if;
-
-               Device.Swapchain_Views (I) := View;
-               Device.Swapchain_View_Count := I;
             end;
          end loop;
 

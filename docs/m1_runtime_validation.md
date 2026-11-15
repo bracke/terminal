@@ -15,9 +15,8 @@ working Vulkan driver.
 - Optional automated display smoke:
 
 ```sh
-cd terminal_glfw_vulkan_app
-alr exec -- gprbuild -P tests/app_tests.gpr
-tests/bin/gui_present_smoke
+alr exec -- gprbuild -P terminal_glfw_vulkan_app/tests/app_tests.gpr
+terminal_glfw_vulkan_app/tests/bin/gui_present_smoke
 ```
 
 `gui_present_smoke` skips cleanly when no display or Vulkan path is available

@@ -1,13 +1,9 @@
-with Interfaces.C;
-with Interfaces.C.Strings;
+with Terminal.App.Platform_Launcher;
+with Terminal.Common.Status;
 
 package body Terminal.App.Hyperlinks is
-   use type Interfaces.C.int;
-   use type Terminal.Core.Cell_Array_Access;
+   use type Terminal.App.Platform_Launcher.Launch_Status;
    use type Terminal.Core.Cell_Kind;
-
-   function c_system (Command : Interfaces.C.Strings.chars_ptr) return Interfaces.C.int
-     with Import, Convention => C, External_Name => "system";
 
    function Link_At
      (Snapshot : Terminal.Core.Render_Snapshot;
@@ -18,7 +14,7 @@ package body Terminal.App.Hyperlinks is
    begin
       if Snapshot.Rows = 0
         or else Snapshot.Cols = 0
-        or else Snapshot.Cells = null
+        or else Terminal.Core.Cell_Count (Snapshot) = 0
         or else Position.Row > Snapshot.Rows
         or else Position.Col > Snapshot.Cols
       then
@@ -35,38 +31,108 @@ package body Terminal.App.Hyperlinks is
            Terminal.Core.Cell_At
              (Snapshot, Position.Row, Position.Col - 1).Link;
       else
-         return (others => <>);
+         declare
+            function Cell_Character (Col : Positive) return Character is
+               Candidate : constant Terminal.Core.Cell :=
+                 Terminal.Core.Cell_At (Snapshot, Position.Row, Col);
+            begin
+               if Candidate.Kind = Terminal.Core.Character
+                 and then Candidate.Text.Code_Point in 33 .. 126
+               then
+                  return Character'Val (Candidate.Text.Code_Point);
+               else
+                  return ' ';
+               end if;
+            end Cell_Character;
+            function Separator (Ch : Character) return Boolean is
+              (Ch = ' ' or else Ch in '"' | ''' | '<' | '>');
+            First : Positive := Position.Col;
+            Last  : Positive := Position.Col;
+            Link  : Terminal.Core.Hyperlink;
+            URI_First : Positive;
+            URI_Last  : Natural;
+            Is_Path : Boolean := False;
+            Prefix : constant String := "file://";
+            Count : Natural := 0;
+         begin
+            if Separator (Cell_Character (Position.Col)) then
+               return (others => <>);
+            end if;
+            while First > 1 and then not Separator (Cell_Character (First - 1)) loop
+               First := First - 1;
+            end loop;
+            while Last < Snapshot.Cols
+              and then not Separator (Cell_Character (Last + 1))
+            loop
+               Last := Last + 1;
+            end loop;
+            while First <= Last and then Cell_Character (First) in '(' | '[' | '{' loop
+               First := First + 1;
+            end loop;
+            while Last >= First
+              and then Cell_Character (Last) in '.' | ',' | ';' | '!' | '?'
+                | ')' | ']' | '}'
+            loop
+               exit when Last = 1;
+               Last := Last - 1;
+            end loop;
+            if Position.Col < First or else Position.Col > Last then
+               return (others => <>);
+            end if;
+            URI_First := First;
+            URI_Last := Last;
+            Is_Path := Cell_Character (First) = '/' and then Last > First;
+            if Is_Path then
+               --  Strip conventional :line and :line:column suffixes before
+               --  handing an absolute path to the desktop opener.
+               while URI_Last > URI_First and then Cell_Character (URI_Last) in '0' .. '9' loop
+                  URI_Last := URI_Last - 1;
+               end loop;
+               if Cell_Character (URI_Last) = ':' then
+                  URI_Last := URI_Last - 1;
+                  while URI_Last > URI_First and then Cell_Character (URI_Last) in '0' .. '9' loop
+                     URI_Last := URI_Last - 1;
+                  end loop;
+                  if Cell_Character (URI_Last) = ':' then
+                     URI_Last := URI_Last - 1;
+                  end if;
+               else
+                  URI_Last := Last;
+               end if;
+            end if;
+            declare
+               Token : String (1 .. Last - First + 1);
+            begin
+               for I in Token'Range loop
+                  Token (I) := Cell_Character (First + I - 1);
+               end loop;
+               if not Is_Path and then not Supported_URI (Token) then
+                  return (others => <>);
+               end if;
+            end;
+            Link := (others => <>);
+            Link.Active := True;
+            if Is_Path then
+               for Ch of Prefix loop
+                  Count := Count + 1;
+                  Link.URI (Count) := Ch;
+               end loop;
+            end if;
+            for Col in URI_First .. URI_Last loop
+               exit when Count = Terminal.Core.Max_Hyperlink_URI_Length;
+               Count := Count + 1;
+               Link.URI (Count) := Cell_Character (Col);
+            end loop;
+            Link.URI_Length := Count;
+            return Link;
+         end;
       end if;
    end Link_At;
 
    function Same_Link
      (Left  : Terminal.Core.Hyperlink;
       Right : Terminal.Core.Hyperlink) return Boolean
-   is
-   begin
-      if Left.Active /= Right.Active
-        or else Left.URI_Length /= Right.URI_Length
-        or else Left.ID_Length /= Right.ID_Length
-      then
-         return False;
-      elsif not Left.Active then
-         return True;
-      end if;
-
-      for I in 1 .. Left.URI_Length loop
-         if Left.URI (I) /= Right.URI (I) then
-            return False;
-         end if;
-      end loop;
-
-      for I in 1 .. Left.ID_Length loop
-         if Left.ID (I) /= Right.ID (I) then
-            return False;
-         end if;
-      end loop;
-
-      return True;
-   end Same_Link;
+      is (Terminal.Core.Same_Hyperlink (Left, Right));
 
    function Is_URI_Graphic (Ch : Character) return Boolean is
      (Character'Pos (Ch) > 16#20# and then Character'Pos (Ch) < 16#7F#);
@@ -112,48 +178,9 @@ package body Terminal.App.Hyperlinks is
       return
         Has_Prefix_Case_Insensitive (URI, "http://")
         or else Has_Prefix_Case_Insensitive (URI, "https://")
-        or else Has_Prefix_Case_Insensitive (URI, "mailto:");
+        or else Has_Prefix_Case_Insensitive (URI, "mailto:")
+        or else Has_Prefix_Case_Insensitive (URI, "file://");
    end Supported_URI;
-
-   function Open_Command (URI : String) return String is
-      Result : String (1 .. Max_Command_Length);
-      Last   : Natural := 0;
-
-      procedure Append (Ch : Character) is
-      begin
-         if Last < Result'Last then
-            Last := Last + 1;
-            Result (Last) := Ch;
-         end if;
-      end Append;
-
-      procedure Append_String (Text : String) is
-      begin
-         for Ch of Text loop
-            Append (Ch);
-         end loop;
-      end Append_String;
-   begin
-      if not Supported_URI (URI) then
-         return "";
-      end if;
-
-      Append_String ("xdg-open '");
-      for Ch of URI loop
-         if Ch = ''' then
-            Append_String ("'\''");
-         else
-            Append (Ch);
-         end if;
-      end loop;
-      Append (''');
-
-      if Last = Result'Last then
-         return "";
-      else
-         return Result (1 .. Last);
-      end if;
-   end Open_Command;
 
    function Link_Label (Link : Terminal.Core.Hyperlink) return String is
       URI_Text : constant String :=
@@ -230,8 +257,6 @@ package body Terminal.App.Hyperlinks is
             return "No link under pointer";
          when Unsupported_URI =>
             return "Unsupported link target";
-         when Command_Too_Long =>
-            return "Link command too long";
          when Launch_Failed =>
             return "Link launcher failed";
       end case;
@@ -279,21 +304,102 @@ package body Terminal.App.Hyperlinks is
    is
       URI_Text : constant String :=
         (if Link.URI_Length = 0 then "" else Link.URI (1 .. Link.URI_Length));
-      Command  : constant String := Open_Command (URI_Text);
-      C_Command : Interfaces.C.Strings.chars_ptr;
-      Result    : Interfaces.C.int;
+      Launch : Terminal.App.Platform_Launcher.Launch_Status;
    begin
       if not Link.Active or else Link.URI_Length = 0 then
          Status := No_Link;
       elsif not Supported_URI (URI_Text) then
          Status := Unsupported_URI;
-      elsif Command = "" then
-         Status := Command_Too_Long;
       else
-         C_Command := Interfaces.C.Strings.New_String (Command);
-         Result := c_system (C_Command);
-         Interfaces.C.Strings.Free (C_Command);
-         Status := (if Result = 0 then Ok else Launch_Failed);
+         Terminal.App.Platform_Launcher.Open_URI (URI_Text, Launch);
+         Status :=
+           (if Launch = Terminal.App.Platform_Launcher.Opened
+            then Ok
+            else Launch_Failed);
       end if;
    end Activate;
+
+   procedure Begin_Hints
+     (State    : in out Hint_State;
+      Snapshot : Terminal.Core.Render_Snapshot)
+   is
+      Previous : Terminal.Core.Hyperlink;
+   begin
+      State.Enabled := False;
+      State.Count := 0;
+      State.Current := 1;
+      State.Items := (others => <>);
+      for Row in 1 .. Snapshot.Rows loop
+         Previous := (others => <>);
+         for Col in 1 .. Snapshot.Cols loop
+            declare
+               Position : constant Terminal.App.Selection.Cell_Position :=
+                 (Row => Row, Col => Col);
+               Link : constant Terminal.Core.Hyperlink :=
+                 Link_At (Snapshot, Position);
+            begin
+               if Link.Active and then Link_Label (Link) /= "" then
+                  if Previous.Active and then Same_Link (Previous, Link) then
+                     State.Items (State.Count).Last := Position;
+                  elsif State.Count < Max_Link_Hints then
+                     State.Count := State.Count + 1;
+                     State.Items (State.Count) :=
+                       (Link => Link, First => Position, Last => Position);
+                  end if;
+               end if;
+               Previous := Link;
+            end;
+         end loop;
+      end loop;
+      State.Enabled := State.Count > 0;
+      State.Current := 1;
+   end Begin_Hints;
+
+   procedure Move_Hint (State : in out Hint_State; Offset : Integer) is
+      Zero_Based : Integer;
+   begin
+      if not State.Enabled or else State.Count = 0 then
+         return;
+      end if;
+      Zero_Based :=
+        (Integer (State.Current) - 1 + Offset) mod Integer (State.Count);
+      State.Current := Hint_Index (Zero_Based + 1);
+   end Move_Hint;
+
+   procedure Leave_Hints (State : in out Hint_State) is
+   begin
+      State.Enabled := False;
+      State.Count := 0;
+      State.Current := 1;
+      State.Items := (others => <>);
+   end Leave_Hints;
+
+   function Hints_Active (State : Hint_State) return Boolean is
+     (State.Enabled and then State.Count > 0);
+
+   function Hint_Count (State : Hint_State) return Natural is (State.Count);
+
+   function Current_Hint_Link (State : Hint_State) return Terminal.Core.Hyperlink is
+     (if Hints_Active (State)
+      then State.Items (State.Current).Link else (others => <>));
+
+   function Current_Hint_First
+     (State : Hint_State) return Terminal.App.Selection.Cell_Position is
+     (if Hints_Active (State)
+      then State.Items (State.Current).First else (others => 1));
+
+   function Current_Hint_Last
+     (State : Hint_State) return Terminal.App.Selection.Cell_Position is
+     (if Hints_Active (State)
+      then State.Items (State.Current).Last else (others => 1));
+
+   function Hint_Status_Label (State : Hint_State) return String is
+   begin
+      if not Hints_Active (State) then
+         return "";
+      end if;
+      return
+        "LINK " & Terminal.Common.Status.Trimmed_Natural (State.Current)
+        & "/" & Terminal.Common.Status.Trimmed_Natural (State.Count);
+   end Hint_Status_Label;
 end Terminal.App.Hyperlinks;

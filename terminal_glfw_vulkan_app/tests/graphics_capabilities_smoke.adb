@@ -1,4 +1,6 @@
+with Graphics_Capabilities_Fixtures;
 with AUnit.Assertions;
+with Ada.Text_IO;
 
 with Jpeglib.Encoding;
 with Jpeglib.Images;
@@ -6,16 +8,17 @@ with Jpeglib.Results;
 with Jpeglib.Streams;
 
 with Terminal.App.Graphics;
+with Terminal.App.Graphics.Media_Decoders;
+with Terminal.App.Graphics.Decoder_Testing;
+with Terminal.App.Owned_Image_Data;
 with Terminal.App.Render_Model;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
 with Terminal.Core;
 
 procedure Graphics_Capabilities_Smoke is
-   use AUnit.Assertions;
    use type Terminal.App.Graphics.Data_Decode_Status;
    use type Terminal.App.Graphics.ITerm2_Size_Unit;
-   use type Terminal.App.Render_Model.Image_Data_Access;
    use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
@@ -24,7 +27,20 @@ procedure Graphics_Capabilities_Smoke is
    use type Jpeglib.Destination_Offset;
 
    package Graphics renames Terminal.App.Graphics;
+   package Media_Decoding renames
+     Terminal.App.Graphics.Media_Decoders;
+   package Transport_Decoding renames
+     Terminal.App.Graphics.Decoder_Testing;
    package RM renames Terminal.App.Render_Model;
+
+   procedure Assert (Condition : Boolean; Message : String) is
+   begin
+      if not Condition then
+         Ada.Text_IO.Put_Line
+           (Ada.Text_IO.Standard_Error, "FAILED: " & Message);
+         AUnit.Assertions.Assert (False, Message);
+      end if;
+   end Assert;
 
    procedure Set_Preview
      (Event : in out Terminal.Core.Graphics_Event;
@@ -53,14 +69,21 @@ procedure Graphics_Capabilities_Smoke is
    is
       Cap : constant Graphics.Protocol_Capability :=
         Graphics.Capability (Protocol);
+      Runtime_Cap : constant Graphics.Protocol_Capability :=
+        Graphics.Capability (Protocol, Rendering_Available => True);
    begin
       Assert (Cap.Recognized, Label & " should be recognized");
       Assert (Cap.Decoded = Decoded, Label & " decode support flag");
-      Assert (Cap.Rendered, Label & " should report placeholder rendering support");
+      Assert
+        (not Cap.Rendered,
+         Label & " should not infer runtime rendering availability");
+      Assert
+        (Runtime_Cap.Rendered,
+         Label & " should report confirmed runtime rendering support");
    end Assert_Protocol;
 
-   procedure Assert_Ignored_Label
-     (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
+   procedure Assert_Graphics_Label
+     (Protocol : Terminal.Core.Graphics_Protocol_Kind;
       Payload_Length : Natural;
       Expected : String;
       Label    : String)
@@ -68,16 +91,20 @@ procedure Graphics_Capabilities_Smoke is
       Diagnostics : Terminal.Core.Diagnostic_Snapshot :=
         (others => <>);
    begin
-      Diagnostics.Graphics_Protocol_Ignored := 1;
+      Diagnostics.Graphics_Commands_Received := 1;
       Diagnostics.Last_Graphics_Protocol := Protocol;
       Diagnostics.Last_Graphics_Payload_Length := Payload_Length;
       Assert
-        (Graphics.Ignored_Status_Label (Diagnostics) = Expected,
+        (Graphics.Graphics_Status_Label (Diagnostics) = Expected,
          Label);
-   end Assert_Ignored_Label;
+   end Assert_Graphics_Label;
 
    procedure Run_Decoding_Matrix is separate;
 begin
+   Assert
+     (Graphics.Data_Decode_Byte_Limit'Last =
+        Graphics.Max_Data_Preview_Length,
+      "public decode limit must fit the bounded graphics result");
    declare
       Bytes : constant Terminal.Common.Bytes.Byte_Array :=
         (1 => 16#00#, 2 => 16#41#, 3 => 16#FF#, 4 => 16#10#, 5 => 16#22#);
@@ -105,14 +132,19 @@ begin
 
    declare
       Emoji : constant Graphics.Emoji_Capability := Graphics.Color_Emoji;
+      Runtime_Emoji : constant Graphics.Emoji_Capability :=
+        Graphics.Color_Emoji (Color_Font_Available => True);
    begin
       Assert (Emoji.Cluster_Preserved, "emoji clusters should be preserved");
       Assert
         (Emoji.Monochrome_Fallback,
          "emoji should report monochrome fallback path");
       Assert
-        (Emoji.Color_Glyph_Rendered,
-         "emoji should report color glyph rendering");
+        (not Emoji.Color_Glyph_Rendered,
+         "emoji should not infer color-font availability");
+      Assert
+        (Runtime_Emoji.Color_Glyph_Rendered,
+         "emoji should report confirmed color glyph rendering");
    end;
 
    Assert (Graphics.Name (Graphics.Sixel) = "sixel", "sixel name");
@@ -283,16 +315,21 @@ begin
 
    Assert
      (Graphics.Capability_Status_Label (Graphics.Sixel) =
-      "sixel graphics recognized; raster texture rendering available",
+      "sixel decode support; renderer availability unknown",
       "sixel capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.Kitty) =
-      "kitty graphics; RGB/RGBA/indexed/PNG texture rendering",
+      "kitty RGB/RGBA/indexed/PNG/JPEG/GIF decode support",
       "kitty capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2) =
-      "iTerm2 images; PNG/JPEG/GIF/PICT texture rendering",
+      "iTerm2 PNG/JPEG/GIF/PICT decode support",
       "iTerm2 capability status label");
+   Assert
+     (Graphics.Capability_Status_Label
+        (Graphics.Kitty, Rendering_Available => True) =
+      "kitty RGB/RGBA/indexed/PNG/JPEG/GIF rendering available",
+      "kitty runtime capability status label");
    Assert
      (Graphics.Capability_Status_Label (Graphics.ITerm2)'Length <=
       Graphics.Max_Status_Label_Length,
@@ -316,25 +353,151 @@ begin
         (others => <>);
    begin
       Assert
-        (Graphics.Ignored_Status_Label (Diagnostics) = "",
-         "empty ignored graphics status label");
+        (Graphics.Graphics_Status_Label (Diagnostics) = "",
+         "empty received graphics status label");
    end;
 
-   Assert_Ignored_Label
+   Assert_Graphics_Label
      (Terminal.Core.Sixel_Graphics,
       7,
-      "Ignored sixel graphics payload (7 bytes)",
-      "sixel ignored graphics status label");
-   Assert_Ignored_Label
+      "Received sixel graphics payload (7 bytes)",
+      "sixel received graphics status label");
+   Assert_Graphics_Label
      (Terminal.Core.Kitty_Graphics,
       16,
-      "Ignored kitty graphics payload (16 bytes)",
-      "kitty ignored graphics status label");
-   Assert_Ignored_Label
+      "Received kitty graphics payload (16 bytes)",
+      "kitty received graphics status label");
+   Assert_Graphics_Label
      (Terminal.Core.ITerm2_Graphics,
       25,
-      "Ignored iTerm2 image payload (25 bytes)",
-      "iTerm2 ignored graphics status label");
+      "Received iTerm2 image payload (25 bytes)",
+      "iTerm2 received graphics status label");
+
+   declare
+      Data : Graphics.Graphics_Data_Preview;
+      Target : Graphics.Graphics_Data_Preview;
+      Initial_Owner : Terminal.App.Owned_Image_Data.Owner;
+   begin
+      Terminal.App.Owned_Image_Data.Allocate (Initial_Owner, 2);
+      Terminal.App.Owned_Image_Data.Copy
+        (Initial_Owner, (1 => 16#A5#, 2 => 16#5A#));
+      Graphics.Adopt_Bytes (Data, Initial_Owner);
+      Assert
+        (Terminal.App.Owned_Image_Data.Is_Empty (Initial_Owner)
+         and then not Graphics.Has_Bytes (Data),
+         "adopting graphics bytes transfers their ownership");
+      Graphics.Record_External_Decode
+        (Data,
+         Encoded_Length           => 4,
+         Raw_Format               => 8,
+         Pixel_Width              => 1,
+         Pixel_Height             => 1,
+         Decoded_Length           => 1,
+         Decoded_Row_Stride_Bytes => 1,
+         Status                   => Graphics.Decode_Ok);
+      Graphics.Move (Data, Data);
+      Assert
+        (Graphics.Has_Bytes (Data) and then Data.Decode_Complete,
+         "self move preserves graphics data");
+      Graphics.Move (Data, Target);
+      Assert
+        (not Graphics.Has_Bytes (Data)
+         and then not Data.Header_Recognized
+         and then not Data.Decode_Complete
+         and then Data.Decode_Status = Graphics.Decode_Not_Attempted
+         and then Graphics.Has_Bytes (Target)
+         and then Target.Decode_Complete,
+         "graphics move resets its source and transfers its target");
+      declare
+         Detached : Terminal.App.Owned_Image_Data.Owner;
+      begin
+         Graphics.Take_Bytes (Target, Detached);
+         Assert
+           (not Terminal.App.Owned_Image_Data.Is_Empty (Detached)
+            and then not Graphics.Has_Bytes (Target),
+            "taking graphics bytes records detached ownership explicitly");
+         Graphics.Adopt_Bytes (Target, Detached);
+         Assert
+           (Terminal.App.Owned_Image_Data.Is_Empty (Detached),
+            "readopting graphics bytes restores owned storage state");
+      end;
+      Graphics.Set_Decode_Failure (Target, Graphics.Decode_Invalid_Byte);
+      declare
+         Hidden : Terminal.App.Owned_Image_Data.Owner;
+      begin
+         Graphics.Take_Bytes (Target, Hidden);
+         Assert
+           (not Graphics.Has_Bytes (Target)
+            and then Terminal.App.Owned_Image_Data.Is_Empty (Hidden),
+            "failed metadata hides and retains reusable owned storage");
+      end;
+      Graphics.Release (Target);
+      Assert
+        (not Graphics.Has_Bytes (Target)
+         and then not Target.Header_Recognized
+         and then not Target.Has_Data
+         and then Target.Encoded_Length = 0
+         and then Target.Raw_Format = 0
+         and then Target.Pixel_Width = 0
+         and then Target.Pixel_Height = 0
+         and then Target.Decoded_Length = 0
+         and then Target.Decoded_Row_Stride_Bytes = 0
+         and then not Target.Decode_Complete
+         and then Target.Decode_Status = Graphics.Decode_Not_Attempted,
+         "graphics release resets storage and metadata");
+   end;
+
+   declare
+      Data : Graphics.Graphics_Data_Preview;
+      Owner : Terminal.App.Owned_Image_Data.Owner;
+      Occupied : Terminal.App.Owned_Image_Data.Owner;
+      Rejected : Boolean := False;
+   begin
+      Terminal.App.Owned_Image_Data.Allocate (Owner, 4);
+      Terminal.App.Owned_Image_Data.Copy
+        (Owner, (1 => 1, 2 => 2, 3 => 3, 4 => 4));
+      Graphics.Adopt_Bytes (Data, Owner);
+      Graphics.Record_External_Decode
+        (Data,
+         Encoded_Length           => 4,
+         Raw_Format               => 32,
+         Pixel_Width              => 1,
+         Pixel_Height             => 1,
+         Decoded_Length           => 4,
+         Decoded_Row_Stride_Bytes => 4,
+         Status                   => Graphics.Decode_Ok);
+      begin
+         Terminal.App.Owned_Image_Data.Allocate (Occupied, 1);
+         Terminal.App.Owned_Image_Data.Replace_Element (Occupied, 1, 5);
+         Graphics.Take_Bytes (Data, Occupied);
+      exception
+         when Program_Error =>
+            Rejected := True;
+      end;
+      Assert
+        (Rejected
+         and then not Terminal.App.Owned_Image_Data.Is_Empty (Occupied)
+         and then Graphics.Has_Bytes (Data),
+         "graphics storage rejects a populated transfer target");
+   end;
+
+   declare
+      Metadata_Only : Graphics.Graphics_Data_Preview;
+   begin
+      Graphics.Record_External_Decode
+        (Metadata_Only,
+         Encoded_Length           => 4,
+         Raw_Format               => 32,
+         Pixel_Width              => 1,
+         Pixel_Height             => 1,
+         Decoded_Length           => 4,
+         Decoded_Row_Stride_Bytes => 4,
+         Status                   => Graphics.Decode_Ok);
+      Assert
+        (not Graphics.Has_Bytes (Metadata_Only)
+         and then Metadata_Only.Decode_Complete,
+         "external decode metadata does not claim owned bytes");
+   end;
 
    Run_Decoding_Matrix;
 end Graphics_Capabilities_Smoke;

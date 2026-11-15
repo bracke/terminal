@@ -1,11 +1,23 @@
+with Terminal.Common.Status;
+
 package body Terminal.App.Splits is
    procedure Initialize (State : out Split_State) is
    begin
       State :=
         (Current_Count => 1,
          Active_Index  => 1,
-         Layout_Axis   => Horizontal);
+         Layout_Axis   => Horizontal,
+         Weights       => (others => Weight_Unit));
    end Initialize;
+
+   procedure Clear (State : out Split_State) is
+   begin
+      State :=
+        (Current_Count => 0,
+         Active_Index  => 1,
+         Layout_Axis   => Horizontal,
+         Weights       => (others => Weight_Unit));
+   end Clear;
 
    procedure Apply
      (State   : in out Split_State;
@@ -20,7 +32,7 @@ package body Terminal.App.Splits is
             if State.Current_Count = Max_Panes then
                Status := At_Capacity;
             else
-               if State.Current_Count = 1 then
+               if State.Current_Count <= 1 then
                   State.Layout_Axis :=
                     (if Command = Split_Horizontal
                      then Horizontal
@@ -28,12 +40,23 @@ package body Terminal.App.Splits is
                end if;
                State.Current_Count := State.Current_Count + 1;
                State.Active_Index := State.Current_Count;
+               for I in 1 .. State.Current_Count loop
+                  State.Weights (I) := Weight_Unit;
+               end loop;
                Status := Ok;
             end if;
          when Close_Pane =>
-            if State.Current_Count <= 1 then
+            if State.Current_Count = 0 then
+               Status := Invalid_Index;
+            elsif State.Current_Count = 1 then
                Status := Last_Pane;
             else
+               if State.Active_Index < State.Current_Count then
+                  for I in State.Active_Index .. State.Current_Count - 1 loop
+                     State.Weights (I) := State.Weights (I + 1);
+                  end loop;
+               end if;
+               State.Weights (State.Current_Count) := Weight_Unit;
                State.Current_Count := State.Current_Count - 1;
                if State.Active_Index > State.Current_Count then
                   State.Active_Index := State.Current_Count;
@@ -44,7 +67,10 @@ package body Terminal.App.Splits is
                Status := Ok;
             end if;
          when Next_Pane =>
-            if State.Active_Index = State.Current_Count then
+            if State.Current_Count = 0 then
+               Status := Invalid_Index;
+               return;
+            elsif State.Active_Index = State.Current_Count then
                State.Active_Index := 1;
             else
                State.Active_Index := State.Active_Index + 1;
@@ -84,22 +110,36 @@ package body Terminal.App.Splits is
       Cols  : Positive) return Pane_Layout
    is
       Result : Pane_Layout := (Count => State.Current_Count, Rects => (others => <>));
-      Count  : constant Positive := Positive (State.Current_Count);
       Cursor : Positive := 1;
+      Remaining_Extent : Natural :=
+        (if State.Layout_Axis = Horizontal then Rows else Cols);
+      Remaining_Weight : Natural := 0;
    begin
+      if State.Current_Count = 0 then
+         return Result;
+      end if;
+
+      declare
+         Count : constant Positive := Positive (State.Current_Count);
+      begin
+      for I in 1 .. State.Current_Count loop
+         Remaining_Weight := Remaining_Weight + State.Weights (I);
+      end loop;
       for I in 1 .. State.Current_Count loop
          declare
-            Base : constant Natural :=
-              (if State.Layout_Axis = Horizontal
-               then Rows / Count
-               else Cols / Count);
-            Extra : constant Natural :=
-              (if State.Layout_Axis = Horizontal
-               then Rows mod Count
-               else Cols mod Count);
+            Panes_Left : constant Natural := Count - Natural (I) + 1;
             Size : constant Natural :=
-              Natural'Max
-                (1, Base + (if Natural (I) <= Extra then 1 else 0));
+              (if I = State.Current_Count
+               then Natural'Max (1, Remaining_Extent)
+               elsif Remaining_Extent <= Panes_Left
+               then 1
+               else Natural'Max
+                 (1,
+                  Natural'Min
+                    (Remaining_Extent - (Panes_Left - 1),
+                     (Remaining_Extent * State.Weights (I)
+                        + Remaining_Weight - 1)
+                       / Remaining_Weight)));
          begin
             if State.Layout_Axis = Horizontal then
                Result.Rects (I) :=
@@ -120,8 +160,11 @@ package body Terminal.App.Splits is
             if Size > 0 then
                Cursor := Cursor + Size;
             end if;
+            Remaining_Extent := Remaining_Extent - Natural'Min (Size, Remaining_Extent);
+            Remaining_Weight := Remaining_Weight - State.Weights (I);
          end;
       end loop;
+      end;
 
       return Result;
    end Layout;
@@ -186,11 +229,56 @@ package body Terminal.App.Splits is
       end if;
    end Close_At;
 
-   function Trim_Image (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
+   procedure Move_Divider
+     (State    : in out Split_State;
+      Layout   : Pane_Layout;
+      Divider  : Divider_Index;
+      Row      : Positive;
+      Col      : Positive;
+      Status   : out Split_Status)
+   is
+      Left_Rect : Pane_Rect;
+      Right_Rect : Pane_Rect;
+      Combined : Natural;
+      Requested_Left : Natural;
+      Total_Weight : Natural;
+      Left_Weight : Natural;
    begin
-      return Text (Text'First + 1 .. Text'Last);
-   end Trim_Image;
+      if Divider >= State.Current_Count or else Layout.Count /= State.Current_Count then
+         Status := Invalid_Index;
+         return;
+      end if;
+
+      Left_Rect := Layout.Rects (Divider);
+      Right_Rect := Layout.Rects (Divider + 1);
+      if State.Layout_Axis = Horizontal then
+         Combined := Left_Rect.Rows + Right_Rect.Rows;
+         Requested_Left :=
+           Natural'Min
+             (Combined - 1,
+              Natural'Max (1, Natural (Row) - Left_Rect.Row + 1));
+      else
+         Combined := Left_Rect.Cols + Right_Rect.Cols;
+         Requested_Left :=
+           Natural'Min
+             (Combined - 1,
+              Natural'Max (1, Natural (Col) - Left_Rect.Col + 1));
+      end if;
+      if Combined < 2 then
+         Status := Invalid_Index;
+         return;
+      end if;
+
+      Total_Weight := State.Weights (Divider) + State.Weights (Divider + 1);
+      Left_Weight := Natural'Max (1, Total_Weight * Requested_Left / Combined);
+      Left_Weight := Natural'Min (Total_Weight - 1, Left_Weight);
+      State.Weights (Divider) := Left_Weight;
+      State.Weights (Divider + 1) := Total_Weight - Left_Weight;
+      Status := Ok;
+   end Move_Divider;
+
+   function Trim_Image (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    function Pane_Label (Index : Pane_Index) return String is
    begin
@@ -216,7 +304,9 @@ package body Terminal.App.Splits is
 
    function Status_Label (State : Split_State) return String is
    begin
-      if State.Current_Count <= 1 then
+      if State.Current_Count = 0 then
+         return "No live panes";
+      elsif State.Current_Count = 1 then
          return "Single live pane";
       else
          return "Live split panes="

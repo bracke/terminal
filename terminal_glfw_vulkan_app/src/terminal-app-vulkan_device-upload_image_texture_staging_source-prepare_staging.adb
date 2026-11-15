@@ -19,6 +19,7 @@ begin
         System.Null_Address,
         Staging_Buffer'Address);
    if Result /= Vk.SUCCESS or else Staging_Buffer = System.Null_Address then
+      Destroy_Staging;
       Status := Create_Atlas_Staging_Buffer_Failed;
       return;
    end if;
@@ -86,15 +87,15 @@ declare
 begin
    Fill_Staging (Target, Staging_Bytes_Natural, Fill_Status);
    if Fill_Status /= Ok then
-      Vk.Unmap_Memory (Device.Device, Staging_Memory);
-      Staging_Mapped := False;
-      Data := System.Null_Address;
+      Unmap_Staging;
       Destroy_Staging;
       Status := Fill_Status;
       return;
    end if;
 end;
-Vk.Unmap_Memory (Device.Device, Staging_Memory);
-Staging_Mapped := False;
-Data := System.Null_Address;
+Unmap_Staging;
+if Cleanup_Failed then
+   Status := Device_Lost;
+   return;
+end if;
 end Prepare_Staging;

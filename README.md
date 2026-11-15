@@ -9,11 +9,16 @@ alr build
 ./bin/terminal
 ```
 
+The root manifest pins the current `gnat_native` package at 15.2.1; invoke
+compiler and project tools through `alr exec` so ignored local Alire state cannot
+silently select a different toolchain.
+
 System build/runtime prerequisites include GLFW, Vulkan loader/driver support,
 and HarfBuzz (`libharfbuzz.so`) for app-layer text shaping.
 
 Crates:
 
+- `c_string_ownership`: neutral cancellation-safe temporary C-string owner.
 - `glfw_vulkan`: reusable GLFW window/event/surface helper crate for Vulkan apps.
 - `terminal_common`: platform-neutral byte and status types.
 - `terminal_core`: deterministic byte-oriented terminal emulator core.
@@ -28,7 +33,49 @@ and `Super+V` paste the GLFW
 clipboard into the PTY, using bracketed paste mode when the terminal core says
 it is enabled. Runtime visible-shell validation is tracked in
 `docs/m1_runtime_validation.md`. `Shift+Page_Up` and `Shift+Page_Down` page
-through bounded primary-screen scrollback.
+through bounded primary-screen scrollback. `Ctrl+Shift+F` searches retained
+text; `Alt+R`, `Alt+C`, and `Alt+W` toggle regex, case, and whole-word modes,
+while `Ctrl+Up`/`Ctrl+Down` browse search history. All visible matches are
+underlined and the overlay reports the current/total match count.
+`Ctrl+Shift+Space` enters keyboard copy mode, and
+`Ctrl+Shift+O` enters keyboard link mode for detected URLs and absolute paths.
+Use arrows or Tab to choose a target, Enter to open it, and Escape to cancel.
+`Ctrl+Shift+P` opens the searchable command/profile palette.
+`Ctrl+Shift+Up` and `Ctrl+Shift+Down` jump between OSC 133 shell marks, while
+the in-window scrollbar shows the current retained-history position. Tabs can
+be clicked, closed with their `x` or middle click, and reordered by dragging;
+split borders and the scrollbar are draggable. `Ctrl+Shift+U` opens a bounded
+Unicode `U+` pre-edit overlay, with Enter/Space committing the scalar and
+Escape cancelling it. Platform IME committed text continues through GLFW's
+Unicode character path. `Ctrl+Shift+B`, `Ctrl+Shift+Y`, and `Ctrl+Shift+R`
+select, copy, or rerun the latest OSC 133 command block.
+`Ctrl+Shift+Equal`/`Ctrl+Shift+Minus`/`Ctrl+Shift+0` adjust or reset font zoom.
+`Ctrl+Shift+N` opens a process-backed window and `Ctrl+Shift+D` detaches the
+active tab to a new window by handing off its working directory, label, and
+startup command. `Ctrl+Comma` opens the settings/profile-line editor;
+`Ctrl+Shift+Comma` transactionally reloads the configuration.
+`Ctrl+Shift+Z` zooms the active pane, `Ctrl+Shift+M` moves it to the next pane
+position, and `Ctrl+Shift+I` broadcasts keyboard and paste input to every pane.
+`Ctrl+Shift+G` starts or stops bounded output recording, `Ctrl+Shift+J` replays
+the recording into matching live sessions, and `Ctrl+Shift+S` exports the
+active session's retained transcript. The Vulkan content surface publishes the
+active pane, cursor row, and interaction status through the sibling `a11y`
+crate, using native AT-SPI when available and its validating fallback otherwise.
+Font path, font size, and every app-owned shortcut are configurable.
+
+The app restores and saves its tab/pane workspace under
+`$XDG_STATE_HOME/ada-terminal/workspace` (or the corresponding home-state
+path), including active session, labels, OSC 7 working directories, and bounded
+startup commands. Desktop notifications accept OSC 9 and the title/body subset
+of OSC 99. Bell and OSC 133 command-completion notifications are separately
+opt-in with `bell-notifications` and `command-completion-notifications`.
+Recordings and transcript exports use the configured workspace path with
+`.recording` and `.txt` suffixes, respectively.
+
+Session profiles use bounded `profile.NAME.FIELD` keys. Fields are `shell`,
+`command`, `cwd`, `environment` (comma-separated assignments), `theme`, and
+`ssh`; `default-profile = NAME` applies one to new sessions. SSH profiles launch
+through the same palette and PTY lifecycle as local profiles.
 
 Graphics support includes Kitty image objects and indexed/direct formats,
 Unicode placeholders, animations, local transfer media under explicit policy,
@@ -41,109 +88,59 @@ keys, and test evidence are recorded in
 Executed release evidence and environment-specific blockers are recorded in
 [`docs/graphics_release_validation.md`](docs/graphics_release_validation.md).
 
-Build individual crates:
+Build individual project targets through the root crate's pinned Alire
+environment:
 
 ```sh
-cd terminal_common && alr build
-cd ../terminal_core && alr build
-cd ../terminal_pty && alr build
-cd ../glfw_vulkan && alr build
-cd ../terminal_glfw_vulkan_app && alr build
+alr exec -- gprbuild -p -P c_string_ownership/c_string_ownership.gpr
+alr exec -- gprbuild -p -P terminal_common/terminal_common.gpr
+alr exec -- gprbuild -p -P terminal_core/terminal_core.gpr
+alr exec -- gprbuild -p -P terminal_pty/terminal_pty.gpr
+alr exec -- gprbuild -p -P glfw_vulkan/glfw_vulkan.gpr
+alr exec -- gprbuild -p -P terminal_glfw_vulkan_app/terminal_glfw_vulkan_app.gpr
 ```
 
 Core smoke tests:
 
 ```sh
-cd terminal_core
-alr exec -- gprbuild -p -P tests/core_tests.gpr
-tests/bin/core_smoke
-tests/bin/core_sgr_smoke
-tests/bin/core_modes_smoke
-tests/bin/core_osc_smoke
-tests/bin/core_utf8_smoke
-tests/bin/core_alternate_smoke
-tests/bin/core_scrollback_smoke
-tests/bin/core_charset_smoke
-tests/bin/core_cursor_smoke
-tests/bin/core_damage_smoke
-tests/bin/core_edit_smoke
-tests/bin/core_insert_smoke
-tests/bin/core_response_smoke
-tests/bin/core_tabs_smoke
-tests/bin/core_wide_smoke
-tests/bin/core_wrap_smoke
-tests/bin/core_graphics_stream_smoke
-tests/bin/core_image_cells_smoke
-tests/bin/core_large_graphics_smoke
-tests/bin/core_graphics_fuzz_smoke
+alr exec -- gprbuild -p -P c_string_ownership/tests/c_string_ownership_tests.gpr
+c_string_ownership/tests/bin/c_string_ownership_smoke
+alr exec -- gprbuild -p -P terminal_core/tests/core_tests.gpr
+for test in terminal_core/tests/bin/*_smoke; do "$test" || exit 1; done
 ```
 
 PTY smoke tests:
 
 ```sh
-cd terminal_pty
-alr exec -- gprbuild -p -P tests/pty_tests.gpr
-tests/bin/pty_status_smoke
-tests/bin/pty_env_smoke
-tests/bin/pty_resize_smoke
-tests/bin/pty_close_smoke
+alr exec -- gprbuild -p -P terminal_pty/tests/pty_tests.gpr
+terminal_pty/tests/bin/pty_status_smoke
+terminal_pty/tests/bin/pty_env_smoke
+terminal_pty/tests/bin/pty_resize_smoke
+terminal_pty/tests/bin/pty_close_smoke
+terminal_pty/tests/bin/pty_spawn_failure_smoke
 ```
 
 App smoke tests:
 
 ```sh
-cd terminal_glfw_vulkan_app
-alr exec -- gprbuild -p -P tests/app_tests.gpr
-tests/bin/colour_glyph_submit_smoke
-tests/bin/app_profile_smoke
-tests/bin/vulkan_submit_smoke
-tests/bin/vulkan_presenter_smoke
-tests/bin/vulkan_recovery_smoke
-tests/bin/vulkan_device_smoke
-tests/bin/gui_present_smoke
-tests/bin/shader_loader_smoke
-tests/bin/font_discovery_smoke
-tests/bin/text_shaper_smoke
-tests/bin/renderer_metrics_smoke
-tests/bin/renderer_status_smoke
-tests/bin/renderer_animation_smoke
-tests/bin/renderer_local_media_smoke
-tests/bin/renderer_transaction_smoke
-tests/bin/renderer_kitty_object_smoke
-tests/bin/renderer_large_payload_smoke
-tests/bin/kitty_control_matrix_smoke
-tests/bin/image_media_smoke
-tests/bin/iterm2_media_smoke
-tests/bin/iterm2_file_smoke
-tests/bin/graphics_transport_smoke
-tests/bin/graphics_replacement_benchmark_smoke
-tests/bin/external_graphics_stream_probe /path/to/client-output.bin
-tests/bin/pty_core_integration_smoke
-tests/bin/pty_m1_commands_smoke
-tests/bin/pty_program_progression_smoke
-tests/bin/input_map_smoke
-tests/bin/selection_smoke
-tests/bin/hyperlink_smoke
-tests/bin/clipboard_osc52_smoke
-tests/bin/diagnostics_smoke
-tests/bin/scrollback_view_smoke
-tests/bin/render_policy_smoke
-tests/bin/theme_config_smoke
-tests/bin/config_file_smoke
-tests/bin/graphics_capabilities_smoke
-tests/bin/image_pipeline_units_smoke
-tests/bin/image_store_smoke
-tests/bin/image_placements_smoke
-tests/bin/tabs_smoke
-tests/bin/splits_smoke
-tests/bin/sessions_smoke
-tests/bin/session_runtime_smoke
-tests/bin/session_table_smoke
-tests/bin/session_hardening_smoke
-tests/bin/cursor_blink_smoke
-tests/bin/text_blink_smoke
-tests/bin/queue_smoke
-tests/bin/resize_smoke
+alr exec -- gprbuild -p -P terminal_glfw_vulkan_app/tests/app_tests.gpr
+for test in terminal_glfw_vulkan_app/tests/bin/*_smoke; do "$test" || exit 1; done
+```
+
+Each smoke test runs in its own process so GLFW, Vulkan, renderer, and session
+global state cannot leak between cases. Individual probes remain directly
+executable for focused diagnostics:
+
+```sh
+terminal_glfw_vulkan_app/tests/bin/click_debounce_smoke
+terminal_glfw_vulkan_app/tests/bin/gui_present_smoke
+terminal_glfw_vulkan_app/tests/bin/graphics_replacement_benchmark_smoke
+terminal_glfw_vulkan_app/tests/bin/external_graphics_stream_probe /path/to/client-output.bin
+terminal_glfw_vulkan_app/tests/bin/pty_core_integration_smoke
+terminal_glfw_vulkan_app/tests/bin/pty_m1_commands_smoke
+terminal_glfw_vulkan_app/tests/bin/pty_program_progression_smoke
+terminal_glfw_vulkan_app/tests/bin/image_pipeline_units_smoke
+terminal_glfw_vulkan_app/tests/bin/image_store_smoke
 ```
 
 `gui_present_smoke` includes a bounded Vulkan swapchain readback and pixel

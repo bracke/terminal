@@ -1,3 +1,4 @@
+with Ada.Exceptions;
 with Interfaces;
 with Ada.Unchecked_Deallocation;
 with Interfaces.C;
@@ -5,15 +6,25 @@ with Interfaces.C.Strings;
 with System;
 with System.Address_To_Access_Conversions;
 with Terminal.Common.Bytes;
-with Terminal.Common.Status;
+with Terminal.Common.C_Strings;
 with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Image_Staging;
 with Terminal.App.Image_Upload_Layout;
 with Terminal.App.Shaders;
-with Terminal.App.Status_Labels;
 with Terminal.App.Vulkan_Retirement;
+with Terminal.App.Vulkan_Unmap_Once;
+with Terminal.App.Vulkan_Destroy_Once;
+with Terminal.App.Vulkan_Destroy_Pair;
+with Terminal.App.Vulkan_Destroy_Triple;
+with Terminal.App.Vulkan_Device.Selection_Logic;
+with Terminal.App.Vulkan_Device.Resource_Lifecycle;
+with Terminal.App.Vulkan_Device.Snapshots;
+with Terminal.App.Vulkan_Enumeration;
+with Terminal.App.Vulkan_Creation_Plan;
 
 package body Terminal.App.Vulkan_Device is
+   use type Terminal.App.Render_Model.Image_Protocol;
+   use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Interfaces.Unsigned_32;
    use type Interfaces.Unsigned_64;
    use type Interfaces.Integer_32;
@@ -52,54 +63,17 @@ package body Terminal.App.Vulkan_Device is
    use type Vk.Swapchain_KHR_T;
 
    package RM renames Terminal.App.Render_Model;
-   use type RM.Image_Data_Access;
    use type RM.Image_Decoded_Source_Kind;
    use type Terminal.App.Image_Staging.Decode_Status;
    use type Terminal.App.Image_Upload_Layout.Layout_Status;
-
-   function Trimmed_Natural (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
-   begin
-      return Text (Text'First + 1 .. Text'Last);
-   end Trimmed_Natural;
-
-   function Humanize (Text : String) return String
-      renames Terminal.App.Status_Labels.Humanize;
-
-   function Bounded (Text : String) return String is
-   begin
-      return Terminal.App.Status_Labels.Bounded
-        (Text, Max_Status_Label_Length);
-   end Bounded;
-
-   function Select_Status_Label (Status : Select_Status) return String is
-   begin
-      return Bounded ("Select device: " & Humanize (Select_Status'Image (Status)));
-   end Select_Status_Label;
-
-   function Create_Status_Label (Status : Create_Status) return String is
-   begin
-      return Bounded ("Create device: " & Humanize (Create_Status'Image (Status)));
-   end Create_Status_Label;
-
-   function Render_Status_Label (Status : Render_Status) return String is
-   begin
-      return Bounded ("Render device: " & Humanize (Render_Status'Image (Status)));
-   end Render_Status_Label;
 
    package VC renames Terminal.App.Vulkan_Context;
    package Shaders renames Terminal.App.Shaders;
    package VS renames Terminal.App.Vulkan_Submit;
 
    use type Shaders.Load_Status;
-   use type VS.Vertex_Array_View;
    use type VS.Texture_Source;
 
-   subtype Device_Count_Range is Positive range 1 .. Max_Physical_Devices;
-   subtype Queue_Count_Range is Positive range 1 .. Max_Queue_Families;
-   subtype Extension_Count_Range is Positive range 1 .. Max_Device_Extensions;
-   subtype Surface_Format_Count_Range is Positive range 1 .. Max_Surface_Formats;
-   subtype Present_Mode_Count_Range is Positive range 1 .. Max_Present_Modes;
    subtype Shader_Stage_Range is Positive range 1 .. 2;
    subtype Vertex_Attribute_Range is Positive range 1 .. 5;
    subtype Dynamic_State_Range is Positive range 1 .. 2;
@@ -131,18 +105,21 @@ package body Terminal.App.Vulkan_Device is
    package Readback_Byte_Conversions is new System.Address_To_Access_Conversions
      (Readback_Byte_Array);
 
-   type Physical_Device_Array is array (Device_Count_Range) of Vk.Physical_Device_T
-     with Convention => C;
-   type Queue_Family_Array is array (Queue_Count_Range) of Vk.Queue_Family_Properties_T
-     with Convention => C;
-   type Extension_Array is array (Extension_Count_Range) of Vk.Extension_Properties_T
-     with Convention => C;
    type Surface_Format_Array is
-     array (Surface_Format_Count_Range) of Vk.Surface_Format_KHR_T
+     array (Positive range <>) of Vk.Surface_Format_KHR_T
      with Convention => C;
    type Present_Mode_Array is
-     array (Present_Mode_Count_Range) of Vk.Present_Mode_KHR_T
+     array (Positive range <>) of Vk.Present_Mode_KHR_T
      with Convention => C;
+   type Surface_Format_Array_Access is access Surface_Format_Array;
+   type Present_Mode_Array_Access is access Present_Mode_Array;
+   procedure Free_Surface_Formats is new Ada.Unchecked_Deallocation
+     (Surface_Format_Array, Surface_Format_Array_Access);
+   procedure Free_Present_Modes is new Ada.Unchecked_Deallocation
+     (Present_Mode_Array, Present_Mode_Array_Access);
+   function Fits_Natural (Value : Interfaces.Unsigned_32) return Boolean is
+     (Interfaces.Unsigned_64 (Value) <=
+        Interfaces.Unsigned_64 (Natural'Last));
    type Shader_Stage_Array is
      array (Shader_Stage_Range) of Vk.Pipeline_Shader_Stage_Create_Info_T
      with Convention => C;
@@ -268,27 +245,6 @@ package body Terminal.App.Vulkan_Device is
       end case;
    end Texture_ID;
 
-   function Sample_Count_Value
-     (Samples : Vk.Sample_Count_Flag_Bits_T)
-      return Natural
-   is
-   begin
-      if Samples = Vk.SAMPLE_COUNT_64_BIT then
-         return 64;
-      elsif Samples = Vk.SAMPLE_COUNT_32_BIT then
-         return 32;
-      elsif Samples = Vk.SAMPLE_COUNT_16_BIT then
-         return 16;
-      elsif Samples = Vk.SAMPLE_COUNT_8_BIT then
-         return 8;
-      elsif Samples = Vk.SAMPLE_COUNT_4_BIT then
-         return 4;
-      elsif Samples = Vk.SAMPLE_COUNT_2_BIT then
-         return 2;
-      else
-         return 1;
-      end if;
-   end Sample_Count_Value;
 
    function Is_Swapchain_Stale (Result : Vk.Result_T) return Boolean is
      (Result = Suboptimal_KHR or else Result = Error_Out_Of_Date_KHR);
@@ -296,9 +252,19 @@ package body Terminal.App.Vulkan_Device is
    procedure Destroy_Atlas_Image (Device : in out Logical_Device);
    procedure Destroy_Image_Texture (Device : in out Logical_Device);
    procedure Destroy_Colour_Sheet (Device : in out Logical_Device);
+   procedure Destroy_Readback_Buffer
+     (Device  : in out Logical_Device;
+      Success : out Boolean);
    procedure Destroy_Deferred_Upload
      (Device  : in out Logical_Device;
       Success : out Boolean);
+
+   --  Restore every owning handle and diagnostic field to its declared
+   --  default.  Creation rollback and controlled finalization share this one
+   --  reset path so newly added state cannot drift between them.
+   procedure Reset_State
+     (Device       : in out Logical_Device;
+      Status_Value : Create_Status) is separate;
 
    procedure Defer_Upload_Resources
      (Device         : in out Logical_Device;
@@ -313,7 +279,9 @@ package body Terminal.App.Vulkan_Device is
       Ready  : out Boolean;
       Status : out Create_Status);
 
-   procedure Restore_Upload_Fence (Device : in out Logical_Device);
+   procedure Restore_Upload_Fence
+     (Device : in out Logical_Device;
+      Status : out Create_Status);
 
    --  One transparent pixel, for the colour sheet before any emoji exists.
    type Blank_Pixel is array (1 .. 4) of Interfaces.Unsigned_8;
@@ -371,24 +339,6 @@ package body Terminal.App.Vulkan_Device is
       Status           : out Create_Status;
       Slot             : Texture_Slot := Inline_Picture);
 
-   procedure Reset
-     (Choice : out Selection;
-      Status : Select_Status) is
-   begin
-      Choice :=
-        (Selected               => False,
-         Physical_Device        => System.Null_Address,
-         Queue_Family_Index     => 0,
-         Physical_Device_Count  => 0,
-         Devices_Inspected      => 0,
-         Queue_Families_Checked => 0,
-         Surface_Format_Count   => 0,
-         Present_Mode_Count     => 0,
-         Device_Extensions_Checked => 0,
-         Swapchain_Extension_Found => False,
-         Last_Status            => Status);
-   end Reset;
-
    function Has_Memory_Type
      (Properties : Vk.Physical_Device_Memory_Properties_T;
       Bits       : Interfaces.Unsigned_32;
@@ -396,260 +346,42 @@ package body Terminal.App.Vulkan_Device is
       Index      : out Interfaces.Unsigned_32)
       return Boolean;
 
-   function Has_Name
-     (Item : Vk.Extension_Properties_T;
-      Name : String)
-      return Boolean is
-   begin
-      for I in Name'Range loop
-         if Item.extension_Name (I - Name'First) /=
-           Interfaces.C.char'Val (Character'Pos (Name (I)))
-         then
-            return False;
-         end if;
-      end loop;
-
-      return Item.extension_Name (Name'Length) = Interfaces.C.nul;
-   end Has_Name;
-
    function Device_Supports_Swapchain
      (Device  : Vk.Physical_Device_T;
       Checked : out Natural)
-      return Boolean
-   is
-      Count : aliased Interfaces.Unsigned_32 := 0;
-      Limit : Interfaces.Unsigned_32;
-      Extensions : Extension_Array;
-      Result : Vk.Result_T;
-
-   begin
-      Checked := 0;
-
-      Result :=
-        Vk.Enumerate_Device_Extension_Properties
-          (Device, System.Null_Address, Count'Address, System.Null_Address);
-      if Result /= Vk.SUCCESS or else Count = 0 then
-         return False;
-      end if;
-
-      Limit := U32_Min (Count, Interfaces.Unsigned_32 (Max_Device_Extensions));
-      Count := Limit;
-      Result :=
-        Vk.Enumerate_Device_Extension_Properties
-          (Device, System.Null_Address, Count'Address, Extensions'Address);
-      if Result /= Vk.SUCCESS then
-         return False;
-      end if;
-
-      Checked := Natural (Count);
-      for I in 1 .. Natural (Count) loop
-         if Has_Name (Extensions (I), "VK_KHR_swapchain") then
-            return True;
-         end if;
-      end loop;
-
-      return False;
-   end Device_Supports_Swapchain;
-
-   function Surface_Detail_Counts_Are_Usable
-     (Device       : Vk.Physical_Device_T;
-      Surface      : Vk.Surface_KHR_T;
-      Format_Count : out Natural;
-      Mode_Count   : out Natural)
-      return Boolean
-   is
-      Formats : aliased Interfaces.Unsigned_32 := 0;
-      Modes   : aliased Interfaces.Unsigned_32 := 0;
-      Result  : Vk.Result_T;
-   begin
-      Format_Count := 0;
-      Mode_Count := 0;
-
-      Result :=
-        Vk.Get_Physical_Device_Surface_Formats_KHR
-          (Device, Surface, Formats'Address, System.Null_Address);
-      if Result /= Vk.SUCCESS then
-         return False;
-      end if;
-
-      Result :=
-        Vk.Get_Physical_Device_Surface_Present_Modes_KHR
-          (Device, Surface, Modes'Address, System.Null_Address);
-      if Result /= Vk.SUCCESS then
-         return False;
-      end if;
-
-      Format_Count := Natural (Formats);
-      Mode_Count := Natural (Modes);
-      return Formats > 0 and then Modes > 0;
-   end Surface_Detail_Counts_Are_Usable;
-
-   function Queue_Supports_Graphics_And_Present
-     (Device      : Vk.Physical_Device_T;
-      Surface     : Vk.Surface_KHR_T;
-      Queue_Index : Interfaces.Unsigned_32;
-      Props       : Vk.Queue_Family_Properties_T)
-      return Boolean
-   is
-      Supported : aliased Interfaces.Unsigned_32 := 0;
-      Result    : constant Vk.Result_T :=
-        Vk.Get_Physical_Device_Surface_Support_KHR
-          (Device, Queue_Index, Surface, Supported'Address);
-   begin
-      if Result /= Vk.SUCCESS then
-         return False;
-      end if;
-
-      return Props.queue_Count > 0
-        and then (Props.queue_Flags and Vk.QUEUE_GRAPHICS_BIT) /= 0
-        and then Supported /= 0;
-   end Queue_Supports_Graphics_And_Present;
+      return Selection_Logic.Capability_Query_Result is
+     (Selection_Logic.Swapchain_Support (Device, Checked));
 
    procedure Select_Physical_Device
      (Context : VC.Context;
       Choice  : out Selection;
       Status  : out Select_Status)
    is
-      Count : aliased Interfaces.Unsigned_32 := 0;
-      Result : Vk.Result_T;
-      Devices : Physical_Device_Array := (others => System.Null_Address);
-      Device_Limit : Interfaces.Unsigned_32;
-      Surface : constant Vk.Surface_KHR_T := VC.Surface (Context);
-      Query_Failed : Boolean := False;
    begin
-      Reset (Choice, Context_Not_Initialized);
-
-      if not VC.Is_Initialized (Context) or else Surface = System.Null_Address then
-         Status := Context_Not_Initialized;
-         Choice.Last_Status := Status;
-         return;
-      end if;
-
-      Result :=
-        Vk.Enumerate_Physical_Devices
-          (VC.Instance (Context), Count'Address, System.Null_Address);
-      if Result /= Vk.SUCCESS then
-         Status := Surface_Query_Failed;
-         Choice.Last_Status := Status;
-         return;
-      end if;
-
-      Choice.Physical_Device_Count := Natural (Count);
-      if Count = 0 then
-         Status := No_Physical_Devices;
-         Choice.Last_Status := Status;
-         return;
-      end if;
-
-      Device_Limit := U32_Min (Count, Interfaces.Unsigned_32 (Max_Physical_Devices));
-      Count := Device_Limit;
-
-      Result :=
-        Vk.Enumerate_Physical_Devices
-          (VC.Instance (Context), Count'Address, Devices'Address);
-      if Result /= Vk.SUCCESS then
-         Status := Surface_Query_Failed;
-         Choice.Last_Status := Status;
-         return;
-      end if;
-
-      for D in 1 .. Natural (Count) loop
-         declare
-            Queue_Count : aliased Interfaces.Unsigned_32 := 0;
-            Queue_Limit : Interfaces.Unsigned_32;
-            Queues : Queue_Family_Array;
-            Format_Count : Natural := 0;
-            Mode_Count : Natural := 0;
-            Extension_Count : Natural := 0;
-         begin
-            Choice.Devices_Inspected := Choice.Devices_Inspected + 1;
-
-            if not Device_Supports_Swapchain (Devices (D), Extension_Count) then
-               Choice.Device_Extensions_Checked :=
-                 Choice.Device_Extensions_Checked + Extension_Count;
-            elsif not Surface_Detail_Counts_Are_Usable
-              (Devices (D), Surface, Format_Count, Mode_Count)
-            then
-               Choice.Device_Extensions_Checked :=
-                 Choice.Device_Extensions_Checked + Extension_Count;
-               Choice.Swapchain_Extension_Found := True;
-               Query_Failed := True;
-            else
-               Choice.Device_Extensions_Checked :=
-                 Choice.Device_Extensions_Checked + Extension_Count;
-               Choice.Swapchain_Extension_Found := True;
-               Vk.Get_Physical_Device_Queue_Family_Properties
-                 (Devices (D), Queue_Count'Address, System.Null_Address);
-
-               if Queue_Count > 0 then
-                  Queue_Limit :=
-                    U32_Min (Queue_Count, Interfaces.Unsigned_32 (Max_Queue_Families));
-                  Queue_Count := Queue_Limit;
-                  Vk.Get_Physical_Device_Queue_Family_Properties
-                    (Devices (D), Queue_Count'Address, Queues'Address);
-
-                  for Q in 1 .. Natural (Queue_Count) loop
-                     Choice.Queue_Families_Checked :=
-                       Choice.Queue_Families_Checked + 1;
-                     if Queue_Supports_Graphics_And_Present
-                       (Devices (D),
-                        Surface,
-                        Interfaces.Unsigned_32 (Q - 1),
-                        Queues (Q))
-                     then
-                        Choice.Selected := True;
-                        Choice.Physical_Device := Devices (D);
-                        Choice.Queue_Family_Index := Q - 1;
-                        Choice.Surface_Format_Count := Format_Count;
-                        Choice.Present_Mode_Count := Mode_Count;
-                        Choice.Last_Status := Ok;
-                        Status := Ok;
-                        return;
-                     end if;
-                  end loop;
-               end if;
-            end if;
-         end;
-      end loop;
-
-      if Query_Failed then
-         Status := Surface_Query_Failed;
-      else
-         Status := No_Suitable_Device;
-      end if;
-      Choice.Last_Status := Status;
+      Selection_Logic.Select_Physical_Device (Context, Choice, Status);
    end Select_Physical_Device;
 
    function Is_Selected (Choice : Selection) return Boolean is
-     (Choice.Selected);
+     (Selection_Logic.Is_Selected (Choice));
 
    function Physical_Device (Choice : Selection) return Vk.Physical_Device_T is
-     (Choice.Physical_Device);
+     (Selection_Logic.Physical_Device (Choice));
 
    function Queue_Family_Index (Choice : Selection) return Natural is
-     (Choice.Queue_Family_Index);
+     (Selection_Logic.Queue_Family_Index (Choice));
+
+   function Present_Queue_Family_Index (Choice : Selection) return Natural is
+     (Selection_Logic.Present_Queue_Family_Index (Choice));
 
    function Diagnostics (Choice : Selection) return Diagnostic_Snapshot is
-   begin
-      return
-        (Selected               => Choice.Selected,
-         Physical_Device_Count  => Choice.Physical_Device_Count,
-         Devices_Inspected      => Choice.Devices_Inspected,
-         Queue_Families_Checked => Choice.Queue_Families_Checked,
-         Queue_Family_Index     => Choice.Queue_Family_Index,
-         Surface_Format_Count   => Choice.Surface_Format_Count,
-         Present_Mode_Count     => Choice.Present_Mode_Count,
-         Device_Extensions_Checked => Choice.Device_Extensions_Checked,
-         Swapchain_Extension_Found => Choice.Swapchain_Extension_Found,
-         Last_Status            => Choice.Last_Status);
-   end Diagnostics;
+     (Selection_Logic.Diagnostics (Choice));
 
    procedure Create_Logical_Device
      (Choice : Selection;
       Surface : Vk.Surface_KHR_T;
       Desired_Width : Natural;
       Desired_Height : Natural;
-      Device : out Logical_Device;
+      Device : in out Logical_Device;
       Status : out Create_Status)
    is separate;
 
@@ -683,272 +415,37 @@ package body Terminal.App.Vulkan_Device is
       return False;
    end Has_Memory_Type;
 
-   procedure Destroy_Vertex_Buffer (Device : in out Logical_Device) is
-   begin
-      if Device.Vertex_Buffer /= System.Null_Address then
-         Vk.Destroy_Buffer
-           (Device.Device, Device.Vertex_Buffer, System.Null_Address);
-         Device.Vertex_Buffer := System.Null_Address;
-      end if;
-
-      if Device.Vertex_Memory /= System.Null_Address then
-         Vk.Free_Memory
-           (Device.Device, Device.Vertex_Memory, System.Null_Address);
-         Device.Vertex_Memory := System.Null_Address;
-      end if;
-
-      Device.Vertex_Buffer_Bytes := 0;
-      Device.Uploaded_Vertex_Count := 0;
-      Device.Uploaded_Text_Run_Count := 0;
-      Device.Uploaded_Shaped_Glyph_Count := 0;
-   end Destroy_Vertex_Buffer;
-
-   procedure Destroy_Atlas_Image (Device : in out Logical_Device) is
-   begin
-      if Device.Atlas_View /= System.Null_Address then
-         Vk.Destroy_Image_View
-           (Device.Device, Device.Atlas_View, System.Null_Address);
-         Device.Atlas_View := System.Null_Address;
-      end if;
-
-      if Device.Atlas_Image /= System.Null_Address then
-         Vk.Destroy_Image
-           (Device.Device, Device.Atlas_Image, System.Null_Address);
-         Device.Atlas_Image := System.Null_Address;
-      end if;
-
-      if Device.Atlas_Memory /= System.Null_Address then
-         Vk.Free_Memory
-           (Device.Device, Device.Atlas_Memory, System.Null_Address);
-         Device.Atlas_Memory := System.Null_Address;
-      end if;
-
-      Device.Atlas_Width := 0;
-      Device.Atlas_Height := 0;
-      Device.Atlas_Bytes := 0;
-   end Destroy_Atlas_Image;
-
-   procedure Destroy_Colour_Sheet (Device : in out Logical_Device) is
-   begin
-      if Device.Colour_Sheet_View /= System.Null_Address then
-         Vk.Destroy_Image_View
-           (Device.Device, Device.Colour_Sheet_View, System.Null_Address);
-         Device.Colour_Sheet_View := System.Null_Address;
-      end if;
-
-      if Device.Colour_Sheet_Image /= System.Null_Address then
-         Vk.Destroy_Image
-           (Device.Device, Device.Colour_Sheet_Image, System.Null_Address);
-         Device.Colour_Sheet_Image := System.Null_Address;
-      end if;
-
-      if Device.Colour_Sheet_Memory /= System.Null_Address then
-         Vk.Free_Memory
-           (Device.Device, Device.Colour_Sheet_Memory, System.Null_Address);
-         Device.Colour_Sheet_Memory := System.Null_Address;
-      end if;
-
-      Device.Colour_Sheet_Width := 0;
-      Device.Colour_Sheet_Height := 0;
-   end Destroy_Colour_Sheet;
-
-   procedure Destroy_Image_Texture (Device : in out Logical_Device) is
-   begin
-      if Device.Image_Texture_View /= System.Null_Address then
-         Vk.Destroy_Image_View
-           (Device.Device, Device.Image_Texture_View, System.Null_Address);
-         Device.Image_Texture_View := System.Null_Address;
-      end if;
-
-      if Device.Image_Texture_Image /= System.Null_Address then
-         Vk.Destroy_Image
-           (Device.Device, Device.Image_Texture_Image, System.Null_Address);
-         Device.Image_Texture_Image := System.Null_Address;
-      end if;
-
-      if Device.Image_Texture_Memory /= System.Null_Address then
-         Vk.Free_Memory
-           (Device.Device, Device.Image_Texture_Memory, System.Null_Address);
-         Device.Image_Texture_Memory := System.Null_Address;
-      end if;
-
-      Device.Image_Texture_Width := 0;
-      Device.Image_Texture_Height := 0;
-      Device.Image_Texture_Bytes := 0;
-      Device.Image_Texture_Content_Signature := 0;
-      if Device.Image_Texture_Descriptor_Bound_Count > 1 then
-         Device.Image_Texture_Descriptor_Bound_Count := 1;
-      end if;
-   end Destroy_Image_Texture;
-
+   procedure Destroy_Vertex_Buffer (Device : in out Logical_Device)
+     renames Resource_Lifecycle.Destroy_Vertex_Buffer;
+   procedure Destroy_Atlas_Image (Device : in out Logical_Device)
+     renames Resource_Lifecycle.Destroy_Atlas_Image;
+   procedure Destroy_Colour_Sheet (Device : in out Logical_Device)
+     renames Resource_Lifecycle.Destroy_Colour_Sheet;
+   procedure Destroy_Image_Texture (Device : in out Logical_Device)
+     renames Resource_Lifecycle.Destroy_Image_Texture;
+   procedure Destroy_Readback_Buffer
+     (Device : in out Logical_Device; Success : out Boolean)
+     renames Resource_Lifecycle.Destroy_Readback_Buffer;
    procedure Destroy_Deferred_Upload
-     (Device  : in out Logical_Device;
-      Success : out Boolean)
-   is
-      procedure Note_Failure is
-      begin
-         Success := False;
-      end Note_Failure;
-   begin
-      Success := True;
-      if Device.Deferred_Upload_View /= System.Null_Address then
-         begin
-            Vk.Destroy_Image_View
-              (Device.Device,
-               Device.Deferred_Upload_View,
-               System.Null_Address);
-         exception
-            when others => Note_Failure;
-         end;
-      end if;
-      Device.Deferred_Upload_View := System.Null_Address;
-      if Device.Deferred_Upload_Image /= System.Null_Address then
-         begin
-            Vk.Destroy_Image
-              (Device.Device,
-               Device.Deferred_Upload_Image,
-               System.Null_Address);
-         exception
-            when others => Note_Failure;
-         end;
-      end if;
-      Device.Deferred_Upload_Image := System.Null_Address;
-      if Device.Deferred_Upload_Image_Memory /= System.Null_Address then
-         begin
-            Vk.Free_Memory
-              (Device.Device,
-               Device.Deferred_Upload_Image_Memory,
-               System.Null_Address);
-         exception
-            when others => Note_Failure;
-         end;
-      end if;
-      Device.Deferred_Upload_Image_Memory := System.Null_Address;
-      if Device.Deferred_Upload_Buffer /= System.Null_Address then
-         begin
-            Vk.Destroy_Buffer
-              (Device.Device,
-               Device.Deferred_Upload_Buffer,
-               System.Null_Address);
-         exception
-            when others => Note_Failure;
-         end;
-      end if;
-      Device.Deferred_Upload_Buffer := System.Null_Address;
-      if Device.Deferred_Upload_Memory /= System.Null_Address then
-         begin
-            Vk.Free_Memory
-              (Device.Device,
-               Device.Deferred_Upload_Memory,
-               System.Null_Address);
-         exception
-            when others => Note_Failure;
-         end;
-      end if;
-      Device.Deferred_Upload_Memory := System.Null_Address;
-      Device.Deferred_Upload_Pending := False;
-   end Destroy_Deferred_Upload;
-
+     (Device : in out Logical_Device; Success : out Boolean)
+     renames Resource_Lifecycle.Destroy_Deferred_Upload;
    procedure Defer_Upload_Resources
      (Device         : in out Logical_Device;
       Staging_Buffer : in out Vk.Buffer_T;
       Staging_Memory : in out Vk.Device_Memory_T;
       Image          : in out Vk.Image_T;
       Image_Memory   : in out Vk.Device_Memory_T;
-      Image_View     : in out Vk.Image_View_T) is
-   begin
-      if Device.Deferred_Upload_Pending then
-         raise Program_Error with "an upload retirement is already pending";
-      end if;
-      Device.Deferred_Upload_Buffer := Staging_Buffer;
-      Device.Deferred_Upload_Memory := Staging_Memory;
-      Device.Deferred_Upload_Image := Image;
-      Device.Deferred_Upload_Image_Memory := Image_Memory;
-      Device.Deferred_Upload_View := Image_View;
-      Device.Deferred_Upload_Pending := True;
-      Staging_Buffer := System.Null_Address;
-      Staging_Memory := System.Null_Address;
-      Image := System.Null_Address;
-      Image_Memory := System.Null_Address;
-      Image_View := System.Null_Address;
-   end Defer_Upload_Resources;
-
+      Image_View     : in out Vk.Image_View_T)
+     renames Resource_Lifecycle.Defer_Upload_Resources;
    procedure Reap_Deferred_Upload
      (Device : in out Logical_Device;
       Ready  : out Boolean;
       Status : out Create_Status)
-   is
-      Result : Vk.Result_T;
-      Cleanup_Succeeded : Boolean := True;
-      Fence : Terminal.App.Vulkan_Retirement.Fence_Outcome;
-      Outcome : Terminal.App.Vulkan_Retirement.Retirement_Outcome;
-   begin
-      Ready := True;
-      Status := Ok;
-      if not Device.Deferred_Upload_Pending then
-         return;
-      elsif Device.Upload_Fence = System.Null_Address then
-         Ready := False;
-         Status := Copy_Atlas_Failed;
-         return;
-      end if;
-      Result := Vk.Get_Fence_Status (Device.Device, Device.Upload_Fence);
-      if Result = Vk.SUCCESS then
-         Fence := Terminal.App.Vulkan_Retirement.Fence_Ready;
-         Destroy_Deferred_Upload (Device, Cleanup_Succeeded);
-      elsif Result = Vk.ERROR_DEVICE_LOST then
-         Fence := Terminal.App.Vulkan_Retirement.Fence_Device_Lost;
-         Destroy_Deferred_Upload (Device, Cleanup_Succeeded);
-      elsif Result = Vk.NOT_READY then
-         Fence := Terminal.App.Vulkan_Retirement.Fence_In_Flight;
-      else
-         Fence := Terminal.App.Vulkan_Retirement.Fence_Failed;
-      end if;
-
-      Outcome := Terminal.App.Vulkan_Retirement.Evaluate
-        (Fence, Cleanup_Succeeded);
-      case Outcome is
-         when Terminal.App.Vulkan_Retirement.Retired =>
-            null;
-         when Terminal.App.Vulkan_Retirement.Still_In_Flight =>
-            Ready := False;
-            Status := Resources_In_Flight;
-         when Terminal.App.Vulkan_Retirement.Device_Lost =>
-            Ready := False;
-            Status := Device_Lost;
-         when Terminal.App.Vulkan_Retirement.Cleanup_Failed
-            | Terminal.App.Vulkan_Retirement.Fence_Failed =>
-            Ready := False;
-            Status := Copy_Atlas_Failed;
-      end case;
-   end Reap_Deferred_Upload;
-
-   procedure Restore_Upload_Fence (Device : in out Logical_Device) is
-      Fence_Info : aliased Vk.Fence_Create_Info_T :=
-        (s_Type => Vk.STRUCTURE_TYPE_FENCE_CREATE_INFO,
-         p_Next => System.Null_Address,
-         flags  => Vk.FENCE_CREATE_SIGNALED_BIT);
-      Result : Vk.Result_T;
-   begin
-      --  Queue submission failed after the fence was reset.  Vulkan will not
-      --  signal a fence which was not successfully submitted, so replace it
-      --  with a signalled fence before any later upload retries.
-      if Device.Upload_Fence /= System.Null_Address then
-         Vk.Destroy_Fence
-           (Device.Device, Device.Upload_Fence, System.Null_Address);
-         Device.Upload_Fence := System.Null_Address;
-      end if;
-
-      Result :=
-        Vk.Create_Fence
-          (Device.Device,
-           Fence_Info'Address,
-           System.Null_Address,
-           Device.Upload_Fence'Address);
-      if Result /= Vk.SUCCESS then
-         Device.Upload_Fence := System.Null_Address;
-      end if;
-   end Restore_Upload_Fence;
+     renames Resource_Lifecycle.Reap_Deferred_Upload;
+   procedure Restore_Upload_Fence
+     (Device : in out Logical_Device;
+      Status : out Create_Status)
+     renames Resource_Lifecycle.Restore_Upload_Fence;
 
    procedure Upload_Atlas_Data
      (Device        : in out Logical_Device;
@@ -965,17 +462,26 @@ package body Terminal.App.Vulkan_Device is
      (Device : in out Logical_Device;
       Choice : Selection;
       Batch  : VS.Submission_Batch;
-      Status : out Create_Status) is
+      Status : out Create_Status)
+   is
+      procedure Upload_Pixels (Pixels : System.Address) is
+      begin
+         Upload_Atlas_Data
+           (Device        => Device,
+            Choice        => Choice,
+            Width         => VS.Atlas_Width (Batch),
+            Height        => VS.Atlas_Height (Batch),
+            Bytes_Natural => VS.Atlas_Bytes (Batch),
+            Pixels        => Pixels,
+            Dirty         => VS.Atlas_Dirty (Batch),
+            Status        => Status);
+      end Upload_Pixels;
    begin
-      Upload_Atlas_Data
-        (Device        => Device,
-         Choice        => Choice,
-         Width         => VS.Atlas_Width (Batch),
-         Height        => VS.Atlas_Height (Batch),
-         Bytes_Natural => VS.Atlas_Bytes (Batch),
-         Pixels        => VS.Atlas_Pixels (Batch),
-         Dirty         => VS.Atlas_Dirty (Batch),
-         Status        => Status);
+      if not VS.Has_Atlas_Pixels (Batch) then
+         Status := Atlas_Too_Large;
+         return;
+      end if;
+      VS.Visit_Atlas_Pixels (Batch, Upload_Pixels'Access);
    end Upload_Atlas;
 
    procedure Upload_Image_Texture_Staging_Source
@@ -1270,6 +776,32 @@ package body Terminal.App.Vulkan_Device is
       Allocate_Info : aliased Vk.Memory_Allocate_Info_T;
       Memory : aliased Vk.Device_Memory_T := System.Null_Address;
       Result : Vk.Result_T;
+
+      procedure Destroy_Buffer_Call (Handle : Vk.Buffer_T) is
+      begin
+         Vk.Destroy_Buffer (Device.Device, Handle, System.Null_Address);
+      end Destroy_Buffer_Call;
+
+      procedure Free_Memory_Call (Handle : Vk.Device_Memory_T) is
+      begin
+         Vk.Free_Memory (Device.Device, Handle, System.Null_Address);
+      end Free_Memory_Call;
+
+      procedure Destroy_Local_Chain is new Terminal.App.Vulkan_Destroy_Pair
+        (Vk.Buffer_T, System.Null_Address,
+         "destroy uncommitted Vulkan vertex buffer", Destroy_Buffer_Call,
+         Vk.Device_Memory_T, System.Null_Address,
+         "free uncommitted Vulkan vertex memory", Free_Memory_Call);
+
+      procedure Cleanup_Local is
+         Cleanup_Ok : Boolean;
+      begin
+         Destroy_Local_Chain (Buffer, Memory, Cleanup_Ok);
+         if not Cleanup_Ok then
+            Device.Cleanup_Quarantined := True;
+            Status := Device_Lost;
+         end if;
+      end Cleanup_Local;
    begin
       if Device.Vertex_Buffer /= System.Null_Address
         and then Device.Vertex_Buffer_Bytes >= Natural (Bytes)
@@ -1285,6 +817,7 @@ package body Terminal.App.Vulkan_Device is
           (Device.Device, Buffer_Info'Address, System.Null_Address, Buffer'Address);
       if Result /= Vk.SUCCESS or else Buffer = System.Null_Address then
          Status := Create_Vertex_Buffer_Failed;
+         Cleanup_Local;
          return;
       end if;
 
@@ -1300,8 +833,8 @@ package body Terminal.App.Vulkan_Device is
            Vk.MEMORY_PROPERTY_HOST_COHERENT_BIT,
          Memory_Type_Index)
       then
-         Vk.Destroy_Buffer (Device.Device, Buffer, System.Null_Address);
          Status := Allocate_Vertex_Memory_Failed;
+         Cleanup_Local;
          return;
       end if;
 
@@ -1315,23 +848,28 @@ package body Terminal.App.Vulkan_Device is
         Vk.Allocate_Memory
           (Device.Device, Allocate_Info'Address, System.Null_Address, Memory'Address);
       if Result /= Vk.SUCCESS or else Memory = System.Null_Address then
-         Vk.Destroy_Buffer (Device.Device, Buffer, System.Null_Address);
          Status := Allocate_Vertex_Memory_Failed;
+         Cleanup_Local;
          return;
       end if;
 
       Result := Vk.Bind_Buffer_Memory (Device.Device, Buffer, Memory, 0);
       if Result /= Vk.SUCCESS then
-         Vk.Free_Memory (Device.Device, Memory, System.Null_Address);
-         Vk.Destroy_Buffer (Device.Device, Buffer, System.Null_Address);
          Status := Bind_Vertex_Buffer_Failed;
+         Cleanup_Local;
          return;
       end if;
 
       Device.Vertex_Buffer := Buffer;
       Device.Vertex_Memory := Memory;
+      Buffer := System.Null_Address;
+      Memory := System.Null_Address;
       Device.Vertex_Buffer_Bytes := Natural (Bytes);
       Status := Ok;
+   exception
+      when others =>
+         Cleanup_Local;
+         raise;
    end Ensure_Vertex_Buffer;
 
    procedure Check_Frame_Resources
@@ -1401,206 +939,10 @@ package body Terminal.App.Vulkan_Device is
    function Queue_Family_Index (Device : Logical_Device) return Natural is
      (Device.Queue_Family_Index);
 
-   function Diagnostics (Device : Logical_Device)
-                         return Device_Diagnostic_Snapshot is
-   begin
-      return
-        (Initialized        => Device.Initialized,
-         Queue_Family_Index => Device.Queue_Family_Index,
-         Swapchain_Created  => Device.Swapchain /= System.Null_Address,
-         Swapchain_Image_Count => Device.Swapchain_Image_Count,
-         Swapchain_View_Count => Device.Swapchain_View_Count,
-         Framebuffer_Count => Device.Framebuffer_Count,
-         Render_Pass_Created => Device.Render_Pass /= System.Null_Address,
-         Command_Pool_Created => Device.Command_Pool /= System.Null_Address,
-         Command_Buffer_Count => Device.Command_Buffer_Count,
-         Sync_Frame_Count   => Device.Sync_Frame_Count,
-         Pipeline_Layout_Created => Device.Pipeline_Layout /= System.Null_Address,
-         Graphics_Pipeline_Created => Device.Graphics_Pipeline /= System.Null_Address,
-         Descriptor_Set_Layout_Created =>
-           Device.Descriptor_Set_Layout /= System.Null_Address,
-         Descriptor_Pool_Created => Device.Descriptor_Pool /= System.Null_Address,
-         Descriptor_Set_Allocated => Device.Descriptor_Set /= System.Null_Address,
-         Vertex_Buffer_Created => Device.Vertex_Buffer /= System.Null_Address,
-         Vertex_Buffer_Bytes => Device.Vertex_Buffer_Bytes,
-         Uploaded_Vertex_Count => Device.Uploaded_Vertex_Count,
-         Uploaded_Image_Command_Count => Device.Uploaded_Image_Command_Count,
-         Uploaded_Image_Vertex_Count => Device.Uploaded_Image_Vertex_Count,
-         Uploaded_Image_Texture_Vertex_Count =>
-           Device.Uploaded_Image_Texture_Vertex_Count,
-         Uploaded_Image_Protocol => Device.Uploaded_Image_Protocol,
-         Uploaded_Image_Width => Device.Uploaded_Image_Width,
-         Uploaded_Image_Height => Device.Uploaded_Image_Height,
-         Uploaded_Image_Raw_Format => Device.Uploaded_Image_Raw_Format,
-         Uploaded_Image_Pixel_Width => Device.Uploaded_Image_Pixel_Width,
-         Uploaded_Image_Pixel_Height => Device.Uploaded_Image_Pixel_Height,
-         Uploaded_Image_Payload_Length =>
-           Device.Uploaded_Image_Payload_Length,
-         Uploaded_Image_Texture_Staging_Bytes =>
-           Device.Uploaded_Image_Texture_Staging_Bytes,
-         Uploaded_Image_Payload_Preview_Complete =>
-           Device.Uploaded_Image_Payload_Preview_Complete,
-         Uploaded_Image_Encoded_Preview_Length =>
-           Device.Uploaded_Image_Encoded_Preview_Length,
-         Uploaded_Image_Decoded_Preview_Length =>
-           Device.Uploaded_Image_Decoded_Preview_Length,
-         Uploaded_Image_Decoded_Preview_Bytes =>
-           Device.Uploaded_Image_Decoded_Preview_Bytes,
-         Uploaded_Image_Preview_Decode_Complete =>
-           Device.Uploaded_Image_Preview_Decode_Complete,
-         Uploaded_Image_Decode_Status => Device.Uploaded_Image_Decode_Status,
-         Uploaded_Image_Placeholder => Device.Uploaded_Image_Placeholder,
-         Uploaded_Image_Texture_Downgraded =>
-           Device.Uploaded_Image_Texture_Downgraded,
-         Uploaded_Image_Texture_Source => Device.Uploaded_Image_Texture_Source,
-         Uploaded_Text_Run_Count => Device.Uploaded_Text_Run_Count,
-         Uploaded_Shaped_Glyph_Count => Device.Uploaded_Shaped_Glyph_Count,
-         Rendered_Frame_Count => Device.Rendered_Frame_Count,
-         Color_Sample_Count => Sample_Count_Value (Device.Color_Sample_Count),
-         Color_MSAA_Created => Device.Color_MSAA_View /= System.Null_Address,
-         Atlas_Image_Created => Device.Atlas_Image /= System.Null_Address,
-         Atlas_View_Created => Device.Atlas_View /= System.Null_Address,
-         Atlas_Sampler_Created => Device.Atlas_Sampler /= System.Null_Address,
-         Image_Texture_Descriptor_Capacity =>
-           Device.Image_Texture_Descriptor_Capacity,
-         Image_Texture_Descriptor_Bound_Count =>
-           Device.Image_Texture_Descriptor_Bound_Count,
-         Image_Texture_Upload_Count => Device.Image_Texture_Upload_Count,
-         Image_Texture_Cache_Hit_Count =>
-           Device.Image_Texture_Cache_Hit_Count,
-         Atlas_Width => Device.Atlas_Width,
-         Atlas_Height => Device.Atlas_Height,
-         Atlas_Bytes => Device.Atlas_Bytes,
-         Atlas_Upload_Count => Device.Atlas_Upload_Count,
-         Fence_Deferred_Upload_Count =>
-           Device.Fence_Deferred_Upload_Count,
-         Swapchain_Width    => Device.Swapchain_Width,
-         Swapchain_Height   => Device.Swapchain_Height,
-         Last_Status        => Device.Last_Status);
-   end Diagnostics;
+   function Diagnostics
+     (Device                : Logical_Device;
+      Include_Image_Preview : Boolean := True)
+      return Device_Diagnostic_Snapshot is
+     (Snapshots.Capture (Device, Include_Image_Preview));
 
-   function Image_Status_Label
-     (Diagnostics : Device_Diagnostic_Snapshot) return String
-   is
-      function Protocol_Name return String is
-      begin
-         case Diagnostics.Uploaded_Image_Protocol is
-            when RM.Image_Sixel =>
-               return "sixel";
-            when RM.Image_Kitty =>
-               return "kitty";
-            when RM.Image_ITerm2 =>
-               return "iTerm2";
-         end case;
-      end Protocol_Name;
-
-   begin
-      if Diagnostics.Uploaded_Image_Command_Count = 0 then
-         return "";
-      end if;
-
-      return
-        "uploaded image " & Protocol_Name
-        & " size=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Width)
-        & "x" & Trimmed_Natural (Diagnostics.Uploaded_Image_Height)
-        & (if Diagnostics.Uploaded_Image_Pixel_Width > 0
-           and then Diagnostics.Uploaded_Image_Pixel_Height > 0
-           then
-             " pixels=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Pixel_Width)
-             & "x" & Trimmed_Natural (Diagnostics.Uploaded_Image_Pixel_Height)
-             & " format=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Raw_Format)
-           else "")
-        & " vertices=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Vertex_Count)
-        & " payload=" & Trimmed_Natural (Diagnostics.Uploaded_Image_Payload_Length)
-        & RM.Image_Payload_Status_Suffix
-            (Diagnostics.Uploaded_Image_Payload_Preview_Complete)
-        & " preview="
-        & Trimmed_Natural (Diagnostics.Uploaded_Image_Decoded_Preview_Length)
-        & "/"
-        & Trimmed_Natural (Diagnostics.Uploaded_Image_Encoded_Preview_Length)
-        & Terminal.Common.Status.Preview_Bytes_Label
-            (Diagnostics.Uploaded_Image_Decoded_Preview_Bytes,
-             Diagnostics.Uploaded_Image_Decoded_Preview_Length)
-        & " texture="
-        & VS.Texture_Source_Label (Diagnostics.Uploaded_Image_Texture_Source)
-        & (if Diagnostics.Uploaded_Image_Placeholder
-           then " placeholder"
-           else " textured")
-        & (if Diagnostics.Uploaded_Image_Texture_Downgraded
-           then " downgraded"
-           else "")
-        & (if Diagnostics.Uploaded_Image_Preview_Decode_Complete
-           then " decoded"
-           else " partial")
-        & RM.Image_Decode_Status_Suffix
-            (Diagnostics.Uploaded_Image_Decode_Status);
-   end Image_Status_Label;
-
-   function Image_Texture_Status_Label
-     (Diagnostics : Device_Diagnostic_Snapshot) return String
-   is
-   begin
-      if Diagnostics.Uploaded_Image_Command_Count = 0 then
-         return "";
-      elsif Diagnostics.Uploaded_Image_Texture_Downgraded then
-         return
-           "device image texture downgraded; texture="
-           & VS.Texture_Source_Label (Diagnostics.Uploaded_Image_Texture_Source)
-           & " vertices="
-           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count);
-      elsif Diagnostics.Uploaded_Image_Texture_Source = VS.Texture_Image
-        and then not Diagnostics.Uploaded_Image_Placeholder
-      then
-         return
-           "device image texture ready; vertices="
-           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count);
-      else
-         return
-           "device image texture unavailable; texture="
-           & VS.Texture_Source_Label (Diagnostics.Uploaded_Image_Texture_Source)
-           & " vertices="
-           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count);
-      end if;
-   end Image_Texture_Status_Label;
-
-   function Image_Texture_Resource_Status_Label
-     (Diagnostics : Device_Diagnostic_Snapshot) return String
-   is
-   begin
-      if Diagnostics.Uploaded_Image_Command_Count = 0 then
-         return "";
-      elsif Diagnostics.Uploaded_Image_Texture_Source /= VS.Texture_Image then
-         return
-           "device image texture resources inactive; texture="
-           & VS.Texture_Source_Label (Diagnostics.Uploaded_Image_Texture_Source)
-           & " descriptors="
-           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Bound_Count)
-           & "/"
-           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Capacity);
-      elsif Diagnostics.Uploaded_Image_Texture_Vertex_Count = 0 then
-         return
-           "device image texture resources unavailable; vertices=0"
-           & " descriptors="
-           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Bound_Count)
-           & "/"
-           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Capacity);
-      elsif Diagnostics.Image_Texture_Descriptor_Bound_Count >= 2 then
-         return
-           "device image texture resources ready; vertices="
-           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count)
-           & " descriptors="
-           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Bound_Count)
-           & "/"
-           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Capacity);
-      else
-         return
-           "device image texture resources pending; descriptor=atlas-only"
-           & " vertices="
-           & Trimmed_Natural (Diagnostics.Uploaded_Image_Texture_Vertex_Count)
-           & " descriptors="
-           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Bound_Count)
-           & "/"
-           & Trimmed_Natural (Diagnostics.Image_Texture_Descriptor_Capacity);
-      end if;
-   end Image_Texture_Resource_Status_Label;
 end Terminal.App.Vulkan_Device;

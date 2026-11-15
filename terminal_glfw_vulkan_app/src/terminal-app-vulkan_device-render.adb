@@ -1,3 +1,5 @@
+with Terminal.Common.Counters;
+
 separate (Terminal.App.Vulkan_Device)
    procedure Render
      (Device : in out Logical_Device;
@@ -326,7 +328,9 @@ separate (Terminal.App.Vulkan_Device)
                Device.Readback_Pending := True;
             end if;
 
-            Result := Vk.Queue_Present_KHR (Device.Queue, Present_Info'Address);
+            Result :=
+              Vk.Queue_Present_KHR
+                (Device.Present_Queue, Present_Info'Address);
             if Is_Swapchain_Stale (Result) then
                Status := Swapchain_Out_Of_Date;
                return;
@@ -339,7 +343,8 @@ separate (Terminal.App.Vulkan_Device)
          end;
       end;
 
-      Device.Rendered_Frame_Count := Device.Rendered_Frame_Count + 1;
+      Terminal.Common.Counters.Increment_Saturating
+        (Device.Rendered_Frame_Count);
       if Frame = Device.Sync_Frame_Count then
          Device.Current_Frame := 1;
       else

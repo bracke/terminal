@@ -194,7 +194,7 @@ package body Terminal.App.Graphics_Transport is
          raise;
    end Read_Descriptor;
 
-   procedure Load
+   procedure Load_With_Unlinker
      (Medium           : Character;
       Encoded_Location : String;
       Offset           : Natural;
@@ -204,7 +204,8 @@ package body Terminal.App.Graphics_Transport is
       Maximum_Bytes    : Positive;
       Bytes            : out Byte_Array_Access;
       Length           : out Natural;
-      Status           : out Load_Status)
+      Status           : out Load_Status;
+      Unlinker         : not null Shared_Memory_Unlinker_Access)
    is
       Location : constant String := Decode_Location (Encoded_Location);
       FD : OS.File_Descriptor := OS.Invalid_FD;
@@ -361,28 +362,36 @@ package body Terminal.App.Graphics_Transport is
          then
             return;
          end if;
-         declare
-            Unlinked : Boolean := False;
-         begin
-            FD := Platform.Shared_Memory_Open (Location);
-            if FD /= OS.Invalid_FD then
-               Read_Descriptor
-                 (FD,
-                  Offset,
-                  Size,
-                  Size_Specified,
-                  Maximum_Bytes,
-                  Bytes,
-                  Length,
-                  Status);
-               Unlinked := Platform.Shared_Memory_Unlink (Location);
-               OS.Close (FD);
-               FD := OS.Invalid_FD;
-            else
-               Status := Load_Access_Failed;
-            end if;
-            pragma Unreferenced (Unlinked);
-         end;
+         FD := Platform.Shared_Memory_Open (Location);
+         if FD /= OS.Invalid_FD then
+            declare
+               Unlinked : Boolean;
+            begin
+               Unlinked := Unlinker (Location);
+               if Unlinked then
+                  --  The descriptor remains valid after unlink, so remove the
+                  --  producer-visible name before any allocation can fail.
+                  Read_Descriptor
+                    (FD,
+                     Offset,
+                     Size,
+                     Size_Specified,
+                     Maximum_Bytes,
+                     Bytes,
+                     Length,
+                     Status);
+               else
+                  --  Do not advertise success while the producer-owned object
+                  --  may still be reachable through its shared-memory name.
+                  Length := 0;
+                  Status := Load_Access_Failed;
+               end if;
+            end;
+            OS.Close (FD);
+            FD := OS.Invalid_FD;
+         else
+            Status := Load_Access_Failed;
+         end if;
       end if;
    exception
       when Storage_Error =>
@@ -415,6 +424,32 @@ package body Terminal.App.Graphics_Transport is
          end if;
          Release (Bytes);
          raise;
+   end Load_With_Unlinker;
+
+   procedure Load
+     (Medium           : Character;
+      Encoded_Location : String;
+      Offset           : Natural;
+      Size             : Natural;
+      Size_Specified   : Boolean;
+      Policy           : Access_Policy;
+      Maximum_Bytes    : Positive;
+      Bytes            : out Byte_Array_Access;
+      Length           : out Natural;
+      Status           : out Load_Status) is
+   begin
+      Load_With_Unlinker
+        (Medium,
+         Encoded_Location,
+         Offset,
+         Size,
+         Size_Specified,
+         Policy,
+         Maximum_Bytes,
+         Bytes,
+         Length,
+         Status,
+         Platform.Shared_Memory_Unlink'Access);
    end Load;
 
    procedure Load

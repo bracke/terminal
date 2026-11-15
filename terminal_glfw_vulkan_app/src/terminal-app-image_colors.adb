@@ -1,6 +1,5 @@
 package body Terminal.App.Image_Colors is
    package RM renames Terminal.App.Render_Model;
-   use type RM.Image_Data_Access;
    use type RM.Image_Data_View;
 
    function XTerm_Cube_Component (Value : Natural) return Float is
@@ -73,8 +72,8 @@ package body Terminal.App.Image_Colors is
       Indexed_Format : Natural;
       Pixel_Width    : Natural;
       Pixel_Height   : Natural;
-      Source         : RM.Image_Data_View;
-      Target         : RM.Image_Data_Access) return Boolean
+      Source         : Terminal.Common.Bytes.Byte_Array;
+      Target         : in out Terminal.Common.Bytes.Byte_Array) return Boolean
    is
       Source_BPP : constant Natural :=
         (if Indexed_Format = 8 then 1
@@ -86,8 +85,6 @@ package body Terminal.App.Image_Colors is
         or else Pixel_Width = 0
         or else Pixel_Height = 0
         or else Pixel_Width > Natural'Last / Pixel_Height
-        or else Source = null
-        or else Target = null
       then
          return False;
       end if;

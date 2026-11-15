@@ -2,7 +2,7 @@ with Ada.Real_Time;
 with Terminal.App.Image_Media;
 with Terminal.App.Image_Store;
 
-package Terminal.App.Image_Animation is
+private package Terminal.App.Image_Animation is
    type Control_State is (Unchanged, Stopped, Loading, Running);
 
    type Animation_Control is record
@@ -19,7 +19,8 @@ package Terminal.App.Image_Animation is
    --  resolved image.  Object lookup, wire-format validation and renderer
    --  cache invalidation remain with the caller.
    function Apply_Control
-     (Object : Terminal.App.Image_Store.Image_Object_Access;
+     (Container : in out Terminal.App.Image_Store.Store;
+      Object : Terminal.App.Image_Store.Image_Object_Access;
       Control : Animation_Control) return Control_Result;
 
    --  Advance one image to Now and return its visible frame transitions.

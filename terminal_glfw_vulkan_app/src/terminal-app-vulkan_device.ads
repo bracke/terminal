@@ -8,11 +8,6 @@ with Terminal.App.Vulkan_Submit;
 with Vk;
 
 package Terminal.App.Vulkan_Device is
-   Max_Physical_Devices : constant := 16;
-   Max_Queue_Families   : constant := 64;
-   Max_Device_Extensions : constant := 256;
-   Max_Surface_Formats   : constant := 64;
-   Max_Present_Modes     : constant := 16;
    Max_Swapchain_Images   : constant := 8;
    Max_Upload_Vertices    : constant := 1_048_576;
    Max_Status_Label_Length : constant := 96;
@@ -33,6 +28,7 @@ package Terminal.App.Vulkan_Device is
       Devices_Inspected     : Natural := 0;
       Queue_Families_Checked : Natural := 0;
       Queue_Family_Index    : Natural := 0;
+      Present_Queue_Family_Index : Natural := 0;
       Surface_Format_Count  : Natural := 0;
       Present_Mode_Count    : Natural := 0;
       Device_Extensions_Checked : Natural := 0;
@@ -86,73 +82,84 @@ package Terminal.App.Vulkan_Device is
       Map_Atlas_Staging_Buffer_Failed,
       Copy_Atlas_Failed);
 
-   type Device_Diagnostic_Snapshot is record
-      Initialized        : Boolean := False;
-      Queue_Family_Index : Natural := 0;
-      Swapchain_Created  : Boolean := False;
-      Swapchain_Image_Count : Natural := 0;
-      Swapchain_View_Count : Natural := 0;
-      Framebuffer_Count : Natural := 0;
-      Render_Pass_Created : Boolean := False;
-      Command_Pool_Created : Boolean := False;
-      Command_Buffer_Count : Natural := 0;
-      Sync_Frame_Count   : Natural := 0;
-      Pipeline_Layout_Created : Boolean := False;
-      Graphics_Pipeline_Created : Boolean := False;
-      Descriptor_Set_Layout_Created : Boolean := False;
-      Descriptor_Pool_Created : Boolean := False;
-      Descriptor_Set_Allocated : Boolean := False;
-      Vertex_Buffer_Created : Boolean := False;
-      Vertex_Buffer_Bytes : Natural := 0;
-      Uploaded_Vertex_Count : Natural := 0;
-      Uploaded_Image_Command_Count : Natural := 0;
-      Uploaded_Image_Vertex_Count : Natural := 0;
-      Uploaded_Image_Texture_Vertex_Count : Natural := 0;
-      Uploaded_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
-        Terminal.App.Render_Model.Image_Sixel;
-      Uploaded_Image_Width : Natural := 0;
-      Uploaded_Image_Height : Natural := 0;
-      Uploaded_Image_Raw_Format : Natural := 0;
-      Uploaded_Image_Pixel_Width : Natural := 0;
-      Uploaded_Image_Pixel_Height : Natural := 0;
-      Uploaded_Image_Payload_Length : Natural := 0;
-      Uploaded_Image_Texture_Staging_Bytes : Natural := 0;
-      Uploaded_Image_Payload_Preview_Complete : Boolean := False;
-      Uploaded_Image_Encoded_Preview_Length : Natural := 0;
-      Uploaded_Image_Decoded_Preview_Length : Natural := 0;
-      Uploaded_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
-        (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
-          (others => 0);
-      Uploaded_Image_Preview_Decode_Complete : Boolean := False;
-      Uploaded_Image_Decode_Status :
-        Terminal.App.Render_Model.Image_Decode_Status :=
-          Terminal.App.Render_Model.Image_Decode_Not_Attempted;
-      Uploaded_Image_Placeholder : Boolean := False;
-      Uploaded_Image_Texture_Downgraded : Boolean := False;
-      Uploaded_Image_Texture_Source :
-        Terminal.App.Vulkan_Submit.Texture_Source :=
-          Terminal.App.Vulkan_Submit.Texture_None;
-      Uploaded_Text_Run_Count : Natural := 0;
-      Uploaded_Shaped_Glyph_Count : Natural := 0;
-      Rendered_Frame_Count : Natural := 0;
-      Color_Sample_Count : Natural := 1;
-      Color_MSAA_Created : Boolean := False;
-      Atlas_Image_Created : Boolean := False;
-      Atlas_View_Created : Boolean := False;
-      Atlas_Sampler_Created : Boolean := False;
-      Image_Texture_Descriptor_Capacity : Natural := 0;
-      Image_Texture_Descriptor_Bound_Count : Natural := 0;
-      Image_Texture_Upload_Count : Natural := 0;
-      Image_Texture_Cache_Hit_Count : Natural := 0;
-      Atlas_Width : Natural := 0;
-      Atlas_Height : Natural := 0;
-      Atlas_Bytes : Natural := 0;
-      Atlas_Upload_Count : Natural := 0;
-      Fence_Deferred_Upload_Count : Natural := 0;
-      Swapchain_Width    : Natural := 0;
-      Swapchain_Height   : Natural := 0;
-      Last_Status        : Create_Status := Selection_Not_Ready;
-   end record;
+   package Device_Diagnostic_Types is
+      type Operational is tagged record
+         Initialized        : Boolean := False;
+         Queue_Family_Index : Natural := 0;
+         Present_Queue_Family_Index : Natural := 0;
+         Swapchain_Created  : Boolean := False;
+         Swapchain_Image_Count : Natural := 0;
+         Swapchain_View_Count : Natural := 0;
+         Framebuffer_Count : Natural := 0;
+         Render_Pass_Created : Boolean := False;
+         Command_Pool_Created : Boolean := False;
+         Command_Buffer_Count : Natural := 0;
+         Sync_Frame_Count   : Natural := 0;
+         Pipeline_Layout_Created : Boolean := False;
+         Graphics_Pipeline_Created : Boolean := False;
+         Descriptor_Set_Layout_Created : Boolean := False;
+         Descriptor_Pool_Created : Boolean := False;
+         Descriptor_Set_Allocated : Boolean := False;
+         Vertex_Buffer_Created : Boolean := False;
+         Vertex_Buffer_Bytes : Natural := 0;
+         Uploaded_Image_Command_Count : Natural := 0;
+         Uploaded_Image_Vertex_Count : Natural := 0;
+         Uploaded_Image_Texture_Vertex_Count : Natural := 0;
+         Uploaded_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
+           Terminal.App.Render_Model.Image_Sixel;
+         Uploaded_Image_Width : Natural := 0;
+         Uploaded_Image_Height : Natural := 0;
+         Uploaded_Image_Raw_Format : Natural := 0;
+         Uploaded_Image_Pixel_Width : Natural := 0;
+         Uploaded_Image_Pixel_Height : Natural := 0;
+         Uploaded_Image_Payload_Length : Natural := 0;
+         Uploaded_Image_Texture_Staging_Bytes : Natural := 0;
+         Uploaded_Image_Payload_Preview_Complete : Boolean := False;
+         Uploaded_Image_Encoded_Preview_Length : Natural := 0;
+         Uploaded_Image_Preview_Decode_Complete : Boolean := False;
+         Uploaded_Image_Decode_Status :
+           Terminal.App.Render_Model.Image_Decode_Status :=
+             Terminal.App.Render_Model.Image_Decode_Not_Attempted;
+         Uploaded_Image_Placeholder : Boolean := False;
+         Uploaded_Image_Texture_Downgraded : Boolean := False;
+         Uploaded_Image_Texture_Source :
+           Terminal.App.Vulkan_Submit.Texture_Source :=
+             Terminal.App.Vulkan_Submit.Texture_None;
+         Color_Sample_Count : Natural := 1;
+         Color_MSAA_Created : Boolean := False;
+         Atlas_Image_Created : Boolean := False;
+         Atlas_View_Created : Boolean := False;
+         Atlas_Sampler_Created : Boolean := False;
+         Image_Texture_Descriptor_Capacity : Natural := 0;
+         Image_Texture_Descriptor_Bound_Count : Natural := 0;
+         Image_Texture_Upload_Count : Natural := 0;
+         Atlas_Upload_Count : Natural := 0;
+         Swapchain_Width    : Natural := 0;
+         Swapchain_Height   : Natural := 0;
+         Last_Status        : Create_Status := Selection_Not_Ready;
+      end record;
+
+      type Snapshot is new Operational with record
+         Uploaded_Vertex_Count : Natural := 0;
+         Uploaded_Image_Decoded_Preview_Length : Natural := 0;
+         Uploaded_Image_Decoded_Preview_Bytes :
+           Terminal.Common.Bytes.Byte_Array
+             (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
+               (others => 0);
+         Uploaded_Text_Run_Count : Natural := 0;
+         Uploaded_Shaped_Glyph_Count : Natural := 0;
+         Rendered_Frame_Count : Natural := 0;
+         Image_Texture_Cache_Hit_Count : Natural := 0;
+         Atlas_Width : Natural := 0;
+         Atlas_Height : Natural := 0;
+         Atlas_Bytes : Natural := 0;
+         Fence_Deferred_Upload_Count : Natural := 0;
+      end record;
+   end Device_Diagnostic_Types;
+
+   subtype Device_Operational_Diagnostics is
+     Device_Diagnostic_Types.Operational;
+   subtype Device_Diagnostic_Snapshot is Device_Diagnostic_Types.Snapshot;
 
    type Render_Status is
      (Ok,
@@ -177,6 +184,7 @@ package Terminal.App.Vulkan_Device is
       Readback_Create_Buffer_Failed,
       Readback_Allocate_Memory_Failed,
       Readback_Bind_Memory_Failed,
+      Readback_Cleanup_Failed,
       Readback_No_Completed_Frame,
       Readback_Wait_Fence_Failed,
       Readback_Pixel_Out_Of_Range,
@@ -190,6 +198,7 @@ package Terminal.App.Vulkan_Device is
    function Is_Selected (Choice : Selection) return Boolean;
    function Physical_Device (Choice : Selection) return Vk.Physical_Device_T;
    function Queue_Family_Index (Choice : Selection) return Natural;
+   function Present_Queue_Family_Index (Choice : Selection) return Natural;
    function Diagnostics (Choice : Selection) return Diagnostic_Snapshot;
 
    procedure Create_Logical_Device
@@ -197,7 +206,7 @@ package Terminal.App.Vulkan_Device is
       Surface : Vk.Surface_KHR_T;
       Desired_Width : Natural;
       Desired_Height : Natural;
-      Device : out Logical_Device;
+      Device : in out Logical_Device;
       Status : out Create_Status);
 
    overriding procedure Finalize (Device : in out Logical_Device);
@@ -227,19 +236,18 @@ package Terminal.App.Vulkan_Device is
    function Device_Handle (Device : Logical_Device) return Vk.Device_T;
    function Graphics_Queue (Device : Logical_Device) return Vk.Queue_T;
    function Queue_Family_Index (Device : Logical_Device) return Natural;
-   function Diagnostics (Device : Logical_Device) return Device_Diagnostic_Snapshot;
-
-   function Select_Status_Label (Status : Select_Status) return String;
-   function Create_Status_Label (Status : Create_Status) return String;
-   function Render_Status_Label (Status : Render_Status) return String;
-   function Image_Status_Label
-     (Diagnostics : Device_Diagnostic_Snapshot) return String;
-   function Image_Texture_Status_Label
-     (Diagnostics : Device_Diagnostic_Snapshot) return String;
-   function Image_Texture_Resource_Status_Label
-     (Diagnostics : Device_Diagnostic_Snapshot) return String;
-
+   function Diagnostics
+     (Device                : Logical_Device;
+      Include_Image_Preview : Boolean := True)
+      return Device_Diagnostic_Snapshot;
 private
+   Enumeration_Retry_Limit : constant Positive := 3;
+   Max_Physical_Devices     : constant Positive := 64;
+   Max_Device_Extensions    : constant Positive := 4_096;
+   Max_Queue_Families       : constant Positive := 256;
+   Max_Surface_Formats      : constant Positive := 256;
+   Max_Present_Modes        : constant Positive := 256;
+   Max_Swapchain_Dimension  : constant Positive := 65_536;
    subtype Swapchain_Image_Range is Positive range 1 .. Max_Swapchain_Images;
    type Swapchain_Image_Array is array (Swapchain_Image_Range) of Vk.Image_T;
    type Swapchain_Image_View_Array is
@@ -253,6 +261,7 @@ private
       Selected              : Boolean := False;
       Physical_Device       : Vk.Physical_Device_T := System.Null_Address;
       Queue_Family_Index    : Natural := 0;
+      Present_Queue_Family_Index : Natural := 0;
       Physical_Device_Count : Natural := 0;
       Devices_Inspected     : Natural := 0;
       Queue_Families_Checked : Natural := 0;
@@ -265,8 +274,10 @@ private
 
    type Logical_Device is new Ada.Finalization.Limited_Controlled with record
       Initialized        : Boolean := False;
+      Cleanup_Quarantined : Boolean := False;
       Device             : Vk.Device_T := System.Null_Address;
       Queue              : Vk.Queue_T := System.Null_Address;
+      Present_Queue      : Vk.Queue_T := System.Null_Address;
       Swapchain          : Vk.Swapchain_KHR_T := System.Null_Address;
       Swapchain_Format   : Vk.Format_T := Vk.FORMAT_UNDEFINED;
       Render_Pass        : Vk.Render_Pass_T := System.Null_Address;
@@ -323,6 +334,7 @@ private
       Deferred_Upload_View   : Vk.Image_View_T := System.Null_Address;
       Deferred_Upload_Pending : Boolean := False;
       Queue_Family_Index : Natural := 0;
+      Present_Queue_Family_Index : Natural := 0;
       Swapchain_Image_Count : Natural := 0;
       Swapchain_View_Count : Natural := 0;
       Framebuffer_Count  : Natural := 0;

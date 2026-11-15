@@ -17,7 +17,7 @@ procedure Renderer_Relative_Placement_Smoke is
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Graphics_ID;
    use type Terminal.Core.Initialize_Status;
-   use type Terminal.Core.Kitty_Graphics_Result_Code;
+   use type Terminal.Core.Graphics_Completion_Code;
 
    R : Terminal.App.Renderer.Renderer;
    T : Terminal.Core.Terminal;
@@ -47,11 +47,11 @@ procedure Renderer_Relative_Placement_Smoke is
 
    procedure Process
      (Command  : String;
-      Expected : Terminal.Core.Kitty_Graphics_Result_Code;
+      Expected : Terminal.Core.Graphics_Completion_Code;
       Label_Text : String)
    is
       Snapshots : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
-      Outcome : Terminal.Core.Kitty_Graphics_Result;
+      Outcome : Terminal.Core.Graphics_Completion;
    begin
       Terminal.Core.Feed (T, To_Bytes (Command), Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, Label_Text & " feed");
@@ -67,7 +67,7 @@ procedure Renderer_Relative_Placement_Smoke is
       Outcome := Terminal.App.Renderer.Graphics.Result
         (R, Snapshots (1).Graphics);
       Assert (Outcome.Code = Expected, Label_Text & " result");
-      Assert (not Outcome.Move_Cursor, Label_Text & " cursor movement");
+      Assert (not Outcome.Cursor.Move, Label_Text & " cursor movement");
       Terminal.Core.Complete_Graphics_Event
         (T, Snapshots (1).Graphics, Outcome);
       Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
@@ -93,7 +93,7 @@ begin
    declare
       Snapshots : Terminal.App.Renderer.Snapshot_Array (1 .. 1) :=
         (1 => Terminal.Core.Snapshot (T));
-      Outcome : Terminal.Core.Kitty_Graphics_Result;
+      Outcome : Terminal.Core.Graphics_Completion;
    begin
       Terminal.App.Renderer.Layout.Render_App
         (R, Snapshots, 1,
@@ -108,13 +108,13 @@ begin
       Outcome := Terminal.App.Renderer.Graphics.Result
         (R, Snapshots (1).Graphics);
       Assert
-        (Outcome.Code = Terminal.Core.Kitty_OK
-         and then Outcome.Image_ID /= 0
-         and then Outcome.Image_Number = 700
-         and then Outcome.Placement_ID = 1
-         and then Outcome.Move_Cursor,
+        (Outcome.Code = Terminal.Core.Graphics_OK
+         and then Outcome.Kitty_Response.Image_ID /= 0
+         and then Outcome.Kitty_Response.Image_Number = 700
+         and then Outcome.Kitty_Response.Placement_ID = 1
+         and then Outcome.Cursor.Move,
          "numbered transmission response");
-      Allocated_ID := Outcome.Image_ID;
+      Allocated_ID := Outcome.Kitty_Response.Image_ID;
       Terminal.Core.Complete_Graphics_Event
         (T, Snapshots (1).Graphics, Outcome);
       Terminal.Core.Release (Snapshots (1));
@@ -129,19 +129,19 @@ begin
    Process
      (ASCII.ESC & "_Gq=2,a=p,I=700,p=2,P=999,Q=1,H=1,V=0,c=1,r=1;"
       & ASCII.ESC & "\",
-      Terminal.Core.Kitty_ENOPARENT,
+      Terminal.Core.Graphics_ENOPARENT,
       "missing parent");
    Process
      (ASCII.ESC & "_Gq=1,a=p,I=700,p=2,P="
       & Trimmed (Natural (Allocated_ID))
       & ",Q=1,H=1,V=0,c=1,r=1;" & ASCII.ESC & "\",
-      Terminal.Core.Kitty_OK,
+      Terminal.Core.Graphics_OK,
       "valid child");
    Process
      (ASCII.ESC & "_Gq=2,a=p,I=700,p=1,P="
       & Trimmed (Natural (Allocated_ID))
       & ",Q=2,H=1,V=0,c=1,r=1;" & ASCII.ESC & "\",
-      Terminal.Core.Kitty_ECYCLE,
+      Terminal.Core.Graphics_ECYCLE,
       "relative cycle");
 
    Terminal.Core.Finalize (T);

@@ -1,22 +1,38 @@
 with Ada.Real_Time;
+with Ada.Strings;
+with Ada.Strings.Fixed;
+with Ada.Strings.Unbounded;
+with GNAT.OS_Lib;
 
 with GLFW_Vulkan;
 with GLFW_Vulkan.Clipboard;
 with GLFW_Vulkan.Events;
 with GLFW_Vulkan.Input;
 with GLFW_Vulkan.Windows;
+with Terminal.Common;
+with Terminal.Common.Bytes;
 with Terminal.Core;
+with Terminal.App.Accessibility;
+with Terminal.App.Blink_Activity;
 with Terminal.App.Clipboard_OSC52;
+with Terminal.App.Click_Debounce;
 with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Config;
+with Terminal.App.Command_Palette;
+with Terminal.App.Copy_Mode;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Diagnostics;
 with Terminal.App.Fonts;
+with Terminal.App.Frame_Completion;
 with Terminal.App.Graphics;
+with Terminal.App.Graphics_Profile;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Input_Map;
 with Terminal.App.ITerm2_Files;
+with Terminal.App.Key_Bindings;
 with Terminal.App.PTY_Write;
+with Terminal.App.PTY_Cleanup_Lifecycle;
+with Terminal.App.Platform_Launcher;
 with Terminal.App.Queues;
 with Terminal.App.Renderer;
 with Terminal.App.Renderer.Graphics;
@@ -25,27 +41,35 @@ with Terminal.App.Renderer.Presentation;
 with Terminal.App.Render_Policy;
 with Terminal.App.Resize;
 with Terminal.App.Scrollback_View;
+with Terminal.App.Shell_Blocks;
 with Terminal.App.Selection;
+with Terminal.App.Settings;
 with Terminal.App.Session_Runtime;
+with Terminal.App.Session_Recording;
+with Terminal.App.Session_Profiles;
 with Terminal.App.Session_Graphics;
 with Terminal.App.Session_Table;
 with Terminal.App.Sessions;
 with Terminal.App.Splits;
 with Terminal.App.Tabs;
 with Terminal.App.Text_Blink;
+with Terminal.App.Text_Composition;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Presenter;
 with Terminal.App.Vulkan_Recovery;
+with Terminal.App.Workspace;
 with Terminal.PTY.Backend;
 
 package body Terminal.App.Main_Loop is
+   package Unbounded renames Ada.Strings.Unbounded;
    use type Ada.Real_Time.Time;
    use type GLFW_Vulkan.Init_Status;
    use type GLFW_Vulkan.Windows.Create_Status;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Renderer.Theme_Update_Status;
+   use type Terminal.App.Renderer.Font_Update_Status;
    use type Terminal.App.Vulkan_Context.Init_Status;
    use type Terminal.App.Vulkan_Presenter.Init_Status;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
@@ -61,18 +85,22 @@ package body Terminal.App.Main_Loop is
    use type Terminal.App.Tabs.Tab_Status;
    use type Terminal.App.Session_Table.Table_Status;
    use type Terminal.App.Session_Runtime.Runtime_Status;
+   use type Terminal.App.Key_Bindings.Action;
+   use type GLFW_Vulkan.Input.Key;
+   use type Terminal.App.Command_Palette.Choice_Kind;
    use type Terminal.Core.Clipboard_Operation;
    use type Terminal.Core.Clipboard_Target;
+   use type Terminal.Core.Notification_Kind;
+   use type Terminal.Core.Graphics_Stream_ID;
+   use type Terminal.App.Workspace.IO_Status;
+   use type Terminal.App.Workspace.Layout_Kind;
+   use type Terminal.App.Workspace.Pane_Orientation;
+   use type Terminal.App.Platform_Launcher.Launch_Status;
+   use type Terminal.App.Config.Config_Load_Status;
+   use type Terminal.App.Session_Recording.IO_Status;
    use type GLFW_Vulkan.Input.Key;
    use type GLFW_Vulkan.Input.Key_Action;
    use type GLFW_Vulkan.Input.Mouse_Button;
-
-   Input_Queue : access Terminal.App.Queues.Input_Event_Queue := null;
-
-   --  Time of the last accepted left press, for bounce rejection: a failing mouse
-   --  switch (or an un-debounced compositor) can emit a spurious second press
-   --  microseconds after the real one, double-firing selection/paste.
-   Last_Left_Press_Time : Ada.Real_Time.Time := Ada.Real_Time.Clock;
 
    --  Present-grace window (frames). Refilled by input (in the On_* callbacks)
    --  and counted down one per loop iteration; while non-zero the loop keeps
@@ -81,136 +109,13 @@ package body Terminal.App.Main_Loop is
    --  INPUT, not by the blink/redraw signal, so a blinking cursor still presents
    --  only on its own toggle and does not hold the window open. ~24 = ~0.4s.
    Present_Grace_Frames : constant := 24;
-   Input_Grace : Natural := 0;
+   Last_Tab_Title    : Unbounded.Unbounded_String;
+   Last_Window_Title : Unbounded.Unbounded_String;
 
    function Fatal_Write
      (Status : Terminal.App.PTY_Write.Write_All_Status) return Boolean is
      (Status in
         Terminal.App.PTY_Write.Failed | Terminal.App.PTY_Write.Session_Closed);
-
-   procedure On_Key (Event : GLFW_Vulkan.Input.Key_Event) is
-   begin
-      Input_Grace := Present_Grace_Frames;
-      if Input_Queue /= null then
-         Input_Queue.Push
-           ((Kind            => Terminal.App.Queues.Key,
-             Width           => 0,
-             Height          => 0,
-             Bytes           => (others => <>),
-             Key_Event       => Event,
-             Character_Event => (others => <>),
-             Button_Event    => (others => <>),
-             Cursor_Event    => (others => <>),
-             Scroll_Event    => (others => <>),
-             Focus_Event     => (others => <>)));
-      end if;
-   end On_Key;
-
-   procedure On_Character (Event : GLFW_Vulkan.Input.Character_Event) is
-   begin
-      Input_Grace := Present_Grace_Frames;
-      if Input_Queue /= null then
-         Input_Queue.Push
-           ((Kind            => Terminal.App.Queues.Character,
-             Width           => 0,
-             Height          => 0,
-             Bytes           => (others => <>),
-             Key_Event       => (others => <>),
-             Character_Event => Event,
-             Button_Event    => (others => <>),
-             Cursor_Event    => (others => <>),
-             Scroll_Event    => (others => <>),
-             Focus_Event     => (others => <>)));
-      end if;
-   end On_Character;
-
-   procedure On_Mouse_Button (Event : GLFW_Vulkan.Input.Mouse_Button_Event) is
-   begin
-      Input_Grace := Present_Grace_Frames;
-      if Event.Action = GLFW_Vulkan.Input.Press
-        and then Event.Button = GLFW_Vulkan.Input.Left
-      then
-         declare
-            Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
-         begin
-            --  Drop a left press that follows the previous accepted one too
-            --  closely to be a real click -- a switch bounce that would otherwise
-            --  double-fire selection or paste.
-            if Ada.Real_Time.To_Duration (Now - Last_Left_Press_Time) < 0.040 then
-               return;
-            end if;
-            Last_Left_Press_Time := Now;
-         end;
-      end if;
-
-      if Input_Queue /= null then
-         Input_Queue.Push
-           ((Kind            => Terminal.App.Queues.Mouse_Button,
-             Width           => 0,
-             Height          => 0,
-             Bytes           => (others => <>),
-             Key_Event       => (others => <>),
-             Character_Event => (others => <>),
-             Button_Event    => Event,
-             Cursor_Event    => (others => <>),
-             Scroll_Event    => (others => <>),
-             Focus_Event     => (others => <>)));
-      end if;
-   end On_Mouse_Button;
-
-   procedure On_Cursor_Position
-     (Event : GLFW_Vulkan.Input.Cursor_Position_Event)
-   is
-   begin
-      if Input_Queue /= null then
-         Input_Queue.Push
-           ((Kind            => Terminal.App.Queues.Cursor_Position,
-             Width           => 0,
-             Height          => 0,
-             Bytes           => (others => <>),
-             Key_Event       => (others => <>),
-             Character_Event => (others => <>),
-             Button_Event    => (others => <>),
-             Cursor_Event    => Event,
-             Scroll_Event    => (others => <>),
-             Focus_Event     => (others => <>)));
-      end if;
-   end On_Cursor_Position;
-
-   procedure On_Scroll (Event : GLFW_Vulkan.Input.Scroll_Event) is
-   begin
-      Input_Grace := Present_Grace_Frames;
-      if Input_Queue /= null then
-         Input_Queue.Push
-           ((Kind            => Terminal.App.Queues.Scroll,
-             Width           => 0,
-             Height          => 0,
-             Bytes           => (others => <>),
-             Key_Event       => (others => <>),
-             Character_Event => (others => <>),
-             Button_Event    => (others => <>),
-             Cursor_Event    => (others => <>),
-             Scroll_Event    => Event,
-             Focus_Event     => (others => <>)));
-      end if;
-   end On_Scroll;
-
-   procedure On_Focus (Event : GLFW_Vulkan.Input.Focus_Event) is
-   begin
-      if Input_Queue /= null then
-         Input_Queue.Push
-           ((Kind            => Terminal.App.Queues.Focus,
-             Width           => 0,
-             Height          => 0,
-             Bytes           => (others => <>),
-             Key_Event       => (others => <>),
-             Character_Event => (others => <>),
-             Button_Event    => (others => <>),
-             Cursor_Event    => (others => <>),
-             Scroll_Event    => (others => <>),
-             Focus_Event     => Event));
-      end if;
-   end On_Focus;
 
    function Title_String (Title : Terminal.Core.Title_Text) return String is
    begin
@@ -228,6 +133,7 @@ package body Terminal.App.Main_Loop is
       Has_Link_Activation : Boolean;
       Link_Activation :
         Terminal.App.Hyperlinks.Activation_Status;
+      Mode_Status : String;
       Sessions   : in out Terminal.App.Session_Table.Runtime_Table)
    is
       Status : Terminal.App.Session_Table.Table_Status;
@@ -246,13 +152,29 @@ package body Terminal.App.Main_Loop is
            & Terminal.App.Hyperlinks.Activation_Status_Label
                (Link_Activation)
          else Base_Title);
+      Mode_Title : constant String :=
+        (if Mode_Status'Length = 0
+         then Status_Title
+         else Status_Title & " - " & Mode_Status);
    begin
-      Terminal.App.Session_Table.Set_Active_Tab_Label
-        (Sessions, Title_String (New_Title), Status);
-      GLFW_Vulkan.Windows.Set_Title
-        (W,
-         Terminal.App.Hyperlinks.Hover_Title
-           (Status_Title, Hover_Link));
+      if Unbounded.To_String (Last_Tab_Title) /= Title_String (New_Title) then
+         Terminal.App.Session_Table.Set_Active_Tab_Label
+           (Sessions, Title_String (New_Title), Status);
+         if Status = Terminal.App.Session_Table.Ok then
+            Unbounded.Set_Unbounded_String
+              (Last_Tab_Title, Title_String (New_Title));
+         end if;
+      end if;
+      declare
+         Effective_Title : constant String :=
+           Terminal.App.Hyperlinks.Hover_Title (Mode_Title, Hover_Link);
+      begin
+         if Unbounded.To_String (Last_Window_Title) /= Effective_Title then
+            GLFW_Vulkan.Windows.Set_Title (W, Effective_Title);
+            Unbounded.Set_Unbounded_String
+              (Last_Window_Title, Effective_Title);
+         end if;
+      end;
    end Apply_Title;
 
    procedure Apply_Clipboard_Request
@@ -356,5 +278,5 @@ package body Terminal.App.Main_Loop is
 
    Double_Click_Interval : constant Duration := 0.5;
 
-   procedure Run is separate;
+   procedure Run (Workspace_Override : String := "") is separate;
 end Terminal.App.Main_Loop;

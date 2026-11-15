@@ -1,9 +1,10 @@
-with Ada.Strings;
-with Ada.Strings.Fixed;
+with Terminal.Core.Status_Labels;
 with Ada.Text_IO;
 with Interfaces;
+with GLFW_Vulkan.Input;
 
 with Terminal.Common.Bytes;
+with Terminal.Common.Status;
 with Terminal.App;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Fonts;
@@ -15,27 +16,31 @@ with Terminal.App.Render_Model;
 with Terminal.App.Text_Blink;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Device;
+with Terminal.App.Vulkan_Device_Diagnostics;
 with Terminal.App.Vulkan_Submit;
 with Terminal.PTY.Backend;
 
 package body Terminal.App.Diagnostics is
-   use type Terminal.Core.Ignored_Graphics_Protocol;
+   use type GLFW_Vulkan.Input.Failure_Detail;
+   use type Terminal.Core.Graphics_Protocol_Kind;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Diagnostic_Snapshot;
    use type Terminal.Common.Bytes.Byte_Array;
    use type Terminal.App.PTY_Write.Write_All_Status;
-   use type Terminal.App.Cleanup_Diagnostics.Failure_Counts;
+   use type Terminal.App.Cleanup_Diagnostics.Failure_Snapshot;
    use type Terminal.App.Render_Model.Image_Decode_Status;
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Renderer.Renderer_Diagnostics;
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
+   use type Terminal.App.Vulkan_Device.Diagnostic_Snapshot;
+   use type Terminal.App.Vulkan_Device.Create_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
    use type Interfaces.Unsigned_64;
 
    function Natural_Label (Value : Natural) return String is
-     (Ada.Strings.Fixed.Trim (Natural'Image (Value), Ada.Strings.Left));
+     (Terminal.Common.Status.Trimmed_Natural (Value));
 
    Last_Initialized : Boolean := False;
    Last_Snapshot : Snapshot;
@@ -77,19 +82,31 @@ package body Terminal.App.Diagnostics is
       Statuses : Runtime_Statuses := (others => <>))
       return Snapshot
    is
+      Input_Failures : constant GLFW_Vulkan.Input.Failure_Snapshot :=
+        GLFW_Vulkan.Input.Failure_Diagnostics;
    begin
       return
         (Core            => Terminal.Core.Diagnostics (Core),
          Last_Feed_Status => Last_Feed_Status,
          Last_Write_Status => Last_Write_Status,
          Statuses        => Statuses,
-         Cleanup         => Terminal.App.Cleanup_Diagnostics.Snapshot,
+         Cleanup         => Terminal.App.Cleanup_Diagnostics.Capture,
          PTY_Length      => PTY.Length,
          PTY_Overflows   => PTY.Overflow_Count,
          Input_Length    => Input.Length,
          Input_Overflows => Input.Overflow_Count,
-         Renderer        => Terminal.App.Renderer.Diagnostics (Renderer),
-         Presenter       => Terminal.App.Vulkan_Presenter.Diagnostics (Presenter));
+         Callback_Failures => Input_Failures.Callback_Count,
+         Last_Callback_Failure => Input_Failures.Callback_Detail,
+         Input_Infrastructure_Failures =>
+           Input_Failures.Infrastructure_Count,
+         Last_Input_Infrastructure_Failure =>
+           Input_Failures.Infrastructure_Detail,
+         Renderer        =>
+           Terminal.App.Renderer.Diagnostics
+             (Renderer, Include_Image_Preview => False),
+         Presenter       =>
+           Terminal.App.Vulkan_Presenter.Diagnostics
+             (Presenter, Include_Image_Preview => False));
    end Collect;
 
    procedure Log_Startup_Failure
@@ -105,6 +122,13 @@ package body Terminal.App.Diagnostics is
         or else S.Last_Write_Status /= Last_Snapshot.Last_Write_Status
         or else S.Statuses /= Last_Snapshot.Statuses
         or else S.Cleanup /= Last_Snapshot.Cleanup
+        or else S.Callback_Failures /= Last_Snapshot.Callback_Failures
+        or else S.Last_Callback_Failure /=
+          Last_Snapshot.Last_Callback_Failure
+        or else S.Input_Infrastructure_Failures /=
+          Last_Snapshot.Input_Infrastructure_Failures
+        or else S.Last_Input_Infrastructure_Failure /=
+          Last_Snapshot.Last_Input_Infrastructure_Failure
         or else S.Core /= Last_Snapshot.Core;
    end Core_Changed;
 
@@ -115,42 +139,12 @@ package body Terminal.App.Diagnostics is
    end Queue_Changed;
 
    function Renderer_Changed (S : Snapshot) return Boolean is
-   begin
-      return S.Renderer /= Last_Snapshot.Renderer;
-   end Renderer_Changed;
-
-   function Presenter_Change_State
-     (Value : Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot)
-      return Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot
-   is
-      Result : Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot := Value;
-   begin
-      --  Ignore only counters and transient frame measurements that advance
-      --  during healthy presentation.  Newly added fields remain observable
-      --  by default because Result starts as a complete record copy.
-      Result.Accepted_Frames := 0;
-      Result.Last_Vertex_Count := 0;
-      Result.Last_Text_Run_Count := 0;
-      Result.Last_Shaped_Glyph_Count := 0;
-      Result.Last_Frame_Width := 0;
-      Result.Last_Frame_Height := 0;
-      Result.Last_Atlas_Bytes := 0;
-      Result.Atlas_Dirty := False;
-      Result.Logical_Device.Uploaded_Vertex_Count := 0;
-      Result.Logical_Device.Uploaded_Text_Run_Count := 0;
-      Result.Logical_Device.Uploaded_Shaped_Glyph_Count := 0;
-      Result.Logical_Device.Rendered_Frame_Count := 0;
-      Result.Logical_Device.Image_Texture_Cache_Hit_Count := 0;
-      Result.Logical_Device.Atlas_Width := 0;
-      Result.Logical_Device.Atlas_Height := 0;
-      Result.Logical_Device.Atlas_Bytes := 0;
-      Result.Logical_Device.Fence_Deferred_Upload_Count := 0;
-      return Result;
-   end Presenter_Change_State;
+     (not Terminal.App.Renderer.Operationally_Equivalent
+        (S.Renderer, Last_Snapshot.Renderer));
 
    function Presenter_Changed (S : Snapshot) return Boolean is
-     (Presenter_Change_State (S.Presenter) /=
-        Presenter_Change_State (Last_Snapshot.Presenter));
+     (not Terminal.App.Vulkan_Presenter.Operationally_Equivalent
+        (S.Presenter, Last_Snapshot.Presenter));
 
    procedure Remember (S : Snapshot) is
    begin
@@ -253,6 +247,16 @@ package body Terminal.App.Diagnostics is
    end Image_Texture_Pipeline_Status_Label;
 
    function Status_Line (S : Snapshot) return String is
+      function Failure_Label
+        (Detail : GLFW_Vulkan.Input.Failure_Detail) return String
+      is
+         Name : constant String :=
+           Detail.Exception_Name (1 .. Detail.Name_Length);
+      begin
+         return GLFW_Vulkan.Input.Failure_Source'Image (Detail.Source)
+           & (if Name'Length = 0 then "" else ":" & Name);
+      end Failure_Label;
+
       function Field
         (Label : String;
          Kind  : Runtime_Status_Kind) return String
@@ -263,13 +267,13 @@ package body Terminal.App.Diagnostics is
       end Field;
 
       Core_Status : constant String :=
-        Terminal.Core.Diagnostics_Status_Label (S.Core);
+        Terminal.Core.Status_Labels.Diagnostics_Label (S.Core);
       Feed_Status : constant String :=
-        Terminal.Core.Feed_Status_Label (S.Last_Feed_Status);
+        Terminal.Core.Status_Labels.Feed_Label (S.Last_Feed_Status);
       Write_Status : constant String :=
         Terminal.App.PTY_Write.Status_Label (S.Last_Write_Status);
       Graphics_Status : constant String :=
-        Terminal.App.Graphics.Ignored_Status_Label (S.Core);
+        Terminal.App.Graphics.Graphics_Status_Label (S.Core);
       Emoji_Status : constant String :=
         Terminal.App.Renderer.Color_Emoji_Status_Label (S.Renderer);
       Bidi_Status : constant String :=
@@ -283,9 +287,10 @@ package body Terminal.App.Diagnostics is
       Presenter_Image_Texture_Status : constant String :=
         Terminal.App.Vulkan_Presenter.Image_Texture_Status_Label (S.Presenter);
       Device_Image_Status : constant String :=
-        Terminal.App.Vulkan_Device.Image_Status_Label (S.Presenter.Logical_Device);
+        Terminal.App.Vulkan_Device_Diagnostics.Image_Status_Label
+          (S.Presenter.Logical_Device);
       Device_Image_Texture_Status : constant String :=
-        Terminal.App.Vulkan_Device.Image_Texture_Status_Label
+        Terminal.App.Vulkan_Device_Diagnostics.Image_Texture_Status_Label
           (S.Presenter.Logical_Device);
       Device_Image_Texture_Resource_Status : constant String :=
         Terminal.App.Vulkan_Presenter.Image_Texture_Resource_Status_Label
@@ -327,11 +332,24 @@ package body Terminal.App.Diagnostics is
              (S.Presenter.Logical_Device.Image_Texture_Cache_Hit_Count)
          & " pty_overflows=" & Natural'Image (S.PTY_Overflows)
          & " input_overflows=" & Natural'Image (S.Input_Overflows)
+         & " callback_failures=" & Natural'Image (S.Callback_Failures)
+         & (if S.Callback_Failures = 0
+            then ""
+            else
+              " last_callback_failure=" &
+                Failure_Label (S.Last_Callback_Failure))
+         & " input_infrastructure_failures=" &
+           Natural'Image (S.Input_Infrastructure_Failures)
+         & (if S.Input_Infrastructure_Failures = 0
+            then ""
+            else
+              " last_input_infrastructure_failure=" &
+                Failure_Label (S.Last_Input_Infrastructure_Failure))
          & " pty_queue_status=" & PTY_Queue_Status
          & " input_queue_status=" & Input_Queue_Status
          & " feed_status=" & Feed_Status
          & " write_status=" & Write_Status
-         & (if Terminal.App.Cleanup_Diagnostics.Total (S.Cleanup) = 0
+         & (if Terminal.App.Cleanup_Diagnostics.Total (S.Cleanup.Counts) = 0
             then ""
             else " cleanup_status=" & Cleanup_Status)
          & Field ("grid_status", Grid_Status)
@@ -362,14 +380,14 @@ package body Terminal.App.Diagnostics is
          & " unsupported=" & Natural'Image (S.Core.Unsupported_Sequence)
          & " cluster_overflow=" &
            Natural'Image (S.Core.Text_Cluster_Overflow)
-         & " graphics_ignored=" &
-           Natural'Image (S.Core.Graphics_Protocol_Ignored)
-         & " sixel_ignored=" &
-           Natural'Image (S.Core.Sixel_Ignored)
-         & " kitty_graphics_ignored=" &
-           Natural'Image (S.Core.Kitty_Graphics_Ignored)
-         & " iterm2_image_ignored=" &
-           Natural'Image (S.Core.ITerm2_Image_Ignored)
+         & " graphics_received=" &
+           Natural'Image (S.Core.Graphics_Commands_Received)
+         & " sixel_received=" &
+           Natural'Image (S.Core.Sixel_Commands_Received)
+         & " kitty_graphics_received=" &
+           Natural'Image (S.Core.Kitty_Commands_Received)
+         & " iterm2_image_received=" &
+           Natural'Image (S.Core.ITerm2_Commands_Received)
          & " last_graphics=" &
            Terminal.App.Graphics.Name (S.Core.Last_Graphics_Protocol)
          & " last_graphics_payload=" &

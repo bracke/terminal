@@ -1,8 +1,10 @@
+with Ada.Finalization;
+with System;
 with GLFW_Vulkan;
 with GLFW_Vulkan.Raw;
 
 package GLFW_Vulkan.Windows is
-   type Window is limited private;
+   type Window is new Ada.Finalization.Limited_Controlled with private;
 
    type Create_Status is
      (Ok,
@@ -22,15 +24,19 @@ package GLFW_Vulkan.Windows is
 
    procedure Create
      (Ctx    : in out GLFW_Vulkan.Context;
-      W      : out Window;
-      Width  : Positive;
-      Height : Positive;
+      W      : in out Window;
+      Width  : Natural;
+      Height : Natural;
       Title  : String;
       Status : out Create_Status);
 
    procedure Destroy (W : in out Window);
+   overriding procedure Finalize (W : in out Window);
    function Is_Valid (W : Window) return Boolean;
    function Should_Close (W : Window) return Boolean;
+   --  Native window identity for platform integration seams such as UIA and
+   --  NSAccessibility. The returned handle is borrowed and remains owned by W.
+   function Native_Handle (W : Window) return System.Address;
 
    procedure Set_Should_Close
      (W     : in out Window;
@@ -51,8 +57,12 @@ package GLFW_Vulkan.Windows is
       Height : out Natural);
 
 private
-   type Window is limited record
+   function Window_Size_Valid
+     (Width, Height : Natural) return Boolean;
+
+   type Window is new Ada.Finalization.Limited_Controlled with record
       Handle : Raw.GLFW_Window_Handle := Raw.Null_Window;
       Cursor : Raw.GLFW_Cursor_Handle := Raw.Null_Cursor;
+      Runtime : GLFW_Vulkan.Runtime_Lease;
    end record;
 end GLFW_Vulkan.Windows;

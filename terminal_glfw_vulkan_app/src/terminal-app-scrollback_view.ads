@@ -21,4 +21,11 @@ package Terminal.App.Scrollback_View is
    function Status_Label
      (T      : Terminal.Core.Terminal;
       Offset : Natural) return String;
+
+   function Previous_Mark_Offset
+     (T      : Terminal.Core.Terminal;
+      Offset : Natural) return Natural;
+   function Next_Mark_Offset
+     (T      : Terminal.Core.Terminal;
+      Offset : Natural) return Natural;
 end Terminal.App.Scrollback_View;

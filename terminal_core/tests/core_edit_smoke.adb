@@ -145,4 +145,69 @@ begin
       Assert (S.Cursor.Col = 1, "REP empty cursor");
       Terminal.Core.Release (S);
    end;
+
+   Terminal.Core.Initialize (T, 2, 4, 3, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize large REP failed");
+   Feed_Text ("x" & ASCII.ESC & "[65535b", "large REP feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Row (S, 1, "xxxx", "large REP row1");
+      Assert_Row (S, 2, "xxxx", "large REP row2");
+      Assert
+        (S.Cursor.Row = 2 and then S.Cursor.Col = 4,
+         "large REP cursor");
+      Assert
+        (Terminal.Core.Scrollback_Row_Count (T) = 3,
+         "large REP should preserve bounded scrollback semantics");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 4, 3, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize no-wrap REP failed");
+   Feed_Text
+     (ASCII.ESC & "[?7l" & "y" & ASCII.ESC & "[65535b",
+      "no-wrap REP feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Row (S, 1, "yyyy", "no-wrap REP");
+      Assert (S.Cursor.Col = 4, "no-wrap REP cursor");
+      Assert
+        (Terminal.Core.Scrollback_Row_Count (T) = 0,
+         "no-wrap REP should not scroll");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 3, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize Unicode REP failed");
+   Feed_Text
+     (Character'Val (16#C3#) & Character'Val (16#A9#)
+      & ASCII.ESC & "[3b",
+      "Unicode REP feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      for Col in 1 .. 4 loop
+         Assert
+           (Terminal.Core.Cell_At (S, 1, Col).Text.Code_Point = 16#E9#,
+            "Unicode REP cell" & Positive'Image (Col));
+      end loop;
+      Assert (S.Cursor.Col = 5, "Unicode REP cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 8, 3, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize insert REP failed");
+   Feed_Text
+     ("abcd" & ASCII.ESC & "[2G" & ASCII.ESC & "[4h"
+      & "x" & ASCII.ESC & "[2b",
+      "insert REP feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert_Row (S, 1, "axxxbcd ", "insert REP");
+      Assert (S.Cursor.Col = 5, "insert REP cursor");
+      Terminal.Core.Release (S);
+   end;
 end Core_Edit_Smoke;

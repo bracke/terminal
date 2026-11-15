@@ -1,59 +1,11 @@
-/* Thin C shims over POSIX facilities whose Ada bindings would otherwise have to
-   hardcode per-platform magic that differs across Linux and macOS/BSD:
+/* Small POSIX wrappers for errno classification, descriptor ownership, and
+   child-process observation. Platform headers provide the native constants. */
 
-     - the ioctl request numbers TIOCSWINSZ / TIOCSCTTY (e.g. 0x5414 on Linux
-       but 0x80087467 on Darwin)
-     - open/fcntl flags and errno values, which also differ across hosts
-
-   Letting the C headers resolve these keeps the PTY layer correct on every
-   POSIX host without the Ada side guessing numbers it cannot verify. */
-
-#include <stddef.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <signal.h>
-#include <sys/ioctl.h>
+#include <sys/types.h>
 #include <sys/wait.h>
-#include <termios.h>
 #include <unistd.h>
-
-/* Set the window size on the tty behind FD. Returns 0 on success. */
-int terminal_pty_set_winsize (int fd, unsigned short rows,
-                                    unsigned short cols)
-{
-   struct winsize ws;
-   ws.ws_row = rows;
-   ws.ws_col = cols;
-   ws.ws_xpixel = 0;
-   ws.ws_ypixel = 0;
-   return ioctl (fd, TIOCSWINSZ, &ws);
-}
-
-/* Make FD the controlling terminal of the calling (session-leader) process.
-   Returns 0 on success. */
-int terminal_pty_set_controlling_tty (int fd)
-{
-   return ioctl (fd, TIOCSCTTY, (void *) NULL);
-}
-
-int terminal_pty_open_flags (void)
-{
-   return O_RDWR | O_NOCTTY;
-}
-
-int terminal_pty_open_slave (const char *path)
-{
-   return open (path, O_RDWR);
-}
-
-int terminal_pty_set_nonblocking (int fd)
-{
-   int flags = fcntl (fd, F_GETFL, 0);
-   if (flags < 0) {
-      return -1;
-   }
-   return fcntl (fd, F_SETFL, flags | O_NONBLOCK);
-}
 
 int terminal_pty_error_is_interrupted (void)
 {
@@ -77,7 +29,36 @@ int terminal_pty_path_is_executable (const char *path)
 
 int terminal_pty_wait_nohang (pid_t pid, int *status)
 {
-   return (int) waitpid (pid, status, WNOHANG);
+   int result;
+   do {
+      result = (int) waitpid (pid, status, WNOHANG);
+   } while (result < 0 && errno == EINTR);
+   return result;
+}
+
+/* A nonzero wait result means this owner can no longer reap PID.  Clear the
+   marker before returning to cancellable Ada code so cleanup cannot target a
+   recycled process identifier. */
+int terminal_pty_wait_nohang_owned (int *pid, int *status)
+{
+   int result = terminal_pty_wait_nohang ((pid_t) *pid, status);
+   if (result != 0) {
+      *pid = -1;
+   }
+   return result;
+}
+
+int terminal_pty_close_owned (int *fd)
+{
+   int owned = *fd;
+
+   /* Disarm before close: POSIX permits an interrupted close to leave the
+      descriptor state unspecified, so retrying can close a descriptor already
+      reused by another task.  Linux consumes the descriptor on every result;
+      on macOS the safe at-most-once policy may trade an indeterminate close for
+      a leak, but never for corruption of an unrelated descriptor. */
+   *fd = -1;
+   return owned >= 0 ? close (owned) : 0;
 }
 
 int terminal_pty_hangup_process_group (pid_t pid)
@@ -97,11 +78,15 @@ int terminal_pty_kill_process_group (pid_t pid)
    return result;
 }
 
-int terminal_pty_wait (pid_t pid, int *status)
+/* Present one platform-neutral child status: a normal exit code is
+   nonnegative, while signal termination is the negated signal number. */
+int terminal_pty_normalize_wait_status (int status)
 {
-   int result;
-   do {
-      result = (int) waitpid (pid, status, 0);
-   } while (result < 0 && errno == EINTR);
-   return result;
+   if (WIFEXITED (status)) {
+      return WEXITSTATUS (status);
+   }
+   if (WIFSIGNALED (status)) {
+      return -WTERMSIG (status);
+   }
+   return 0;
 }

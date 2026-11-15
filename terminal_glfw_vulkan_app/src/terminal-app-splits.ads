@@ -3,6 +3,7 @@ package Terminal.App.Splits is
    Max_Status_Label_Length : constant := 96;
    subtype Pane_Count is Natural range 0 .. Max_Panes;
    subtype Pane_Index is Positive range 1 .. Max_Panes;
+   subtype Divider_Index is Positive range 1 .. Max_Panes - 1;
 
    type Split_Command is
      (No_Command,
@@ -43,6 +44,7 @@ package Terminal.App.Splits is
    type Split_State is private;
 
    procedure Initialize (State : out Split_State);
+   procedure Clear (State : out Split_State);
    procedure Apply
      (State   : in out Split_State;
       Command : Split_Command;
@@ -63,6 +65,13 @@ package Terminal.App.Splits is
       Row    : Positive;
       Col    : Positive;
       Status : out Split_Status);
+   procedure Move_Divider
+     (State    : in out Split_State;
+      Layout   : Pane_Layout;
+      Divider  : Divider_Index;
+      Row      : Positive;
+      Col      : Positive;
+      Status   : out Split_Status);
 
    function Count (State : Split_State) return Pane_Count;
    function Active (State : Split_State) return Pane_Index;
@@ -83,9 +92,12 @@ package Terminal.App.Splits is
    function Title_Suffix (State : Split_State) return String;
 
 private
+   Weight_Unit : constant := 1_024;
+   type Pane_Weight_Array is array (Pane_Index) of Positive;
    type Split_State is record
-      Current_Count : Pane_Count := 1;
+      Current_Count : Pane_Count := 0;
       Active_Index  : Pane_Index := 1;
       Layout_Axis   : Split_Orientation := Horizontal;
+      Weights       : Pane_Weight_Array := (others => Weight_Unit);
    end record;
 end Terminal.App.Splits;

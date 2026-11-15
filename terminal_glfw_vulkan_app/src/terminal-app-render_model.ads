@@ -1,6 +1,7 @@
 with Interfaces;
 with System;
 with Terminal.Common.Bytes;
+with Terminal.Common.Graphics_Limits;
 with Terminal.App.Image_Decode;
 
 --  Renderer-neutral terminal draw commands.
@@ -93,12 +94,17 @@ package Terminal.App.Render_Model is
    function Image_Payload_Status_Suffix
      (Preview_Complete : Boolean) return String;
 
-   Max_Image_Encoded_Data_Length : constant := 8 * 1024 * 1024;
-   Max_Image_Decoded_Data_Length : constant := 64 * 1024 * 1024;
-   Max_Image_Decoded_Preview_Length : constant := 4096;
-   type Image_Data_Access is access all Terminal.Common.Bytes.Byte_Array;
+   Max_Image_Encoded_Data_Length : constant :=
+     Terminal.Common.Graphics_Limits.Max_Transaction_Bytes;
+   Max_Image_Decoded_Data_Length : constant :=
+     Terminal.Common.Graphics_Limits.Max_Image_Bytes;
+   Max_Image_Decoded_Preview_Length : constant :=
+     Terminal.Common.Graphics_Limits.Max_Decoded_Preview_Bytes;
+   --  Internal non-owning view used only while the command's frame-storage or
+   --  image-store owner is retained. Renderer mutation entry points reset the
+   --  current frame before replacing store data; this type must not cross that
+   --  boundary or be exposed as an application query result.
    type Image_Data_View is access constant Terminal.Common.Bytes.Byte_Array;
-   function Read_Only (Data : Image_Data_Access) return Image_Data_View;
    type Image_Decoded_Source_Kind is
      (Image_Decoded_Source_None,
       Image_Decoded_Source_Buffer,
@@ -149,6 +155,14 @@ package Terminal.App.Render_Model is
      (Image : Image_Command) return Natural;
    function Image_Decoded_Source_Available
      (Image : Image_Command) return Boolean;
+   --  The logical source extent can exceed the validated prefix that callers
+   --  may inspect directly.  Complete encoded uploads are streamed by
+   --  Image_Staging rather than exposed through a misleading byte accessor.
+   function Image_Decoded_Random_Access_Bytes
+     (Image : Image_Command) return Natural;
+   --  Buffer sources are fully random-access.  Encoded raw sources expose
+   --  only their validated decoded-preview prefix here; complete uploads use
+   --  Image_Staging's single-pass row decoder.
    function Image_Decoded_Row_Byte
      (Image       : Image_Command;
       Row         : Natural;
@@ -331,6 +345,38 @@ package Terminal.App.Render_Model is
       Script_Bopomofo,
       Script_Hangul,
       Script_Yi,
+      Script_Bhaiksuki,
+      Script_Braille,
+      Script_Buhid,
+      Script_Chorasmian,
+      Script_Cypro_Minoan,
+      Script_Duployan,
+      Script_Elymaic,
+      Script_Gunjala_Gondi,
+      Script_Hanunoo,
+      Script_Kawi,
+      Script_Kharoshthi,
+      Script_Makasar,
+      Script_Marchen,
+      Script_Masaram_Gondi,
+      Script_Mende_Kikakui,
+      Script_Meroitic_Cursive,
+      Script_Meroitic_Hieroglyphs,
+      Script_Multani,
+      Script_Nag_Mundari,
+      Script_Nyiakeng_Puachue_Hmong,
+      Script_Old_Hungarian,
+      Script_Old_Sogdian,
+      Script_Old_Uyghur,
+      Script_Pau_Cin_Hau,
+      Script_SignWriting,
+      Script_Sogdian,
+      Script_Sora_Sompeng,
+      Script_Tagalog,
+      Script_Tagbanwa,
+      Script_Tangsa,
+      Script_Vithkuqi,
+      Script_Yezidi,
       Script_CJK,
       Script_Emoji,
       Script_Unknown);
@@ -399,6 +445,7 @@ package Terminal.App.Render_Model is
       Colour_Sheet_Width  : Natural := 0;
       Colour_Sheet_Height : Natural := 0;
       Colour_Sheet_Pixels : System.Address := System.Null_Address;
+      Colour_Sheet_Bytes  : Natural := 0;
       Colour_Sheet_Dirty  : Boolean := False;
    end record;
 end Terminal.App.Render_Model;

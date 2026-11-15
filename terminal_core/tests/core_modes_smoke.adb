@@ -34,9 +34,13 @@ begin
    Terminal.Core.Initialize (T, 5, 10, 100, Init);
    Assert (Init = Terminal.Core.Ok, "initialize failed");
 
-   Feed_Text
-     (ASCII.ESC & "[9999999999999999999999999999999999999999C",
-      "oversized CSI parameter should saturate");
+   Terminal.Core.Feed
+     (T,
+      To_Bytes (ASCII.ESC & "[9999999999999999999999999999999999999999C"),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Parser_Overflow,
+      "oversized CSI parameter should be rejected");
 
    Terminal.Core.Feed
      (T,

@@ -97,6 +97,15 @@ begin
       Assert (Splits.Pane_At (Layout, 1, 20) = 1, "horizontal pane hit first");
       Assert (Splits.Pane_At (Layout, 6, 1) = 2, "horizontal pane hit second");
       Assert (Splits.Pane_At (Layout, 10, 1) = 0, "horizontal pane miss");
+      Splits.Move_Divider (State, Layout, 1, 3, 1, Status);
+      Assert (Status = Splits.Ok, "move horizontal divider status");
+      declare
+         Resized : constant Splits.Pane_Layout := Splits.Layout (State, 9, 20);
+      begin
+         Assert
+           (Resized.Rects (1).Rows = 3 and then Resized.Rects (2).Rows = 6,
+            "horizontal divider drag changes pane weights");
+      end;
       Splits.Activate_At (State, Layout, 1, 20, Status);
       Assert (Status = Splits.Ok, "activate first pane by cell status");
       Assert (Splits.Active (State) = 1, "activate first pane by cell");
@@ -198,6 +207,15 @@ begin
       Assert (Splits.Pane_At (Layout, 1, 5) = 2, "vertical pane hit second");
       Assert (Splits.Pane_At (Layout, 3, 10) = 3, "vertical pane hit third");
       Assert (Splits.Pane_At (Layout, 1, 11) = 0, "vertical pane miss");
+      Splits.Move_Divider (State, Layout, 1, 1, 2, Status);
+      Assert (Status = Splits.Ok, "move vertical divider status");
+      declare
+         Resized : constant Splits.Pane_Layout := Splits.Layout (State, 8, 10);
+      begin
+         Assert
+           (Resized.Rects (1).Cols = 2 and then Resized.Rects (2).Cols >= 4,
+            "vertical divider drag changes adjacent pane weights");
+      end;
       Splits.Activate_At (State, Layout, 3, 10, Status);
       Assert (Status = Splits.Ok, "activate vertical pane by cell status");
       Assert (Splits.Active (State) = 3, "activate vertical pane by cell");
@@ -224,4 +242,12 @@ begin
             "tiny layout clamps pane origins to the grid");
       end loop;
    end;
+   Splits.Clear (State);
+   Assert
+     (Splits.Count (State) = 0
+      and then Splits.Layout (State, 24, 80).Count = 0
+      and then Splits.Status_Label (State) = "No live panes",
+      "cleared split state has an empty layout");
+   Splits.Apply (State, Splits.Next_Pane, Status);
+   Assert (Status = Splits.Invalid_Index, "empty pane navigation is rejected");
 end Splits_Smoke;

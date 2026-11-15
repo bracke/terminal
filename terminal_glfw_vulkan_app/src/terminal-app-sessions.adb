@@ -1,12 +1,11 @@
+with Terminal.Common.Status;
+
 package body Terminal.App.Sessions is
    use type Terminal.App.Splits.Split_Status;
    use type Terminal.App.Tabs.Tab_Status;
 
-   function Trim_Image (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
-   begin
-      return Text (Text'First + 1 .. Text'Last);
-   end Trim_Image;
+   function Trim_Image (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    procedure Initialize (Table : out Session_Table) is
    begin
@@ -16,6 +15,14 @@ package body Terminal.App.Sessions is
          States        => (others => Unused));
       Table.States (1) := Live;
    end Initialize;
+
+   procedure Clear (Table : out Session_Table) is
+   begin
+      Table :=
+        (Current_Count => 0,
+         Active_Index  => 1,
+         States        => (others => Unused));
+   end Clear;
 
    procedure New_Session
      (Table  : in out Session_Table;
@@ -37,7 +44,10 @@ package body Terminal.App.Sessions is
       Status : out Session_Status)
    is
    begin
-      if Table.Current_Count <= 1 then
+      if Table.Current_Count = 0 then
+         Status := Invalid_Index;
+         return;
+      elsif Table.Current_Count = 1 then
          Status := Last_Session;
          return;
       end if;
@@ -139,7 +149,9 @@ package body Terminal.App.Sessions is
 
    function Status_Label (Table : Session_Table) return String is
    begin
-      if Table.Current_Count <= 1 then
+      if Table.Current_Count = 0 then
+         return "No live sessions";
+      elsif Table.Current_Count = 1 then
          return "Single live session";
       else
          return

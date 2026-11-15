@@ -1,0 +1,4 @@
+name = "c_string_ownership"
+description = "Cancellation-safe ownership for temporary C strings"
+version = "0.1.0-dev"
+licenses = "MIT"

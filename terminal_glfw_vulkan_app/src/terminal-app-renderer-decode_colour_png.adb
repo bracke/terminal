@@ -1,3 +1,5 @@
+with Terminal.App.Graphics.Media_Decoders;
+
 separate (Terminal.App.Renderer)
 function Decode_Colour_PNG
   (Data   : Textrender.Encoded_Image;
@@ -30,7 +32,7 @@ begin
            Terminal.Common.Bytes.Byte (Data (I));
       end loop;
 
-      Terminal.App.Graphics.Decode_PNG_RGBA_Data
+      Terminal.App.Graphics.Media_Decoders.Decode_PNG_RGBA_Data
         (PNG    => Source,
          Length => Source'Length,
          Result => Result);
@@ -41,17 +43,23 @@ begin
      or else Result.Pixel_Width /= Width
      or else Result.Pixel_Height /= Height
      or else Result.Decoded_Length /= Pixels'Length
-     or else Result.Bytes = null
+     or else not Terminal.App.Graphics.Has_Bytes (Result)
    then
       Terminal.App.Graphics.Release (Result);
       return False;
    end if;
 
-   for I in Pixels'Range loop
-      Pixels (I) :=
-        Textrender.Alpha
-          (Result.Bytes (Result.Bytes'First + I - Pixels'First));
-   end loop;
+   declare
+      procedure Copy (Bytes : Terminal.Common.Bytes.Byte_Array) is
+      begin
+         for I in Pixels'Range loop
+            Pixels (I) :=
+              Textrender.Alpha (Bytes (Bytes'First + I - Pixels'First));
+         end loop;
+      end Copy;
+   begin
+      Terminal.App.Graphics.Read_Bytes (Result, Copy'Access);
+   end;
 
    Terminal.App.Graphics.Release (Result);
    return True;

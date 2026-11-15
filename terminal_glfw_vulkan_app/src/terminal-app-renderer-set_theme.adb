@@ -1,5 +1,6 @@
 with Ada.Containers;
 with Ada.Containers.Hashed_Sets;
+with Ada.Unchecked_Deallocation;
 
 separate (Terminal.App.Renderer)
 procedure Set_Theme
@@ -9,10 +10,10 @@ procedure Set_Theme
 is
    type Backup;
    type Backup_Access is access Backup;
-   type Backup is record
+   type Backup is limited record
       Object : Image_Object_Access := null;
       Frame  : Positive := 1;
-      Data   : RM.Image_Data_Access := null;
+      Data   : Terminal.App.Owned_Image_Data.Owner;
       Next   : Backup_Access := null;
    end record;
    procedure Free_Backup is new Ada.Unchecked_Deallocation
@@ -20,7 +21,7 @@ is
 
    Head : Backup_Access := null;
    Object : Image_Object_Access;
-   Previous_Theme : constant Terminal.App.Theme.Theme := R.Color_Theme;
+   Previous_Theme : constant Terminal.App.Theme.Theme := R.View_State.Color_Theme;
    Outcome : Theme_Update_Status := Theme_Ok;
    Theme_Changed : Boolean := False;
    Rollback_Failed : Boolean := False;
@@ -35,18 +36,18 @@ is
    function Is_Theme_Sensitive (Item : Image_Object_Access) return Boolean is
      (Item /= null
       and then
-        (Themes.First (Item) /= null
+        (Themes.Count (Item) > 0
          or else
            (Terminal.App.Image_Store.Indexed_Data_Format (Item) in 8 | 16
-            and then Terminal.App.Image_Store.Indexed_Data (Item) /= null
-            and then Terminal.App.Image_Store.Root_Data (Item) /= null)));
+            and then Image_Objects.Has_Stored_Indexed (Item)
+            and then Image_Objects.Has_Stored_Root (Item))));
 
    procedure Add_Bounded
      (Total  : in out Natural;
       Amount : Natural) is
    begin
-      if Amount > R.Graphics_Limits.Theme_Transaction_Bytes
-        or else Total > R.Graphics_Limits.Theme_Transaction_Bytes - Amount
+      if Amount > R.Graphics_State.Policy.Limits.Theme_Transaction_Bytes
+        or else Total > R.Graphics_State.Policy.Limits.Theme_Transaction_Bytes - Amount
       then
          raise Storage_Error with "theme transaction scratch quota exceeded";
       end if;
@@ -57,24 +58,36 @@ is
       Backup_Bytes : Natural := 0;
       Maximum_Working_Bytes : Natural := 0;
       Item : Image_Object_Access :=
-        Terminal.App.Image_Store.First (R.Image_Objects);
+        Terminal.App.Image_Store.First (R.Graphics_State.Resources.Image_Objects);
    begin
       while Item /= null loop
          if Is_Theme_Sensitive (Item) then
-            for Frame in 1 ..
-              Terminal.App.Image_Store.Frame_Count_Of (Item)
-            loop
-               declare
-                  Source : constant RM.Image_Data_View :=
-                    Terminal.App.Image_Store.Frame_Bytes (Item, Frame);
-               begin
-                  if Source = null then
-                     raise Constraint_Error with
-                       "theme backup frame is unavailable";
-                  end if;
-                  Add_Bounded (Backup_Bytes, Source'Length);
-               end;
-            end loop;
+            declare
+               Borrow : Terminal.App.Image_Store.Data_Borrow;
+               Position : Frames.Cursor;
+            begin
+               Terminal.App.Image_Store.Borrow (Borrow, Item);
+               Position := Frames.First (Borrow);
+               while Frames.Has_Element (Position) loop
+                  declare
+                     Found : Boolean := False;
+                     procedure Charge
+                       (Source : Terminal.Common.Bytes.Byte_Array) is
+                     begin
+                        Add_Bounded (Backup_Bytes, Source'Length);
+                        Found := True;
+                     end Charge;
+                  begin
+                     Found := Frames.Visit_Data
+                       (Borrow, Position, Charge'Access);
+                     if not Found then
+                        raise Constraint_Error with
+                          "theme backup frame is unavailable";
+                     end if;
+                  end;
+                  Frames.Next (Borrow, Position);
+               end loop;
+            end;
 
             declare
                Pixel_Count : Natural;
@@ -94,7 +107,8 @@ is
                   end if;
                end Charge_If_First;
 
-               Operation : Theme_Operation_Access;
+               Borrow : Terminal.App.Image_Store.Data_Borrow;
+               Position : Themes.Cursor;
             begin
                if Item.Pixel_Width = 0
                  or else Item.Pixel_Height = 0
@@ -106,9 +120,17 @@ is
                end if;
                Pixel_Count := Item.Pixel_Width * Item.Pixel_Height;
                Canvas_Bytes := Pixel_Count * 4;
-               if Themes.First (Item) = null
+               if Themes.Count (Item) = 0
                then
+                  --  Indexed recoloring builds an RGBA canvas while retaining
+                  --  a private copy of the indexed source under a controlled
+                  --  store borrow.  Both allocations are transient parts of
+                  --  the same theme transaction.
                   Working_Bytes := Canvas_Bytes;
+                  Add_Bounded
+                    (Working_Bytes,
+                     Terminal.App.Image_Store
+                       .Indexed_Data_Allocation_Length (Item));
                else
                   --  Replay owns two work canvases plus one private canvas
                   --  for each distinct frame named by retained history.  An
@@ -116,18 +138,22 @@ is
                   --  the same small set of frames repeatedly.
                   Add_Bounded (Working_Bytes, Canvas_Bytes);
                   Add_Bounded (Working_Bytes, Canvas_Bytes);
-                  Operation :=
-                    Themes.First (Item);
-                  while Operation /= null loop
-                     Charge_If_First (Operation.Target_Frame);
-                     if Operation.Is_Composition then
-                        Charge_If_First (Operation.Source_Frame);
-                     elsif Operation.New_Frame then
-                        Charge_If_First (Operation.Base_Frame);
-                     end if;
-                     Operation :=
-                       Themes.Next
-                         (Operation);
+                  Terminal.App.Image_Store.Borrow (Borrow, Item);
+                  Position := Themes.First (Borrow);
+                  while Themes.Has_Element (Position) loop
+                     declare
+                        Operation : constant
+                          Terminal.App.Image_Store.Theme_Operation_Descriptor :=
+                          Themes.Descriptor (Borrow, Position);
+                     begin
+                        Charge_If_First (Operation.Target_Frame);
+                        if Operation.Is_Composition then
+                           Charge_If_First (Operation.Source_Frame);
+                        elsif Operation.New_Frame then
+                           Charge_If_First (Operation.Base_Frame);
+                        end if;
+                     end;
+                     Themes.Next (Borrow, Position);
                   end loop;
                end if;
                Maximum_Working_Bytes := Natural'Max
@@ -141,33 +167,28 @@ is
 
    procedure Save
      (Item : Image_Object_Access;
-      Frame : Positive)
+      Frame : Positive;
+      Source : Terminal.Common.Bytes.Byte_Array)
    is
-      Source : constant RM.Image_Data_View :=
-        Terminal.App.Image_Store.Frame_Bytes (Item, Frame);
       Node : Backup_Access := null;
-      Data : RM.Image_Data_Access := null;
+      Data : Terminal.App.Owned_Image_Data.Owner;
    begin
-      if Source = null then
-         raise Constraint_Error with "theme backup frame is unavailable";
-      elsif not Terminal.App.Image_Store.Allocation_Allowed
-        (R.Image_Allocation_Control)
+      if not Terminal.App.Image_Store.Allocation_Allowed
+        (R.Graphics_State.Resources.Allocation_Control)
       then
          raise Storage_Error with "theme backup allocation rejected";
       end if;
-      Data := new Terminal.Common.Bytes.Byte_Array'(Source.all);
-      Node := new Backup'
-        (Object => Item,
-         Frame  => Frame,
-         Data   => Data,
-         Next   => Head);
-      Data := null;
+      Terminal.App.Owned_Image_Data.Allocate (Data, Source'Length);
+      Terminal.App.Owned_Image_Data.Copy (Data, Source);
+      Node := new Backup;
+      Node.Object := Item;
+      Node.Frame := Frame;
+      Node.Next := Head;
+      Terminal.App.Owned_Image_Data.Move (Data, Node.Data);
       Head := Node;
    exception
       when others =>
-         Free_Image_Data (Data);
          if Node /= null then
-            Free_Image_Data (Node.Data);
             Free_Backup (Node);
          end if;
          raise;
@@ -181,7 +202,6 @@ is
          declare
             Next : constant Backup_Access := Current.Next;
          begin
-            Free_Image_Data (Current.Data);
             Free_Backup (Current);
             Current := Next;
          end;
@@ -191,26 +211,25 @@ is
    procedure Restore is
       Current : Backup_Access;
    begin
-      R.Color_Theme := Previous_Theme;
+      R.View_State.Color_Theme := Previous_Theme;
       while Head /= null loop
          Current := Head;
          if Current.Frame = 1 then
             Terminal.App.Image_Store.Replace_Root_RGBA
-              (R.Image_Objects, Current.Object, Current.Data,
+              (R.Graphics_State.Resources.Image_Objects, Current.Object, Current.Data,
                Preserve_Indexed => True);
          else
-            Terminal.App.Image_Store.Replace_Frame_Data
-              (R.Image_Objects, Current.Object, Current.Frame, Current.Data);
+            Frames.Replace_Data
+              (R.Graphics_State.Resources.Image_Objects, Current.Object, Current.Frame, Current.Data);
          end if;
          Touch_Image_Object (R, Current.Object);
          --  Consume each successfully restored node immediately.  If a later
          --  restore fails, cleanup sees only the still-owned remainder and no
          --  already-transferred buffer can be applied twice.
          Head := Current.Next;
-         Free_Image_Data (Current.Data);
          Free_Backup (Current);
       end loop;
-      R.Atlas_Dirty := True;
+      R.Text_State.Atlas_Dirty := True;
    end Restore;
 
    procedure Roll_Back_Once is
@@ -233,7 +252,7 @@ is
    function Recolor_Indexed
      (Item : Image_Object_Access) return Theme_Update_Status
    is
-      Target : RM.Image_Data_Access := null;
+      Target : Terminal.App.Owned_Image_Data.Owner;
       Length : Natural;
       Success : Boolean := False;
    begin
@@ -247,33 +266,72 @@ is
       end if;
       Length := Item.Pixel_Width * Item.Pixel_Height * 4;
       if not Terminal.App.Image_Store.Allocation_Allowed
-        (R.Image_Allocation_Control)
+        (R.Graphics_State.Resources.Allocation_Control)
       then
          return Theme_Allocation_Failed;
       end if;
-      Target := new Terminal.Common.Bytes.Byte_Array (1 .. Length);
-      Success := Expand_Kitty_Indexed
-        (R,
-         Terminal.App.Image_Store.Indexed_Data_Format (Item),
-         Item.Pixel_Width,
-         Item.Pixel_Height,
-         Terminal.App.Image_Store.Indexed_Data (Item),
-         Target);
+      Terminal.App.Owned_Image_Data.Allocate (Target, Length);
+      declare
+         Borrow : Terminal.App.Image_Store.Data_Borrow;
+         Source : Terminal.App.Owned_Image_Data.Owner;
+      begin
+         Terminal.App.Image_Store.Borrow (Borrow, Item);
+         declare
+            Source_Length : constant Natural :=
+              Terminal.App.Image_Store.Borrowed_Indexed_Length (Borrow);
+         begin
+            if Source_Length = 0 then
+               return Theme_Replay_Failed;
+            elsif not Terminal.App.Image_Store.Allocation_Allowed
+              (R.Graphics_State.Resources.Allocation_Control)
+            then
+               return Theme_Allocation_Failed;
+            end if;
+            Terminal.App.Owned_Image_Data.Allocate (Source, Source_Length);
+         end;
+         declare
+            procedure Copy_Source
+              (Bytes : in out Terminal.Common.Bytes.Byte_Array) is
+            begin
+               Terminal.App.Image_Store.Copy_Indexed_Data (Borrow, Bytes);
+            end Copy_Source;
+            procedure Expand_Target
+              (Target_Bytes : in out Terminal.Common.Bytes.Byte_Array) is
+               procedure Expand_Source
+                 (Source_Bytes : Terminal.Common.Bytes.Byte_Array) is
+               begin
+                  Success := Style.Expand_Kitty_Indexed
+                    (R,
+                     Terminal.App.Image_Store.Indexed_Data_Format (Item),
+                     Item.Pixel_Width,
+                     Item.Pixel_Height,
+                     Source_Bytes,
+                     Target_Bytes);
+               end Expand_Source;
+            begin
+               Terminal.App.Owned_Image_Data.Read
+                 (Source, Expand_Source'Access);
+            end Expand_Target;
+         begin
+            Terminal.App.Owned_Image_Data.Modify
+              (Source, Copy_Source'Access);
+            Terminal.App.Owned_Image_Data.Modify
+              (Target, Expand_Target'Access);
+         end;
+      end;
       if Success then
          Terminal.App.Image_Store.Replace_Root_RGBA
-           (R.Image_Objects, Item, Target, Preserve_Indexed => True);
+           (R.Graphics_State.Resources.Image_Objects, Item, Target, Preserve_Indexed => True);
          return Theme_Ok;
       else
-         Free_Image_Data (Target);
          return Theme_Replay_Failed;
       end if;
    exception
       when Storage_Error =>
-         Free_Image_Data (Target);
          return Theme_Allocation_Failed;
    end Recolor_Indexed;
 begin
-   if R.Closed then
+   if R.Lifecycle.Closed then
       Status := Theme_Closed;
       return;
    end if;
@@ -282,27 +340,51 @@ begin
 
    --  Snapshot all affected pixels before changing either the theme or any
    --  object.  This makes a multi-image theme switch transactional.
-   Object := Terminal.App.Image_Store.First (R.Image_Objects);
+   Object := Terminal.App.Image_Store.First (R.Graphics_State.Resources.Image_Objects);
    while Object /= null loop
       if Is_Theme_Sensitive (Object) then
-         for Frame in 1 .. Terminal.App.Image_Store.Frame_Count_Of (Object) loop
-            Save (Object, Frame);
-         end loop;
+         declare
+            Borrow : Terminal.App.Image_Store.Data_Borrow;
+            Position : Frames.Cursor;
+         begin
+            Terminal.App.Image_Store.Borrow (Borrow, Object);
+            Position := Frames.First (Borrow);
+            while Frames.Has_Element (Position) loop
+               declare
+                  Info : constant Frames.Frame_Descriptor :=
+                    Frames.Descriptor (Borrow, Position);
+                  Saved : Boolean;
+                  procedure Save_Frame
+                    (Source : Terminal.Common.Bytes.Byte_Array) is
+                  begin
+                     Save (Object, Info.Number, Source);
+                  end Save_Frame;
+               begin
+                  Saved := Frames.Visit_Data
+                    (Borrow, Position, Save_Frame'Access);
+                  if not Saved then
+                     raise Constraint_Error with
+                       "theme backup frame is unavailable";
+                  end if;
+               end;
+               Frames.Next (Borrow, Position);
+            end loop;
+         end;
       end if;
       Object := Terminal.App.Image_Store.Next_Object (Object);
    end loop;
 
    --  Existing frame and submission descriptors borrow the buffers replaced
    --  below.  Invalidate them before publishing any recolored data.
-   Reset_Frame (R);
-   R.Color_Theme := T;
+   Frame_Lifecycle.Reset (R);
+   R.View_State.Color_Theme := T;
    Theme_Changed := True;
-   Object := Terminal.App.Image_Store.First (R.Image_Objects);
+   Object := Terminal.App.Image_Store.First (R.Graphics_State.Resources.Image_Objects);
    while Object /= null and then Outcome = Theme_Ok loop
       if Is_Theme_Sensitive (Object) then
          Outcome :=
-           (if Themes.First (Object) /= null
-            then (if Replay_Theme_Operations (R, Object)
+           (if Themes.Count (Object) > 0
+            then (if Image_Theme_State.Replay_Theme_Operations (R, Object)
                   then Theme_Ok
                   else Theme_Replay_Failed)
             else Recolor_Indexed (Object));
@@ -316,7 +398,8 @@ begin
    if Outcome /= Theme_Ok then
       Roll_Back_Once;
    else
-      R.Atlas_Dirty := True;
+      R.Text_State.Atlas_Dirty := True;
+      Text_Pipeline.Invalidate_Caches (R);
    end if;
    Release_Backups;
    Status := Outcome;

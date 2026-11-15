@@ -15,7 +15,7 @@ package Terminal.App.Vulkan_Context is
       Surface_Create_Failed);
 
    procedure Initialize
-     (Ctx    : out Context;
+     (Ctx    : in out Context;
       Window : GLFW_Vulkan.Windows.Window;
       Status : out Init_Status);
 

@@ -1,3 +1,5 @@
+with Terminal.Common.Counters;
+
 separate (Terminal.App.Vulkan_Device.Upload_Image_Texture_Staging_Source)
 procedure Commit_Image is
 begin
@@ -57,7 +59,8 @@ if Slot = Text_Glyphs then
    Device.Atlas_Width := Width;
    Device.Atlas_Height := Height;
    Device.Atlas_Bytes := Upload_Bytes_Natural;
-   Device.Atlas_Upload_Count := Device.Atlas_Upload_Count + 1;
+   Terminal.Common.Counters.Increment_Saturating
+     (Device.Atlas_Upload_Count);
 elsif Slot = Colour_Glyphs then
    Destroy_Colour_Sheet (Device);
    Device.Colour_Sheet_Image := Image;
@@ -73,8 +76,8 @@ else
    Device.Image_Texture_Width := Width;
    Device.Image_Texture_Height := Height;
    Device.Image_Texture_Content_Signature := Content_Signature;
-   Device.Image_Texture_Upload_Count :=
-     Device.Image_Texture_Upload_Count + 1;
+   Terminal.Common.Counters.Increment_Saturating
+     (Device.Image_Texture_Upload_Count);
 end if;
 if Slot = Inline_Picture then
    Device.Image_Texture_Bytes := Upload_Bytes_Natural;

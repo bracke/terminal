@@ -62,15 +62,30 @@ package Terminal.App.Vulkan_Presenter is
    type Present_Status is
      (Ok,
       Validated_Not_Presented,
+      Not_Attempted,
       Not_Initialized,
       Invalid_Context,
       Invalid_Batch,
       Device_Lost,
       Resources_In_Flight,
       Upload_Failed,
-      Atlas_Upload_Failed,
+      Vertex_Buffer_Too_Large,
+      Create_Vertex_Buffer_Failed,
+      Allocate_Vertex_Memory_Failed,
+      Bind_Vertex_Buffer_Failed,
+      Map_Vertex_Buffer_Failed,
+      Atlas_Too_Large,
       Image_Staging_Invalid_Source,
       Image_Staging_Allocation_Failed,
+      Create_Atlas_Image_Failed,
+      Allocate_Atlas_Memory_Failed,
+      Bind_Atlas_Image_Failed,
+      Create_Atlas_View_Failed,
+      Create_Atlas_Staging_Buffer_Failed,
+      Allocate_Atlas_Staging_Memory_Failed,
+      Bind_Atlas_Staging_Buffer_Failed,
+      Map_Atlas_Staging_Buffer_Failed,
+      Copy_Atlas_Failed,
       Render_Failed,
       Acquire_Image_Failed,
       Swapchain_Out_Of_Date,
@@ -82,52 +97,73 @@ package Terminal.App.Vulkan_Presenter is
       Queue_Submit_Failed,
       Queue_Present_Failed);
 
-   type Diagnostic_Snapshot is record
-      Initialized       : Boolean := False;
-      Context_Ready     : Boolean := False;
-      Surface_Ready     : Boolean := False;
-      Accepted_Frames   : Natural := 0;
-      Rejected_Frames   : Natural := 0;
-      Last_Status       : Present_Status := Not_Initialized;
-      Last_Vertex_Count : Natural := 0;
-      Last_Image_Command_Count : Natural := 0;
-      Last_Image_Vertex_Count : Natural := 0;
-      Last_Image_Texture_Vertex_Count : Natural := 0;
-      Last_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
-        Terminal.App.Render_Model.Image_Sixel;
-      Last_Image_Width : Natural := 0;
-      Last_Image_Height : Natural := 0;
-      Last_Image_Raw_Format : Natural := 0;
-      Last_Image_Pixel_Width : Natural := 0;
-      Last_Image_Pixel_Height : Natural := 0;
-      Last_Image_Payload_Length : Natural := 0;
-      Last_Image_Payload_Preview_Complete : Boolean := False;
-      Last_Image_Encoded_Preview_Length : Natural := 0;
-      Last_Image_Decoded_Preview_Length : Natural := 0;
-      Last_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
-        (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
-          (others => 0);
-      Last_Image_Preview_Decode_Complete : Boolean := False;
-      Last_Image_Decode_Status :
-        Terminal.App.Render_Model.Image_Decode_Status :=
-          Terminal.App.Render_Model.Image_Decode_Not_Attempted;
-      Last_Image_Placeholder : Boolean := False;
-      Last_Image_Texture_Downgraded : Boolean := False;
-      Last_Image_Texture_Source :
-        Terminal.App.Vulkan_Submit.Texture_Source :=
-          Terminal.App.Vulkan_Submit.Texture_None;
-      Last_Text_Run_Count : Natural := 0;
-      Last_Shaped_Glyph_Count : Natural := 0;
-      Last_Frame_Width  : Natural := 0;
-      Last_Frame_Height : Natural := 0;
-      Last_Atlas_Bytes  : Natural := 0;
-      Atlas_Dirty       : Boolean := False;
-      Device            : Terminal.App.Vulkan_Device.Diagnostic_Snapshot;
-      Logical_Device    : Terminal.App.Vulkan_Device.Device_Diagnostic_Snapshot;
-   end record;
+   type Present_Action is
+     (Presentation_Complete,
+      Presentation_Not_Attempted,
+      Retry_Frame,
+      Recreate_Swapchain,
+      Recreate_Device,
+      Await_Recovery,
+      Fatal_Error);
+
+   function Action_For (Status : Present_Status) return Present_Action;
+
+   package Presenter_Diagnostic_Types is
+      type Operational is tagged record
+         Initialized       : Boolean := False;
+         Context_Ready     : Boolean := False;
+         Surface_Ready     : Boolean := False;
+         Last_Status       : Present_Status := Not_Initialized;
+         Last_Image_Command_Count : Natural := 0;
+         Last_Image_Vertex_Count : Natural := 0;
+         Last_Image_Texture_Vertex_Count : Natural := 0;
+         Last_Image_Protocol : Terminal.App.Render_Model.Image_Protocol :=
+           Terminal.App.Render_Model.Image_Sixel;
+         Last_Image_Width : Natural := 0;
+         Last_Image_Height : Natural := 0;
+         Last_Image_Raw_Format : Natural := 0;
+         Last_Image_Pixel_Width : Natural := 0;
+         Last_Image_Pixel_Height : Natural := 0;
+         Last_Image_Payload_Length : Natural := 0;
+         Last_Image_Payload_Preview_Complete : Boolean := False;
+         Last_Image_Encoded_Preview_Length : Natural := 0;
+         Last_Image_Preview_Decode_Complete : Boolean := False;
+         Last_Image_Decode_Status :
+           Terminal.App.Render_Model.Image_Decode_Status :=
+             Terminal.App.Render_Model.Image_Decode_Not_Attempted;
+         Last_Image_Placeholder : Boolean := False;
+         Last_Image_Texture_Downgraded : Boolean := False;
+         Last_Image_Texture_Source :
+           Terminal.App.Vulkan_Submit.Texture_Source :=
+             Terminal.App.Vulkan_Submit.Texture_None;
+         Device : Terminal.App.Vulkan_Device.Diagnostic_Snapshot;
+      end record;
+
+      type Snapshot is new Operational with record
+         Accepted_Frames   : Natural := 0;
+         Rejected_Frames   : Natural := 0;
+         Last_Vertex_Count : Natural := 0;
+         Last_Image_Decoded_Preview_Length : Natural := 0;
+         Last_Image_Decoded_Preview_Bytes :
+           Terminal.Common.Bytes.Byte_Array
+             (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
+               (others => 0);
+         Last_Text_Run_Count : Natural := 0;
+         Last_Shaped_Glyph_Count : Natural := 0;
+         Last_Frame_Width  : Natural := 0;
+         Last_Frame_Height : Natural := 0;
+         Last_Atlas_Bytes  : Natural := 0;
+         Atlas_Dirty       : Boolean := False;
+         Logical_Device :
+           Terminal.App.Vulkan_Device.Device_Diagnostic_Snapshot;
+      end record;
+   end Presenter_Diagnostic_Types;
+
+   subtype Operational_Diagnostics is Presenter_Diagnostic_Types.Operational;
+   subtype Diagnostic_Snapshot is Presenter_Diagnostic_Types.Snapshot;
 
    procedure Initialize
-     (P       : out Presenter;
+     (P       : in out Presenter;
       Context : Terminal.App.Vulkan_Context.Context;
       Status  : out Init_Status;
       Desired_Width : Natural := 0;
@@ -165,7 +201,11 @@ package Terminal.App.Vulkan_Presenter is
    overriding procedure Finalize (P : in out Presenter);
 
    function Is_Initialized (P : Presenter) return Boolean;
-   function Diagnostics (P : Presenter) return Diagnostic_Snapshot;
+   function Diagnostics
+     (P                     : Presenter;
+      Include_Image_Preview : Boolean := True) return Diagnostic_Snapshot;
+   function Operationally_Equivalent
+     (Left, Right : Diagnostic_Snapshot) return Boolean;
    function Status_Label (Status : Present_Status) return String;
    function Image_Status_Label
      (Diagnostics : Diagnostic_Snapshot) return String;

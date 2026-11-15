@@ -1,7 +1,9 @@
 with AUnit.Assertions;
 
 with Terminal.Common.Bytes;
+with Terminal.App.Frame_Completion;
 with Terminal.App.Render_Model;
+with Terminal.App.Renderer;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Device;
 with Terminal.App.Vulkan_Presenter;
@@ -14,6 +16,7 @@ procedure Vulkan_Presenter_Smoke is
    use type Terminal.App.Render_Model.Image_Protocol;
    use type Terminal.App.Vulkan_Presenter.Init_Status;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
+   use type Terminal.App.Vulkan_Presenter.Present_Action;
    use type Terminal.App.Vulkan_Presenter.Readback_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
 
@@ -61,6 +64,90 @@ begin
      (VP.Status_Label (VP.Resources_In_Flight) =
       "Present: Resources In Flight",
       "deferred present status label");
+   Assert
+     (VP.Action_For (VP.Ok) = VP.Presentation_Complete
+      and then VP.Action_For (VP.Validated_Not_Presented) =
+        VP.Presentation_Complete,
+      "successful presentation statuses complete a frame");
+   Assert
+     (VP.Action_For (VP.Resources_In_Flight) = VP.Retry_Frame
+      and then VP.Action_For (VP.Image_Staging_Allocation_Failed) =
+        VP.Retry_Frame,
+      "transient presentation failures retry the frame");
+   Assert
+     (VP.Action_For (VP.Not_Attempted) = VP.Presentation_Not_Attempted,
+      "an unattempted presentation remains distinct from invalid input");
+   Assert
+     (VP.Action_For (VP.Swapchain_Out_Of_Date) = VP.Recreate_Swapchain
+      and then VP.Action_For (VP.Queue_Present_Failed) =
+        VP.Recreate_Swapchain
+      and then VP.Action_For (VP.Device_Lost) = VP.Recreate_Device
+      and then VP.Action_For (VP.Allocate_Atlas_Memory_Failed) =
+        VP.Recreate_Device,
+      "invalid Vulkan resources select explicit recovery");
+   Assert
+     (VP.Action_For (VP.Not_Initialized) = VP.Await_Recovery,
+      "an uninitialized presenter waits only for scheduled recovery");
+   Assert
+     (VP.Action_For (VP.Invalid_Batch) = VP.Fatal_Error
+      and then VP.Action_For (VP.Image_Staging_Invalid_Source) =
+        VP.Fatal_Error
+      and then VP.Action_For (VP.Atlas_Too_Large) = VP.Fatal_Error,
+      "non-recoverable presentation failures terminate explicitly");
+   declare
+      package FC renames Terminal.App.Frame_Completion;
+      Completed : constant FC.Decision := FC.Decide
+        (Terminal.App.Renderer.Ok, VP.Ok, Recovery_Pending => False);
+      Deferred : constant FC.Decision := FC.Decide
+        (Terminal.App.Renderer.Ok,
+         VP.Image_Staging_Allocation_Failed,
+         Recovery_Pending => False);
+      Allocation_Deferred : constant FC.Decision := FC.Decide
+        (Terminal.App.Renderer.Allocation_Failed,
+         VP.Not_Attempted,
+         Recovery_Pending => False);
+      Allocation_Fatal : constant FC.Decision := FC.Decide
+        (Terminal.App.Renderer.Allocation_Failed,
+         VP.Image_Staging_Invalid_Source,
+         Recovery_Pending => False);
+      Recovering : constant FC.Decision := FC.Decide
+        (Terminal.App.Renderer.Ok,
+         VP.Allocate_Atlas_Memory_Failed,
+         Recovery_Pending => True);
+      Recovery_Stopped : constant FC.Decision := FC.Decide
+        (Terminal.App.Renderer.Ok,
+         VP.Allocate_Atlas_Memory_Failed,
+         Recovery_Pending => False);
+      Fatal : constant FC.Decision := FC.Decide
+        (Terminal.App.Renderer.Ok,
+         VP.Image_Staging_Invalid_Source,
+         Recovery_Pending => False);
+   begin
+      Assert
+        (Completed.Accept_Graphics
+         and then not Completed.Redraw
+         and then not Completed.Close_Window,
+         "accepted presentation completes graphics ownership");
+      Assert
+        (Deferred.Redraw and then not Deferred.Close_Window,
+         "transient presentation failure requests a retry");
+      Assert
+        (Allocation_Deferred.Redraw
+         and then not Allocation_Deferred.Close_Window,
+         "renderer allocation failure retries without closing the window");
+      Assert
+        (not Allocation_Fatal.Redraw and then Allocation_Fatal.Close_Window,
+         "renderer allocation status cannot mask a fatal presentation error");
+      Assert
+        (Recovering.Redraw and then not Recovering.Close_Window,
+         "recoverable failure progresses while recovery is pending");
+      Assert
+        (not Recovery_Stopped.Redraw and then Recovery_Stopped.Close_Window,
+         "recoverable failure cannot wait without scheduled recovery");
+      Assert
+        (not Fatal.Redraw and then Fatal.Close_Window,
+         "fatal presentation failure cannot enter a redraw loop");
+   end;
    Assert
      (VP.Status_Label (VP.Queue_Present_Failed)'Length <=
       VP.Max_Status_Label_Length,

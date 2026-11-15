@@ -4,6 +4,7 @@ with AUnit.Assertions;
 
 with Terminal.Common.Bytes;
 with Terminal.PTY.Backend;
+with Terminal.PTY.Backend.Testing;
 
 procedure PTY_Env_Smoke is
    use Terminal.Common.Bytes;
@@ -71,8 +72,8 @@ procedure PTY_Env_Smoke is
    Spawn_Status : Terminal.PTY.Backend.Spawn_Status;
    Write_Status : Terminal.PTY.Backend.Write_Status;
    Read_Status  : Terminal.PTY.Backend.Read_Status;
-   Buffer       : Byte_Array (1 .. 1024);
-   Last         : Natural := 0;
+   Buffer       : Byte_Array (5 .. 1_028);
+   Count        : Natural := 0;
    Output       : String (1 .. 4096) := (others => ASCII.NUL);
    Output_Last  : Natural := 0;
    Attempts     : Natural := 0;
@@ -84,21 +85,25 @@ procedure PTY_Env_Smoke is
    Alive_After_Spawn : Boolean := False;
 
    function To_Bytes (Text : String) return Byte_Array is
-      Result : Byte_Array (1 .. Text'Length);
+      Result : Byte_Array (5 .. Text'Length + 4);
    begin
       for I in Text'Range loop
-         Result (I - Text'First + 1) := Byte (Character'Pos (Text (I)));
+         Result (I - Text'First + Result'First) :=
+           Byte (Character'Pos (Text (I)));
       end loop;
       return Result;
    end To_Bytes;
 
    procedure Append_Output is
    begin
-      for I in 1 .. Last loop
-         exit when Output_Last = Output'Last;
-         Output_Last := Output_Last + 1;
-         Output (Output_Last) := Character'Val (Natural (Buffer (I)));
-      end loop;
+      if Count > 0 then
+         for Offset in 0 .. Count - 1 loop
+            exit when Output_Last = Output'Last;
+            Output_Last := Output_Last + 1;
+            Output (Output_Last) :=
+              Character'Val (Natural (Buffer (Buffer'First + Offset)));
+         end loop;
+      end if;
    end Append_Output;
 
    function Contains (Pattern : String) return Boolean is
@@ -136,7 +141,7 @@ procedure PTY_Env_Smoke is
                else
                   Stalls := Stalls + 1;
                   Assert (Stalls < 500, "write made no progress");
-                  Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
+                  Terminal.PTY.Backend.Read (S, Buffer, Count, Read_Status);
                   if Read_Status = Terminal.PTY.Backend.Ok then
                      Append_Output;
                   end if;
@@ -174,11 +179,11 @@ begin
    --  arrives here arrives without being asked for. Nothing at all separates a
    --  console that is not connected from one that simply had nothing to say.
    for Attempt in 1 .. 200 loop
-      Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
+      Terminal.PTY.Backend.Read (S, Buffer, Count, Read_Status);
 
       case Read_Status is
          when Terminal.PTY.Backend.Ok =>
-            Unprompted := Unprompted + Last;
+            Unprompted := Unprompted + Count;
             Append_Output;
          when Terminal.PTY.Backend.Would_Block
             | Terminal.PTY.Backend.Interrupted =>
@@ -206,7 +211,7 @@ begin
 
    for Attempt in 1 .. 1_500 loop
       Attempts := Attempt;
-      Terminal.PTY.Backend.Read (S, Buffer, Last, Read_Status);
+      Terminal.PTY.Backend.Read (S, Buffer, Count, Read_Status);
       case Read_Status is
          when Terminal.PTY.Backend.Ok =>
             Reads := Reads + 1;
@@ -267,8 +272,8 @@ begin
       Ada.Text_IO.New_Line;
 
       declare
-         T : constant Terminal.PTY.Backend.Spawn_Trace :=
-           Terminal.PTY.Backend.Last_Spawn_Trace;
+         T : constant Terminal.PTY.Backend.Testing.Spawn_Trace :=
+           Terminal.PTY.Backend.Testing.Spawn_Diagnostics (S);
       begin
          Ada.Text_IO.Put_Line
            ("pty_env_smoke: spawn trace"
@@ -282,14 +287,14 @@ begin
       end;
 
       declare
-         R : constant Terminal.PTY.Backend.Read_Trace :=
-           Terminal.PTY.Backend.Last_Read_Trace;
+         R : constant Terminal.PTY.Backend.Testing.Read_Trace :=
+           Terminal.PTY.Backend.Testing.Read_Diagnostics (S);
       begin
          Ada.Text_IO.Put_Line
            ("pty_env_smoke: read trace"
-            & " peeks=" & Natural'Image (R.Peeks)
-            & " failed=" & Natural'Image (R.Peek_Failed)
-            & " peek_error=" & Natural'Image (R.Peek_Error)
+            & " polls=" & Natural'Image (R.Polls)
+            & " failed=" & Natural'Image (R.Poll_Failed)
+            & " poll_error=" & Natural'Image (R.Poll_Error)
             & " bytes_seen=" & Natural'Image (R.Bytes_Seen)
             & "; unprompted bytes before any write:"
             & Natural'Image (Unprompted));
@@ -306,6 +311,9 @@ begin
 
    Terminal.PTY.Backend.Close (S);
 
+   Assert
+     (Written_Total = Command'Length,
+      "PTY writes report byte counts independent of the source lower bound");
    Assert (Contains (Term_Marker), "child shell should see TERM=xterm-256color");
    Assert
      (Contains (Color_Marker),

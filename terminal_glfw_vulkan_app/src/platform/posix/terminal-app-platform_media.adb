@@ -1,4 +1,5 @@
 with Interfaces.C.Strings;
+with Terminal.Common.C_Strings;
 
 package body Terminal.App.Platform_Media is
    package CS renames Interfaces.C.Strings;
@@ -66,16 +67,12 @@ package body Terminal.App.Platform_Media is
    function File_Downloads_Available return Boolean is (True);
 
    function Open_Read_No_Follow (Path : String) return OS.File_Descriptor is
-      Name : CS.chars_ptr := CS.New_String (Path);
+      Name : Terminal.Common.C_Strings.Owner;
       Raw  : C.int;
    begin
-      Raw := C_Open_Read (Name);
-      CS.Free (Name);
+      Terminal.Common.C_Strings.Set (Name, Path);
+      Raw := C_Open_Read (Terminal.Common.C_Strings.Unsafe_Pointer (Name));
       return (if Raw < 0 then OS.Invalid_FD else OS.File_Descriptor (Raw));
-   exception
-      when others =>
-         CS.Free (Name);
-         raise;
    end Open_Read_No_Follow;
 
    function Descriptor_Path (FD : OS.File_Descriptor) return String is
@@ -91,58 +88,43 @@ package body Terminal.App.Platform_Media is
    end Descriptor_Path;
 
    function Shared_Memory_Open (Name : String) return OS.File_Descriptor is
-      C_Name : CS.chars_ptr := CS.New_String (Name);
+      C_Name : Terminal.Common.C_Strings.Owner;
       Raw    : C.int;
    begin
-      Raw := C_Shm_Open (C_Name);
-      CS.Free (C_Name);
+      Terminal.Common.C_Strings.Set (C_Name, Name);
+      Raw := C_Shm_Open (Terminal.Common.C_Strings.Unsafe_Pointer (C_Name));
       return (if Raw < 0 then OS.Invalid_FD else OS.File_Descriptor (Raw));
-   exception
-      when others =>
-         CS.Free (C_Name);
-         raise;
    end Shared_Memory_Open;
 
    function Shared_Memory_Unlink (Name : String) return Boolean is
-      C_Name : CS.chars_ptr := CS.New_String (Name);
+      C_Name : Terminal.Common.C_Strings.Owner;
       Result : C.int;
    begin
-      Result := C_Shm_Unlink (C_Name);
-      CS.Free (C_Name);
+      Terminal.Common.C_Strings.Set (C_Name, Name);
+      Result := C_Shm_Unlink (Terminal.Common.C_Strings.Unsafe_Pointer (C_Name));
       return Result = 0;
-   exception
-      when others =>
-         CS.Free (C_Name);
-         raise;
    end Shared_Memory_Unlink;
 
    function Open_Directory_No_Follow (Path : String) return C.int is
-      Name : CS.chars_ptr := CS.New_String (Path);
+      Name : Terminal.Common.C_Strings.Owner;
       Result : C.int;
    begin
-      Result := C_Open_Directory (Name);
-      CS.Free (Name);
+      Terminal.Common.C_Strings.Set (Name, Path);
+      Result := C_Open_Directory (Terminal.Common.C_Strings.Unsafe_Pointer (Name));
       return Result;
-   exception
-      when others =>
-         CS.Free (Name);
-         raise;
    end Open_Directory_No_Follow;
 
    function Open_Read_At_No_Follow
      (Directory : C.int;
       Name      : String) return OS.File_Descriptor
    is
-      C_Name : CS.chars_ptr := CS.New_String (Name);
+      C_Name : Terminal.Common.C_Strings.Owner;
       Raw : C.int;
    begin
-      Raw := C_Open_Read_At (Directory, C_Name);
-      CS.Free (C_Name);
+      Terminal.Common.C_Strings.Set (C_Name, Name);
+      Raw := C_Open_Read_At
+        (Directory, Terminal.Common.C_Strings.Unsafe_Pointer (C_Name));
       return (if Raw < 0 then OS.Invalid_FD else OS.File_Descriptor (Raw));
-   exception
-      when others =>
-         CS.Free (C_Name);
-         raise;
    end Open_Read_At_No_Follow;
 
    function Create_File_At
@@ -150,19 +132,15 @@ package body Terminal.App.Platform_Media is
       Name      : String;
       Mode      : C.unsigned) return C.int
    is
-      C_Name : CS.chars_ptr := CS.New_String (Name);
+      C_Name : Terminal.Common.C_Strings.Owner;
       Result : C.int;
    begin
+      Terminal.Common.C_Strings.Set (C_Name, Name);
       Result := C_Create_File_At
         (Directory,
-         C_Name,
+         Terminal.Common.C_Strings.Unsafe_Pointer (C_Name),
          Mode);
-      CS.Free (C_Name);
       return Result;
-   exception
-      when others =>
-         CS.Free (C_Name);
-         raise;
    end Create_File_At;
 
    function Write_File
@@ -177,16 +155,13 @@ package body Terminal.App.Platform_Media is
      (Directory : C.int;
       Name      : String) return Boolean
    is
-      C_Name : CS.chars_ptr := CS.New_String (Name);
+      C_Name : Terminal.Common.C_Strings.Owner;
       Result : C.int;
    begin
-      Result := C_Delete_File_At (Directory, C_Name);
-      CS.Free (C_Name);
+      Terminal.Common.C_Strings.Set (C_Name, Name);
+      Result := C_Delete_File_At
+        (Directory, Terminal.Common.C_Strings.Unsafe_Pointer (C_Name));
       return Result = 0;
-   exception
-      when others =>
-         CS.Free (C_Name);
-         raise;
    end Delete_File_At;
 
 end Terminal.App.Platform_Media;

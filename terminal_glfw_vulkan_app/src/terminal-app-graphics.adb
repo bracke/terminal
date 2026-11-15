@@ -1,78 +1,34 @@
-with Ada.Streams;
+with Ada.Finalization;
 with Terminal.Common.Bytes;
 with Terminal.Common.Status;
 with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Image_Decode;
-with Terminal.App.Image_Media;
-with Terminal.App.Zlib_Inflation;
-with Ada.Finalization;
-with Ada.Unchecked_Deallocation;
-with Terminal.Common.Base64;
-with Interfaces;
-with Jpeglib.Decoding;
-with Jpeglib.Images;
-with Jpeglib.Results;
-with Jpeglib.Streams;
-with Zlib;
+with Terminal.App.ITerm2_Controls;
+with Terminal.App.Number_Parsing;
+with Terminal.App.Owned_Image_Data;
+with Terminal.App.Graphics.Preview_Storage;
+with Terminal.App.Graphics.Capability_Reporting;
+with Terminal.App.Graphics.Media_Decoders;
+with Terminal.App.Graphics.Decoding;
+with Terminal.App.Graphics.Kitty_Validation;
+with Terminal.App.Graphics.Pixel_Layout;
+with Terminal.App.Graphics.Sixel_Support;
+with Terminal.App.Graphics.Status_Reporting;
 
 package body Terminal.App.Graphics is
-   use type Terminal.Common.Base64.Decoder_Status;
-   use type Ada.Streams.Stream_Element_Offset;
-   use type Interfaces.Unsigned_32;
-   use type Terminal.Core.Ignored_Graphics_Protocol;
+   use type Terminal.Core.Graphics_Protocol_Kind;
    use type Terminal.Core.Graphics_ID;
-   use type Terminal.Common.Bytes.Byte;
-   use type Terminal.App.Render_Model.Image_Data_Access;
-   use type Terminal.App.Image_Media.Decode_Status;
-   use type Jpeglib.Byte;
-   use type Jpeglib.Results.Result;
-   use type Jpeglib.Streams.Byte_Array_Access;
-   use type Zlib.Status_Code;
+   use type Terminal.App.Render_Model.Image_Data_View;
+   use type Terminal.App.Graphics_Types.Graphics_Protocol;
+   use type Terminal.App.Graphics_Types.ITerm2_Size_Unit;
+   use type Data_Decode_Status;
+   use Terminal.App.Graphics.Sixel_Support;
 
-   procedure Free_Image_Data is new Ada.Unchecked_Deallocation
-     (Terminal.Common.Bytes.Byte_Array,
-      Terminal.App.Render_Model.Image_Data_Access);
-   procedure Free_JPEG_Data is new Ada.Unchecked_Deallocation
-     (Jpeglib.Streams.Byte_Array,
-      Jpeglib.Streams.Byte_Array_Access);
-   type Inflate_Filter_Holder is
-     new Ada.Finalization.Limited_Controlled with record
-      Filter : Zlib.Filter_Type;
-      Opened : Boolean := False;
-   end record;
-   overriding procedure Finalize (Holder : in out Inflate_Filter_Holder);
+   subtype Image_Data_Holder is Terminal.App.Owned_Image_Data.Owner;
 
-   type Image_Data_Holder is new Ada.Finalization.Limited_Controlled with record
-      Data : Terminal.App.Render_Model.Image_Data_Access := null;
-   end record;
-   overriding procedure Finalize (Holder : in out Image_Data_Holder);
 
-   overriding procedure Finalize (Holder : in out Inflate_Filter_Holder) is
-   begin
-      if Holder.Opened then
-         begin
-            Zlib.Close (Holder.Filter, Ignore_Error => True);
-         exception
-            when others =>
-               null;
-         end;
-         Holder.Opened := False;
-      end if;
-   end Finalize;
-
-   overriding procedure Finalize (Holder : in out Image_Data_Holder) is
-   begin
-      if Holder.Data /= null then
-         Free_Image_Data (Holder.Data);
-         Holder.Data := null;
-      end if;
-   end Finalize;
-
-   function Trimmed_Natural (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
-   begin
-      return Text (Text'First + 1 .. Text'Last);
-   end Trimmed_Natural;
+   function Trimmed_Natural (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    function Preview_Text (Event : Terminal.Core.Graphics_Event) return String is
    begin
@@ -82,58 +38,131 @@ package body Terminal.App.Graphics is
       return Event.Preview (1 .. Event.Preview_Length);
    end Preview_Text;
 
-   procedure Ensure_Bytes (Result : in out Graphics_Data_Preview) is
-   begin
-      if Result.Bytes = null then
-         Result.Bytes :=
-           new Terminal.Common.Bytes.Byte_Array (1 .. Max_Data_Preview_Length);
-         Result.Bytes.all := (others => 0);
-      end if;
-   end Ensure_Bytes;
-
-   procedure Ensure_Bytes
-     (Result   : in out Graphics_Data_Preview;
-      Capacity : Natural)
-   is
-      Actual : constant Natural :=
-        Natural'Min (Natural'Max (Capacity, 1), Max_Data_Preview_Length);
-   begin
-      if Result.Bytes = null then
-         Result.Bytes :=
-           new Terminal.Common.Bytes.Byte_Array (1 .. Actual);
-         Result.Bytes.all := (others => 0);
-      elsif Result.Bytes'Length < Actual then
-         Free_Image_Data (Result.Bytes);
-         Result.Bytes :=
-           new Terminal.Common.Bytes.Byte_Array (1 .. Actual);
-         Result.Bytes.all := (others => 0);
-      end if;
-   end Ensure_Bytes;
-
-   procedure Reset_Bytes (Result : in out Graphics_Data_Preview) is
-   begin
-      if Result.Bytes /= null then
-         Result.Bytes.all := (others => 0);
-      end if;
-   end Reset_Bytes;
-
    procedure Release (Data : in out Graphics_Data_Preview) is
    begin
-      if Data.Bytes /= null then
-         Free_Image_Data (Data.Bytes);
-         Data.Bytes := null;
-      end if;
-      Data.Decoded_Length := 0;
-      Data.Decoded_Row_Stride_Bytes := 0;
+      Preview_Storage.Release (Data);
    end Release;
+
+   function Has_Bytes (Data : Graphics_Data_Preview) return Boolean is
+     (Preview_Storage.Has_Bytes (Data));
+
+   function Byte_At
+     (Data : Graphics_Data_Preview;
+      Offset : Positive) return Terminal.Common.Bytes.Byte is
+     (Preview_Storage.Byte_At (Data, Offset));
+
+   procedure Read_Bytes
+     (Data    : Graphics_Data_Preview;
+      Process : not null access procedure
+        (Bytes : Terminal.Common.Bytes.Byte_Array)) is
+   begin
+      Preview_Storage.Read_Bytes (Data, Process);
+   end Read_Bytes;
+
+   function Header_Recognized (Data : Graphics_Data_Preview) return Boolean is
+     (Preview_Storage.Header_Recognized (Data));
+
+   function Has_Data (Data : Graphics_Data_Preview) return Boolean is
+     (Preview_Storage.Has_Data (Data));
+
+   function Encoded_Length (Data : Graphics_Data_Preview) return Natural is
+     (Preview_Storage.Encoded_Length (Data));
+
+   function Raw_Format (Data : Graphics_Data_Preview) return Natural is
+     (Preview_Storage.Raw_Format (Data));
+
+   function Pixel_Width (Data : Graphics_Data_Preview) return Natural is
+     (Preview_Storage.Pixel_Width (Data));
+
+   function Pixel_Height (Data : Graphics_Data_Preview) return Natural is
+     (Preview_Storage.Pixel_Height (Data));
+
+   function Decoded_Length
+     (Data : Graphics_Data_Preview) return Data_Preview_Length_Range is
+     (Preview_Storage.Decoded_Length (Data));
+
+   function Decoded_Row_Stride_Bytes
+     (Data : Graphics_Data_Preview) return Natural is
+     (Preview_Storage.Decoded_Row_Stride_Bytes (Data));
+
+   function Decode_Complete (Data : Graphics_Data_Preview) return Boolean is
+     (Preview_Storage.Decode_Complete (Data));
+
+   function Decode_Status
+     (Data : Graphics_Data_Preview) return Data_Decode_Status is
+     (Preview_Storage.Decode_Status (Data));
+
+   function Metadata_Preview
+     (Header_Recognized : Boolean;
+      Has_Data          : Boolean;
+      Raw_Format        : Natural;
+      Pixel_Width       : Natural;
+      Pixel_Height      : Natural) return Graphics_Data_Preview
+   is
+   begin
+      return Preview_Storage.Metadata_Preview
+        (Header_Recognized, Has_Data, Raw_Format, Pixel_Width, Pixel_Height);
+   end Metadata_Preview;
+
+   procedure Set_Decode_Failure
+     (Data   : in out Graphics_Data_Preview;
+      Status : Data_Decode_Status) is
+   begin
+      Preview_Storage.Set_Decode_Failure (Data, Status);
+   end Set_Decode_Failure;
+
+   procedure Record_External_Decode
+     (Data                     : in out Graphics_Data_Preview;
+      Encoded_Length           : Natural;
+      Raw_Format               : Natural;
+      Pixel_Width              : Natural;
+      Pixel_Height             : Natural;
+      Decoded_Length           : Data_Preview_Length_Range;
+      Decoded_Row_Stride_Bytes : Natural;
+      Status                   : Data_Decode_Status)
+   is
+   begin
+      Preview_Storage.Set_Decode_Metadata
+        (Data,
+         Decoded_Length > 0,
+         Encoded_Length,
+         Raw_Format,
+         Pixel_Width,
+         Pixel_Height,
+         Decoded_Length,
+         Decoded_Row_Stride_Bytes,
+         Status,
+         Status = Decode_Ok);
+   end Record_External_Decode;
+
+   procedure Adopt_Bytes
+     (Data  : in out Graphics_Data_Preview;
+      Bytes : in out Terminal.App.Owned_Image_Data.Owner)
+   is
+   begin
+      Preview_Storage.Adopt_Bytes (Data, Bytes);
+   end Adopt_Bytes;
+
+   procedure Take_Bytes
+     (Data  : in out Graphics_Data_Preview;
+      Bytes : in out Terminal.App.Owned_Image_Data.Owner)
+   is
+   begin
+      if not Terminal.App.Owned_Image_Data.Is_Empty (Bytes) then
+         raise Program_Error with "graphics byte target is already populated";
+      end if;
+      Preview_Storage.Take_Bytes (Data, Bytes);
+   end Take_Bytes;
 
    overriding procedure Finalize (Data : in out Graphics_Data_Preview) is
    begin
       Release (Data);
    exception
-      when others =>
+      when E : others =>
          Terminal.App.Cleanup_Diagnostics.Note_Failure
-           (Terminal.App.Cleanup_Diagnostics.Media_Decoder);
+           (Terminal.App.Cleanup_Diagnostics.Media_Decoder,
+            E,
+            "finalize graphics preview");
    end Finalize;
 
    procedure Move
@@ -141,169 +170,60 @@ package body Terminal.App.Graphics is
       Target : in out Graphics_Data_Preview)
    is
    begin
-      Release (Target);
-      Target.Header_Recognized := Source.Header_Recognized;
-      Target.Has_Data := Source.Has_Data;
-      Target.Encoded_Length := Source.Encoded_Length;
-      Target.Raw_Format := Source.Raw_Format;
-      Target.Pixel_Width := Source.Pixel_Width;
-      Target.Pixel_Height := Source.Pixel_Height;
-      Target.Decoded_Length := Source.Decoded_Length;
-      Target.Decoded_Row_Stride_Bytes := Source.Decoded_Row_Stride_Bytes;
-      Target.Decode_Complete := Source.Decode_Complete;
-      Target.Decode_Status := Source.Decode_Status;
-      Target.Bytes := Source.Bytes;
-      Source.Bytes := null;
-      Source.Decoded_Length := 0;
-      Source.Decoded_Row_Stride_Bytes := 0;
+      Preview_Storage.Move (Source, Target);
    end Move;
 
    function Take
      (Data : in out Graphics_Data_Preview) return Graphics_Data_Preview
    is
    begin
-      return Result : Graphics_Data_Preview :=
-        (Ada.Finalization.Limited_Controlled with
-         Header_Recognized => Data.Header_Recognized,
-         Has_Data => Data.Has_Data,
-         Encoded_Length => Data.Encoded_Length,
-         Raw_Format => Data.Raw_Format,
-         Pixel_Width => Data.Pixel_Width,
-         Pixel_Height => Data.Pixel_Height,
-         Decoded_Length => Data.Decoded_Length,
-         Decoded_Row_Stride_Bytes => Data.Decoded_Row_Stride_Bytes,
-         Decode_Complete => Data.Decode_Complete,
-         Decode_Status => Data.Decode_Status,
-         Bytes => Data.Bytes)
+      return Result : Graphics_Data_Preview
       do
-         Data.Bytes := null;
-         Data.Decoded_Length := 0;
-         Data.Decoded_Row_Stride_Bytes := 0;
+         Move (Data, Result);
       end return;
    end Take;
 
    function Parse_Natural (Text : String) return Natural is
       Value : Natural := 0;
    begin
-      if Text'Length = 0 then
+      if not Terminal.App.Number_Parsing.Try_Natural (Text, Value) then
          return 0;
       end if;
-
-      for Ch of Text loop
-         if Ch not in '0' .. '9' then
-            return 0;
-         end if;
-         declare
-            Digit : constant Natural :=
-              Character'Pos (Ch) - Character'Pos ('0');
-         begin
-            if Value > (Natural'Last - Digit) / 10 then
-               return 0;
-            end if;
-            Value := Value * 10 + Digit;
-         end;
-      end loop;
       return Value;
    end Parse_Natural;
 
    function Valid_Natural_Text (Text : String) return Boolean is
-      Value : Natural := 0;
+      Value : Natural;
    begin
-      if Text'Length = 0 then
-         return False;
-      end if;
-      for Ch of Text loop
-         if Ch not in '0' .. '9' then
-            return False;
-         end if;
-         declare
-            Digit : constant Natural :=
-              Character'Pos (Ch) - Character'Pos ('0');
-         begin
-            if Value > (Natural'Last - Digit) / 10 then
-               return False;
-            end if;
-            Value := Value * 10 + Digit;
-         end;
-      end loop;
-      return True;
+      return Terminal.App.Number_Parsing.Try_Natural (Text, Value);
    end Valid_Natural_Text;
 
    function Parse_Graphics_ID
      (Text : String) return Terminal.Core.Graphics_ID
    is
-      Value : Long_Long_Integer := 0;
-      Limit : constant Long_Long_Integer :=
-        Long_Long_Integer (Terminal.Core.Graphics_ID'Last);
+      Value : Terminal.Core.Graphics_ID := 0;
    begin
-      if Text'Length = 0 then
+      if not Terminal.App.Number_Parsing.Try_Graphics_ID (Text, Value) then
          return 0;
       end if;
-
-      for Ch of Text loop
-         if Ch not in '0' .. '9' then
-            return 0;
-         end if;
-         declare
-            Digit : constant Long_Long_Integer :=
-              Long_Long_Integer
-                (Character'Pos (Ch) - Character'Pos ('0'));
-         begin
-            if Value > (Limit - Digit) / 10 then
-               return 0;
-            end if;
-            Value := Value * 10 + Digit;
-         end;
-      end loop;
-      return Terminal.Core.Graphics_ID (Value);
+      return Value;
    end Parse_Graphics_ID;
 
-   function Parse_Integer (Text : String) return Integer is
-      Negative : Boolean := False;
-      First    : Natural := Text'First;
-      Value    : Long_Long_Integer := 0;
-      Limit    : Long_Long_Integer := Long_Long_Integer (Integer'Last);
+   function Try_Parse_Integer
+     (Text   : String;
+      Result : out Integer) return Boolean
+   is
    begin
-      if Text'Length = 0 then
-         return 0;
-      end if;
+      return Terminal.App.Number_Parsing.Try_Integer (Text, Result);
+   end Try_Parse_Integer;
 
-      if Text (First) = '-' then
-         Negative := True;
-         First := First + 1;
-         Limit := -Long_Long_Integer (Integer'First);
-      elsif Text (First) = '+' then
-         First := First + 1;
-      end if;
-
-      if First > Text'Last then
-         return 0;
-      end if;
-
-      for I in First .. Text'Last loop
-         if Text (I) not in '0' .. '9' then
-            return 0;
-         end if;
-         declare
-            Digit : constant Long_Long_Integer :=
-              Long_Long_Integer
-                (Character'Pos (Text (I)) - Character'Pos ('0'));
-         begin
-            if Value > (Limit - Digit) / 10 then
-               return 0;
-            end if;
-            Value := Value * 10 + Digit;
-         end;
-      end loop;
-
-      if Negative then
-         if Value = Limit then
-            return Integer'First;
-         else
-            return Integer (-Value);
-         end if;
+   function Parse_Integer (Text : String) return Integer is
+      Result : Integer := 0;
+   begin
+      if Try_Parse_Integer (Text, Result) then
+         return Result;
       else
-         return Integer (Value);
+         return 0;
       end if;
    end Parse_Integer;
 
@@ -322,358 +242,6 @@ package body Terminal.App.Graphics is
       end if;
    end Clamp_Positive;
 
-   function Raw_Bytes_Per_Pixel (Raw_Format : Natural) return Natural is
-   begin
-      if Raw_Format = 8 then
-         return 1;
-      elsif Raw_Format = 16 then
-         return 2;
-      elsif Raw_Format = 24 then
-         return 3;
-      elsif Raw_Format = 32 then
-         return 4;
-      else
-         return 0;
-      end if;
-   end Raw_Bytes_Per_Pixel;
-
-   function Raw_Row_Stride
-     (Raw_Format  : Natural;
-      Pixel_Width : Natural) return Natural
-   is
-      Bytes_Per_Pixel : constant Natural := Raw_Bytes_Per_Pixel (Raw_Format);
-   begin
-      if Bytes_Per_Pixel = 0
-        or else Pixel_Width = 0
-        or else Pixel_Width > Natural'Last / Bytes_Per_Pixel
-      then
-         return 0;
-      end if;
-
-      return Pixel_Width * Bytes_Per_Pixel;
-   end Raw_Row_Stride;
-
-   function Raw_Decoded_Length
-     (Raw_Format   : Natural;
-      Pixel_Width  : Natural;
-      Pixel_Height : Natural) return Natural
-   is
-      Row_Stride : constant Natural := Raw_Row_Stride (Raw_Format, Pixel_Width);
-   begin
-      if Row_Stride = 0
-        or else Pixel_Height = 0
-        or else Pixel_Height > Max_Data_Preview_Length / Row_Stride
-      then
-         return 0;
-      end if;
-
-      return Pixel_Height * Row_Stride;
-   end Raw_Decoded_Length;
-
-   function RGBA_Decoded_Length
-     (Pixel_Width  : Natural;
-      Pixel_Height : Natural) return Natural is
-   begin
-      return Raw_Decoded_Length (32, Pixel_Width, Pixel_Height);
-   end RGBA_Decoded_Length;
-
-   function Is_JPEG
-     (Data   : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural) return Boolean is
-   begin
-      return Length >= 2
-        and then Data'Length >= 2
-        and then Data (Data'First) = 16#FF#
-        and then Data (Data'First + 1) = 16#D8#;
-   end Is_JPEG;
-
-   type Sixel_Info is record
-      Width  : Natural := 0;
-      Height : Natural := 0;
-      Logical_Height : Natural := 0;
-      Vertical_Aspect : Positive := 1;
-      Transparent : Boolean := False;
-   end record;
-
-   type PNG_Info is record
-      Width  : Natural := 0;
-      Height : Natural := 0;
-      Color_Type : Natural := 0;
-   end record;
-
-   subtype Sixel_Palette is Sixel_Palette_State;
-   type PNG_Palette is array (Natural range 0 .. 255) of Sixel_Color;
-
-   function Byte_From_Percent (Value : Natural) return Terminal.Common.Bytes.Byte
-   is
-      Clamped : constant Natural := Natural'Min (Value, 100);
-   begin
-      return Terminal.Common.Bytes.Byte ((Clamped * 255 + 50) / 100);
-   end Byte_From_Percent;
-
-   function Sixel_HLS_Color
-     (Hue, Lightness, Saturation : Natural) return Sixel_Color
-   is
-      --  DEC's HLS wheel starts at blue: 0=blue, 120=red, 240=green.
-      H : constant Float :=
-        Float ((Natural'Min (Hue, 360) + 240) mod 360) / 360.0;
-      L : constant Float := Float (Natural'Min (Lightness, 100)) / 100.0;
-      S : constant Float := Float (Natural'Min (Saturation, 100)) / 100.0;
-      M2 : constant Float :=
-        (if L <= 0.5 then L * (1.0 + S) else L + S - L * S);
-      M1 : constant Float := 2.0 * L - M2;
-
-      function Hue_Value (Input : Float) return Terminal.Common.Bytes.Byte is
-         T : Float := Input;
-         Value : Float;
-      begin
-         while T < 0.0 loop
-            T := T + 1.0;
-         end loop;
-         while T > 1.0 loop
-            T := T - 1.0;
-         end loop;
-         if S = 0.0 then
-            Value := L;
-         elsif 6.0 * T < 1.0 then
-            Value := M1 + (M2 - M1) * 6.0 * T;
-         elsif 2.0 * T < 1.0 then
-            Value := M2;
-         elsif 3.0 * T < 2.0 then
-            Value := M1 + (M2 - M1) * (2.0 / 3.0 - T) * 6.0;
-         else
-            Value := M1;
-         end if;
-         return Terminal.Common.Bytes.Byte
-           (Natural'Min (255, Natural (Float'Rounding (Value * 255.0))));
-      end Hue_Value;
-   begin
-      return
-        (R => Hue_Value (H + 1.0 / 3.0),
-         G => Hue_Value (H),
-         B => Hue_Value (H - 1.0 / 3.0),
-         A => 16#FF#);
-   end Sixel_HLS_Color;
-
-   function U32_BE
-     (Bytes : Terminal.Common.Bytes.Byte_Array;
-      First : Positive) return Natural
-   is
-      use type Terminal.Common.Bytes.Byte;
-   begin
-      if First + 3 > Bytes'Last then
-         return 0;
-      end if;
-      return Natural (Bytes (First)) * 16#1000000#
-        + Natural (Bytes (First + 1)) * 16#10000#
-        + Natural (Bytes (First + 2)) * 16#100#
-        + Natural (Bytes (First + 3));
-   end U32_BE;
-
-   function Paeth (A, B, C : Natural) return Natural is
-      P  : constant Integer := Integer (A) + Integer (B) - Integer (C);
-      PA : constant Natural := Natural (abs (P - Integer (A)));
-      PB : constant Natural := Natural (abs (P - Integer (B)));
-      PC : constant Natural := Natural (abs (P - Integer (C)));
-   begin
-      if PA <= PB and then PA <= PC then
-         return A;
-      elsif PB <= PC then
-         return B;
-      else
-         return C;
-      end if;
-   end Paeth;
-
-   function PNG_Bit_Depth_Allowed
-     (Color_Type : Natural;
-      Bit_Depth  : Natural) return Boolean is
-   begin
-      case Color_Type is
-         when 0 =>
-            return Bit_Depth = 1
-              or else Bit_Depth = 2
-              or else Bit_Depth = 4
-              or else Bit_Depth = 8
-              or else Bit_Depth = 16;
-         when 2 | 4 | 6 =>
-            return Bit_Depth = 8 or else Bit_Depth = 16;
-         when 3 =>
-            return Bit_Depth = 1
-              or else Bit_Depth = 2
-              or else Bit_Depth = 4
-              or else Bit_Depth = 8;
-         when others =>
-            return False;
-      end case;
-   end PNG_Bit_Depth_Allowed;
-
-   function PNG_Bits_Per_Pixel
-     (Color_Type : Natural;
-      Bit_Depth  : Natural) return Natural is
-   begin
-      case Color_Type is
-         when 0 | 3 =>
-            return Bit_Depth;
-         when 2 =>
-            return Bit_Depth * 3;
-         when 4 =>
-            return Bit_Depth * 2;
-         when others =>
-            return Bit_Depth * 4;
-      end case;
-   end PNG_Bits_Per_Pixel;
-
-   function PNG_Filter_BPP
-     (Color_Type : Natural;
-      Bit_Depth  : Natural) return Natural is
-      Bits : constant Natural := PNG_Bits_Per_Pixel (Color_Type, Bit_Depth);
-   begin
-      return Natural'Max (1, (Bits + 7) / 8);
-   end PNG_Filter_BPP;
-
-   function PNG_Row_Bytes
-     (Width      : Natural;
-      Color_Type : Natural;
-      Bit_Depth  : Natural) return Natural
-   is
-      Bits_Per_Pixel : constant Natural :=
-        PNG_Bits_Per_Pixel (Color_Type, Bit_Depth);
-   begin
-      if Bits_Per_Pixel = 0
-        or else Width > (Natural'Last - 7) / Bits_Per_Pixel
-      then
-         return 0;
-      end if;
-
-      return (Width * Bits_Per_Pixel + 7) / 8;
-   end PNG_Row_Bytes;
-
-   function PNG_Pass_Size
-     (Full_Size : Natural;
-      Start     : Natural;
-      Step      : Natural) return Natural is
-   begin
-      if Full_Size <= Start then
-         return 0;
-      end if;
-      return (Full_Size - Start + Step - 1) / Step;
-   end PNG_Pass_Size;
-
-   function PNG_Inflated_Length
-     (Width      : Natural;
-      Height     : Natural;
-      Color_Type : Natural;
-      Bit_Depth  : Natural;
-      Interlace  : Natural) return Natural
-   is
-      function Pass_Bytes
-        (X_Start : Natural;
-         Y_Start : Natural;
-         X_Step  : Natural;
-         Y_Step  : Natural) return Natural
-      is
-         Pass_Width : constant Natural :=
-           PNG_Pass_Size (Width, X_Start, X_Step);
-         Pass_Height : constant Natural :=
-           PNG_Pass_Size (Height, Y_Start, Y_Step);
-      begin
-         if Pass_Width = 0 or else Pass_Height = 0 then
-            return 0;
-         end if;
-
-         declare
-            Row_Length : constant Natural :=
-              PNG_Row_Bytes (Pass_Width, Color_Type, Bit_Depth);
-         begin
-            if Row_Length = 0
-              or else Row_Length = Natural'Last
-              or else Pass_Height > Natural'Last / (Row_Length + 1)
-            then
-               return 0;
-            end if;
-
-            return (Row_Length + 1) * Pass_Height;
-         end;
-      end Pass_Bytes;
-   begin
-      if Interlace = 0 then
-         declare
-            Row_Length : constant Natural :=
-              PNG_Row_Bytes (Width, Color_Type, Bit_Depth);
-         begin
-            if Row_Length = 0
-              or else Row_Length = Natural'Last
-              or else Height > Natural'Last / (Row_Length + 1)
-            then
-               return 0;
-            end if;
-
-            return (Row_Length + 1) * Height;
-         end;
-      end if;
-
-      declare
-         Total : Natural := 0;
-         Overflow : Boolean := False;
-
-         procedure Add_Pass (Value : Natural) is
-         begin
-            if Overflow or else Value = 0 then
-               null;
-            elsif Total > Natural'Last - Value then
-               Overflow := True;
-            else
-               Total := Total + Value;
-            end if;
-         end Add_Pass;
-      begin
-         Add_Pass (Pass_Bytes (0, 0, 8, 8));
-         Add_Pass (Pass_Bytes (4, 0, 8, 8));
-         Add_Pass (Pass_Bytes (0, 4, 4, 8));
-         Add_Pass (Pass_Bytes (2, 0, 4, 4));
-         Add_Pass (Pass_Bytes (0, 2, 2, 4));
-         Add_Pass (Pass_Bytes (1, 0, 2, 2));
-         Add_Pass (Pass_Bytes (0, 1, 1, 2));
-         return (if Overflow then 0 else Total);
-      end;
-   end PNG_Inflated_Length;
-
-   function PNG_Packed_Sample
-     (Row          : Terminal.Common.Bytes.Byte_Array;
-      Bit_Depth    : Natural;
-      Sample_Index : Natural) return Natural
-   is
-      Bit_Offset : constant Natural := Sample_Index * Bit_Depth;
-      Byte_Index : constant Positive := Row'First + Bit_Offset / 8;
-      Shift      : constant Natural := 8 - Bit_Depth - (Bit_Offset mod 8);
-      Mask       : constant Natural := 2 ** Bit_Depth - 1;
-   begin
-      return (Natural (Row (Byte_Index)) / (2 ** Shift)) mod (Mask + 1);
-   end PNG_Packed_Sample;
-
-   function PNG_Sample_16
-     (Row   : Terminal.Common.Bytes.Byte_Array;
-      First : Positive) return Natural is
-   begin
-      return Natural (Row (First)) * 256 + Natural (Row (First + 1));
-   end PNG_Sample_16;
-
-   function PNG_Scale_Sample
-     (Value     : Natural;
-      Bit_Depth : Natural) return Natural
-   is
-      Max_Value : constant Natural := 2 ** Bit_Depth - 1;
-   begin
-      if Bit_Depth = 8 then
-         return Value;
-      elsif Bit_Depth = 16 then
-         return (Value * 255 + 32767) / 65535;
-      else
-         return (Value * 255 + Max_Value / 2) / Max_Value;
-      end if;
-   end PNG_Scale_Sample;
-
    function Default_Sixel_Palette return Sixel_Palette_State is
       Palette : Sixel_Palette_State :=
         (others => (R => 16#FF#, G => 16#FF#, B => 16#FF#, A => 16#FF#));
@@ -686,617 +254,8 @@ package body Terminal.App.Graphics is
       return Palette;
    end Default_Sixel_Palette;
 
-   procedure Skip_Sixel_Number
-     (Text  : String;
-      Index : in out Natural)
-   is
-   begin
-      while Index <= Text'Last and then Text (Index) in '0' .. '9' loop
-         Index := Index + 1;
-      end loop;
-   end Skip_Sixel_Number;
-
-   function Read_Sixel_Number
-     (Text  : String;
-      Index : in out Natural) return Natural
-   is
-      Value : Natural := 0;
-      Seen  : Boolean := False;
-   begin
-      while Index <= Text'Last and then Text (Index) in '0' .. '9' loop
-         Seen := True;
-         declare
-            Digit : constant Natural :=
-              Character'Pos (Text (Index)) - Character'Pos ('0');
-         begin
-            if Value > (Natural'Last - Digit) / 10 then
-               Value := Natural'Last;
-            elsif Value < Natural'Last then
-               Value := Value * 10 + Digit;
-            end if;
-         end;
-         Index := Index + 1;
-      end loop;
-
-      return (if Seen then Value else 0);
-   end Read_Sixel_Number;
-
-   function Analyze_Sixel (Text : String) return Sixel_Info is
-      I : Natural := Text'First;
-      X : Natural := 0;
-      Y : Natural := 0;
-      Max_X : Natural := 0;
-      Max_Y : Natural := 0;
-      Repeat_Count : Natural := 1;
-      Declared_Width : Natural := 0;
-      Declared_Height : Natural := 0;
-      Vertical_Aspect : Positive := 1;
-      Transparent : Boolean := False;
-
-      procedure Add_X (Amount : Natural) is
-      begin
-         if X > Natural'Last - Amount then
-            X := Natural'Last;
-         else
-            X := X + Amount;
-         end if;
-      end Add_X;
-   begin
-      while I <= Text'Last and then Text (I) /= 'q' loop
-         I := I + 1;
-      end loop;
-      if I > Text'Last then
-         return
-           (Width => 0,
-            Height => 0,
-            Logical_Height => 0,
-            Vertical_Aspect => 1,
-            Transparent => False);
-      end if;
-
-      --  The second DCS parameter is the background mode.  Value one means
-      --  that unset pixels are transparent; zero and two erase to register 0.
-      declare
-         J : Natural := Text'First;
-         Aspect_Code : Natural := 0;
-      begin
-         if J < I and then Text (J) in '0' .. '9' then
-            Aspect_Code := Read_Sixel_Number (Text, J);
-            Vertical_Aspect :=
-              (case Aspect_Code is
-                  when 0 | 1 | 5 | 6 => 2,
-                  when 2 => 5,
-                  when 3 | 4 => 3,
-                  when others => 1);
-         end if;
-      end;
-
-      declare
-         J : Natural := Text'First;
-         Parameter : Natural := 1;
-      begin
-         while J < I loop
-            if Text (J) = ';' then
-               Parameter := Parameter + 1;
-               J := J + 1;
-            elsif Parameter = 2 then
-               Transparent := Read_Sixel_Number (Text, J) = 1;
-               exit;
-            else
-               Skip_Sixel_Number (Text, J);
-            end if;
-         end loop;
-      end;
-
-      I := I + 1;
-      while I <= Text'Last loop
-         case Text (I) is
-            when '!' =>
-               I := I + 1;
-               Repeat_Count := Natural'Max (Read_Sixel_Number (Text, I), 1);
-            when '#' =>
-               I := I + 1;
-               Skip_Sixel_Number (Text, I);
-               while I <= Text'Last and then Text (I) = ';' loop
-                  I := I + 1;
-                  Skip_Sixel_Number (Text, I);
-               end loop;
-            when '"' =>
-               I := I + 1;
-               --  Pan and Pad describe pixel aspect.  Ph and Pv declare a
-               --  minimum canvas but never clip following sixel data.
-               declare
-                  Pan : constant Natural := Read_Sixel_Number (Text, I);
-                  Pad : Natural := 0;
-               begin
-                  if I <= Text'Last and then Text (I) = ';' then
-                     I := I + 1;
-                     Pad := Read_Sixel_Number (Text, I);
-                  end if;
-                  if Pan > 0 and then Pad > 0 then
-                     declare
-                        Ratio : constant Natural :=
-                          Pan / Pad + (if Pan mod Pad = 0 then 0 else 1);
-                     begin
-                        Vertical_Aspect :=
-                          Positive (Natural'Max (Ratio, 1));
-                     end;
-                  end if;
-               end;
-               if I <= Text'Last and then Text (I) = ';' then
-                  I := I + 1;
-                  Declared_Width := Read_Sixel_Number (Text, I);
-               end if;
-               if I <= Text'Last and then Text (I) = ';' then
-                  I := I + 1;
-                  Declared_Height := Read_Sixel_Number (Text, I);
-               end if;
-            when '$' =>
-               X := 0;
-               I := I + 1;
-            when '-' =>
-               X := 0;
-               if Y > Natural'Last - 6 then
-                  Y := Natural'Last;
-               else
-                  Y := Y + 6;
-               end if;
-               Max_Y := Natural'Max (Max_Y, Y);
-               I := I + 1;
-            when '?' .. '~' =>
-               declare
-                  Bits : constant Natural := Character'Pos (Text (I)) - 63;
-               begin
-                  pragma Unreferenced (Bits);
-                  if Y <= Natural'Last - 6 then
-                     Max_Y := Natural'Max (Max_Y, Y + 6);
-                  else
-                     Max_Y := Natural'Last;
-                  end if;
-                  Add_X (Repeat_Count);
-                  Max_X := Natural'Max (Max_X, X);
-                  Repeat_Count := 1;
-                  I := I + 1;
-               end;
-            when others =>
-               Repeat_Count := 1;
-               I := I + 1;
-         end case;
-      end loop;
-
-      Max_X := Natural'Max (Max_X, Declared_Width);
-      Max_Y := Natural'Max (Max_Y, Declared_Height);
-      if Max_X = 0 or else Max_Y = 0 then
-         return
-           (Width => 0,
-            Height => 0,
-            Logical_Height => 0,
-            Vertical_Aspect => Vertical_Aspect,
-            Transparent => Transparent);
-      end if;
-      if Max_Y > Natural'Last / Vertical_Aspect then
-         return
-           (Width => Max_X,
-            Height => Natural'Last,
-            Logical_Height => Max_Y,
-            Vertical_Aspect => Vertical_Aspect,
-            Transparent => Transparent);
-      end if;
-      return
-        (Width => Max_X,
-         Height => Max_Y * Vertical_Aspect,
-         Logical_Height => Max_Y,
-         Vertical_Aspect => Vertical_Aspect,
-         Transparent => Transparent);
-   end Analyze_Sixel;
-
-   procedure Decode_Sixel_Rows
-     (Text   : String;
-      Row_Sink : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Palette : in out Sixel_Palette_State;
-      Reset_Palette : Boolean;
-      Result : in out Graphics_Data_Preview;
-      Maximum_Decoded_Bytes : Positive := Max_Data_Preview_Length;
-      Maximum_Pixel_Dimension : Positive := Max_Sixel_Pixel_Dimension)
-   is separate;
-
-   procedure Decode_Sixel_Rows
-     (Text   : String;
-      Row_Sink : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result : in out Graphics_Data_Preview;
-      Maximum_Decoded_Bytes : Positive := Max_Data_Preview_Length;
-      Maximum_Pixel_Dimension : Positive := Max_Sixel_Pixel_Dimension)
-   is
-      Palette : Sixel_Palette_State := Default_Sixel_Palette;
-   begin
-      Decode_Sixel_Rows
-        (Text,
-         Row_Sink,
-         Palette,
-         Reset_Palette => False,
-         Result => Result,
-         Maximum_Decoded_Bytes => Maximum_Decoded_Bytes,
-         Maximum_Pixel_Dimension => Maximum_Pixel_Dimension);
-   end Decode_Sixel_Rows;
-
-   procedure Decode_Sixel_Raster
-     (Text   : String;
-      Info   : Sixel_Info;
-      Result : in out Graphics_Data_Preview)
-   is
-      pragma Unreferenced (Info);
-
-      procedure Capture_Row
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean)
-      is
-         Needed : constant Natural :=
-           RGBA_Decoded_Length (Result.Pixel_Width, Result.Pixel_Height);
-         Offset : Natural := 0;
-      begin
-         if Needed = 0
-           or else Row'Length = 0
-           or else Y > (Natural'Last - 1) / Row'Length
-         then
-            Continue := False;
-            return;
-         end if;
-
-         Offset := Y * Row'Length + 1;
-         Ensure_Bytes (Result, Needed);
-         if Offset > Result.Bytes'Last
-           or else Row'Length > Result.Bytes'Last - Offset + 1
-         then
-            Continue := False;
-            return;
-         end if;
-         for I in Row'Range loop
-            Result.Bytes (Offset + I - Row'First) := Row (I);
-         end loop;
-      end Capture_Row;
-   begin
-      Decode_Sixel_Rows (Text, Capture_Row'Access, Result);
-   end Decode_Sixel_Raster;
-
-   procedure Decode_PNG_RGBA_Source_Rows
-     (Length : Natural;
-      PNG_Byte : not null access function
-        (Index : Positive) return Terminal.Common.Bytes.Byte;
-      Row_Sink : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result : in out Graphics_Data_Preview)
-   is separate;
-
-   procedure Decode_PNG_RGBA_Rows
-     (PNG    : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural;
-      Row_Sink : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result : in out Graphics_Data_Preview)
-   is
-      function Source_Byte
-        (Index : Positive) return Terminal.Common.Bytes.Byte
-      is
-      begin
-         if Index > PNG'Last then
-            return 0;
-         end if;
-         return PNG (Index);
-      end Source_Byte;
-   begin
-      Decode_PNG_RGBA_Source_Rows
-        (Length, Source_Byte'Access, Row_Sink, Result);
-   end Decode_PNG_RGBA_Rows;
-
-   procedure Decode_PNG_RGBA
-     (PNG    : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural;
-      Result : in out Graphics_Data_Preview)
-   is
-      procedure Capture_Row
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean)
-      is
-         Needed : constant Natural :=
-           RGBA_Decoded_Length (Result.Pixel_Width, Result.Pixel_Height);
-         Offset : Natural := 0;
-      begin
-         if Needed = 0
-           or else Row'Length = 0
-           or else Y > (Natural'Last - 1) / Row'Length
-         then
-            Continue := False;
-            return;
-         end if;
-
-         Offset := Y * Row'Length + 1;
-         Ensure_Bytes (Result, Needed);
-         if Offset > Result.Bytes'Last
-           or else Row'Length > Result.Bytes'Last - Offset + 1
-         then
-            Continue := False;
-            return;
-         end if;
-         for I in Row'Range loop
-            Result.Bytes (Offset + I - Row'First) := Row (I);
-         end loop;
-      end Capture_Row;
-   begin
-      Decode_PNG_RGBA_Rows (PNG, Length, Capture_Row'Access, Result);
-   end Decode_PNG_RGBA;
-
-   procedure Decode_PNG_RGBA_Data
-     (PNG    : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural;
-      Result : in out Graphics_Data_Preview) is
-   begin
-      Decode_PNG_RGBA (PNG, Length, Result);
-   end Decode_PNG_RGBA_Data;
-
-   procedure Decode_JPEG_RGBA_Data
-     (JPEG   : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural;
-      Result : in out Graphics_Data_Preview;
-      Maximum_Decoded_Bytes : Positive := Max_Data_Preview_Length;
-      Maximum_Pixel_Dimension : Positive := Positive'Last)
-   is
-   begin
-      if Length = 0 or else Length > JPEG'Length then
-         Result.Decode_Status := Decode_Unsupported_Format;
-         Result.Decode_Complete := False;
-         return;
-      elsif not Is_JPEG (JPEG, Length) then
-         Result.Decode_Status := Decode_Unsupported_Format;
-         Result.Decode_Complete := False;
-         return;
-      end if;
-
-      declare
-         Input : Jpeglib.Streams.Byte_Array_Access :=
-           new Jpeglib.Streams.Byte_Array (1 .. Length);
-         Source : aliased Jpeglib.Streams.Memory_Source;
-         Decoder : Jpeglib.Decoding.Decoder;
-         Decoder_Initialized : Boolean := False;
-         Outcome : Jpeglib.Results.Result;
-         Info : Jpeglib.Decoding.Image_Info;
-      begin
-         for I in Input'Range loop
-            Input (I) := Jpeglib.Byte (JPEG (JPEG'First + I - Input'First));
-         end loop;
-
-         Jpeglib.Streams.Open
-           (Source, Jpeglib.Streams.Const_Byte_Array_Access (Input));
-         Jpeglib.Decoding.Initialize
-           (Decoder,
-            Source'Access,
-           (Output_Format => Jpeglib.Images.RGBA_32,
-             Alpha_Fill => 255,
-             others => <>));
-         Decoder_Initialized := True;
-
-         Outcome := Jpeglib.Decoding.Read_Header (Decoder);
-         if not Jpeglib.Results.Succeeded (Outcome) then
-            Result.Decode_Status := Decode_Invalid_Byte;
-            Result.Decode_Complete := False;
-            Jpeglib.Decoding.Finalize (Decoder);
-            Decoder_Initialized := False;
-            Free_JPEG_Data (Input);
-            return;
-         end if;
-
-         Info := Jpeglib.Decoding.Header (Decoder);
-         if Natural (Info.Width) = 0
-           or else Natural (Info.Height) = 0
-           or else Natural (Info.Width) > Maximum_Pixel_Dimension
-           or else Natural (Info.Height) > Maximum_Pixel_Dimension
-           or else RGBA_Decoded_Length
-             (Natural (Info.Width), Natural (Info.Height)) = 0
-           or else RGBA_Decoded_Length
-             (Natural (Info.Width), Natural (Info.Height)) >
-               Maximum_Decoded_Bytes
-         then
-            Result.Decode_Status := Decode_Preview_Truncated;
-            Result.Decode_Complete := False;
-            Result.Decoded_Length := Max_Data_Preview_Length;
-            Jpeglib.Decoding.Finalize (Decoder);
-            Decoder_Initialized := False;
-            Free_JPEG_Data (Input);
-            return;
-         end if;
-
-         declare
-            Width : constant Natural := Natural (Info.Width);
-            Height : constant Natural := Natural (Info.Height);
-            RGBA_Bytes : constant Natural :=
-              RGBA_Decoded_Length (Width, Height);
-            Output : Jpeglib.Streams.Byte_Array_Access :=
-              new Jpeglib.Streams.Byte_Array (1 .. RGBA_Bytes);
-            View : Jpeglib.Images.Mutable_Image_View :=
-              (Descriptor =>
-                 (Width => Info.Width,
-                  Height => Info.Height,
-                  Format => Jpeglib.Images.RGBA_32,
-                  Stride => Jpeglib.Row_Stride (Width * 4),
-                  Accessible_Bytes => Jpeglib.Byte_Count (RGBA_Bytes)),
-               Storage => Output);
-         begin
-            Output.all := (others => 0);
-            Outcome := Jpeglib.Decoding.Decode_Image (Decoder, View);
-            if not Jpeglib.Results.Succeeded (Outcome) then
-               Result.Decode_Status := Decode_Invalid_Byte;
-               Result.Decode_Complete := False;
-               Free_JPEG_Data (Output);
-               Jpeglib.Decoding.Finalize (Decoder);
-               Decoder_Initialized := False;
-               Free_JPEG_Data (Input);
-               return;
-            end if;
-
-            Ensure_Bytes (Result, RGBA_Bytes);
-            for I in 1 .. RGBA_Bytes loop
-               Result.Bytes (I) := Terminal.Common.Bytes.Byte (Output (I));
-            end loop;
-            Free_JPEG_Data (Output);
-
-            Result.Raw_Format := 32;
-            Result.Pixel_Width := Width;
-            Result.Pixel_Height := Height;
-            Result.Decoded_Row_Stride_Bytes := Width * 4;
-            Result.Decoded_Length := RGBA_Bytes;
-            Result.Decode_Complete := True;
-            Result.Decode_Status := Decode_Ok;
-         exception
-            when others =>
-               if Output /= null then
-                  Free_JPEG_Data (Output);
-               end if;
-               raise;
-         end;
-
-         Jpeglib.Decoding.Finalize (Decoder);
-         Decoder_Initialized := False;
-         Free_JPEG_Data (Input);
-      exception
-         when Storage_Error =>
-            Result.Decode_Status := Decode_Allocation_Failed;
-            Result.Decode_Complete := False;
-            if Decoder_Initialized then
-               Jpeglib.Decoding.Finalize (Decoder);
-            end if;
-            if Input /= null then
-               Free_JPEG_Data (Input);
-            end if;
-         when Constraint_Error =>
-            Result.Decode_Status := Decode_Preview_Truncated;
-            Result.Decode_Complete := False;
-            Result.Decoded_Length := Max_Data_Preview_Length;
-            if Decoder_Initialized then
-               Jpeglib.Decoding.Finalize (Decoder);
-            end if;
-            if Input /= null then
-               Free_JPEG_Data (Input);
-            end if;
-         when others =>
-            if Decoder_Initialized then
-               Jpeglib.Decoding.Finalize (Decoder);
-            end if;
-            if Input /= null then
-               Free_JPEG_Data (Input);
-            end if;
-            raise;
-      end;
-   end Decode_JPEG_RGBA_Data;
-
-   procedure Decode_Image_RGBA_Data
-     (Data   : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural;
-      Result : in out Graphics_Data_Preview)
-   is
-   begin
-      Decode_PNG_RGBA (Data, Length, Result);
-      if Result.Decode_Status = Decode_Unsupported_Format then
-         Result.Decoded_Length := 0;
-         Result.Decoded_Row_Stride_Bytes := 0;
-         Result.Raw_Format := 0;
-         Result.Pixel_Width := 0;
-         Result.Pixel_Height := 0;
-         Decode_JPEG_RGBA_Data (Data, Length, Result);
-      end if;
-      if Result.Decode_Status = Decode_Unsupported_Format
-        and then Terminal.App.Image_Media.Available
-      then
-         declare
-            Media : Terminal.App.Image_Media.Decoded_Image;
-            Media_Status : Terminal.App.Image_Media.Decode_Status;
-         begin
-            Terminal.App.Image_Media.Decode
-              (Data,
-               Length,
-               Max_Data_Preview_Length,
-               Max_Sixel_Pixel_Dimension,
-               Media,
-               Media_Status);
-            if Media_Status = Terminal.App.Image_Media.Decode_Ok
-              and then Media.Bytes /= null
-              and then Media.Frame_Bytes > 0
-            then
-               Release (Result);
-               Result.Header_Recognized := True;
-               Result.Has_Data := True;
-               Result.Encoded_Length := 0;
-               Result.Raw_Format := 32;
-               Result.Pixel_Width := Media.Pixel_Width;
-               Result.Pixel_Height := Media.Pixel_Height;
-               Result.Decoded_Length := Media.Frame_Bytes;
-               Result.Decoded_Row_Stride_Bytes := Media.Pixel_Width * 4;
-               Result.Decode_Complete := True;
-               Result.Decode_Status := Decode_Ok;
-               Result.Bytes :=
-                 new Terminal.Common.Bytes.Byte_Array (1 .. Media.Frame_Bytes);
-               Result.Bytes.all :=
-                 Media.Bytes
-                   (Media.Bytes'First
-                    .. Media.Bytes'First + Media.Frame_Bytes - 1);
-            else
-               Result.Decode_Status :=
-                 (if Media_Status = Terminal.App.Image_Media.Decode_Ok
-                  then Decode_Invalid_Data
-                  else Media_Status);
-            end if;
-            Terminal.App.Image_Media.Release (Media);
-         end;
-      end if;
-   end Decode_Image_RGBA_Data;
-
-   function Field_Value
-     (Header : String;
-      Name   : String) return String
-   is
-      I : Natural := Header'First;
-   begin
-      while I <= Header'Last loop
-         declare
-            Start : constant Natural := I;
-            Stop  : Natural := I;
-            Eq    : Natural := 0;
-         begin
-            while Stop <= Header'Last
-              and then Header (Stop) /= ','
-              and then Header (Stop) /= ';'
-            loop
-               if Header (Stop) = '=' and then Eq = 0 then
-                  Eq := Stop;
-               end if;
-               Stop := Stop + 1;
-            end loop;
-
-            if Eq /= 0
-              and then Eq - Start = Name'Length
-              and then Header (Start .. Eq - 1) = Name
-            then
-               return Header (Eq + 1 .. Stop - 1);
-            end if;
-
-            I := Stop + 1;
-         end;
-      end loop;
-      return "";
-   end Field_Value;
-
    function Data_First
-     (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
+     (Protocol : Terminal.Core.Graphics_Protocol_Kind;
       Text  : String) return Natural
    is
       Delimiter : Character := ASCII.NUL;
@@ -1325,274 +284,10 @@ package body Terminal.App.Graphics is
       return 0;
    end Data_First;
 
-   procedure Decode_Base64_Preview
-     (Text   : String;
-      Result : in out Graphics_Data_Preview;
-      Expected_Decoded_Length : Natural := 0)
-   is
-      Decoder : Terminal.Common.Base64.Decoder_State;
-      Bytes : Terminal.Common.Base64.Decoded_Quantum;
-      Byte_Count : Natural := 0;
-      Base64_Status : Terminal.Common.Base64.Decoder_Status;
-      Done   : Boolean := False;
-
-      procedure Append_Byte (Value : Natural) is
-      begin
-         if Result.Decoded_Length = Max_Data_Preview_Length then
-            Result.Decode_Status := Decode_Preview_Truncated;
-            Result.Decode_Complete := False;
-            Done := True;
-            return;
-         end if;
-
-         if Expected_Decoded_Length > 0 then
-            Ensure_Bytes (Result, Expected_Decoded_Length);
-         else
-            Ensure_Bytes (Result);
-         end if;
-         Result.Decoded_Length := Result.Decoded_Length + 1;
-         Result.Bytes (Result.Decoded_Length) :=
-           Terminal.Common.Bytes.Byte (Value mod 256);
-      end Append_Byte;
-
-      procedure Append_Output is
-      begin
-         if Base64_Status = Terminal.Common.Base64.Invalid_Data then
-            if Result.Decode_Status /= Decode_Trailing_Data then
-               Result.Decode_Status := Decode_Invalid_Byte;
-            end if;
-            Result.Decode_Complete := False;
-            Done := True;
-            return;
-         end if;
-         for I in 1 .. Byte_Count loop
-            Append_Byte (Natural (Bytes (I)));
-            exit when Done;
-         end loop;
-      end Append_Output;
-   begin
-      Terminal.Common.Base64.Reset
-        (Decoder, Allow_Unpadded => True, Allow_Whitespace => True);
-      for Ch of Text loop
-         declare
-            Was_Complete : constant Boolean :=
-              Terminal.Common.Base64.Is_Complete (Decoder);
-         begin
-            Terminal.Common.Base64.Push
-              (Decoder, Ch, Bytes, Byte_Count, Base64_Status);
-            if Base64_Status = Terminal.Common.Base64.Invalid_Data
-              and then Was_Complete
-            then
-               Result.Decode_Status := Decode_Trailing_Data;
-            end if;
-            Append_Output;
-            exit when Done;
-         end;
-      end loop;
-
-      if Done then
-         return;
-      end if;
-      Terminal.Common.Base64.Finish
-        (Decoder, Bytes, Byte_Count, Base64_Status);
-      Append_Output;
-      if Done then
-         return;
-      end if;
-
-      Result.Decode_Complete := Result.Has_Data;
-      Result.Decode_Status :=
-        (if Result.Decode_Complete then Decode_Ok else Decode_Not_Attempted);
-   end Decode_Base64_Preview;
-
-   procedure Decode_Base64_Data
-     (Text                  : String;
-      Maximum_Decoded_Bytes : Positive;
-      Data                  : out Terminal.App.Render_Model.Image_Data_Access;
-      Length                : out Natural;
-      Status                : out Data_Decode_Status)
-   is separate;
-
    function JPEG_Data_Preview_Text
      (Text                    : String;
-      Maximum_Decoded_Bytes   : Positive;
+      Maximum_Decoded_Bytes   : Data_Decode_Byte_Limit;
       Maximum_Pixel_Dimension : Positive) return Graphics_Data_Preview
-   is
-      H : constant Graphics_Header :=
-        Header_Text (Terminal.Core.ITerm2_Graphics, Text);
-      From : Natural := 0;
-      Result : Graphics_Data_Preview :=
-        (Ada.Finalization.Limited_Controlled with
-         Header_Recognized => H.Recognized,
-         Has_Data          => H.Has_Data,
-         others            => <>);
-   begin
-      if not H.Recognized or else not H.Has_Data or else Text = "" then
-         return Take (Result);
-      end if;
-
-      From := Data_First (Terminal.Core.ITerm2_Graphics, Text);
-      if From = 0 then
-         Result.Has_Data := False;
-         return Take (Result);
-      end if;
-
-      Result.Encoded_Length := Text'Last - From + 1;
-      declare
-         Encoded_Length : constant Natural := Result.Encoded_Length;
-         --  Base64 produces at most three bytes per four input bytes.  The
-         --  expression is split to keep all arithmetic overflow-safe.
-         Expected_Length : constant Natural :=
-           (Encoded_Length / 4) * 3
-           + Natural'Min ((Encoded_Length mod 4) * 3, 3);
-      begin
-         if Expected_Length = 0
-           or else Expected_Length > Max_Data_Preview_Length
-         then
-            Result.Decode_Status := Decode_Preview_Truncated;
-            Result.Decode_Complete := False;
-            return Take (Result);
-         end if;
-
-         Decode_Base64_Preview
-           (Text (From .. Text'Last), Result, Expected_Length);
-      end;
-
-      if Result.Decode_Complete and then Result.Bytes /= null then
-         declare
-            JPEG : Terminal.App.Render_Model.Image_Data_Access := Result.Bytes;
-            JPEG_Length : constant Natural := Result.Decoded_Length;
-         begin
-            Result.Bytes := null;
-            Result.Decoded_Length := 0;
-            Result.Decoded_Row_Stride_Bytes := 0;
-            Result.Raw_Format := 0;
-            Result.Pixel_Width := 0;
-            Result.Pixel_Height := 0;
-            Decode_JPEG_RGBA_Data
-              (JPEG.all,
-               JPEG_Length,
-               Result,
-               Maximum_Decoded_Bytes,
-               Maximum_Pixel_Dimension);
-            Free_Image_Data (JPEG);
-         exception
-            when others =>
-               if JPEG /= null then
-                  Free_Image_Data (JPEG);
-               end if;
-               raise;
-         end;
-      end if;
-
-      return Take (Result);
-   exception
-      when Storage_Error =>
-         Release (Result);
-         Result.Decode_Status := Decode_Allocation_Failed;
-         Result.Decode_Complete := False;
-         return Take (Result);
-      when Constraint_Error =>
-         Release (Result);
-         Result.Decode_Status := Decode_Preview_Truncated;
-         Result.Decode_Complete := False;
-         return Take (Result);
-      when others =>
-         Release (Result);
-         raise;
-   end JPEG_Data_Preview_Text;
-
-   procedure Decode_Base64_Chunk_Bytes
-     (Chunk_Count : Natural;
-      Chunk_Text  : not null access function (Index : Positive) return String;
-      Byte_Sink   : not null access procedure
-        (Value : Terminal.Common.Bytes.Byte;
-         Continue : in out Boolean);
-      Result      : in out Graphics_Data_Preview)
-   is separate;
-
-   procedure Decode_Zlib_Data
-     (Compressed      : Terminal.Common.Bytes.Byte_Array;
-      Length          : Natural;
-      Maximum_Length  : Natural;
-      Exact_Length    : Boolean;
-      Inflated        : out Terminal.App.Render_Model.Image_Data_Access;
-      Inflated_Length : out Natural;
-      Status          : out Data_Decode_Status)
-   is separate;
-
-   procedure Decode_Base64_Zlib_Chunks
-     (Chunk_Count     : Natural;
-      Chunk_Text      : not null access function
-        (Index : Positive) return String;
-      Maximum_Length  : Natural;
-      Exact_Length    : Boolean;
-      Inflated        : out Terminal.App.Render_Model.Image_Data_Access;
-      Inflated_Length : out Natural;
-      Encoded_Length  : out Natural;
-      Status          : out Data_Decode_Status)
-   is separate;
-
-   procedure Decode_Base64_Zlib_Raw_Chunk_Rows
-     (Chunk_Count  : Natural;
-      Chunk_Text   : not null access function (Index : Positive) return String;
-      Raw_Format   : Natural;
-      Pixel_Width  : Natural;
-      Pixel_Height : Natural;
-      Row_Sink     : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result       : in out Graphics_Data_Preview)
-   is separate;
-
-   procedure Decode_Base64_Zlib_PNG_Chunk_Rows
-     (Chunk_Count    : Natural;
-      Chunk_Text     : not null access function (Index : Positive) return String;
-      Inflated_Length : Natural;
-      Encoded_Length : out Natural;
-      Row_Sink       : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result         : in out Graphics_Data_Preview)
-   is separate;
-
-   procedure Decode_Base64_PNG_Chunk_Rows
-     (Chunk_Count    : Natural;
-      Chunk_Text     : not null access function (Index : Positive) return String;
-      Encoded_Length : out Natural;
-      PNG_Length     : out Natural;
-      Row_Sink       : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result         : in out Graphics_Data_Preview)
-   is separate;
-
-   procedure Decode_Base64_Raw_Chunk_Rows
-     (Chunk_Count  : Natural;
-      Chunk_Text   : not null access function (Index : Positive) return String;
-      Raw_Format   : Natural;
-      Pixel_Width  : Natural;
-      Pixel_Height : Natural;
-      Row_Sink     : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result       : in out Graphics_Data_Preview)
-   is separate;
-
-   procedure Decode_Base64_Raw_Rows
-     (Text         : String;
-      Raw_Format   : Natural;
-      Pixel_Width  : Natural;
-      Pixel_Height : Natural;
-      Row_Sink     : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result       : in out Graphics_Data_Preview)
    is separate;
 
    function Data_Decode_Status_Suffix
@@ -1605,219 +300,47 @@ package body Terminal.App.Graphics is
       is (Status);
 
    function Capability
-     (Protocol : Graphics_Protocol) return Protocol_Capability
-   is
-   begin
-      case Protocol is
-         when Kitty =>
-            return
-              (Recognized => True,
-               Decoded    => True,
-               Rendered   => True);
-         when Sixel | ITerm2 =>
-            return
-              (Recognized => True,
-               Decoded    => True,
-               Rendered   => True);
-      end case;
-   end Capability;
+     (Protocol            : Graphics_Protocol;
+      Rendering_Available : Boolean := False) return Protocol_Capability
+   is (Capability_Reporting.Capability (Protocol, Rendering_Available));
 
-   function Color_Emoji return Emoji_Capability is
-   begin
-      return
-        (Cluster_Preserved    => True,
-         Monochrome_Fallback  => True,
-         Color_Glyph_Rendered => True);
-   end Color_Emoji;
+   function Color_Emoji
+     (Color_Font_Available : Boolean := False) return Emoji_Capability is
+     (Capability_Reporting.Color_Emoji (Color_Font_Available));
 
    function Name (Protocol : Graphics_Protocol) return String is
-   begin
-      case Protocol is
-         when Sixel =>
-            return "sixel";
-         when Kitty =>
-            return "kitty";
-         when ITerm2 =>
-            return "iTerm2";
-      end case;
-   end Name;
+     (Capability_Reporting.Name (Protocol));
 
-   function Name (Protocol : Terminal.Core.Ignored_Graphics_Protocol)
+   function Name (Protocol : Terminal.Core.Graphics_Protocol_Kind)
                   return String is
-   begin
-      case Protocol is
-         when Terminal.Core.No_Graphics =>
-            return "";
-         when Terminal.Core.Sixel_Graphics =>
-            return "sixel";
-         when Terminal.Core.Kitty_Graphics =>
-            return "kitty";
-         when Terminal.Core.ITerm2_Graphics =>
-            return "iTerm2";
-      end case;
-   end Name;
+     (Capability_Reporting.Name (Protocol));
 
    function Capability_Status_Label
-     (Protocol : Graphics_Protocol) return String is
-   begin
-      case Protocol is
-         when Sixel =>
-            return "sixel graphics recognized; raster texture rendering available";
-         when Kitty =>
-            return "kitty graphics; RGB/RGBA/indexed/PNG texture rendering";
-         when ITerm2 =>
-            return "iTerm2 images; PNG/JPEG/GIF/PICT texture rendering";
-      end case;
-   end Capability_Status_Label;
+     (Protocol            : Graphics_Protocol;
+      Rendering_Available : Boolean := False) return String is
+     (Capability_Reporting.Status_Label (Protocol, Rendering_Available));
 
    function Valid_Integer_Text (Text : String) return Boolean is
-      First : Natural := Text'First;
-      Value : Long_Long_Integer := 0;
-      Limit : Long_Long_Integer := Long_Long_Integer (Integer'Last);
+      Value : Integer;
    begin
-      if Text'Length = 0 then
-         return False;
-      end if;
-      if Text (First) = '-' then
-         First := First + 1;
-         Limit := -Long_Long_Integer (Integer'First);
-      elsif Text (First) = '+' then
-         First := First + 1;
-      end if;
-      if First > Text'Last then
-         return False;
-      end if;
-      for I in First .. Text'Last loop
-         if Text (I) not in '0' .. '9' then
-            return False;
-         end if;
-         declare
-            Digit : constant Long_Long_Integer :=
-              Long_Long_Integer
-                (Character'Pos (Text (I)) - Character'Pos ('0'));
-         begin
-            if Value > (Limit - Digit) / 10 then
-               return False;
-            end if;
-            Value := Value * 10 + Digit;
-         end;
-      end loop;
-      return True;
+      return Try_Parse_Integer (Text, Value);
    end Valid_Integer_Text;
 
    function Valid_Graphics_ID_Text (Text : String) return Boolean is
-      Value : Long_Long_Integer := 0;
-      Limit : constant Long_Long_Integer :=
-        Long_Long_Integer (Terminal.Core.Graphics_ID'Last);
+      Value : Terminal.Core.Graphics_ID;
    begin
-      if Text'Length = 0 then
-         return False;
-      end if;
-      for Ch of Text loop
-         if Ch not in '0' .. '9' then
-            return False;
-         end if;
-         declare
-            Digit : constant Long_Long_Integer :=
-              Long_Long_Integer
-                (Character'Pos (Ch) - Character'Pos ('0'));
-         begin
-            if Value > (Limit - Digit) / 10 then
-               return False;
-            end if;
-            Value := Value * 10 + Digit;
-         end;
-      end loop;
-      return True;
+      return Terminal.App.Number_Parsing.Try_Graphics_ID (Text, Value);
    end Valid_Graphics_ID_Text;
 
-   function Valid_Kitty_Control_Data (Params : String) return Boolean is
-      Seen : array (Character) of Boolean := (others => False);
-      First : Natural := Params'First;
-
-      function Valid_Field (From, To_Index : Natural) return Boolean is
-         Eq : Natural := 0;
-      begin
-         if From > To_Index then
-            return False;
-         end if;
-         for I in From .. To_Index loop
-            if Params (I) = '=' then
-               if Eq /= 0 then
-                  return False;
-               end if;
-               Eq := I;
-            end if;
-         end loop;
-         if Eq /= From + 1 or else Eq = To_Index then
-            return False;
-         end if;
-         declare
-            Key : constant Character := Params (From);
-            Value : constant String := Params (Eq + 1 .. To_Index);
-            Numeric : constant Boolean := Valid_Natural_Text (Value);
-         begin
-            if Seen (Key) then
-               return False;
-            end if;
-            Seen (Key) := True;
-            case Key is
-               when 'a' =>
-                  return Value'Length = 1
-                    and then Value (Value'First) in
-                      'a' | 'c' | 'd' | 'f' | 'p' | 'q' | 't' | 'T';
-               when 't' =>
-                  return Value'Length = 1
-                    and then Value (Value'First) in 'd' | 'f' | 't' | 's';
-               when 'o' =>
-                  return Value = "z";
-               when 'd' =>
-                  return Value'Length = 1
-                    and then Value (Value'First) in
-                      'a' | 'A' | 'c' | 'C' | 'n' | 'N' | 'i' | 'I'
-                      | 'p' | 'P' | 'q' | 'Q' | 'r' | 'R' | 'x' | 'X'
-                      | 'y' | 'Y' | 'z' | 'Z' | 'f' | 'F';
-               when 'i' | 'I' | 'p' | 'P' | 'Q' | 'Y' =>
-                  return Valid_Graphics_ID_Text (Value);
-               when 'z' | 'H' | 'V' =>
-                  return Valid_Integer_Text (Value);
-               when 'q' =>
-                  return Numeric and then Parse_Natural (Value) <= 2;
-               when 'f' =>
-                  return Numeric
-                    and then Parse_Natural (Value) in 8 | 16 | 24 | 32 | 100;
-               when 'm' =>
-                  return Value = "0" or else Value = "1";
-               when 'x' | 'y' =>
-                  return Valid_Graphics_ID_Text (Value);
-               when 's' | 'v' | 'S' | 'O' | 'N' | 'w'
-                  | 'h' | 'X' | 'c' | 'r' | 'C' | 'U' =>
-                  return Numeric;
-               when others =>
-                  --  Preserve forward compatibility for unknown one-byte
-                  --  controls while still requiring unambiguous key=value
-                  --  syntax and rejecting duplicates.
-                  return True;
-            end case;
-         end;
-      end Valid_Field;
-   begin
-      if Params'Length = 0 then
-         return True;
-      end if;
-      for I in Params'Range loop
-         if Params (I) = ',' then
-            if I = First or else not Valid_Field (First, I - 1) then
-               return False;
-            end if;
-            First := I + 1;
-         end if;
-      end loop;
-      return Valid_Field (First, Params'Last);
-   end Valid_Kitty_Control_Data;
+   function Parse_Sixel_Header (Text : String) return Graphics_Header
+   is separate;
+   function Parse_Kitty_Header (Text : String) return Graphics_Header
+   is separate;
+   function Parse_ITerm2_Header (Text : String) return Graphics_Header
+   is separate;
 
    function Header_Text
-     (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
+     (Protocol : Terminal.Core.Graphics_Protocol_Kind;
       Text     : String) return Graphics_Header
    is separate;
 
@@ -1829,157 +352,37 @@ package body Terminal.App.Graphics is
       return Header_Text (Event.Protocol, Preview_Text (Event));
    end Header;
 
-   function Data_Preview_Text
-     (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
-      Text     : String) return Graphics_Data_Preview
+   function Kitty_Result_From_Header
+     (Value : Graphics_Header;
+      Code  : Terminal.Core.Graphics_Completion_Code :=
+        Terminal.Core.Graphics_No_Response)
+      return Terminal.Core.Graphics_Completion
    is
-      H    : constant Graphics_Header := Header_Text (Protocol, Text);
-      From : Natural;
-      Result : Graphics_Data_Preview :=
-        (Ada.Finalization.Limited_Controlled with
-         Header_Recognized => H.Recognized,
-         Has_Data          => H.Has_Data,
-         Raw_Format        => H.Raw_Format,
-         Pixel_Width       => H.Pixel_Width,
-         Pixel_Height      => H.Pixel_Height,
-         others            => <>);
+      Result : Terminal.Core.Graphics_Completion :=
+        (Code => Code, others => <>);
    begin
-      if not H.Recognized or else not H.Has_Data or else Text = "" then
-         return Take (Result);
+      if Value.Recognized and then Value.Protocol = Kitty then
+         Result.Kitty_Response.Present := True;
+         Result.Kitty_Response.Quiet := Natural'Min (Value.Kitty_Quiet, 2);
+         Result.Kitty_Response.Respond :=
+           not
+             (Value.Kitty_Action = 'T'
+              and then Value.Kitty_ID = 0
+              and then Value.Kitty_Image_Number = 0);
+         Result.Kitty_Response.Image_ID := Value.Kitty_ID;
+         Result.Kitty_Response.Image_Number := Value.Kitty_Image_Number;
+         Result.Kitty_Response.Has_Image_Number := Value.Kitty_Image_Number /= 0;
+         Result.Kitty_Response.Placement_ID := Value.Kitty_Placement_ID;
+         Result.Kitty_Response.Has_Placement_ID :=
+           Value.Kitty_Placement_ID /= 0;
       end if;
+      return Result;
+   end Kitty_Result_From_Header;
 
-      From := Data_First (Protocol, Text);
-      if From = 0 then
-         Result.Has_Data := False;
-         return Take (Result);
-      end if;
-
-      Result.Encoded_Length := Text'Last - From + 1;
-
-      case Protocol is
-         when Terminal.Core.Kitty_Graphics =>
-            declare
-               Bytes_Per_Pixel : constant Natural :=
-                 Raw_Bytes_Per_Pixel (H.Kitty_Format);
-               Has_Raw_Metadata : constant Boolean :=
-                 Bytes_Per_Pixel > 0
-                 and then H.Pixel_Width > 0
-                 and then H.Pixel_Height > 0;
-               Expected_Decoded_Length : constant Natural :=
-                 Raw_Decoded_Length
-                   (H.Kitty_Format, H.Pixel_Width, H.Pixel_Height);
-            begin
-               if H.Kitty_Compression /= ASCII.NUL then
-                  --  The renderer uses the bounded streaming zlib row paths.
-                  --  Do not interpret compressed bytes as raw preview pixels.
-                  Result.Decode_Status :=
-                    (if H.Kitty_Compression = 'z'
-                     then Decode_Not_Attempted
-                     else Decode_Unsupported_Format);
-                  Result.Decode_Complete := False;
-                  return Take (Result);
-               elsif Has_Raw_Metadata and then Expected_Decoded_Length = 0 then
-                  Result.Decode_Status := Decode_Preview_Truncated;
-                  Result.Decode_Complete := False;
-                  return Take (Result);
-               else
-                  Decode_Base64_Preview
-                    (Text (From .. Text'Last),
-                     Result,
-                     (if Has_Raw_Metadata then Expected_Decoded_Length else 0));
-               end if;
-            end;
-            if H.Kitty_Format = 100
-              and then Result.Decode_Complete
-              and then Result.Bytes /= null
-            then
-               declare
-                  PNG : Terminal.App.Render_Model.Image_Data_Access :=
-                    Result.Bytes;
-                  PNG_Length : constant Natural := Result.Decoded_Length;
-               begin
-                  Result.Bytes := null;
-                 Result.Decoded_Length := 0;
-                  Result.Decoded_Row_Stride_Bytes := 0;
-                  Result.Raw_Format := 0;
-                  Result.Pixel_Width := 0;
-                  Result.Pixel_Height := 0;
-                  --  Kitty f=100 is specifically PNG.  JPEG remains valid
-                  --  for the iTerm2 File protocol, but accepting it here
-                  --  would advertise a non-standard Kitty extension.
-                  Decode_PNG_RGBA_Data (PNG.all, PNG_Length, Result);
-                  Free_Image_Data (PNG);
-               end;
-            end if;
-            if H.Kitty_Format in Kitty_JPEG_Format | Kitty_GIF_Format
-              and then Result.Decode_Complete
-              and then Result.Bytes /= null
-            then
-               declare
-                  Encoded : Terminal.App.Render_Model.Image_Data_Access := Result.Bytes;
-                  Length  : constant Natural := Result.Decoded_Length;
-
-                  function Byte (Index : Positive) return Natural is
-                    (if Index <= Length then Natural (Encoded (Encoded'First + Index - 1)) else 256);
-
-                  --  The payload must be what its format code says: a JPEG
-                  --  starts FF D8 FF, a GIF with GIF8.
-                  Matches : constant Boolean :=
-                    (if H.Kitty_Format = Kitty_JPEG_Format
-                     then Byte (1) = 16#FF# and then Byte (2) = 16#D8# and then Byte (3) = 16#FF#
-                     else Byte (1) = Character'Pos ('G') and then Byte (2) = Character'Pos ('I')
-                       and then Byte (3) = Character'Pos ('F') and then Byte (4) = Character'Pos ('8'));
-               begin
-                  Result.Bytes := null;
-                  Result.Decoded_Length := 0;
-                  Result.Decoded_Row_Stride_Bytes := 0;
-                  Result.Raw_Format := 0;
-                  Result.Pixel_Width := 0;
-                  Result.Pixel_Height := 0;
-
-                  if Matches then
-                     Decode_Image_RGBA_Data (Encoded.all, Length, Result);
-                  else
-                     Result.Decode_Status := Decode_Unsupported_Format;
-                     Result.Decode_Complete := False;
-                  end if;
-
-                  Free_Image_Data (Encoded);
-               end;
-            end if;
-         when Terminal.Core.ITerm2_Graphics =>
-            Decode_Base64_Preview (Text (From .. Text'Last), Result);
-            if Result.Decode_Complete and then Result.Bytes /= null then
-               declare
-                  PNG : Terminal.App.Render_Model.Image_Data_Access :=
-                    Result.Bytes;
-                  PNG_Length : constant Natural := Result.Decoded_Length;
-               begin
-                  Result.Bytes := null;
-                 Result.Decoded_Length := 0;
-                  Result.Decoded_Row_Stride_Bytes := 0;
-                  Result.Raw_Format := 0;
-                  Result.Pixel_Width := 0;
-                  Result.Pixel_Height := 0;
-                  Decode_Image_RGBA_Data (PNG.all, PNG_Length, Result);
-                  Free_Image_Data (PNG);
-               end;
-            end if;
-         when Terminal.Core.Sixel_Graphics =>
-            Decode_Sixel_Raster
-              (Text,
-               (Width       => H.Pixel_Width,
-                Height      => H.Pixel_Height,
-                Logical_Height => H.Pixel_Height,
-                Vertical_Aspect => 1,
-                Transparent => H.Sixel_Transparent),
-               Result);
-         when Terminal.Core.No_Graphics =>
-            null;
-      end case;
-
-      return Take (Result);
-   end Data_Preview_Text;
+   function Data_Preview_Text
+     (Protocol : Terminal.Core.Graphics_Protocol_Kind;
+      Text     : String) return Graphics_Data_Preview
+   is separate;
 
    function Data_Preview
      (Event : Terminal.Core.Graphics_Event) return Graphics_Data_Preview
@@ -2003,104 +406,11 @@ package body Terminal.App.Graphics is
 
    function Data_Status_Label
      (Event : Terminal.Core.Graphics_Event) return String
-   is
-      Data : Graphics_Data_Preview := Data_Preview (Event);
-
-      function Build_Label return String is
-      begin
-         if not Data.Header_Recognized then
-            return "";
-         elsif not Data.Has_Data then
-            return Name (Event.Protocol) & " data preview unavailable";
-         end if;
-
-         case Event.Protocol is
-            when Terminal.Core.Sixel_Graphics =>
-               return "sixel raster decoded="
-              & Trimmed_Natural (Data.Decoded_Length)
-              & "/"
-              & Trimmed_Natural (Data.Encoded_Length)
-              & (if Data.Bytes = null
-                 then ""
-                 else Terminal.Common.Status.Preview_Bytes_Label
-                   (Data.Bytes.all, Data.Decoded_Length))
-              & (if Data.Decode_Complete then " decoded" else " partial")
-              & Data_Decode_Status_Suffix (Data.Decode_Status);
-            when Terminal.Core.Kitty_Graphics =>
-               return "kitty data preview decoded="
-              & Trimmed_Natural (Data.Decoded_Length)
-              & "/"
-              & Trimmed_Natural (Data.Encoded_Length)
-              & (if Data.Bytes = null
-                 then ""
-                 else Terminal.Common.Status.Preview_Bytes_Label
-                   (Data.Bytes.all, Data.Decoded_Length))
-              & (if Data.Decode_Complete then " decoded" else " partial")
-              & Data_Decode_Status_Suffix (Data.Decode_Status);
-            when Terminal.Core.ITerm2_Graphics =>
-               return "iTerm2 data preview decoded="
-              & Trimmed_Natural (Data.Decoded_Length)
-              & "/"
-              & Trimmed_Natural (Data.Encoded_Length)
-              & (if Data.Bytes = null
-                 then ""
-                 else Terminal.Common.Status.Preview_Bytes_Label
-                   (Data.Bytes.all, Data.Decoded_Length))
-              & (if Data.Decode_Complete then " decoded" else " partial")
-              & Data_Decode_Status_Suffix (Data.Decode_Status);
-            when Terminal.Core.No_Graphics =>
-               return "";
-         end case;
-      end Build_Label;
-   begin
-      declare
-         Label : constant String := Build_Label;
-      begin
-         Release (Data);
-         return Label;
-      end;
-   exception
-      when others =>
-         Release (Data);
-         raise;
-   end Data_Status_Label;
+   is (Status_Reporting.Data_Label (Event));
 
    function Header_Status_Label
      (Event : Terminal.Core.Graphics_Event) return String
-   is
-      H : constant Graphics_Header := Header (Event);
-   begin
-      if not H.Recognized then
-         return "";
-      end if;
-
-      case Event.Protocol is
-         when Terminal.Core.Sixel_Graphics =>
-            return "sixel header ready; payload="
-              & Trimmed_Natural (Event.Payload_Length)
-              & (if H.Pixel_Width > 0 and then H.Pixel_Height > 0
-                 then
-                   "; pixels=" & Trimmed_Natural (H.Pixel_Width)
-                   & "x" & Trimmed_Natural (H.Pixel_Height)
-                 else "");
-         when Terminal.Core.Kitty_Graphics =>
-            return "kitty header ready; format="
-              & Trimmed_Natural (H.Kitty_Format)
-              & (if H.Pixel_Width > 0 and then H.Pixel_Height > 0
-                 then
-                   "; pixels=" & Trimmed_Natural (H.Pixel_Width)
-                   & "x" & Trimmed_Natural (H.Pixel_Height)
-                 else "")
-              & (if H.Has_Data then "; data previewed" else "; no data preview");
-         when Terminal.Core.ITerm2_Graphics =>
-            return "iTerm2 header ready; inline="
-              & (if H.ITerm2_Inline then "yes" else "no")
-              & "; name bytes="
-              & Trimmed_Natural (H.ITerm2_Name_Length);
-         when Terminal.Core.No_Graphics =>
-            return "";
-      end case;
-   end Header_Status_Label;
+   is (Status_Reporting.Header_Label (Event));
 
    function Placeholder_Cols
      (Event : Terminal.Core.Graphics_Event) return Positive
@@ -2118,7 +428,7 @@ package body Terminal.App.Graphics is
       return H.Placeholder_Rows;
    end Placeholder_Rows;
 
-   function Ignored_Status_Label
+   function Graphics_Status_Label
      (Diagnostics : Terminal.Core.Diagnostic_Snapshot) return String
    is
       Last : Natural := 0;
@@ -2133,10 +443,10 @@ package body Terminal.App.Graphics is
       end Append;
 
       procedure Append_Natural (Value : Natural) is
-         Text : constant String := Natural'Image (Value);
+         Text : constant String := Trimmed_Natural (Value);
       begin
-         for I in Text'First + 1 .. Text'Last loop
-            Append (Text (I));
+         for Ch of Text loop
+            Append (Ch);
          end loop;
       end Append_Natural;
 
@@ -2147,13 +457,13 @@ package body Terminal.App.Graphics is
          end loop;
       end Append_String;
    begin
-      if Diagnostics.Graphics_Protocol_Ignored = 0
+      if Diagnostics.Graphics_Commands_Received = 0
         or else Diagnostics.Last_Graphics_Protocol = Terminal.Core.No_Graphics
       then
          return "";
       end if;
 
-      Append_String ("Ignored ");
+      Append_String ("Received ");
       case Diagnostics.Last_Graphics_Protocol is
          when Terminal.Core.No_Graphics =>
             null;
@@ -2172,5 +482,5 @@ package body Terminal.App.Graphics is
       end if;
 
       return Result (1 .. Last);
-   end Ignored_Status_Label;
+   end Graphics_Status_Label;
 end Terminal.App.Graphics;

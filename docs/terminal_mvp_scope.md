@@ -199,6 +199,12 @@ independently. Query responses preserve the requested `c`/`p`/`s` target
 designator in the OSC 52 response. Unsupported OSC 52 target bytes are
 diagnosed and the request is ignored. OSC 8 hyperlinks are parsed into bounded
 per-cell snapshot metadata.
+BEL creates a bounded attention request. OSC 9 and the interoperable OSC 99
+title/body, completion, and base64 fields create bounded desktop-notification
+requests; malformed or unsupported OSC 99 metadata is diagnosed. OSC 133 `D`
+also creates an opt-in command-completion request with its exit status. The app
+delivers these through separate desktop, bell, and command-completion policy
+switches; POSIX delivery uses `notify-send` when available.
 Unknown OSC, escape, and CSI sequences are consumed safely and recorded in
 diagnostics where applicable. Unsupported private CSI markers such as `<`, `=`,
 `?`, and `>` are recognized as private prefixes so their payloads do not leak
@@ -403,7 +409,7 @@ direction inference instead of treating every bidi control as RTL. ASCII digit
 sequences are treated as strong left-to-right runs for renderer segmentation, so
 they do not get folded into adjacent RTL shaping runs.
 The app-layer HarfBuzz adapter shapes those runs against the selected font file
-with direction, script, and script-derived language tags, and returns real font
+with direction, script, and a neutral language tag, and returns real font
 glyph IDs, source clusters, advances, and offsets in the bounded shaped-glyph
 output. Script tags are specific for Latin, Greek, Cyrillic, Glagolitic,
 Coptic, Gothic, Old Italic, Old Persian, Ugaritic, Linear B, Cypriot,
@@ -479,9 +485,11 @@ block.
 Primary-screen scrollback is bounded by the initialize-time limit. The alternate
 screen has no scrollback. Full terminal reset (`ESC c`) clears the visible
 buffers and scrollback. Xterm ED 3 (`CSI 3 J`) clears the visible screen and
-primary scrollback; ED 2 clears only the visible screen. Grid resize preserves
-the scrollback ring in logical oldest-to-newest order, retaining shared columns
-and blank-padding newly added columns. The GLFW app supports
+primary scrollback; ED 2 clears only the visible screen. Grid resize reconstructs
+soft-wrapped primary-screen logical lines across scrollback and the live grid,
+then rewraps them to the new width while preserving wide and image-placeholder
+cells. The alternate screen retains overlapping cells without history reflow.
+The GLFW app supports
 page-based scrollback viewing
 with `Shift+Page_Up` and `Shift+Page_Down`; normal typing returns to the live
 bottom. The scrollback view helper exposes a bounded status label for live,
@@ -512,6 +520,14 @@ Triple-clicking selects the visible row. Middle-click pastes the app-owned
 primary selection slot when terminal mouse reporting is disabled. `Alt+Left`
 drag starts a rectangular selection that copies only the selected column range
 from each selected visible row.
+`Ctrl+Shift+F` opens incremental retained-text search; Enter/Down and Up move
+between forward and reverse matches. `Alt+R`, `Alt+C`, and `Alt+W` toggle
+row-local regular expressions, case sensitivity, and whole-word matching;
+`Ctrl+Up`/`Ctrl+Down` browse bounded query history. The overlay reports the
+current/total count and every visible match is underlined.
+`Ctrl+Shift+Space` enters keyboard copy
+mode, with arrows or `hjkl`, Page Up/Down, Home/End, Shift extension, and
+Enter/`y` copy. `Ctrl+Shift+C` copies the active search match.
 
 Mouse-aware terminal programs can enable basic xterm mouse reporting through
 DEC private modes `?1000`, `?1002`, `?1003`, and SGR extended coordinates
@@ -551,10 +567,10 @@ OSC 8 hyperlink ranges are preserved by the platform-independent core as
 bounded URI/id metadata on rendered cells. Starting `OSC 8 ; params ; uri ST`
 applies the current hyperlink to subsequently printed cells; `OSC 8 ;; ST`
 clears it. The GLFW app resolves links under the pointer from snapshots and
-opens `http`, `https`, and `mailto` links with `Ctrl+Left Click` through the
+opens `http`, `https`, `mailto`, and `file` links with `Ctrl+Left Click` through the
 desktop opener. Supported URI scheme matching is case-insensitive, and URIs
 with bare schemes, spaces, or control bytes are rejected before launcher command
-construction. Supported links under the pointer are underlined and use a hand
+dispatch. Supported links under the pointer are underlined and use a hand
 cursor. While a supported link is hovered, the app window title includes the
 target URI as a link hint and the renderer draws an in-content status overlay on
 the active terminal row with the bounded open/unsupported link preview.
@@ -562,15 +578,101 @@ the active terminal row with the bounded open/unsupported link preview.
 labels and included in the refreshed title/status surface. The hyperlink helper
 exposes bounded sanitized URI-only and open/unsupported labels for these
 surfaces.
+Plain visible `http`/`https`/`mailto` tokens and absolute paths are detected
+when no OSC 8 metadata is present. Path `:line[:column]` suffixes and trailing
+sentence punctuation are excluded from the launched target. `Ctrl+Shift+O`
+scans the visible snapshot into a bounded keyboard link list; arrows or Tab
+cycle the highlighted target, Enter opens it, and Escape cancels.
+
+## Workspace persistence
+
+The app writes a bounded versioned workspace file beneath the user state
+directory by default. It restores tab or pane layout, orientation, active
+session, tab labels, OSC 7 working directories, and bounded per-session startup
+commands. `workspace-file`, `restore-workspace`, `save-workspace`, and
+`startup-command` configure the behavior. Directory and startup text is sent
+through the normal bounded PTY input path after each shell is created.
+`Ctrl+Shift+N` launches another application process with a distinct workspace.
+`Ctrl+Shift+D` writes a one-session handoff and, after successful launch,
+closes the source tab or pane. This recreates the shell from its captured
+working directory and startup command; it does not migrate a live PTY process.
+
+## Command palette and session profiles
+
+`Ctrl+Shift+P` opens a bounded command palette. Printable input filters all
+app-owned actions and configured session profiles, arrows or Tab move the
+selection, Enter executes it, Backspace edits, and Escape closes it. The
+palette uses the same bounded in-content interaction overlay as keyboard link
+and copy modes.
+
+Profile keys use `profile.NAME.FIELD`; supported fields are `shell`, `command`,
+`cwd`, comma-separated `environment` assignments, built-in `theme`, and `ssh`.
+Names, environment identifiers, SSH targets, generated launch text, and the
+registry itself are bounded and validated. `default-profile` selects the
+profile used by initial and newly created sessions.
+
+## Scrollbar and shell marks
+
+Render snapshots expose the retained scrollback row total and selected offset,
+allowing the renderer to draw a proportional scrollbar track and thumb without
+owning scroll state. OSC 133 `A` and `B` events append bounded prompt and command
+marks with monotonic history-row coordinates. `Ctrl+Shift+Up` and
+`Ctrl+Shift+Down` jump to the previous or next retained mark; evicted marks
+clamp safely to the oldest available row.
+
+The scrollbar track is mouse seekable and draggable. Tab chrome is clickable,
+middle-click or the visible `x` closes a tab, and dragging a tab reorders the
+runtime, label, and persisted startup command together. Split borders retain
+bounded pane weights and can be dragged without changing runtime ownership.
+
+## Accessibility
+
+The self-drawn Vulkan surface publishes an explicit semantic tree through the
+sibling `a11y` crate. It exposes the application, window, active terminal pane,
+each visible row in reading order, the cursor row as focused, and the current
+interaction status. Stable node identifiers and content hashing avoid needless
+tree churn. On Linux the provider attempts native AT-SPI registration; when the
+host service is unavailable it retains validated fallback publication and
+reports that distinction in its status label. Provider service is pumped on
+every event-loop iteration and focus changes follow GLFW window focus.
+
+## Session recording
+
+`Ctrl+Shift+G` starts or stops output recording for all live sessions.
+Recordings use a bounded, versioned line format containing elapsed time,
+session identity, and hexadecimal PTY bytes. `Ctrl+Shift+J` validates and
+replays those bytes immediately into matching live session cores, skipping
+session indices that are no longer present. `Ctrl+Shift+S` exports the active
+core's retained scrollback and visible rows as UTF-8 plain text. Recording and
+transcript paths are the configured workspace path plus `.recording` and
+`.txt`; recording never changes PTY ownership or sends replayed bytes to the
+shell.
+
+## Text composition and command blocks
+
+GLFW character callbacks remain the committed-text boundary for platform input
+methods. `Ctrl+Shift+U` additionally enters an application-owned, bounded
+Unicode hexadecimal pre-edit overlay; Backspace edits, Enter or Space commits
+a valid Unicode scalar as UTF-8, and Escape cancels. Surrogates and values above
+`U+10FFFF` are rejected.
+
+OSC 133 `A/B/C/D` phases retain a 128-entry command-block ring with prompt,
+input, output, and completion coordinates. `D;status;duration_ms` optionally
+records a duration in addition to the standard exit status. `Ctrl+Shift+B`,
+`Ctrl+Shift+Y`, and `Ctrl+Shift+R` select, copy, or rerun the latest retained
+command; the same actions are searchable in the command palette. Evicted
+command text fails closed instead of reading unrelated history.
 
 ## TERM and Environment
 
-The POSIX backend inherits the parent environment, sets `TERM=xterm-256color`
+An early POSIX C constructor snapshots the parent environment before Ada
+elaboration can activate library tasks, and the backend does not observe later process-environment
+mutations. It sets `TERM=xterm-256color`
 and `COLORTERM=truecolor`, and publishes the truthful
 `TERM_PROGRAM=bracke-terminal` plus `TERM_PROGRAM_VERSION=0.1.0-dev` identity,
 both taken from `Terminal.Common.Identity`, which XTVERSION and the identity
 query answer from too.
-`$SHELL` is used when present and executable,
+`$SHELL` from that immutable snapshot is used when present and executable,
 otherwise `/bin/sh`. The child creates a new session, opens the PTY slave as
 the controlling terminal, duplicates it to standard input/output/error, and
 execs the shell with `execv`. The PTY backend exposes these identity strings as
@@ -580,7 +682,8 @@ doubled ESC bytes and feeding the inner control sequence back through the normal
 parser, with a diagnostic count. The app profile exposes a bounded multiplexer
 status label for this passthrough support and a bounded diagnostic label for the
 handled passthrough count, which is included in runtime diagnostics when
-passthrough has occurred.
+passthrough has occurred. Passthrough nesting is capped at 16 levels; overflow
+and recovery status from an inner parse is preserved by the outer feed.
 The PTY package exposes a backend capability snapshot with bounded backend and
 ConPTY status labels. The POSIX-selected backend reports POSIX PTY, resize,
 terminal environment, and nonblocking reads; the Windows-selected backend uses
@@ -605,7 +708,10 @@ The GLFW app reads app-owned configuration at startup. It first reads
 `$HOME/.config/ada-terminal/config`. The supported file keys include `theme`,
 `color-theme`, `scrollback-limit`, `scrollback-rows`, `wheel-scroll-lines`,
 `scroll-lines`, `window-width`, `window-height`, `startup-rows`,
-`startup-cols`, the Kitty local-media policy keys (`kitty-file-transfer`,
+`startup-cols`, `font`/`font-path`, `font-size`, and `bind-<action>` entries,
+notification/workspace/startup policy keys, `default-profile`, and validated
+`profile.NAME.FIELD` entries,
+the Kitty local-media policy keys (`kitty-file-transfer`,
 `kitty-temporary-transfer`, and `kitty-shared-memory`), the disabled-by-default
 `iterm2-file-downloads` policy, and the validated
 `graphics-*` transaction, queue, deferred-input, object, byte, placement,
@@ -635,6 +741,23 @@ effective-config image for diagnostics and
 help/status surfaces, plus bounded status labels for the selected theme,
 window size, and startup grid.
 
+Font size is bounded to 6 through 96 pixels. The default app bindings cover
+paste, copy, search, copy mode, link hints, the command palette, shell-mark
+navigation, new/detached windows, live config reload, settings, font zoom/reset,
+tabs, and panes; each accepts
+modifier-plus-key notation such as `bind-search=alt+f3`, or `none` to disable
+it. Font zoom defaults to `Ctrl+Shift+Equal`, `Ctrl+Shift+Minus`, and
+`Ctrl+Shift+0`.
+Pane zoom, pane move, input broadcast, recording toggle, recording replay, and
+transcript export default to `Ctrl+Shift+Z`, `Ctrl+Shift+M`, `Ctrl+Shift+I`,
+`Ctrl+Shift+G`, `Ctrl+Shift+J`, and `Ctrl+Shift+S`.
+
+`Ctrl+Comma` opens a bounded in-content settings editor. Arrow keys select and
+adjust common theme, font, scrolling, notification, and default-profile values;
+its config-line item accepts validated config/profile assignments.
+`Ctrl+Shift+Comma` reloads the configured file and commits renderer, graphics,
+binding, profile, and notification changes only when live application succeeds.
+
 ## Tabs
 
 The app has a bounded tab state model with up to eight tabs and app-owned
@@ -662,7 +785,7 @@ index.
 ## Splits
 
 The app has a bounded split-pane state model with up to four panes and
-app-owned shortcut classification for `Ctrl+Shift+H`, `Ctrl+Shift+V`,
+app-owned shortcut classification for `Ctrl+Shift+H`, `Ctrl+Shift+E`,
 `Ctrl+Shift+X`, and `Ctrl+Shift+L`. These shortcuts are reserved by the app
 instead of being sent to the PTY. When more than one pane exists, the window
 title includes the active/count suffix, such as `pane 2/3`. The split model
@@ -680,6 +803,19 @@ pane snapshots with active-pane chrome in one frame. Every pane PTY queue remain
 live regardless of which pane owns keyboard focus. Split panes are live
 sessions rather than placeholders. The split model exposes a bounded status
 label for the live pane count and active index.
+`Ctrl+Shift+Z` temporarily gives the active pane the full content area without
+pausing background PTYs. `Ctrl+Shift+M` moves the active runtime and its
+persisted startup command to the next pane position, wrapping at the end.
+`Ctrl+Shift+I` toggles broadcast mode, routing keyboard and paste input to every
+live pane while preserving each pane's independent output and terminal core.
+
+## Shell Integration
+
+The core decodes OSC 7 `file://` working-directory reports, including bounded
+percent decoding, and exposes the current path in its shell-integration
+snapshot. OSC 133 `A`/`B`/`C`/`D` markers track prompt, input, output, and
+completion zones plus the last reported exit status. Full terminal reset clears
+this metadata.
 
 ## Input Mapping
 

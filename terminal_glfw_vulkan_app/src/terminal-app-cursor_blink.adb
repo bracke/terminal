@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 package body Terminal.App.Cursor_Blink is
    function Shape_Label (Shape : Terminal.Core.Cursor_Shape) return String is
    begin
@@ -32,6 +33,24 @@ package body Terminal.App.Cursor_Blink is
       return Natural (Ticks);
    end Tick;
 
+   function Next_Tick_Delay (Elapsed : Duration) return Duration is
+      Current : constant Natural := Tick (Elapsed);
+   begin
+      if Current = Natural'Last then
+         return Blink_Period;
+      end if;
+      declare
+         Boundary : constant Duration :=
+           Duration (Current + 1) * Blink_Period;
+      begin
+         return Duration'Max
+           (0.0, Boundary - Duration'Max (0.0, Elapsed));
+      end;
+   exception
+      when Constraint_Error =>
+         return Blink_Period;
+   end Next_Tick_Delay;
+
    function Status_Label
      (Cursor       : Terminal.Core.Cursor_State;
       Current_Tick : Natural) return String
@@ -51,9 +70,11 @@ package body Terminal.App.Cursor_Blink is
      (Snapshot     : in out Terminal.Core.Render_Snapshot;
       Current_Tick : Natural)
    is
+      Cursor : Terminal.Core.Cursor_State := Snapshot.Cursor;
    begin
-      if Snapshot.Cursor.Blinking and then Current_Tick mod 2 = 1 then
-         Snapshot.Cursor.Visible := False;
+      if Cursor.Blinking and then Current_Tick mod 2 = 1 then
+         Cursor.Visible := False;
+         Terminal.Core.Snapshot_Editing.Set_Cursor (Snapshot, Cursor);
       end if;
    end Apply;
 end Terminal.App.Cursor_Blink;

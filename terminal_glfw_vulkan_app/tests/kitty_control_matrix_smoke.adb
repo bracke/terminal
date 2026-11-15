@@ -106,6 +106,20 @@ procedure Kitty_Control_Matrix_Smoke is
       end case;
    end Invalid_Command;
 begin
+   declare
+      Defaults : constant Terminal.App.Graphics.Graphics_Header :=
+        Header ("G;/wAA/w==");
+   begin
+      Assert
+        (Defaults.Recognized
+         and then Defaults.Has_Data
+         and then Defaults.Kitty_Action = 't'
+         and then Defaults.Kitty_Format = 32
+         and then Defaults.Raw_Format = 32
+         and then Defaults.Kitty_Action_Controls_Valid,
+         "empty Kitty controls apply protocol defaults");
+   end;
+
    --  Every action has an independently valid minimal command.  This catches
    --  accidental omissions when the action dispatch or validation table is
    --  extended.

@@ -26,6 +26,7 @@ begin
      Vk.Create_Image
        (Device.Device, Image_Info'Address, System.Null_Address, Image'Address);
    if Result /= Vk.SUCCESS or else Image = System.Null_Address then
+      Cleanup_New_Image;
       Destroy_Staging;
       Status := Create_Atlas_Image_Failed;
       return;

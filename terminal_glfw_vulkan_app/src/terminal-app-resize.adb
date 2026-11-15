@@ -1,11 +1,9 @@
 with Terminal.App.Status_Labels;
+with Terminal.Common.Status;
 
 package body Terminal.App.Resize is
-   function Natural_Image (Value : Natural) return String is
-      Image : constant String := Natural'Image (Value);
-   begin
-      return Image (Image'First + 1 .. Image'Last);
-   end Natural_Image;
+   function Natural_Image (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    function Bounded (Text : String) return String is
    begin

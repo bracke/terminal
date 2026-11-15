@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -36,7 +37,7 @@ procedure External_Graphics_Stream_Probe is
       while Terminal.Core.Pending_Graphics_Event_Count (T) > 0 loop
          declare
             Event : Terminal.Core.Graphics_Event;
-            Result : Terminal.Core.Kitty_Graphics_Result;
+            Result : Terminal.Core.Graphics_Completion;
             Snapshot : Terminal.Core.Render_Snapshot;
          begin
             Terminal.Core.Peek_Graphics_Event (T, Event);
@@ -47,11 +48,11 @@ procedure External_Graphics_Stream_Probe is
                & ": event="
                & Terminal.Core.Graphics_Event_Sequence'Image (Event.Sequence)
                & " protocol="
-               & Terminal.Core.Ignored_Graphics_Protocol'Image (Event.Protocol)
+               & Terminal.Core.Graphics_Protocol_Kind'Image (Event.Protocol)
                & " cancelled=" & Boolean'Image (Event.Cancelled)
                & " bytes=" & Natural'Image (Event.Payload_Length));
             Terminal.Core.Snapshot (T, Snapshot);
-            Snapshot.Graphics := Event;
+            Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
             Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
             Terminal.Core.Release (Snapshot);
             Ada.Text_IO.Put_Line
@@ -65,7 +66,7 @@ procedure External_Graphics_Stream_Probe is
             Ada.Text_IO.Put_Line
               (Ada.Command_Line.Argument (1)
                & ": graphics_result="
-               & Terminal.Core.Kitty_Graphics_Result_Code'Image (Result.Code)
+               & Terminal.Core.Graphics_Completion_Code'Image (Result.Code)
                & " images="
                & Natural'Image
                    (Terminal.App.Renderer.Testing.Last_Frame (R).Image_Count));
@@ -161,7 +162,7 @@ begin
    declare
       Snapshot : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
    begin
-      Snapshot.Graphics := (others => <>);
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, (others => <>));
       Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
       Terminal.Core.Release (Snapshot);
    end;

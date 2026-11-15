@@ -60,6 +60,21 @@ begin
    begin
       Assert (Pos.Row = 2, "pixel y should map through margin and cell height");
       Assert (Pos.Col = 2, "pixel x should map through margin and cell width");
+      declare
+         Edge : constant Terminal.App.Selection.Cell_Position :=
+           Terminal.App.Selection.Cell_From_Pixels
+             (X           => Float'Last,
+              Y           => Float'Last,
+              Cell_Width  => 10,
+              Cell_Height => 20,
+              Margin      => 6,
+              Rows        => 24,
+              Cols        => 80);
+      begin
+         Assert
+           (Edge = (Row => 24, Col => 80),
+            "extreme cursor coordinates clamp before integer conversion");
+      end;
    end;
 
    Terminal.Core.Initialize (T, 2, 4, 10, Init);
@@ -119,6 +134,41 @@ begin
         (not Terminal.Core.Cell_At (S, 1, 1).Style.Inverse,
          "unselected cell should not be inverted");
 
+      Terminal.Core.Release (S);
+   end;
+
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 2));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 3, Col => 1));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) =
+           "b" & ASCII.LF & "cd",
+         "selection text intersects visible rows without clamping its end");
+
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 3, Col => 1));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 4, Col => 2));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = "",
+         "selection wholly below the snapshot has no visible text");
+
+      Terminal.App.Selection.Begin_Selection
+        (Sel, (Row => 1, Col => 5));
+      Terminal.App.Selection.Finish_Selection
+        (Sel, (Row => 1, Col => 6));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = "",
+         "selection wholly right of the snapshot has no visible text");
+      Terminal.App.Selection.Apply_To_Snapshot (S, Sel);
+      Assert
+        (not Terminal.Core.Cell_At (S, 1, 4).Style.Inverse,
+         "offscreen selection does not highlight the edge cell");
       Terminal.Core.Release (S);
    end;
 
@@ -331,6 +381,31 @@ begin
       Terminal.Core.Release (S);
    end;
 
+   Terminal.Core.Initialize (T, 1, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "mixed-width word selection initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => Byte (Character'Pos ('A')),
+       2 => 16#E7#, 3 => 16#95#, 4 => 16#8C#,
+       5 => Byte (Character'Pos ('B'))),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "mixed-width word selection feed failed");
+   declare
+      Sel : Terminal.App.Selection.Selection_State;
+      S   : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Expected : constant String :=
+        To_String
+          ((1 => Byte (Character'Pos ('A')),
+            2 => 16#E7#, 3 => 16#95#, 4 => 16#8C#,
+            5 => Byte (Character'Pos ('B'))));
+   begin
+      Terminal.App.Selection.Select_Word (Sel, S, (Row => 1, Col => 2));
+      Assert
+        (Terminal.App.Selection.Selected_Text (S, Sel) = Expected,
+         "word selection crosses adjacent narrow and wide token cells");
+      Terminal.Core.Release (S);
+   end;
+
    Terminal.Core.Initialize (T, 2, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "line selection initialize failed");
    Terminal.Core.Feed
@@ -474,8 +549,11 @@ begin
 
       Assert
         (Terminal.App.Selection.Selected_Text (S, Sel) =
-         To_String ((1 => 16#E4#, 2 => 16#B8#, 3 => 16#80#)),
-         "word select on wide continuation should select the wide glyph");
+         To_String
+           ((1 => Byte (Character'Pos ('a')),
+             2 => 16#E4#, 3 => 16#B8#, 4 => 16#80#,
+             5 => Byte (Character'Pos ('b')))),
+         "word select crosses narrow and wide token cells");
       Terminal.Core.Release (S);
    end;
 

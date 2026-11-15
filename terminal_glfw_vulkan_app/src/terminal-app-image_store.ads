@@ -2,92 +2,57 @@ with Ada.Real_Time;
 with Ada.Finalization;
 with Ada.Containers;
 with Ada.Containers.Hashed_Sets;
+with Ada.Containers.Hashed_Maps;
 with Interfaces;
 with System;
 with Terminal.Common.Bytes;
 with Terminal.App.Render_Model;
+with Terminal.App.Owned_Image_Data;
 with Terminal.Core;
 
-package Terminal.App.Image_Store is
+private package Terminal.App.Image_Store is
    use type System.Address;
 
    type Animation_Playback_State is
      (Animation_Stopped, Animation_Loading, Animation_Running);
 
-   type Image_Frame is tagged private;
+   type Image_Frame is tagged limited private;
    type Image_Frame_Access is access Image_Frame;
-   function Number (Frame : Image_Frame) return Positive;
-   function Gap_MS (Frame : Image_Frame) return Integer;
-   function Usage_Hint (Frame : Image_Frame) return Natural;
-   function Bytes
-     (Frame : Image_Frame) return Terminal.App.Render_Model.Image_Data_View;
-   function Length (Frame : Image_Frame) return Natural;
-   procedure Set_Usage_Hint
-     (Frame : Image_Frame_Access; Value : Natural);
-   procedure Create_Frame
-     (Number     : Positive;
-      Gap_MS     : Integer;
-      Usage_Hint : Natural;
-      Data       : in out Terminal.App.Render_Model.Image_Data_Access;
-      Frame      : out Image_Frame_Access);
-   procedure Append_Unowned_Frame
-     (Head, Tail : in out Image_Frame_Access;
-      Frame      : in out Image_Frame_Access);
-   procedure Release_Unowned_Frames (Head : in out Image_Frame_Access);
 
-   type Theme_Operation is tagged private;
+   type Theme_Operation (Is_Composition : Boolean := False) is
+     tagged limited private;
    type Theme_Operation_Access is access Theme_Operation;
-   type Theme_Operation_Descriptor is record
-      Is_Composition : Boolean := False;
+   type Theme_Operation_Descriptor
+     (Is_Composition : Boolean := False) is record
       Archived_Frames : Boolean := False;
-      New_Frame      : Boolean := False;
       Target_Frame   : Positive := 1;
-      Base_Frame     : Natural := 0;
-      Source_Frame   : Natural := 0;
-      Raw_Format     : Natural := 32;
-      Data_Width     : Natural := 0;
-      Data_Height    : Natural := 0;
-      Data_Row_Stride_Bytes : Natural := 0;
       Target_X       : Natural := 0;
       Target_Y       : Natural := 0;
-      Source_X       : Natural := 0;
-      Source_Y       : Natural := 0;
-      Region_Width   : Natural := 0;
-      Region_Height  : Natural := 0;
       Composition_Mode : Natural := 0;
-      Background_Color : Terminal.Core.Graphics_ID := 0;
+      case Is_Composition is
+         when False =>
+            New_Frame      : Boolean := False;
+            Base_Frame     : Natural := 0;
+            Raw_Format     : Natural := 32;
+            Data_Width     : Natural := 0;
+            Data_Height    : Natural := 0;
+            Data_Row_Stride_Bytes : Natural := 0;
+            Background_Color : Terminal.Core.Graphics_ID := 0;
+         when True =>
+            Source_Frame   : Positive := 1;
+            Source_X       : Natural := 0;
+            Source_Y       : Natural := 0;
+            Region_Width   : Natural := 0;
+            Region_Height  : Natural := 0;
+      end case;
    end record;
-   --  Read-only operation access remains primitive so clients can use Ada's
-   --  prefixed notation.  Construction, linking, archival, and release live
-   --  in the cohesive Image_Store.Themes child API.
-   function Descriptor
-     (Operation : Theme_Operation) return Theme_Operation_Descriptor;
-   function Bytes
-     (Operation : Theme_Operation)
-      return Terminal.App.Render_Model.Image_Data_View;
-   function Length (Operation : Theme_Operation) return Natural;
-   function Is_Composition (Operation : Theme_Operation) return Boolean;
-   function Archived_Frames (Operation : Theme_Operation) return Boolean;
-   function New_Frame (Operation : Theme_Operation) return Boolean;
-   function Target_Frame (Operation : Theme_Operation) return Positive;
-   function Base_Frame (Operation : Theme_Operation) return Natural;
-   function Source_Frame (Operation : Theme_Operation) return Natural;
-   function Raw_Format (Operation : Theme_Operation) return Natural;
-   function Data_Width (Operation : Theme_Operation) return Natural;
-   function Data_Height (Operation : Theme_Operation) return Natural;
-   function Data_Row_Stride_Bytes (Operation : Theme_Operation) return Natural;
-   function Target_X (Operation : Theme_Operation) return Natural;
-   function Target_Y (Operation : Theme_Operation) return Natural;
-   function Source_X (Operation : Theme_Operation) return Natural;
-   function Source_Y (Operation : Theme_Operation) return Natural;
-   function Region_Width (Operation : Theme_Operation) return Natural;
-   function Region_Height (Operation : Theme_Operation) return Natural;
-   function Composition_Mode (Operation : Theme_Operation) return Natural;
-   function Background_Color
-     (Operation : Theme_Operation) return Terminal.Core.Graphics_ID;
-   type Image_Object is tagged private;
+   --  Operation nodes are opaque construction handles. Read traversal lives
+   --  in Image_Store.Themes and is bound to a controlled Data_Borrow.
+   type Image_Object is tagged limited private;
    type Image_Object_Access is access Image_Object;
    type Store is new Ada.Finalization.Limited_Controlled with private;
+   type Data_Borrow is new Ada.Finalization.Limited_Controlled with private;
+   type Delete_Preparation is limited private;
 
    procedure Create_Object (Object : out Image_Object_Access);
    procedure Release_Unowned_Object (Object : in out Image_Object_Access);
@@ -105,30 +70,10 @@ package Terminal.App.Image_Store is
    function Usage_Hint (Object : Image_Object) return Natural;
    function Storage_Order (Object : Image_Object) return Interfaces.Unsigned_64;
    function Content_Serial (Object : Image_Object) return Interfaces.Unsigned_64;
-   function Root_Gap_MS (Object : Image_Object) return Integer;
-   function Current_Frame (Object : Image_Object) return Positive;
-   function Playback (Object : Image_Object) return Animation_Playback_State;
-   function Loop_Count (Object : Image_Object) return Positive;
-   function Loops_Completed (Object : Image_Object) return Natural;
-   function Next_Frame_At (Object : Image_Object) return Ada.Real_Time.Time;
-   function Deadline_Set (Object : Image_Object) return Boolean;
-
    procedure Set_Usage_Hint
-     (Object : Image_Object_Access; Value : Natural);
-   procedure Set_Root_Gap
-     (Object : Image_Object_Access; Value : Integer);
-   procedure Set_Current_Frame
-     (Object : Image_Object_Access; Value : Positive);
-   procedure Set_Playback
-     (Object : Image_Object_Access; Value : Animation_Playback_State);
-   procedure Set_Loop_Count
-     (Object : Image_Object_Access; Value : Positive);
-   procedure Set_Loops_Completed
-     (Object : Image_Object_Access; Value : Natural);
-   procedure Set_Next_Frame_At
-     (Object : Image_Object_Access; Value : Ada.Real_Time.Time);
-   procedure Set_Deadline
-     (Object : Image_Object_Access; Value : Boolean);
+     (Container : in out Store;
+      Object    : Image_Object_Access;
+      Value     : Natural);
 
    function Find_By_ID
      (Container : Store;
@@ -146,44 +91,36 @@ package Terminal.App.Image_Store is
       Storage_Order : Interfaces.Unsigned_64) return Image_Object_Access;
 
    function Owned_Bytes (Object : Image_Object) return Natural;
-   function Root_Data
-     (Object : Image_Object_Access)
-      return Terminal.App.Render_Model.Image_Data_View;
-   function Indexed_Data
-     (Object : Image_Object_Access)
-      return Terminal.App.Render_Model.Image_Data_View;
+   function Root_Data_Length (Object : Image_Object_Access) return Natural;
+   function Indexed_Data_Allocation_Length
+     (Object : Image_Object_Access) return Natural;
+   --  Store-backed root, indexed, and animation-frame views are exposed only
+   --  while a controlled borrow pins their object. Byte-storage and structural
+   --  mutations reject active borrows, and deletion defers reclamation until
+   --  the last borrow ends.
+   procedure Borrow
+     (Item   : in out Data_Borrow;
+      Object : Image_Object_Access);
+   procedure Release (Item : in out Data_Borrow);
+   function Borrowed_Root_Length (Item : Data_Borrow) return Natural;
+   function Borrowed_Indexed_Length (Item : Data_Borrow) return Natural;
+   procedure Visit_Borrowed_Frame_Data
+     (Item   : Data_Borrow;
+      Number : Positive;
+      Process : not null access procedure
+        (Data : Terminal.Common.Bytes.Byte_Array));
+   procedure Copy_Root_Data
+     (Item   : Data_Borrow;
+      Target : out Terminal.Common.Bytes.Byte_Array);
+   procedure Copy_Indexed_Data
+     (Item   : Data_Borrow;
+      Target : out Terminal.Common.Bytes.Byte_Array);
    function Indexed_Data_Format
      (Object : Image_Object_Access) return Natural;
    function Indexed_Data_Length
      (Object : Image_Object_Access) return Natural;
    function Indexed_Row_Stride
      (Object : Image_Object_Access) return Natural;
-   function First_Frame
-     (Object : Image_Object_Access) return Image_Frame_Access;
-   function Next_Frame (Frame : Image_Frame_Access) return Image_Frame_Access;
-   function Frame_Count_Of (Object : Image_Object_Access) return Positive;
-   function Find_Frame
-     (Object : Image_Object_Access;
-      Number : Positive) return Image_Frame_Access;
-   function Frame_Exists
-     (Object : Image_Object_Access;
-      Number : Natural) return Boolean;
-   function Frame_Bytes
-     (Object : Image_Object_Access;
-      Number : Positive)
-      return Terminal.App.Render_Model.Image_Data_View;
-   function Frame_Gap
-     (Object : Image_Object_Access;
-      Number : Positive) return Integer;
-   function Set_Frame_Gap
-     (Object : Image_Object_Access;
-      Number : Positive;
-      Gap    : Integer) return Boolean;
-   procedure Copy_Frame_To_RGBA
-     (Object : Image_Object_Access;
-      Number : Positive;
-      Target : in out Terminal.Common.Bytes.Byte_Array;
-      Valid  : out Boolean);
 
    function First (Container : Store) return Image_Object_Access;
    function Next_Object
@@ -191,6 +128,8 @@ package Terminal.App.Image_Store is
    function Object_Count (Container : Store) return Natural;
    function Byte_Count (Container : Store) return Natural;
    function Animation_Frame_Count (Container : Store) return Natural;
+
+   type Allocation_Control is limited private;
 
    procedure Link_New
      (Container : in out Store;
@@ -212,40 +151,45 @@ package Terminal.App.Image_Store is
       Decoded_Length   : Natural;
       Row_Stride       : Natural;
       Usage_Hint       : Natural;
-      Data             : in out Terminal.App.Render_Model.Image_Data_Access);
+      Data             : in out Terminal.App.Owned_Image_Data.Owner;
+      Index_Control    : access Allocation_Control := null);
    procedure Adopt_Indexed_Data
      (Container  : in out Store;
       Object     : Image_Object_Access;
       Format     : Natural;
       Row_Stride : Natural;
-      Data       : in out Terminal.App.Render_Model.Image_Data_Access);
+      Data       : in out Terminal.App.Owned_Image_Data.Owner);
    procedure Replace_Root_RGBA
      (Container : in out Store;
       Object    : Image_Object_Access;
-      Data      : in out Terminal.App.Render_Model.Image_Data_Access;
-      Preserve_Indexed : Boolean := False);
-   procedure Append_Frame
-     (Container : in out Store;
-      Object    : Image_Object_Access;
-      Frame     : in out Image_Frame_Access);
-   procedure Adopt_Frames
-     (Container : in out Store;
-      Object    : Image_Object_Access;
-      Head      : in out Image_Frame_Access);
-   procedure Replace_Frame_Data
-     (Container : in out Store;
-      Object    : Image_Object_Access;
-      Number    : Positive;
-      Data      : in out Terminal.App.Render_Model.Image_Data_Access);
-   procedure Clear_Frames
-     (Container : in out Store;
-      Object    : Image_Object_Access);
+      Data      : in out Terminal.App.Owned_Image_Data.Owner;
+      Preserve_Indexed : Boolean := False;
+      Set_Root_Gap : Boolean := False;
+      Root_Gap_MS  : Integer := 0;
+      Set_Usage    : Boolean := False;
+      Usage_Hint   : Natural := 0);
    procedure Delete_Object
      (Container : in out Store;
       Object    : in out Image_Object_Access);
    procedure Delete_Replacement
      (Container : in out Store;
       Object    : in out Image_Object_Access);
+   procedure Prepare_Delete_Object
+     (Container : Store;
+      Object    : Image_Object_Access;
+      Preparation : out Delete_Preparation);
+   procedure Prepare_Delete_Replacement
+     (Container : Store;
+      Object    : Image_Object_Access;
+      Preparation : out Delete_Preparation);
+   procedure Delete_Object
+     (Container   : in out Store;
+      Object      : in out Image_Object_Access;
+      Preparation : in out Delete_Preparation);
+   procedure Delete_Replacement
+     (Container   : in out Store;
+      Object      : in out Image_Object_Access;
+      Preparation : in out Delete_Preparation);
    procedure Release_All (Container : in out Store);
 
    function Allocate_Storage_Order
@@ -259,78 +203,75 @@ package Terminal.App.Image_Store is
      (Container : in out Store;
       Object    : Image_Object_Access);
 
-   type Allocation_Control is limited private;
-
    function Allocation_Allowed
      (Control : in out Allocation_Control) return Boolean;
 
 private
-   procedure Create_Theme_Operation
-     (Description : Theme_Operation_Descriptor;
-      Data        : in out Terminal.App.Render_Model.Image_Data_Access;
-      Operation   : out Theme_Operation_Access);
-   procedure Append_Unowned_Theme_Operation
-     (Head, Tail : in out Theme_Operation_Access;
-      Operation  : in out Theme_Operation_Access);
-   procedure Release_Unowned_Theme_Operations
-     (Head : in out Theme_Operation_Access);
-   function First_Theme_Operation
-     (Object : Image_Object_Access) return Theme_Operation_Access;
-   function Next_Theme_Operation
-     (Operation : Theme_Operation_Access) return Theme_Operation_Access;
-   function Theme_Operation_Count_Of
-     (Object : Image_Object_Access) return Natural;
-   procedure Adopt_Theme_Operations
-     (Container : in out Store;
-      Object    : Image_Object_Access;
-      Head      : in out Theme_Operation_Access);
-   procedure Append_Theme_Operation
-     (Container : in out Store;
-      Object    : Image_Object_Access;
-      Operation : in out Theme_Operation_Access);
-   procedure Clear_Theme_Operations
-     (Container : in out Store;
-      Object    : Image_Object_Access);
-   procedure Archive_Root_Theme_Operations
-     (Container      : in out Store;
-      Object         : Image_Object_Access;
-      Max_Operations : Positive);
+   function Root_Data
+     (Object : Image_Object_Access)
+      return Terminal.App.Render_Model.Image_Data_View;
+   function Indexed_Data
+     (Object : Image_Object_Access)
+      return Terminal.App.Render_Model.Image_Data_View;
+   procedure Assert_Not_Borrowed (Object : Image_Object);
+   function Checked_Total (Left, Right : Natural) return Natural;
+   procedure Release_Frame_List (Head : in out Image_Frame_Access);
+   type Frame_Borrow_Hold is limited record
+      Object : Image_Object_Access := null;
+      Token  : Interfaces.Unsigned_64 := 0;
+   end record;
+   procedure Acquire_Frame_Borrow
+     (Object : Image_Object_Access;
+      Hold   : in out Frame_Borrow_Hold);
+   procedure Release_Frame_Borrow (Hold : in out Frame_Borrow_Hold);
+   procedure Move_Frame_Borrow
+     (Source : in out Frame_Borrow_Hold;
+      Target : in out Frame_Borrow_Hold);
    function Is_Owned
      (Container : Store; Object : Image_Object_Access) return Boolean;
    procedure Release_Theme_Operation_List
      (Head : in out Theme_Operation_Access);
 
-   type Image_Frame is tagged record
+   type Image_Frame is tagged limited record
       Number     : Positive := 2;
       Gap_MS     : Integer := 40;
       Usage_Hint : Natural := 0;
-      Bytes      : Terminal.App.Render_Model.Image_Data_Access := null;
+      Bytes      : Terminal.App.Owned_Image_Data.Owner;
       Length     : Natural := 0;
       Next       : Image_Frame_Access := null;
    end record;
 
-   type Theme_Operation is tagged record
-      Is_Composition : Boolean := False;
+   type Image_Frame_Index_Array is
+     array (Positive range <>) of Image_Frame_Access;
+   type Image_Frame_Index_Access is access Image_Frame_Index_Array;
+
+   type Theme_Operation (Is_Composition : Boolean := False) is
+     tagged limited record
       Archived_Frames : Boolean := False;
-      New_Frame      : Boolean := False;
       Target_Frame   : Positive := 1;
-      Base_Frame     : Natural := 0;
-      Source_Frame   : Natural := 0;
-      Raw_Format     : Natural := 32;
-      Data_Width     : Natural := 0;
-      Data_Height    : Natural := 0;
-      Data_Row_Stride_Bytes : Natural := 0;
       Target_X       : Natural := 0;
       Target_Y       : Natural := 0;
-      Source_X       : Natural := 0;
-      Source_Y       : Natural := 0;
-      Region_Width   : Natural := 0;
-      Region_Height  : Natural := 0;
       Composition_Mode : Natural := 0;
-      Background_Color : Terminal.Core.Graphics_ID := 0;
-      Bytes          : Terminal.App.Render_Model.Image_Data_Access := null;
+      Bytes          : Terminal.App.Owned_Image_Data.Owner;
       Length         : Natural := 0;
+      Owner          : Image_Object_Access := null;
       Next           : Theme_Operation_Access := null;
+      case Is_Composition is
+         when False =>
+            New_Frame      : Boolean := False;
+            Base_Frame     : Natural := 0;
+            Raw_Format     : Natural := 32;
+            Data_Width     : Natural := 0;
+            Data_Height    : Natural := 0;
+            Data_Row_Stride_Bytes : Natural := 0;
+            Background_Color : Terminal.Core.Graphics_ID := 0;
+         when True =>
+            Source_Frame   : Positive := 1;
+            Source_X       : Natural := 0;
+            Source_Y       : Natural := 0;
+            Region_Width   : Natural := 0;
+            Region_Height  : Natural := 0;
+      end case;
    end record;
 
    function Hash_Address
@@ -340,7 +281,7 @@ private
       Hash                => Hash_Address,
       Equivalent_Elements => System."=");
 
-   type Image_Object is tagged record
+   type Image_Object_State is record
       Stream_ID      : Terminal.Core.Graphics_Stream_ID := 0;
       ID             : Terminal.Core.Graphics_ID := 0;
       Number         : Terminal.Core.Graphics_ID := 0;
@@ -361,13 +302,13 @@ private
       Loops_Completed : Natural := 0;
       Next_Frame_At  : Ada.Real_Time.Time := Ada.Real_Time.Time_First;
       Deadline_Set   : Boolean := False;
-      Bytes          : Terminal.App.Render_Model.Image_Data_Access := null;
       Indexed_Format : Natural := 0;
       Indexed_Length : Natural := 0;
       Indexed_Row_Stride_Bytes : Natural := 0;
-      Indexed_Bytes  : Terminal.App.Render_Model.Image_Data_Access := null;
       Frames         : Image_Frame_Access := null;
       Frames_Tail    : Image_Frame_Access := null;
+      Frame_Index    : Image_Frame_Index_Access := null;
+      Frame_Index_Capacity : Natural := 0;
       Frame_Count    : Positive := 1;
       Frame_Bytes    : Natural := 0;
       Theme_Operations : Theme_Operation_Access := null;
@@ -375,12 +316,57 @@ private
       Theme_Operation_Count : Natural := 0;
       Theme_Operation_Bytes : Natural := 0;
       Theme_Addresses : Address_Sets.Set;
+      Theme_Transaction_Active : Boolean := False;
+      Theme_Transaction_Quarantined : Boolean := False;
+      Frame_Borrows : Natural := 0;
+      Borrow_Epoch : Interfaces.Unsigned_64 := 0;
+      Pending_Release : Boolean := False;
+   end record;
+
+   type Image_Object is tagged limited record
+      State          : Image_Object_State;
+      Bytes          : Terminal.App.Owned_Image_Data.Owner;
+      Indexed_Bytes  : Terminal.App.Owned_Image_Data.Owner;
+      Previous : Image_Object_Access := null;
       Next : Image_Object_Access := null;
+      ID_Index_Previous : Image_Object_Access := null;
+      ID_Index_Next : Image_Object_Access := null;
+      Number_Index_Previous : Image_Object_Access := null;
+      Number_Index_Next : Image_Object_Access := null;
       Counted : Boolean := False;
       Replaces : Image_Object_Access := null;
+      Pending_Replacement : Image_Object_Access := null;
       Accounted_Bytes : Natural := 0;
       Accounted_Frames : Natural := 0;
       Owner : System.Address := System.Null_Address;
+   end record;
+
+   type Object_Key is record
+      Stream_ID : Terminal.Core.Graphics_Stream_ID;
+      Value     : Terminal.Core.Graphics_ID;
+   end record;
+   function Hash_Object_Key
+     (Key : Object_Key) return Ada.Containers.Hash_Type;
+   package Object_Maps is new Ada.Containers.Hashed_Maps
+     (Key_Type        => Object_Key,
+      Element_Type    => Image_Object_Access,
+      Hash            => Hash_Object_Key,
+      Equivalent_Keys => "=");
+
+   type Storage_Key is record
+      Stream_ID     : Terminal.Core.Graphics_Stream_ID;
+      Storage_Order : Interfaces.Unsigned_64;
+   end record;
+   function Hash_Storage_Key
+     (Key : Storage_Key) return Ada.Containers.Hash_Type;
+   package Storage_Maps is new Ada.Containers.Hashed_Maps
+     (Key_Type        => Storage_Key,
+      Element_Type    => Image_Object_Access,
+      Hash            => Hash_Storage_Key,
+      Equivalent_Keys => "=");
+
+   type Allocation_Control is limited record
+      Remaining_Attempts : Natural := 0;
    end record;
 
    type Store is new Ada.Finalization.Limited_Controlled with record
@@ -390,17 +376,35 @@ private
       Animation_Frames : Natural := 0;
       Next_Storage_Order : Interfaces.Unsigned_64 := 1;
       Next_Content_Serial : Interfaces.Unsigned_64 := 1;
+      Mutation_Epoch : Interfaces.Unsigned_64 := 1;
+      By_ID : Object_Maps.Map;
+      By_Number : Object_Maps.Map;
+      By_Storage_Order : Storage_Maps.Map;
+   end record;
+
+   type Delete_Preparation is limited record
+      Store_Address          : System.Address := System.Null_Address;
+      Object                 : Image_Object_Access := null;
+      Previous               : Image_Object_Access := null;
+      Replacement_To_Promote : Image_Object_Access := null;
+      Counted                : Boolean := False;
+      Mutation_Epoch         : Interfaces.Unsigned_64 := 0;
+      Valid                  : Boolean := False;
    end record;
 
    overriding procedure Finalize (Container : in out Store);
 
+   type Data_Borrow is new Ada.Finalization.Limited_Controlled with record
+      Hold : Frame_Borrow_Hold;
+   end record;
+   overriding procedure Finalize (Item : in out Data_Borrow);
+
    procedure Release_Contents (Object : in out Image_Object);
+   function Owns_Data_View
+     (Object : Image_Object_Access;
+      Data   : Terminal.App.Render_Model.Image_Data_View) return Boolean;
+   procedure Advance_Mutation_Epoch (Container : in out Store);
    procedure Synchronize
      (Container : in out Store;
       Object    : Image_Object_Access);
-
-   type Allocation_Control is limited record
-      Remaining_Attempts : Natural := 0;
-   end record;
-
 end Terminal.App.Image_Store;

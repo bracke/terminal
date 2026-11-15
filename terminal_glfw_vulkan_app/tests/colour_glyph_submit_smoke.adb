@@ -1,12 +1,13 @@
+with Terminal.App.Image_Data;
 with Ada.Text_IO;
 with AUnit.Assertions;
 
-with Interfaces;
 with System;
 
 with Terminal.Common.Bytes;
 with Terminal.App.Render_Model;
 with Terminal.App.Vulkan_Submit;
+with Terminal.App.Vulkan_Submit.Testing;
 
 --  Colour glyphs pack into a sheet of their own and draw from it.
 --
@@ -22,6 +23,7 @@ with Terminal.App.Vulkan_Submit;
 --  of it, which is what the image protocols do.
 procedure Colour_Glyph_Submit_Smoke is
    use AUnit.Assertions;
+   package VST renames Terminal.App.Vulkan_Submit.Testing;
    use type Terminal.App.Vulkan_Submit.Build_Status;
    use type Terminal.App.Vulkan_Submit.Texture_Source;
 
@@ -58,14 +60,13 @@ procedure Colour_Glyph_Submit_Smoke is
       3 => Tile (0.0, 40.0)];
 
    --  Stands in for Textrender's sheet; the submission only passes it along.
-   Sheet : aliased constant Interfaces.Unsigned_8 := 0;
+   Sheet : constant Terminal.App.Image_Data.Image_Data_Access :=
+     new Terminal.Common.Bytes.Byte_Array'(1 .. 512 * 512 * 4 => 0);
 
    Frame : RM.Frame_Commands;
    Batch : VS.Submission_Batch;
    Status : VS.Build_Status;
    Colour_Quads : Natural := 0;
-   Distinct_U0  : Natural := 0;
-   Seen_U0      : array (1 .. 8) of Float := [others => -1.0];
 begin
    Frame.Width := 200;
    Frame.Height := 50;
@@ -73,13 +74,16 @@ begin
    Frame.Colour_Glyph_Count := 3;
    Frame.Colour_Sheet_Width := 512;
    Frame.Colour_Sheet_Height := 512;
-   Frame.Colour_Sheet_Pixels := Sheet'Address;
+   Frame.Colour_Sheet_Pixels := Sheet.all'Address;
+   Frame.Colour_Sheet_Bytes := Sheet.all'Length;
 
    VS.Build (Frame, Batch, Status);
    Assert (Status = VS.Ok, "the frame builds");
 
-   Assert (VS.Colour_Atlas_Pixels (Batch) = Sheet'Address,
-           "the sheet is passed through to the device, not copied");
+   Assert
+     (VST.Colour_Atlas_Pixels (Batch) /= System.Null_Address
+      and then VST.Colour_Atlas_Pixels (Batch) /= Sheet.all'Address,
+      "the batch owns a stable copy of the colour sheet");
    Assert (VS.Colour_Atlas_Width (Batch) = 512
              and then VS.Colour_Atlas_Height (Batch) = 512,
            "with the size Textrender gave it");
@@ -89,7 +93,7 @@ begin
            & Natural'Image (VS.Colour_Glyph_Vertex_Count (Batch)));
 
    declare
-      Items : constant VS.Vertex_Array_View := VS.Vertices (Batch);
+      Items : constant VS.Vertex_Array_View := VST.Vertices (Batch);
    begin
       for Index in 1 .. VS.Vertex_Count (Batch) loop
          if Items (Index).Texture = VS.Texture_Colour_Glyphs then
@@ -156,7 +160,7 @@ begin
    declare
       --  An inline picture that genuinely claims the image texture: everything
       --  the eligibility check asks for, including bytes to read.
-      Decoded : constant RM.Image_Data_Access :=
+      Decoded : constant Terminal.App.Image_Data.Image_Data_Access :=
         new Terminal.Common.Bytes.Byte_Array'(1 .. 2 * 2 * 4 => 255);
       Images : aliased RM.Image_Array :=
         [1 =>
@@ -171,7 +175,7 @@ begin
             Preview_Decode_Complete => True,
             Decode_Status => RM.Image_Decode_Ok,
             Decoded_Source => RM.Image_Decoded_Source_Buffer,
-            Decoded_Bytes => RM.Read_Only (Decoded),
+            Decoded_Bytes => Terminal.App.Image_Data.Read_Only (Decoded),
             Decoded_Byte_Length => 2 * 2 * 4,
             others => <>)];
       With_Image : RM.Frame_Commands;
@@ -185,7 +189,8 @@ begin
       With_Image.Colour_Glyph_Count := 3;
       With_Image.Colour_Sheet_Width := 512;
       With_Image.Colour_Sheet_Height := 512;
-      With_Image.Colour_Sheet_Pixels := Sheet'Address;
+      With_Image.Colour_Sheet_Pixels := Sheet.all'Address;
+      With_Image.Colour_Sheet_Bytes := Sheet.all'Length;
       With_Image.Images := Images'Unchecked_Access;
       With_Image.Image_Count := 1;
 
@@ -193,7 +198,7 @@ begin
       Assert (Image_Status = VS.Ok, "a frame with both builds");
 
       declare
-         Items : constant VS.Vertex_Array_View := VS.Vertices (Image_Batch);
+         Items : constant VS.Vertex_Array_View := VST.Vertices (Image_Batch);
       begin
          for Index in 1 .. VS.Vertex_Count (Image_Batch) loop
             if Items (Index).Texture = VS.Texture_Colour_Glyphs then
@@ -212,8 +217,10 @@ begin
       Assert (Colour_Vertices = 3 * 6,
               "the emoji still draw alongside an inline picture, got"
               & Natural'Image (Colour_Vertices));
-      Assert (VS.Colour_Atlas_Pixels (Image_Batch) = Sheet'Address,
-              "and their sheet is still passed along");
+      Assert
+        (VST.Colour_Atlas_Pixels (Image_Batch) /= System.Null_Address
+         and then VST.Colour_Atlas_Pixels (Image_Batch) /= Sheet.all'Address,
+         "and their sheet remains batch-owned");
 
       VS.Release (Image_Batch);
    end;

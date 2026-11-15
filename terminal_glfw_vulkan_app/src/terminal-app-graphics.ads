@@ -1,6 +1,9 @@
 with Ada.Finalization;
 with Terminal.Common.Bytes;
+with Terminal.Common.Graphics_Limits;
 with Terminal.App.Image_Decode;
+with Terminal.App.Graphics_Types;
+with Terminal.App.Owned_Image_Data;
 with Terminal.App.Render_Model;
 with Terminal.Core;
 
@@ -8,7 +11,8 @@ package Terminal.App.Graphics is
    Max_Status_Label_Length : constant := 64;
    Max_Data_Preview_Length : constant :=
      Terminal.App.Render_Model.Max_Image_Decoded_Data_Length;
-   Max_Sixel_Pixel_Dimension : constant := 16_384;
+   Max_Sixel_Pixel_Dimension : constant :=
+     Terminal.Common.Graphics_Limits.Max_Pixel_Dimension;
 
    --  Private Kitty transmit formats: the payload is a JPEG or GIF file,
    --  decoded here as the iTerm2 inline images are. Kitty's own formats are
@@ -16,121 +20,27 @@ package Terminal.App.Graphics is
    Kitty_JPEG_Format : constant := 1001;
    Kitty_GIF_Format  : constant := 1002;
 
-   type Graphics_Protocol is
-     (Sixel,
-      Kitty,
-      ITerm2);
-
-   type Sixel_Color is record
-      R : Terminal.Common.Bytes.Byte := 16#FF#;
-      G : Terminal.Common.Bytes.Byte := 16#FF#;
-      B : Terminal.Common.Bytes.Byte := 16#FF#;
-      A : Terminal.Common.Bytes.Byte := 16#FF#;
-   end record;
-   type Sixel_Palette_State is
-     array (Natural range 0 .. 255) of Sixel_Color;
+   subtype Graphics_Protocol is Graphics_Types.Graphics_Protocol;
+   Sixel  : constant Graphics_Protocol := Graphics_Types.Sixel;
+   Kitty  : constant Graphics_Protocol := Graphics_Types.Kitty;
+   ITerm2 : constant Graphics_Protocol := Graphics_Types.ITerm2;
+   subtype Sixel_Color is Graphics_Types.Sixel_Color;
+   subtype Sixel_Palette_State is Graphics_Types.Sixel_Palette_State;
    function Default_Sixel_Palette return Sixel_Palette_State;
 
-   type Protocol_Capability is record
-      Recognized : Boolean := True;
-      Decoded    : Boolean := False;
-      Rendered   : Boolean := False;
-   end record;
+   subtype Protocol_Capability is Graphics_Types.Protocol_Capability;
+   subtype Emoji_Capability is Graphics_Types.Emoji_Capability;
+   subtype ITerm2_Size_Unit is Graphics_Types.ITerm2_Size_Unit;
+   ITerm2_Auto : constant ITerm2_Size_Unit := Graphics_Types.ITerm2_Auto;
+   ITerm2_Cells : constant ITerm2_Size_Unit := Graphics_Types.ITerm2_Cells;
+   ITerm2_Pixels : constant ITerm2_Size_Unit := Graphics_Types.ITerm2_Pixels;
+   ITerm2_Percent : constant ITerm2_Size_Unit := Graphics_Types.ITerm2_Percent;
 
-   type Emoji_Capability is record
-      Cluster_Preserved    : Boolean := True;
-      Monochrome_Fallback  : Boolean := True;
-      Color_Glyph_Rendered : Boolean := False;
-   end record;
-
-   type ITerm2_Size_Unit is
-     (ITerm2_Auto, ITerm2_Cells, ITerm2_Pixels, ITerm2_Percent);
-
-   type Graphics_Header (Protocol : Graphics_Protocol := Kitty) is record
-      Recognized       : Boolean := False;
-      Has_Data         : Boolean := False;
-      Raw_Format       : Natural := 0;
-      Pixel_Width      : Natural := 0;
-      Pixel_Height     : Natural := 0;
-      Placeholder_Cols : Positive := 4;
-      Placeholder_Rows : Positive := 2;
-      case Protocol is
-         when Kitty =>
-            Kitty_Control_Data_Valid : Boolean := True;
-            Kitty_Action_Controls_Valid : Boolean := True;
-            Kitty_More       : Boolean := False;
-            Kitty_More_Specified : Boolean := False;
-            Kitty_More_Valid : Boolean := True;
-            Kitty_Action     : Character := ASCII.NUL;
-            Kitty_Transmission : Character := ASCII.NUL;
-            Kitty_Transmission_Specified : Boolean := False;
-            Kitty_Transmission_Valid : Boolean := True;
-            Kitty_Compression : Character := ASCII.NUL;
-            Kitty_Compression_Specified : Boolean := False;
-            Kitty_Compression_Valid : Boolean := True;
-            Kitty_Delete     : Character := ASCII.NUL;
-            Kitty_Delete_Controls_Valid : Boolean := True;
-            Kitty_Delete_Range_First : Terminal.Core.Graphics_ID := 0;
-            Kitty_Delete_Range_Last  : Terminal.Core.Graphics_ID := 0;
-            Kitty_ID         : Terminal.Core.Graphics_ID := 0;
-            Kitty_Image_Number : Terminal.Core.Graphics_ID := 0;
-            Kitty_Placement_ID : Terminal.Core.Graphics_ID := 0;
-            Kitty_Quiet      : Natural := 0;
-            Kitty_Usage_Hint : Natural := 0;
-            Kitty_Format     : Natural := 0;
-            Kitty_Data_Size  : Natural := 0;
-            Kitty_Data_Size_Specified : Boolean := False;
-            Kitty_Data_Size_Valid : Boolean := True;
-            Kitty_Data_Offset : Natural := 0;
-            Kitty_Data_Offset_Specified : Boolean := False;
-            Kitty_Data_Offset_Valid : Boolean := True;
-            Kitty_Source_X   : Natural := 0;
-            Kitty_Source_Y   : Natural := 0;
-            Kitty_Source_Width : Natural := 0;
-            Kitty_Source_Height : Natural := 0;
-            Kitty_Cell_X     : Natural := 0;
-            Kitty_Cell_Y     : Natural := 0;
-            Kitty_Z_Index    : Integer := 0;
-            Kitty_No_Cursor_Move : Boolean := False;
-            Kitty_Virtual_Placement : Boolean := False;
-            Kitty_Parent_ID  : Terminal.Core.Graphics_ID := 0;
-            Kitty_Parent_Placement_ID : Terminal.Core.Graphics_ID := 0;
-            Kitty_Parent_Offset_X : Integer := 0;
-            Kitty_Parent_Offset_Y : Integer := 0;
-            Kitty_Frame_Number : Natural := 0;
-            Kitty_Base_Frame : Natural := 0;
-            Kitty_Frame_Gap : Integer := 0;
-            Kitty_Composition_Mode : Natural := 0;
-            Kitty_Background_Color : Terminal.Core.Graphics_ID := 0;
-            Kitty_Animation_State : Natural := 0;
-            Kitty_Loop_Count : Natural := 0;
-            Kitty_Columns_Specified : Boolean := False;
-            Kitty_Columns_Valid : Boolean := True;
-            Kitty_Rows_Specified : Boolean := False;
-            Kitty_Rows_Valid : Boolean := True;
-            Kitty_Geometry_Controls_Valid : Boolean := True;
-         when ITerm2 =>
-            ITerm2_Inline    : Boolean := False;
-            ITerm2_Control_Data_Valid : Boolean := True;
-            ITerm2_Name_Length : Natural := 0;
-            ITerm2_Declared_Size : Natural := 0;
-            ITerm2_Declared_Size_Valid : Boolean := True;
-            ITerm2_Preserve_Aspect_Ratio : Boolean := True;
-            ITerm2_Do_Not_Move_Cursor : Boolean := False;
-            ITerm2_Width_Specified : Boolean := False;
-            ITerm2_Height_Specified : Boolean := False;
-            ITerm2_Width_Valid : Boolean := True;
-            ITerm2_Height_Valid : Boolean := True;
-            ITerm2_Width_Value : Natural := 0;
-            ITerm2_Height_Value : Natural := 0;
-            ITerm2_Width_Unit : ITerm2_Size_Unit := ITerm2_Auto;
-            ITerm2_Height_Unit : ITerm2_Size_Unit := ITerm2_Auto;
-         when Sixel =>
-            Sixel_Transparent : Boolean := False;
-      end case;
-   end record;
+   subtype Graphics_Header is Graphics_Types.Graphics_Header;
 
    subtype Data_Preview_Length_Range is Natural range 0 .. Max_Data_Preview_Length;
+   subtype Data_Decode_Byte_Limit is
+     Positive range 1 .. Max_Data_Preview_Length;
 
    subtype Data_Decode_Status is Terminal.App.Image_Decode.Status;
    Decode_Not_Attempted : constant Data_Decode_Status :=
@@ -152,36 +62,75 @@ package Terminal.App.Graphics is
    Decode_Unsupported_Format : constant Data_Decode_Status :=
      Terminal.App.Image_Decode.Decode_Unsupported_Format;
 
-   --  Bytes is owned by the preview.  Controlled finalization releases it,
-   --  while limiting the record prevents accidental shallow copies.
    type Graphics_Data_Preview is
-     new Ada.Finalization.Limited_Controlled with record
-      Header_Recognized : Boolean := False;
-      Has_Data          : Boolean := False;
-      Encoded_Length    : Natural := 0;
-      Raw_Format        : Natural := 0;
-      Pixel_Width       : Natural := 0;
-      Pixel_Height      : Natural := 0;
-      Decoded_Length    : Data_Preview_Length_Range := 0;
-      Decoded_Row_Stride_Bytes : Natural := 0;
-      Decode_Complete   : Boolean := False;
-      Decode_Status     : Data_Decode_Status := Decode_Not_Attempted;
-      Bytes             : Terminal.App.Render_Model.Image_Data_Access := null;
-   end record;
+     new Ada.Finalization.Limited_Controlled with private;
 
    overriding procedure Finalize (Data : in out Graphics_Data_Preview);
+   function Header_Recognized (Data : Graphics_Data_Preview) return Boolean;
+   function Has_Data (Data : Graphics_Data_Preview) return Boolean;
+   function Encoded_Length (Data : Graphics_Data_Preview) return Natural;
+   function Raw_Format (Data : Graphics_Data_Preview) return Natural;
+   function Pixel_Width (Data : Graphics_Data_Preview) return Natural;
+   function Pixel_Height (Data : Graphics_Data_Preview) return Natural;
+   function Decoded_Length
+     (Data : Graphics_Data_Preview) return Data_Preview_Length_Range;
+   function Decoded_Row_Stride_Bytes
+     (Data : Graphics_Data_Preview) return Natural;
+   function Decode_Complete (Data : Graphics_Data_Preview) return Boolean;
+   function Decode_Status
+     (Data : Graphics_Data_Preview) return Data_Decode_Status;
+   function Has_Bytes (Data : Graphics_Data_Preview) return Boolean;
+   function Byte_At
+     (Data : Graphics_Data_Preview;
+      Offset : Positive) return Terminal.Common.Bytes.Byte;
+   procedure Read_Bytes
+     (Data    : Graphics_Data_Preview;
+      Process : not null access procedure
+        (Bytes : Terminal.Common.Bytes.Byte_Array));
+   --  Read_Bytes scopes the borrowed view to the callback. Take_Bytes
+   --  requires a successful complete decode. Decoder-owned capacity retained
+   --  after a failed attempt remains private and reusable.
 
+   function Metadata_Preview
+     (Header_Recognized : Boolean;
+      Has_Data          : Boolean;
+      Raw_Format        : Natural;
+      Pixel_Width       : Natural;
+      Pixel_Height      : Natural) return Graphics_Data_Preview;
+
+   procedure Set_Decode_Failure
+     (Data   : in out Graphics_Data_Preview;
+      Status : Data_Decode_Status);
+   procedure Record_External_Decode
+     (Data                     : in out Graphics_Data_Preview;
+      Encoded_Length           : Natural;
+      Raw_Format               : Natural;
+      Pixel_Width              : Natural;
+      Pixel_Height             : Natural;
+      Decoded_Length           : Data_Preview_Length_Range;
+      Decoded_Row_Stride_Bytes : Natural;
+      Status                   : Data_Decode_Status);
+   --  Decoding is a build capability. Rendering is a runtime capability and
+   --  therefore remains false unless an initialized backend confirms it.
    function Capability
-     (Protocol : Graphics_Protocol) return Protocol_Capability;
-   function Color_Emoji return Emoji_Capability;
+     (Protocol            : Graphics_Protocol;
+      Rendering_Available : Boolean := False) return Protocol_Capability;
+   function Color_Emoji
+     (Color_Font_Available : Boolean := False) return Emoji_Capability;
    function Name (Protocol : Graphics_Protocol) return String;
-   function Name (Protocol : Terminal.Core.Ignored_Graphics_Protocol)
+   function Name (Protocol : Terminal.Core.Graphics_Protocol_Kind)
                   return String;
    function Capability_Status_Label
-     (Protocol : Graphics_Protocol) return String;
+     (Protocol            : Graphics_Protocol;
+      Rendering_Available : Boolean := False) return String;
    function Header (Event : Terminal.Core.Graphics_Event) return Graphics_Header;
+   function Kitty_Result_From_Header
+     (Value : Graphics_Header;
+      Code  : Terminal.Core.Graphics_Completion_Code :=
+        Terminal.Core.Graphics_No_Response)
+      return Terminal.Core.Graphics_Completion;
    function Header_Text
-     (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
+     (Protocol : Terminal.Core.Graphics_Protocol_Kind;
       Text     : String) return Graphics_Header;
    function Data_Preview
      (Event : Terminal.Core.Graphics_Event) return Graphics_Data_Preview;
@@ -189,137 +138,22 @@ package Terminal.App.Graphics is
      (Event  : Terminal.Core.Graphics_Event;
       Result : in out Graphics_Data_Preview);
    function Data_Preview_Text
-     (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
+     (Protocol : Terminal.Core.Graphics_Protocol_Kind;
       Text     : String) return Graphics_Data_Preview;
-   procedure Decode_PNG_RGBA_Data
-     (PNG    : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural;
-      Result : in out Graphics_Data_Preview);
-   procedure Decode_JPEG_RGBA_Data
-     (JPEG   : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural;
-      Result : in out Graphics_Data_Preview;
-      Maximum_Decoded_Bytes : Positive := Max_Data_Preview_Length;
-      Maximum_Pixel_Dimension : Positive := Positive'Last);
-   procedure Decode_Image_RGBA_Data
-     (Data   : Terminal.Common.Bytes.Byte_Array;
-      Length : Natural;
-      Result : in out Graphics_Data_Preview);
-   procedure Decode_Zlib_Data
-     (Compressed      : Terminal.Common.Bytes.Byte_Array;
-      Length          : Natural;
-      Maximum_Length  : Natural;
-      Exact_Length    : Boolean;
-      Inflated        : out Terminal.App.Render_Model.Image_Data_Access;
-      Inflated_Length : out Natural;
-      Status          : out Data_Decode_Status);
+   --  This constructor is visible because Graphics_Data_Preview is tagged:
+   --  Ada requires primitive functions with a controlling result to be
+   --  declared in the visible part. Other codec entry points are grouped in
+   --  Terminal.App.Graphics.Media_Decoders and Decoding.
    function JPEG_Data_Preview_Text
-     (Text                    : String;
-      Maximum_Decoded_Bytes   : Positive;
+     (Text : String; Maximum_Decoded_Bytes : Data_Decode_Byte_Limit;
       Maximum_Pixel_Dimension : Positive) return Graphics_Data_Preview;
-   procedure Decode_PNG_RGBA_Source_Rows
-     (Length   : Natural;
-      PNG_Byte : not null access function
-        (Index : Positive) return Terminal.Common.Bytes.Byte;
-      Row_Sink : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result   : in out Graphics_Data_Preview);
-   procedure Decode_PNG_RGBA_Rows
-     (PNG      : Terminal.Common.Bytes.Byte_Array;
-      Length   : Natural;
-      Row_Sink : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result   : in out Graphics_Data_Preview);
-   procedure Decode_Sixel_Rows
-     (Text     : String;
-      Row_Sink : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result   : in out Graphics_Data_Preview;
-      Maximum_Decoded_Bytes : Positive := Max_Data_Preview_Length;
-      Maximum_Pixel_Dimension : Positive := Max_Sixel_Pixel_Dimension);
-   procedure Decode_Sixel_Rows
-     (Text          : String;
-      Row_Sink      : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Palette       : in out Sixel_Palette_State;
-      Reset_Palette : Boolean;
-      Result        : in out Graphics_Data_Preview;
-      Maximum_Decoded_Bytes : Positive := Max_Data_Preview_Length;
-      Maximum_Pixel_Dimension : Positive := Max_Sixel_Pixel_Dimension);
-   procedure Decode_Base64_Chunk_Bytes
-     (Chunk_Count : Natural;
-      Chunk_Text  : not null access function (Index : Positive) return String;
-      Byte_Sink   : not null access procedure
-        (Value : Terminal.Common.Bytes.Byte;
-         Continue : in out Boolean);
-      Result      : in out Graphics_Data_Preview);
-   procedure Decode_Base64_Data
-     (Text                  : String;
-      Maximum_Decoded_Bytes : Positive;
-      Data                  : out Terminal.App.Render_Model.Image_Data_Access;
-      Length                : out Natural;
-      Status                : out Data_Decode_Status);
-   procedure Decode_Base64_PNG_Chunk_Rows
-     (Chunk_Count    : Natural;
-      Chunk_Text     : not null access function (Index : Positive) return String;
-      Encoded_Length : out Natural;
-      PNG_Length     : out Natural;
-      Row_Sink       : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result         : in out Graphics_Data_Preview);
-   procedure Decode_Base64_Raw_Rows
-     (Text         : String;
-      Raw_Format   : Natural;
-      Pixel_Width  : Natural;
-      Pixel_Height : Natural;
-      Row_Sink     : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result       : in out Graphics_Data_Preview);
-   procedure Decode_Base64_Raw_Chunk_Rows
-     (Chunk_Count  : Natural;
-      Chunk_Text   : not null access function (Index : Positive) return String;
-      Raw_Format   : Natural;
-      Pixel_Width  : Natural;
-      Pixel_Height : Natural;
-      Row_Sink     : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result       : in out Graphics_Data_Preview);
-   procedure Decode_Base64_Zlib_Raw_Chunk_Rows
-     (Chunk_Count  : Natural;
-      Chunk_Text   : not null access function (Index : Positive) return String;
-      Raw_Format   : Natural;
-      Pixel_Width  : Natural;
-      Pixel_Height : Natural;
-      Row_Sink     : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result       : in out Graphics_Data_Preview);
-   procedure Decode_Base64_Zlib_PNG_Chunk_Rows
-     (Chunk_Count    : Natural;
-      Chunk_Text     : not null access function (Index : Positive) return String;
-      Inflated_Length : Natural;
-      Encoded_Length : out Natural;
-      Row_Sink       : not null access procedure
-        (Y : Natural;
-         Row : Terminal.Common.Bytes.Byte_Array;
-         Continue : in out Boolean);
-      Result         : in out Graphics_Data_Preview);
    procedure Release (Data : in out Graphics_Data_Preview);
+   procedure Adopt_Bytes
+     (Data  : in out Graphics_Data_Preview;
+      Bytes : in out Terminal.App.Owned_Image_Data.Owner);
+   procedure Take_Bytes
+     (Data  : in out Graphics_Data_Preview;
+      Bytes : in out Terminal.App.Owned_Image_Data.Owner);
    procedure Move
      (Source : in out Graphics_Data_Preview;
       Target : in out Graphics_Data_Preview);
@@ -336,6 +170,32 @@ package Terminal.App.Graphics is
      (Event : Terminal.Core.Graphics_Event) return Positive;
    function Placeholder_Rows
      (Event : Terminal.Core.Graphics_Event) return Positive;
-   function Ignored_Status_Label
+   function Graphics_Status_Label
      (Diagnostics : Terminal.Core.Diagnostic_Snapshot) return String;
+private
+   type Data_Storage_Kind is
+     (No_Data_Storage,
+      Owned_Data_Storage,
+      External_Data_Storage,
+      Detached_Data_Storage);
+   type Graphics_Data_Storage is limited record
+      Bytes : Terminal.App.Owned_Image_Data.Owner;
+   end record;
+   type Graphics_Data_Preview is
+     new Ada.Finalization.Limited_Controlled with record
+      Storage           : Graphics_Data_Storage;
+      Header_Recognized : Boolean := False;
+      Has_Data          : Boolean := False;
+      Encoded_Length    : Natural := 0;
+      Raw_Format        : Natural := 0;
+      Pixel_Width       : Natural := 0;
+      Pixel_Height      : Natural := 0;
+      Decoded_Length    : Data_Preview_Length_Range := 0;
+      Decoded_Row_Stride_Bytes : Natural := 0;
+      Decode_Complete   : Boolean := False;
+      Decode_Status     : Data_Decode_Status := Decode_Not_Attempted;
+      Storage_State     : Data_Storage_Kind := No_Data_Storage;
+      Captured_RGBA_Rows : Natural := 0;
+   end record;
+
 end Terminal.App.Graphics;

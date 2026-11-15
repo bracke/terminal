@@ -38,8 +38,7 @@ package Terminal.App.Queues is
    end PTY_Output_Queue;
 
    type Input_Event_Kind is
-     (Bytes,
-      Key,
+     (Key,
       Character,
       Mouse_Button,
       Cursor_Position,
@@ -48,17 +47,29 @@ package Terminal.App.Queues is
       Close_Request,
       Resize_Request);
 
-   type Input_Event is record
-      Kind   : Input_Event_Kind := Bytes;
-      Width  : Natural := 0;
-      Height : Natural := 0;
-      Bytes  : Byte_Chunk;
-      Key_Event       : GLFW_Vulkan.Input.Key_Event;
-      Character_Event : GLFW_Vulkan.Input.Character_Event;
-      Button_Event    : GLFW_Vulkan.Input.Mouse_Button_Event;
-      Cursor_Event    : GLFW_Vulkan.Input.Cursor_Position_Event;
-      Scroll_Event    : GLFW_Vulkan.Input.Scroll_Event;
-      Focus_Event     : GLFW_Vulkan.Input.Focus_Event;
+   --  Keep callback events compact. PTY-sized byte storage does not belong in
+   --  every key, mouse, and focus event; encoded bytes are produced only when
+   --  the event is consumed by the main loop.
+   type Input_Event (Kind : Input_Event_Kind := Key) is record
+      case Kind is
+         when Key =>
+            Key_Event : GLFW_Vulkan.Input.Key_Event;
+         when Character =>
+            Character_Event : GLFW_Vulkan.Input.Character_Event;
+         when Mouse_Button =>
+            Button_Event : GLFW_Vulkan.Input.Mouse_Button_Event;
+         when Cursor_Position =>
+            Cursor_Event : GLFW_Vulkan.Input.Cursor_Position_Event;
+         when Scroll =>
+            Scroll_Event : GLFW_Vulkan.Input.Scroll_Event;
+         when Focus =>
+            Focus_Event : GLFW_Vulkan.Input.Focus_Event;
+         when Resize_Request =>
+            Width  : Natural := 0;
+            Height : Natural := 0;
+         when Close_Request =>
+            null;
+      end case;
    end record;
    type Input_Event_Ring is array (Positive range 1 .. Max_Input_Events) of Input_Event;
 

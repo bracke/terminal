@@ -1,12 +1,11 @@
+with Terminal.Core.Snapshot_Editing;
 with Terminal.Core;
+with Terminal.Common.Status;
 with Terminal.App.Status_Labels;
 
 package body Terminal.App.Scrollback_View is
-   function Natural_Image (Value : Natural) return String is
-      Image : constant String := Natural'Image (Value);
-   begin
-      return Image (Image'First + 1 .. Image'Last);
-   end Natural_Image;
+   function Natural_Image (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    function Bounded (Text : String) return String is
    begin
@@ -36,48 +35,45 @@ package body Terminal.App.Scrollback_View is
         Natural'Min (Offset, Terminal.Core.Scrollback_Row_Count (T));
       Scroll_Rows : constant Natural := Terminal.Core.Scrollback_Row_Count (T);
       Start_Row : Natural;
+
+      function Cell_At_Destination
+        (Index : Positive) return Terminal.Core.Cell
+      is
+         Row : constant Positive := (Index - 1) / Result.Cols + 1;
+         Col : constant Positive := (Index - 1) mod Result.Cols + 1;
+         Source_Row : constant Natural := Start_Row + Row - 1;
+      begin
+         return
+           (if Source_Row <= Scroll_Rows
+            then Terminal.Core.Scrollback_Cell_At (T, Source_Row, Col)
+            else Terminal.Core.Cell_At
+              (Result, Source_Row - Scroll_Rows, Col));
+      end Cell_At_Destination;
    begin
       Terminal.Core.Snapshot (T, Result);
       if Effective_Offset = 0 then
          return;
       end if;
 
-      Result.Scrollback_Offset := Effective_Offset;
       Start_Row := Scroll_Rows - Effective_Offset + 1;
-      Result.Image_Cell_Count := 0;
-
-      --  Live rows move toward larger destination indices.  Walk backwards so
-      --  the reusable snapshot can be transformed in place without replacing
-      --  a live source row before it is copied.
-      for Row in reverse 1 .. Result.Rows loop
-         declare
-            Source_Row : constant Natural := Start_Row + Row - 1;
-         begin
-            for Col in 1 .. Result.Cols loop
-               declare
-                  Cell : constant Terminal.Core.Cell :=
-                    (if Source_Row <= Scroll_Rows
-                     then Terminal.Core.Scrollback_Cell_At
-                       (T, Source_Row, Col)
-                     else Terminal.Core.Cell_At
-                       (Result, Source_Row - Scroll_Rows, Col));
-               begin
-                  Result.Cells ((Row - 1) * Result.Cols + Col) := Cell;
-                  if Cell.Image.Is_Placeholder then
-                     Result.Image_Cell_Count := Result.Image_Cell_Count + 1;
-                  end if;
-               end;
-            end loop;
-            Result.Dirty (Row) := True;
-         end;
+      --  Prepare the complete composed view before swapping it into the
+      --  snapshot, so a failed cell or hyperlink allocation changes nothing.
+      Terminal.Core.Snapshot_Editing.Replace_All_Cells
+        (Result,
+         Cell_At_Destination'Access);
+      Terminal.Core.Snapshot_Editing.Set_Scrollback_Offset
+        (Result, Effective_Offset);
+      for Row in 1 .. Result.Rows loop
+         Terminal.Core.Snapshot_Editing.Set_Dirty_Row (Result, Row, True);
       end loop;
 
-      Result.Cursor :=
-        (Row     => Result.Cursor.Row,
-         Col     => Result.Cursor.Col,
-         Visible => False,
-         Shape   => Result.Cursor.Shape,
-         Blinking => Result.Cursor.Blinking);
+      Terminal.Core.Snapshot_Editing.Set_Cursor
+        (Result,
+         (Row     => Result.Cursor.Row,
+          Col     => Result.Cursor.Col,
+          Visible => False,
+          Shape   => Result.Cursor.Shape,
+          Blinking => Result.Cursor.Blinking));
    end Snapshot;
 
    function Snapshot
@@ -120,4 +116,48 @@ package body Terminal.App.Scrollback_View is
             & " (clamped)");
       end if;
    end Status_Label;
+
+   function Mark_Offset
+     (T    : Terminal.Core.Terminal;
+      Mark : Terminal.Core.Shell_Mark) return Natural
+   is
+      Produced : constant Natural := Terminal.Core.History_Rows_Produced (T);
+   begin
+      if Mark.History_Row > Produced then
+         return 0;
+      end if;
+      return Clamp_Offset (T, Produced - Mark.History_Row + 1);
+   end Mark_Offset;
+
+   function Previous_Mark_Offset
+     (T      : Terminal.Core.Terminal;
+      Offset : Natural) return Natural
+   is
+      Count : constant Natural := Terminal.Core.Shell_Mark_Count (T);
+      Candidate : Natural;
+   begin
+      for I in reverse 1 .. Count loop
+         Candidate := Mark_Offset (T, Terminal.Core.Shell_Mark_At (T, I));
+         if Candidate > Offset then
+            return Candidate;
+         end if;
+      end loop;
+      return Offset;
+   end Previous_Mark_Offset;
+
+   function Next_Mark_Offset
+     (T      : Terminal.Core.Terminal;
+      Offset : Natural) return Natural
+   is
+      Count : constant Natural := Terminal.Core.Shell_Mark_Count (T);
+      Candidate : Natural;
+   begin
+      for I in 1 .. Count loop
+         Candidate := Mark_Offset (T, Terminal.Core.Shell_Mark_At (T, I));
+         if Candidate < Offset then
+            return Candidate;
+         end if;
+      end loop;
+      return Offset;
+   end Next_Mark_Offset;
 end Terminal.App.Scrollback_View;

@@ -16,4 +16,11 @@ package body Terminal.App.Vulkan_Retirement is
             return Fence_Failed;
       end case;
    end Evaluate;
+
+   function Classify_Fence_Restore
+     (Succeeded   : Boolean;
+      Device_Lost : Boolean) return Fence_Restore_Outcome is
+     (if Succeeded then Fence_Restored
+      elsif Device_Lost then Fence_Restore_Device_Lost
+      else Fence_Restore_Failed);
 end Terminal.App.Vulkan_Retirement;

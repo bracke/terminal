@@ -5,7 +5,7 @@ with GLFW_Vulkan.Events;
 package body Terminal.App.PTY_Reader is
    task body Reader is
       Chunk  : Terminal.App.Queues.Byte_Chunk;
-      Last   : Natural;
+      Count  : Natural;
       Status : Terminal.PTY.Backend.Read_Status;
       Done   : Boolean := False;
       Accepted : Boolean;
@@ -21,10 +21,10 @@ package body Terminal.App.PTY_Reader is
 
          exit when Done;
 
-         Terminal.PTY.Backend.Read (Session.all, Chunk.Data, Last, Status);
+         Terminal.PTY.Backend.Read (Session.all, Chunk.Data, Count, Status);
          case Status is
             when Terminal.PTY.Backend.Ok =>
-               Chunk.Length := Last;
+               Chunk.Length := Count;
                Queue.Push (Chunk, Accepted);
                exit when not Accepted;
                --  Wake the main loop from its idle sleep so freshly read output

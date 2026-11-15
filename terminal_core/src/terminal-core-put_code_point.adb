@@ -1,6 +1,6 @@
 separate (Terminal.Core)
 procedure Put_Code_Point (T : in out Terminal; CP : Common.Code_Point) is
-   Cells : constant Cell_Array_Access := Active_Cells (T);
+   Cells : constant Stored_Cell_Array_Access := Active_Cells (T);
    W     : constant Cell_Width :=
      (if Is_Zero_Width (CP) then Width_Zero
       elsif Is_Wide (CP) then Width_Two
@@ -41,6 +41,10 @@ procedure Put_Code_Point (T : in out Terminal; CP : Common.Code_Point) is
            or else
              (Attached_CP = 16#20E3#
               and then Is_Keycap_Base
+                (Cells (Cell_Index).Text.Code_Point))
+           or else
+             (Is_Regional_Indicator (Attached_CP)
+              and then Is_Regional_Indicator
                 (Cells (Cell_Index).Text.Code_Point));
       end Should_Promote_To_Emoji_Width;
 
@@ -65,7 +69,9 @@ procedure Put_Code_Point (T : in out Terminal; CP : Common.Code_Point) is
                       others     => <>),
             Style => Cells (Cell_Index).Style,
             Link  => Cells (Cell_Index).Link,
-            Image => <>);
+            Image => <>,
+            Clipped_Wide => False,
+            Wraps_To_Next => False);
 
          if T.Cursor_Col = Next_Col then
             if Next_Col = T.Cols then
@@ -99,7 +105,7 @@ procedure Put_Code_Point (T : in out Terminal; CP : Common.Code_Point) is
          Mark_Dirty (T, T.Cursor_Row);
          return True;
       else
-         T.Diag.Text_Cluster_Overflow := T.Diag.Text_Cluster_Overflow + 1;
+         Increment_Saturating (T.Diag.Text_Cluster_Overflow);
          return False;
       end if;
    end Attach_To_Previous_Cell;
@@ -148,11 +154,13 @@ begin
    end if;
 
    if T.Pending_Wrap then
+      Cells (Index (T, T.Cursor_Row, T.Cols)).Wraps_To_Next := True;
       T.Cursor_Col := 1;
       New_Line (T);
    end if;
 
-   if W = Width_Two and then T.Cursor_Col = T.Cols then
+   if W = Width_Two and then T.Cols > 1 and then T.Cursor_Col = T.Cols then
+      Cells (Index (T, T.Cursor_Row, T.Cols)).Wraps_To_Next := True;
       T.Cursor_Col := 1;
       New_Line (T);
    end if;
@@ -169,23 +177,33 @@ begin
 
    Cells (Index (T, T.Cursor_Row, T.Cursor_Col)) :=
      (Kind  => Character,
-      Text  => (Code_Point => CP, Width => W, others => <>),
+      Text  =>
+        (Code_Point => CP,
+         Width => W,
+         others => <>),
       Style => T.Current_Style,
-      Link  => T.Current_Link,
-      Image => <>);
+      Link  => T.Hyperlinks.Current,
+      Image => <>,
+      Clipped_Wide => W = Width_Two and then T.Cols = 1,
+      Wraps_To_Next => False);
    Decode_Image_Cell (T, Index (T, T.Cursor_Row, T.Cursor_Col));
    T.Last_Printable := CP;
+   T.Last_Printable_Text :=
+     Cells (Index (T, T.Cursor_Row, T.Cursor_Col)).Text;
+   T.Last_Printable_Clipped_Wide := W = Width_Two and then T.Cols = 1;
    T.Has_Last_Printable := True;
    Mark_Dirty (T, T.Cursor_Row);
 
-   if W = Width_Two then
+   if W = Width_Two and then T.Cols > 1 then
       if T.Cursor_Col < T.Cols then
          Cells (Index (T, T.Cursor_Row, T.Cursor_Col + 1)) :=
            (Kind => Wide_Continuation,
             Text => (Code_Point => 0, Width => Width_Zero, others => <>),
             Style => T.Current_Style,
-            Link  => T.Current_Link,
-            Image => <>);
+            Link  => T.Hyperlinks.Current,
+            Image => <>,
+            Clipped_Wide => False,
+            Wraps_To_Next => False);
       end if;
       if T.Cursor_Col + 1 >= T.Cols then
          T.Cursor_Col := T.Cols;

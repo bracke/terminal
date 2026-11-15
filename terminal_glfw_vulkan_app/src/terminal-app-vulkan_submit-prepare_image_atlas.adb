@@ -8,6 +8,60 @@ is
    Max_Source_Dimension : Natural := 1;
    Scale_Divisor : Positive := 1;
    Packed : Boolean := False;
+   Candidate_Count : Natural := 0;
+   Candidate_Source_Bytes : Natural := 0;
+   Cache_Matches : Boolean := True;
+   type Candidate_Index_Array is
+     array (Positive range 1 .. Max_Image_Atlas_Sources) of Positive;
+   Candidate_Indices : Candidate_Index_Array := (others => 1);
+
+   procedure Clear_Cache is
+   begin
+      if Batch.Image_Atlas_Sources /= null then
+         for I in 1 .. Batch.Image_Atlas_Cached_Source_Total loop
+            Release_Image_Source (Batch.Image_Atlas_Sources (I));
+         end loop;
+      end if;
+      Batch.Image_Atlas_Cached_Source_Total := 0;
+      Batch.Image_Atlas_Cached_Byte_Count := 0;
+      Batch.Image_Atlas_Source_Total := 0;
+   end Clear_Cache;
+
+   function Same_Frame_Source
+     (Left, Right : RM.Image_Command) return Boolean is
+   begin
+      if Left.Content_Serial /= 0 and then Right.Content_Serial /= 0 then
+         return Left.Content_Serial = Right.Content_Serial
+           and then Left.Image_ID = Right.Image_ID
+           and then Same_Image_Layout (Left, Right);
+      end if;
+      return Same_Image_Source (Left, Right);
+   end Same_Frame_Source;
+
+   function Is_First_Source (Index : Positive) return Boolean is
+   begin
+      if Index = 1 then
+         return True;
+      end if;
+      for Previous in 1 .. Index - 1 loop
+         if Texture_Eligible (Frame.Images (Previous))
+           and then Same_Frame_Source
+             (Frame.Images (Previous), Frame.Images (Index))
+         then
+            return False;
+         end if;
+      end loop;
+      return True;
+   end Is_First_Source;
+
+   function Same_Cached_Content
+     (Cached  : RM.Image_Command;
+      Current : RM.Image_Command) return Boolean is
+     (Cached.Content_Serial /= 0
+      and then Current.Content_Serial /= 0
+      and then Cached.Content_Serial = Current.Content_Serial
+      and then Cached.Image_ID = Current.Image_ID
+      and then Same_Image_Layout (Cached, Current));
 
    function Scaled
      (Value : Positive; Divisor : Positive) return Positive is
@@ -55,12 +109,38 @@ begin
    if Frame.Image_Count = 0
      or else Batch.Image_Atlas_Limit_Value.Dimension <= 2
    then
+      Clear_Cache;
+      return;
+   end if;
+
+   for I in 1 .. Frame.Image_Count loop
+      if Texture_Eligible (Frame.Images (I)) and then Is_First_Source (I) then
+         declare
+            Copy_Bytes : constant Natural :=
+              Image_Source_Copy_Bytes (Frame.Images (I));
+         begin
+            --  The configured atlas limit bounds the resampled GPU image,
+            --  not its source.  A large source may still be reduced to fit,
+            --  but all retained source copies together remain globally
+            --  bounded.
+            if Copy_Bytes <=
+              Max_Image_Atlas_Bytes - Candidate_Source_Bytes
+            then
+               Candidate_Count := Candidate_Count + 1;
+               Candidate_Indices (Candidate_Count) := I;
+               Candidate_Source_Bytes := Candidate_Source_Bytes + Copy_Bytes;
+               exit when Candidate_Count = Max_Image_Atlas_Sources;
+            end if;
+         end;
+      end if;
+   end loop;
+   if Candidate_Count = 0 then
+      Clear_Cache;
       return;
    end if;
 
    declare
-      Required : constant Positive := Positive
-        (Natural'Min (Frame.Image_Count, Max_Image_Atlas_Sources));
+      Required : constant Positive := Positive (Candidate_Count);
    begin
       if Batch.Image_Atlas_Sources = null
         or else Batch.Image_Atlas_Sources'Length < Required
@@ -78,24 +158,52 @@ begin
                Free_Image_Atlas_Sources (Batch.Image_Atlas_Sources);
             end if;
             Batch.Image_Atlas_Sources := Replacement;
+            Batch.Image_Atlas_Cached_Source_Total := 0;
+            Batch.Image_Atlas_Cached_Byte_Count := 0;
          end;
       end if;
    end;
-   for I in 1 .. Frame.Image_Count loop
-      if Texture_Eligible (Frame.Images (I))
-        and then Atlas_Source_Index (Batch, Frame.Images (I)) = 0
-        and then Batch.Image_Atlas_Source_Total < Max_Image_Atlas_Sources
+
+   Cache_Matches :=
+     Batch.Image_Atlas_Cached_Source_Total = Candidate_Count
+     and then Batch.Image_Atlas_Cached_Byte_Count = Candidate_Source_Bytes;
+   for Candidate in 1 .. Candidate_Count loop
+      if Cache_Matches
+        and then not Same_Cached_Content
+          (Batch.Image_Atlas_Sources (Candidate).Command,
+           Frame.Images (Candidate_Indices (Candidate)))
       then
-         Batch.Image_Atlas_Source_Total := Batch.Image_Atlas_Source_Total + 1;
-         Batch.Image_Atlas_Sources (Batch.Image_Atlas_Source_Total) :=
-           (Command => Frame.Images (I), others => <>);
-         Max_Source_Dimension := Natural'Max
-           (Max_Source_Dimension,
-            Natural'Max
-              (Frame.Images (I).Pixel_Width,
-               Frame.Images (I).Pixel_Height));
+         Cache_Matches := False;
       end if;
    end loop;
+
+   if not Cache_Matches then
+      Clear_Cache;
+   end if;
+
+   for Candidate in 1 .. Candidate_Count loop
+      declare
+         Image : RM.Image_Command renames
+           Frame.Images (Candidate_Indices (Candidate));
+      begin
+         if not Cache_Matches then
+            Own_Image_Source
+              (Image, Batch.Image_Atlas_Sources (Candidate));
+         else
+            Batch.Image_Atlas_Sources (Candidate).Input_Decoded :=
+              Image.Decoded_Bytes;
+            Batch.Image_Atlas_Sources (Candidate).Input_Encoded :=
+              Image.Encoded_Source_Bytes;
+         end if;
+         Max_Source_Dimension := Natural'Max
+           (Max_Source_Dimension,
+            Natural'Max (Image.Pixel_Width, Image.Pixel_Height));
+      end;
+   end loop;
+
+   Batch.Image_Atlas_Source_Total := Candidate_Count;
+   Batch.Image_Atlas_Cached_Source_Total := Candidate_Count;
+   Batch.Image_Atlas_Cached_Byte_Count := Candidate_Source_Bytes;
 
    if Batch.Image_Atlas_Source_Total = 0 then
       return;
@@ -119,6 +227,7 @@ begin
    Batch.Image_Atlas_Byte_Count := Width * Height * 4;
    declare
       Signature : Interfaces.Unsigned_64 := 16#CBF29CE484222325#;
+      Cacheable : Boolean := True;
       procedure Mix (Value : Interfaces.Unsigned_64) is
       begin
          Signature :=
@@ -130,14 +239,24 @@ begin
       Mix (Interfaces.Unsigned_64 (Batch.Image_Atlas_Source_Total));
       for I in 1 .. Batch.Image_Atlas_Source_Total loop
          declare
-            Source : constant Image_Atlas_Source := Batch.Image_Atlas_Sources (I);
+            Source : Image_Atlas_Source renames Batch.Image_Atlas_Sources (I);
          begin
+            if Source.Command.Content_Serial = 0 then
+               Cacheable := False;
+            end if;
             Mix (Source.Command.Content_Serial);
             Mix (Interfaces.Unsigned_64 (Source.Command.Image_ID));
             Mix (Interfaces.Unsigned_64 (Source.Command.Pixel_Width));
             Mix (Interfaces.Unsigned_64 (Source.Command.Pixel_Height));
             Mix (Interfaces.Unsigned_64 (Source.Command.Raw_Format));
+            Mix (Interfaces.Unsigned_64
+              (RM.Image_Decoded_Source_Kind'Pos
+                 (Source.Command.Decoded_Source)));
+            Mix (Interfaces.Unsigned_64
+              (Source.Command.Decoded_Row_Stride_Bytes));
             Mix (Interfaces.Unsigned_64 (Source.Command.Decoded_Byte_Length));
+            Mix (Interfaces.Unsigned_64
+              (Source.Command.Encoded_Source_Length));
             Mix (Interfaces.Unsigned_64 (Source.X));
             Mix (Interfaces.Unsigned_64 (Source.Y));
             Mix (Interfaces.Unsigned_64 (Source.Width));
@@ -145,6 +264,8 @@ begin
          end;
       end loop;
       Batch.Image_Atlas_Content_Signature :=
-        (if Signature = 0 then 1 else Signature);
+        (if not Cacheable then 0
+         elsif Signature = 0 then 1
+         else Signature);
    end;
 end Prepare_Image_Atlas;

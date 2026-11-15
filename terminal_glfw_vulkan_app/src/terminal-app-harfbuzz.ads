@@ -1,3 +1,4 @@
+with Ada.Finalization;
 with System;
 
 with Terminal.App.Render_Model;
@@ -18,10 +19,9 @@ package Terminal.App.HarfBuzz is
       Shape_Failed);
 
    procedure Load
-     (Face        : in out Font_Face;
-      Path        : String;
-      Pixel_Size  : Positive;
-      Status      : out Load_Status);
+     (Face   : in out Font_Face;
+      Path   : String;
+      Status : out Load_Status);
 
    procedure Reset (Face : in out Font_Face);
 
@@ -34,10 +34,10 @@ package Terminal.App.HarfBuzz is
       Status : out Shape_Status);
 
 private
-   type Font_Face is limited record
-      Blob       : System.Address := System.Null_Address;
-      Face       : System.Address := System.Null_Address;
-      Font       : System.Address := System.Null_Address;
-      Pixel_Size : Positive := 16;
+   type Font_Face is new Ada.Finalization.Limited_Controlled with record
+      Blob : System.Address := System.Null_Address;
+      Face : System.Address := System.Null_Address;
+      Font : System.Address := System.Null_Address;
    end record;
+   overriding procedure Finalize (Face : in out Font_Face);
 end Terminal.App.HarfBuzz;

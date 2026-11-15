@@ -1,4 +1,6 @@
+with Ada.Finalization;
 with Terminal.App.Render_Model;
+private with Terminal.App.Text_Shaper_State;
 
 package Terminal.App.Text_Shaper is
    Max_Status_Label_Length : constant := 64;
@@ -11,17 +13,21 @@ package Terminal.App.Text_Shaper is
       Backend_Unavailable,
       Backend_Load_Failed);
 
+   type Shaper is new Ada.Finalization.Limited_Controlled with private;
+
+   procedure Reset (Item : in out Shaper);
+
    procedure Configure_Font
-     (Path        : String;
-      Pixel_Size  : Positive;
-      Status      : out Backend_Status);
+     (Item   : in out Shaper;
+      Path   : String;
+      Status : out Backend_Status);
 
    procedure Add_Fallback_Font
-     (Path        : String;
-      Pixel_Size  : Positive;
-      Status      : out Backend_Status);
+     (Item   : in out Shaper;
+      Path   : String;
+      Status : out Backend_Status);
 
-   function Backend_Available return Boolean;
+   function Backend_Available (Item : Shaper) return Boolean;
 
    function Backend_Status_Label (Status : Backend_Status) return String;
    function Shape_Status_Label (Status : Shape_Status) return String;
@@ -46,6 +52,13 @@ package Terminal.App.Text_Shaper is
       Script    : out Terminal.App.Render_Model.Text_Run_Script);
 
    procedure Prepare
-     (Run    : in out Terminal.App.Render_Model.Text_Run_Command;
+     (Item   : in out Shaper;
+      Run    : in out Terminal.App.Render_Model.Text_Run_Command;
       Status : out Shape_Status);
+
+private
+   type Shaper is new Ada.Finalization.Limited_Controlled with record
+      Data : Terminal.App.Text_Shaper_State.State;
+   end record;
+   overriding procedure Finalize (Item : in out Shaper);
 end Terminal.App.Text_Shaper;

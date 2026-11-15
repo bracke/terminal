@@ -1,4 +1,5 @@
 with Terminal.Common.Identity;
+with Terminal.Common.Graphics_Limits;
 with Terminal.Core;
 
 package Terminal.App is
@@ -6,7 +7,10 @@ package Terminal.App is
    Max_Status_Label_Length : constant := 96;
    --  Protocol-side object retention is independent of how a renderer packs
    --  the subset of images visible in one frame.
-   Max_Graphics_Image_Objects : constant Positive := 256;
+   --  Kept as a public compatibility name; the authoritative value is shared
+   --  by the parser, renderer, configuration, and Vulkan submission layers.
+   Max_Graphics_Image_Objects : constant Positive :=
+     Terminal.Common.Graphics_Limits.Max_Image_Objects;
 
    Term_Name : constant String := "xterm-256color";
    Color_Term : constant String := "truecolor";
@@ -28,21 +32,9 @@ package Terminal.App is
       Tmux_DCS_Passthrough  : Boolean := True;
       Kitty_Direct_Graphics : Boolean := True;
       Kitty_Unicode_Placeholders : Boolean := True;
-      Kitty_File_Transfer   : Boolean := False;
-      Kitty_Temporary_Transfer : Boolean := True;
-      Kitty_Shared_Memory   : Boolean := True;
-      ITerm2_File_Downloads : Boolean := False;
    end record;
 
    function Profile return Terminal_Profile;
-   function Core_Graphics_Profile
-     return Terminal.Core.Graphics_Capability_Profile;
-   function Core_Graphics_Profile
-     (Kitty_File_Transfer      : Boolean;
-      Kitty_Temporary_Transfer : Boolean;
-      Kitty_Shared_Memory      : Boolean;
-      ITerm2_File_Downloads    : Boolean := False)
-      return Terminal.Core.Graphics_Capability_Profile;
    function Graphics_Feature_Report
      (Profile : Terminal.Core.Graphics_Capability_Profile) return String;
    function Profile_Status_Label
@@ -51,4 +43,5 @@ package Terminal.App is
      (Profile : Terminal_Profile) return String;
    function Multiplexer_Diagnostic_Label
      (Diagnostics : Terminal.Core.Diagnostic_Snapshot) return String;
+   function Feed_Rank (Status : Terminal.Core.Feed_Status) return Natural;
 end Terminal.App;

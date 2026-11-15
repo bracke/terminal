@@ -5,6 +5,7 @@ with Terminal.Common.Bytes;
 with Terminal.App.Render_Model;
 with Terminal.App.Vulkan_Context;
 with Terminal.App.Vulkan_Device;
+with Terminal.App.Vulkan_Device_Diagnostics;
 with Terminal.App.Vulkan_Submit;
 
 procedure Vulkan_Device_Smoke is
@@ -20,6 +21,7 @@ procedure Vulkan_Device_Smoke is
 
    package VC renames Terminal.App.Vulkan_Context;
    package VD renames Terminal.App.Vulkan_Device;
+   package VDD renames Terminal.App.Vulkan_Device_Diagnostics;
    package VS renames Terminal.App.Vulkan_Submit;
 
    Context : VC.Context;
@@ -41,30 +43,30 @@ begin
      (Readback_Status = VD.Readback_Not_Initialized,
       "uninitialized device must reject pixel reads");
    Assert
-     (VD.Select_Status_Label (VD.Ok) = "Select device: Ok",
+     (VDD.Select_Status_Label (VD.Ok) = "Select device: Ok",
       "select ok status label");
    Assert
-     (VD.Select_Status_Label (VD.No_Suitable_Device) =
+     (VDD.Select_Status_Label (VD.No_Suitable_Device) =
       "Select device: No Suitable Device",
       "select failure status label");
    Assert
-     (VD.Create_Status_Label (VD.Create_Swapchain_Failed) =
+     (VDD.Create_Status_Label (VD.Create_Swapchain_Failed) =
       "Create device: Create Swapchain Failed",
       "create failure status label");
    Assert
-     (VD.Create_Status_Label (VD.Resources_In_Flight) =
+     (VDD.Create_Status_Label (VD.Resources_In_Flight) =
       "Create device: Resources In Flight",
       "deferred upload status label");
    Assert
-     (VD.Render_Status_Label (VD.Queue_Present_Failed) =
+     (VDD.Render_Status_Label (VD.Queue_Present_Failed) =
       "Render device: Queue Present Failed",
       "render failure status label");
    Assert
-     (VD.Create_Status_Label (VD.Create_Swapchain_Failed)'Length <=
+     (VDD.Create_Status_Label (VD.Create_Swapchain_Failed)'Length <=
       VD.Max_Status_Label_Length,
       "device status label should be bounded");
    Assert
-     (VD.Image_Texture_Status_Label
+     (VDD.Image_Texture_Status_Label
         ((Uploaded_Image_Command_Count => 1,
           Uploaded_Image_Texture_Vertex_Count => 6,
           Uploaded_Image_Placeholder => False,
@@ -73,7 +75,7 @@ begin
       "device image texture ready; vertices=6",
       "ready device image texture status label");
    Assert
-     (VD.Image_Texture_Status_Label
+     (VDD.Image_Texture_Status_Label
         ((Uploaded_Image_Command_Count => 1,
           Uploaded_Image_Texture_Vertex_Count => 6,
           Uploaded_Image_Placeholder => False,
@@ -93,7 +95,7 @@ begin
          "device diagnostics should carry image texture staging byte count");
    end;
    Assert
-     (VD.Image_Texture_Resource_Status_Label
+     (VDD.Image_Texture_Resource_Status_Label
         ((Uploaded_Image_Command_Count => 1,
           Uploaded_Image_Texture_Vertex_Count => 6,
           Image_Texture_Descriptor_Capacity => 4,
@@ -104,7 +106,7 @@ begin
       "device image texture resources ready; vertices=6 descriptors=2/4",
       "pending device image texture resource status label");
    Assert
-     (VD.Image_Texture_Resource_Status_Label
+     (VDD.Image_Texture_Resource_Status_Label
         ((Uploaded_Image_Command_Count => 1,
           Uploaded_Image_Texture_Vertex_Count => 6,
           Image_Texture_Descriptor_Capacity => 4,
@@ -114,7 +116,7 @@ begin
           others => <>))'Length <= VD.Max_Status_Label_Length,
       "pending device image texture resource status label should be bounded");
    Assert
-     (VD.Image_Status_Label
+     (VDD.Image_Status_Label
         ((Uploaded_Image_Command_Count => 1,
           Uploaded_Image_Vertex_Count => 6,
           Uploaded_Image_Protocol => Terminal.App.Render_Model.Image_Kitty,
@@ -140,7 +142,7 @@ begin
      (Select_Status = VD.Context_Not_Initialized,
       "uninitialized context must reject physical-device selection");
    Assert
-     (VD.Select_Status_Label (Select_Status) =
+     (VDD.Select_Status_Label (Select_Status) =
       "Select device: Context Not Initialized",
       "uninitialized select status label");
    Assert (not VD.Is_Selected (Choice), "choice should not be selected");
@@ -156,7 +158,7 @@ begin
      (Create_Status = VD.Selection_Not_Ready,
       "unselected physical device must reject logical-device creation");
    Assert
-     (VD.Create_Status_Label (Create_Status) =
+     (VDD.Create_Status_Label (Create_Status) =
       "Create device: Selection Not Ready",
       "selection-not-ready create status label");
    Assert (not VD.Is_Initialized (Device), "logical device should not be live");
@@ -166,7 +168,7 @@ begin
      (Render_Status = VD.Not_Initialized,
       "uninitialized logical device must reject render");
    Assert
-     (VD.Render_Status_Label (Render_Status) =
+     (VDD.Render_Status_Label (Render_Status) =
       "Render device: Not Initialized",
       "not-initialized render status label");
 
@@ -234,13 +236,13 @@ begin
         (Diag.Uploaded_Image_Texture_Source = VS.Texture_None,
          "uninitialized device should clear image texture source");
       Assert
-        (VD.Image_Status_Label (Diag) = "",
+        (VDD.Image_Status_Label (Diag) = "",
          "uninitialized device should not report image status");
       Assert
-        (VD.Image_Texture_Status_Label (Diag) = "",
+        (VDD.Image_Texture_Status_Label (Diag) = "",
          "uninitialized device should not report image texture status");
       Assert
-        (VD.Image_Texture_Resource_Status_Label (Diag) = "",
+        (VDD.Image_Texture_Resource_Status_Label (Diag) = "",
          "uninitialized device should not report image texture resource status");
       Assert
         (Diag.Uploaded_Shaped_Glyph_Count = 0,

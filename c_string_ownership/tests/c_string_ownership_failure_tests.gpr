@@ -1,0 +1,20 @@
+project C_String_Ownership_Failure_Tests is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".", "../src");
+   for Source_Files use
+     ("c_string_ownership.ads",
+      "c_string_ownership.adb",
+      "c_string_ownership_cancellation_fixture.ads",
+      "c_string_ownership_cancellation_fixture.adb",
+      "c_string_ownership_failure_allocator.c",
+      "c_string_ownership_failure_smoke.adb");
+   for Object_Dir use "obj/failure";
+   for Exec_Dir use "bin";
+   for Main use ("c_string_ownership_failure_smoke.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwe");
+      for Default_Switches ("C") use
+        ("-std=c11", "-Wall", "-Wextra", "-Wpedantic", "-Werror");
+   end Compiler;
+end C_String_Ownership_Failure_Tests;

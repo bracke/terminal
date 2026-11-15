@@ -5,6 +5,7 @@ package Terminal.App.Cursor_Blink is
    Max_Status_Label_Length : constant := 64;
 
    function Tick (Elapsed : Duration) return Natural;
+   function Next_Tick_Delay (Elapsed : Duration) return Duration;
 
    function Status_Label
      (Cursor       : Terminal.Core.Cursor_State;

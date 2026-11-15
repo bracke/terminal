@@ -3,12 +3,12 @@ procedure Apply_SGR (T : in out Terminal) is
    I : Natural := 1;
    P : Natural;
 begin
-   if T.CSI_Count = 0 then
+   if T.Parser.CSI_Count = 0 then
       T.Current_Style := (others => <>);
       return;
    end if;
 
-   while I <= T.CSI_Count loop
+   while I <= T.Parser.CSI_Count loop
       P := Param (T, I, 0);
       case P is
          when 0 =>
@@ -20,7 +20,7 @@ begin
          when 3 =>
             T.Current_Style.Italic := True;
          when 4 =>
-            if I + 1 <= T.CSI_Count
+            if I + 1 <= T.Parser.CSI_Count
               and then Param_Separator (T, I + 1) = ':'
             then
                case Param (T, I + 1, 1) is
@@ -43,8 +43,7 @@ begin
                      T.Current_Style.Underline := True;
                      T.Current_Style.Underline_Kind := Underline_Dashed;
                   when others =>
-                     T.Diag.Unsupported_Sequence :=
-                       T.Diag.Unsupported_Sequence + 1;
+                     Increment_Saturating (T.Diag.Unsupported_Sequence);
                end case;
                I := I + 1;
             else
@@ -98,7 +97,7 @@ begin
          when 49 =>
             T.Current_Style.Background := (others => <>);
          when 38 | 48 | 58 =>
-            if I + 2 <= T.CSI_Count and then Param (T, I + 1, 0) = 5 then
+            if I + 2 <= T.Parser.CSI_Count and then Param (T, I + 1, 0) = 5 then
                declare
                   N : constant Natural := Param (T, I + 2, 0);
                   C : constant Color :=
@@ -117,7 +116,7 @@ begin
                   end if;
                end;
                I := I + 2;
-            elsif I + 4 <= T.CSI_Count and then Param (T, I + 1, 0) = 2 then
+            elsif I + 4 <= T.Parser.CSI_Count and then Param (T, I + 1, 0) = 2 then
                declare
                   C : constant Color :=
                     (Kind  => RGB,
@@ -136,10 +135,10 @@ begin
                end;
                I := I + 4;
             else
-               T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+               Increment_Saturating (T.Diag.Unsupported_Sequence);
             end if;
          when others =>
-            T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+            Increment_Saturating (T.Diag.Unsupported_Sequence);
       end case;
       I := I + 1;
    end loop;

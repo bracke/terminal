@@ -1,13 +1,14 @@
 with "../terminal_common/terminal_common.gpr";
+with "config/terminal_pty_build_config.gpr";
 
 library project Terminal_PTY is
    --  One backend per host, chosen here rather than by the caller: the app names
    --  Terminal.PTY.Backend and gets whichever one this host has.
    --
-   --  The POSIX side carries a small C shim (terminal_pty_sys.c) so platform
-   --  headers can resolve the TIOCSWINSZ/TIOCSCTTY ioctl request numbers, which
-   --  differ across Linux and macOS/BSD. The Windows side is ConPTY and needs
-   --  no shim.
+   --  The POSIX side separates environment capture, spawn/PTY setup, cleanup,
+   --  and small process/I/O wrappers so platform headers can supply native
+   --  constants without concentrating lifecycle policy in one shim. The
+   --  Windows side likewise keeps environment, cleanup, and I/O shims separate.
    --  Which backend to build.
    --
    --  A scenario variable rather than Alire's generated Alire_Host_OS, because
@@ -21,22 +22,34 @@ library project Terminal_PTY is
    --  own cause.
    type OS_Kind is ("posix", "windows");
    Host : OS_Kind := external ("TERMINAL_PTY_OS", "posix");
+   C_Switches := ("-Wall", "-Wextra", "-Wpedantic", "-Werror");
 
    case Host is
       when "windows" =>
-         for Languages use ("Ada");
+         for Languages use ("Ada", "C");
          for Source_Dirs use ("src", "config", "src/platform/windows");
+         C_Switches := C_Switches
+           & Terminal_PTY_Build_Config.C_Testing_Switches;
+         case Terminal_PTY_Build_Config.Build_Mode is
+            when "testing" =>
+               for Object_Dir use "obj/windows/testing";
+               for Library_Dir use "lib/windows/testing";
+            when "production" =>
+               for Object_Dir use "obj/windows";
+               for Library_Dir use "lib/windows";
+         end case;
       when others =>
          for Languages use ("Ada", "C");
          for Source_Dirs use ("src", "config", "src/platform/posix");
+         for Object_Dir use "obj/posix";
+         for Library_Dir use "lib";
    end case;
-   for Object_Dir use "obj";
-   for Library_Dir use "lib";
    for Library_Name use "terminal_pty";
    for Library_Kind use "static";
 
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwe");
+      for Default_Switches ("C") use C_Switches;
    end Compiler;
 end Terminal_PTY;
 

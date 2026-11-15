@@ -12,20 +12,20 @@ begin
            (R, Snapshot, Delete_Data);
       when 'i' | 'I' =>
          if Header.Kitty_ID > 0 then
-            Delete_Virtual_Placements
+            Placements_State.Delete_Virtual_Placements
               (R,
                Event.Stream_ID,
                Header.Kitty_ID,
                Header.Kitty_Placement_ID,
                Header.Kitty_Placement_ID > 0);
-            Delete_Conventional_Placements
+            Placements_State.Delete_Conventional_Placements
               (R,
                Event.Stream_ID,
                Header.Kitty_ID,
                Header.Kitty_Placement_ID,
                Header.Kitty_Placement_ID > 0);
             if Delete_Data
-              and then not Has_Image_Placement
+              and then not Placements_State.Has_Image_Placement
                 (R, Event.Stream_ID, Header.Kitty_ID)
             then
                Delete_Image_Object
@@ -34,20 +34,20 @@ begin
          end if;
       when 'n' | 'N' =>
          if Header.Kitty_ID > 0 then
-            Delete_Virtual_Placements
+            Placements_State.Delete_Virtual_Placements
               (R,
                Event.Stream_ID,
                Header.Kitty_ID,
                Header.Kitty_Placement_ID,
                Header.Kitty_Placement_ID > 0);
-            Delete_Conventional_Placements
+            Placements_State.Delete_Conventional_Placements
               (R,
                Event.Stream_ID,
                Header.Kitty_ID,
                Header.Kitty_Placement_ID,
                Header.Kitty_Placement_ID > 0);
             if Delete_Data
-              and then not Has_Image_Placement
+              and then not Placements_State.Has_Image_Placement
                 (R, Event.Stream_ID, Header.Kitty_ID)
             then
                Delete_Image_Object
@@ -129,10 +129,10 @@ begin
          if Header.Kitty_ID > 0 then
             declare
                Object : constant Image_Object_Access :=
-                 Find_Image_Object
+                 Image_Objects.Find
                    (R, Event.Stream_ID, Header.Kitty_ID);
             begin
-               Delete_Animation_Frames (R, Object);
+               Animation_State.Delete_Frames (R, Object);
             end;
          end if;
       when others =>

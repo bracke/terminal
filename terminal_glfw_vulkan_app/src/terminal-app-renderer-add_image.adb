@@ -7,15 +7,15 @@ is
    Event_Header : constant Terminal.App.Graphics.Graphics_Header :=
      Terminal.App.Graphics.Header (Event);
    Header : Terminal.App.Graphics.Graphics_Header := Event_Header;
-   Result : Terminal.Core.Kitty_Graphics_Result := (others => <>);
+   Result : Terminal.Core.Graphics_Completion := (others => <>);
    Number_Object_Before : Image_Object_Access := null;
    Resolved_ID : Terminal.Core.Graphics_ID := 0;
    Placement_Image_ID : Terminal.Core.Graphics_ID := 0;
    Resolved_Geometry : Placement_Geometry := (others => <>);
    Geometry_Checked : Boolean := False;
    Placement_Status : Placement_Store_Status := Placement_Not_Requested;
-   Image_Count_Before : constant Natural := Frame_Image_Count (R);
-   Placement_Count_Before : constant Natural := R.Kitty_Placement_Count;
+   Image_Count_Before : constant Natural := Image_Commands.Count (R);
+   Placement_Count_Before : constant Natural := Placements_State.Stored_Placement_Count (R);
    Validation_Error : constant Boolean :=
      Event.Cancelled and then Event.Payload_Length > 0;
    Invalid_Chunk_Transition : constant Boolean :=
@@ -60,23 +60,15 @@ is
    function Placement_Exists
      (Image_ID : Terminal.Core.Graphics_ID) return Boolean
    is
-      Placement : Conventional_Placement_Access;
-      Virtual   : Virtual_Placement_Access;
    begin
       if Image_ID = 0 then
-         if R.Last_Stored_Image_Order /= 0 then
-            Placement := R.Conventional_Placements;
-            while Placement /= null loop
-               if Placement.Stream_ID = Event.Stream_ID
-                 and then Placement.Image_Storage_Order =
-                   R.Last_Stored_Image_Order
-               then
-                  return True;
-               end if;
-               Placement := Placement.Next;
-            end loop;
+         if R.Graphics_State.Transaction.Last_Stored_Image_Order /= 0 then
+            return Placements_State.Has_Conventional_Storage_Order
+              (R,
+               Event.Stream_ID,
+               R.Graphics_State.Transaction.Last_Stored_Image_Order);
          end if;
-         return Frame_Image_Count (R) > Image_Count_Before;
+         return Image_Commands.Count (R) > Image_Count_Before;
       elsif Header.Kitty_Virtual_Placement then
          if Header.Kitty_Placement_ID = 0 then
             --  Implicit placements are deliberately not addressable.
@@ -84,84 +76,69 @@ is
             --  transmit-and-display replacement may first remove the old
             --  image's placement, so identify its newly stored object by
             --  storage order in that case.
-            if R.Kitty_Placement_Count > Placement_Count_Before then
+            if Placements_State.Stored_Placement_Count (R) > Placement_Count_Before then
                return True;
             elsif Header.Kitty_Action /= 'T' then
                return False;
             end if;
-            Virtual := R.Virtual_Placements;
-            while Virtual /= null loop
-               if Virtual.Stream_ID = Event.Stream_ID
-                 and then Virtual.Alternate_Screen = Event.Alternate_Screen
-                 and then Virtual.Screen_Generation = Event.Screen_Generation
-                 and then Virtual.Image_ID = Image_ID
-                 and then Virtual.Placement_ID = 0
-                 and then Virtual.Image_Storage_Order =
-                   R.Last_Stored_Image_Order
-               then
-                  return True;
-               end if;
-               Virtual := Virtual.Next;
-            end loop;
-            return False;
+            return Placements_State.Has_Implicit_Virtual
+              (R,
+               Event.Stream_ID,
+               Event.Alternate_Screen,
+               Event.Screen_Generation,
+               Image_ID,
+               R.Graphics_State.Transaction.Last_Stored_Image_Order);
          end if;
-         return Find_Virtual_Placement
+         return Placements_State.Find_Virtual_Placement
            (R,
             Event.Stream_ID,
             Event.Alternate_Screen,
             Event.Screen_Generation,
             Image_ID,
-            Header.Kitty_Placement_ID) /= null;
+            Header.Kitty_Placement_ID).Exists;
       elsif Header.Kitty_Placement_ID /= 0 then
-         return Find_Conventional_Placement
+         return Placements_State.Find_Conventional_Placement
            (R,
             Event.Stream_ID,
             Event.Alternate_Screen,
             Event.Screen_Generation,
             Image_ID,
-            Header.Kitty_Placement_ID) /= null;
+            Header.Kitty_Placement_ID).Exists;
       end if;
 
       --  As with virtual prototypes, a conventional p=0 placement is a
       --  new, non-addressable object for each command.  A replacement can
       --  leave the total count unchanged after removing the old image;
       --  its storage order distinguishes the replacement from stale data.
-      if R.Kitty_Placement_Count > Placement_Count_Before then
+      if Placements_State.Stored_Placement_Count (R) > Placement_Count_Before then
          return True;
       elsif Header.Kitty_Action /= 'T' then
          return False;
       end if;
-      Placement := R.Conventional_Placements;
-      while Placement /= null loop
-         if Placement.Stream_ID = Event.Stream_ID
-           and then Placement.Alternate_Screen = Event.Alternate_Screen
-           and then Placement.Screen_Generation = Event.Screen_Generation
-           and then Placement.Image_ID = Image_ID
-           and then Placement.Placement_ID = 0
-           and then Placement.Image_Storage_Order = R.Last_Stored_Image_Order
-         then
-            return True;
-         end if;
-         Placement := Placement.Next;
-      end loop;
-      return False;
+      return Placements_State.Has_Implicit_Conventional
+        (R,
+         Event.Stream_ID,
+         Event.Alternate_Screen,
+         Event.Screen_Generation,
+         Image_ID,
+         R.Graphics_State.Transaction.Last_Stored_Image_Order);
    end Placement_Exists;
 
    function Validate_Kitty_Command
-     return Terminal.Core.Kitty_Graphics_Result_Code
+     return Terminal.Core.Graphics_Completion_Code
    is
    begin
       if Event.Protocol /= Terminal.Core.Kitty_Graphics
         or else not Header.Recognized
       then
-         return Terminal.Core.Kitty_No_Response;
+         return Terminal.Core.Graphics_No_Response;
       elsif Header.Kitty_ID > 0 and then Header.Kitty_Image_Number > 0 then
-         return Terminal.Core.Kitty_EINVAL;
+         return Terminal.Core.Graphics_EINVAL;
       elsif Header.Kitty_Action not in 't' | 'T' | 'p' | 'd' | 'f' | 'a' | 'c'
         or else not Header.Kitty_Transmission_Valid
         or else not Header.Kitty_Compression_Valid
       then
-         return Terminal.Core.Kitty_ENOTSUP;
+         return Terminal.Core.Graphics_ENOTSUP;
       elsif not Header.Kitty_Control_Data_Valid
         or else not Header.Kitty_Action_Controls_Valid
         or else
@@ -171,9 +148,9 @@ is
               or else not Header.Kitty_Data_Offset_Valid
               or else Header.Kitty_More_Specified))
       then
-         return Terminal.Core.Kitty_EINVAL;
+         return Terminal.Core.Graphics_EINVAL;
       else
-         return Terminal.Core.Kitty_OK;
+         return Terminal.Core.Graphics_OK;
       end if;
    end Validate_Kitty_Command;
 
@@ -183,9 +160,12 @@ begin
       if Event.Protocol = Terminal.Core.ITerm2_Graphics then
          Clear_Last_Media_Diagnostics (R);
       end if;
-      R.Graphics_Event_Count := R.Graphics_Event_Count + 1;
-      R.Kitty_Command_Count := R.Kitty_Command_Count + 1;
-      R.Chunk_Cancel_Count := R.Chunk_Cancel_Count + 1;
+      Terminal.Common.Counters.Increment_Saturating
+        (R.Graphics_State.Telemetry.Graphics_Event_Count);
+      Terminal.Common.Counters.Increment_Saturating
+        (R.Graphics_State.Telemetry.Kitty_Command_Count);
+      Terminal.Common.Counters.Increment_Saturating
+        (R.Graphics_State.Telemetry.Chunk_Cancel_Count);
       return;
    end if;
 
@@ -201,7 +181,7 @@ begin
    if (Replay_Guarded or else Track_Result)
      and then not Can_Remember_Graphics_Event (R, Event)
    then
-      R.Graphics_Event_Tracking_Failed := True;
+      R.Graphics_State.Transaction.Event_Tracking_Failed := True;
       return;
    end if;
 
@@ -212,27 +192,21 @@ begin
       Clear_Last_Media_Diagnostics (R);
    end if;
 
-   R.Graphics_Event_Count := R.Graphics_Event_Count + 1;
+   Terminal.Common.Counters.Increment_Saturating
+     (R.Graphics_State.Telemetry.Graphics_Event_Count);
    if Event.Protocol = Terminal.Core.Kitty_Graphics then
-      R.Kitty_Command_Count := R.Kitty_Command_Count + 1;
+      Terminal.Common.Counters.Increment_Saturating
+        (R.Graphics_State.Telemetry.Kitty_Command_Count);
    end if;
 
    if Track_Result and then Header.Recognized then
-      Result.Quiet := Natural'Min (Header.Kitty_Quiet, 2);
-      Result.Respond :=
-        not
-          (Header.Kitty_Action = 'T'
-           and then Header.Kitty_ID = 0
-           and then Header.Kitty_Image_Number = 0);
-      Result.Image_ID := Header.Kitty_ID;
-      Result.Image_Number := Header.Kitty_Image_Number;
-      Result.Has_Image_Number := Header.Kitty_Image_Number /= 0;
-      Result.Placement_ID := Header.Kitty_Placement_ID;
-      Result.Has_Placement_ID := Header.Kitty_Placement_ID /= 0;
+      Result :=
+        Terminal.App.Graphics.Kitty_Result_From_Header
+          (Header, Result.Code);
 
       if Header.Kitty_Image_Number /= 0 then
          Number_Object_Before :=
-           Find_Image_Object_By_Number
+           Image_Objects.Find_By_Number
              (R, Event.Stream_ID, Header.Kitty_Image_Number);
       end if;
       if Header.Kitty_ID /= 0 then
@@ -248,20 +222,22 @@ begin
    if Event.Protocol = Terminal.Core.Kitty_Graphics
      and then Validation_Error
    then
-      R.Chunk_Cancel_Count := R.Chunk_Cancel_Count + 1;
-      Truncate_Image_Commands (R, Image_Count_Before);
+      Terminal.Common.Counters.Increment_Saturating
+        (R.Graphics_State.Telemetry.Chunk_Cancel_Count);
+      Image_Commands.Truncate (R, Image_Count_Before);
       if Track_Result and then Header.Recognized then
-         Result.Code := Terminal.Core.Kitty_EINVAL;
+         Result.Code := Terminal.Core.Graphics_EINVAL;
          Remember_Processed_Graphics_Event (R, Event, Result);
       end if;
       return;
    end if;
 
    if Invalid_Chunk_Transition then
-      R.Chunk_Cancel_Count := R.Chunk_Cancel_Count + 1;
-      Truncate_Image_Commands (R, Image_Count_Before);
+      Terminal.Common.Counters.Increment_Saturating
+        (R.Graphics_State.Telemetry.Chunk_Cancel_Count);
+      Image_Commands.Truncate (R, Image_Count_Before);
       if Track_Result then
-         Result.Code := Terminal.Core.Kitty_EINVAL;
+         Result.Code := Terminal.Core.Graphics_EINVAL;
          Remember_Processed_Graphics_Event (R, Event, Result);
       end if;
       return;
@@ -271,36 +247,43 @@ begin
      and then Header.Recognized
      and then Header.Kitty_Action = 'q'
    then
-      Result.Image_ID := Header.Kitty_ID;
+      Result.Kitty_Response.Image_ID := Header.Kitty_ID;
       if Header.Kitty_ID = 0
         or else Header.Kitty_Image_Number /= 0
         or else not Header.Kitty_More_Valid
       then
-         Result.Code := Terminal.Core.Kitty_EINVAL;
+         Result.Code := Terminal.Core.Graphics_EINVAL;
       elsif not Header.Kitty_Transmission_Valid
         or else not Header.Kitty_Compression_Valid
         or else Header.Kitty_Format not in 8 | 16 | 24 | 32 | 100
           | Terminal.App.Graphics.Kitty_JPEG_Format | Terminal.App.Graphics.Kitty_GIF_Format
       then
-         Result.Code := Terminal.Core.Kitty_ENOTSUP;
+         Result.Code := Terminal.Core.Graphics_ENOTSUP;
       elsif not Header.Kitty_Control_Data_Valid
         or else not Header.Kitty_Action_Controls_Valid
       then
-         Result.Code := Terminal.Core.Kitty_EINVAL;
+         Result.Code := Terminal.Core.Graphics_EINVAL;
       else
          declare
             Query_Header : Terminal.App.Graphics.Graphics_Header := Header;
+            procedure Validate_Query (Text : String) is
+            begin
+               Result.Code :=
+                 Terminal.App.Image_Ingestion.Validate_Kitty_Query
+                   (Query_Header,
+                    Text,
+                    R.Graphics_State.Policy.Access_Policy,
+                    R.Graphics_State.Policy.Limits.Per_Image_Bytes,
+                    R.Graphics_State.Policy.Limits.Pixel_Dimension,
+                    R.Graphics_State.Policy.Limits.Animation_Frames);
+            end Validate_Query;
          begin
             if Query_Header.Kitty_Format = 0 then
                Query_Header.Kitty_Format := 32;
                Query_Header.Raw_Format := 32;
             end if;
-            Result.Code :=
-              Terminal.App.Image_Ingestion.Validate_Kitty_Query
-                (Query_Header,
-                 Complete_Event_Text (R, Event),
-                 R.Graphics_Access,
-                 R.Graphics_Limits.Per_Image_Bytes);
+            Event_Tracking.With_Complete_Event_Text
+              (R, Event, Validate_Query'Access);
          end;
       end if;
       Remember_Processed_Graphics_Event (R, Event, Result);
@@ -308,11 +291,11 @@ begin
    end if;
 
    declare
-      Validation : constant Terminal.Core.Kitty_Graphics_Result_Code :=
+      Validation : constant Terminal.Core.Graphics_Completion_Code :=
         Validate_Kitty_Command;
    begin
    if Validation not in
-     Terminal.Core.Kitty_OK | Terminal.Core.Kitty_No_Response
+     Terminal.Core.Graphics_OK | Terminal.Core.Graphics_No_Response
    then
       if Track_Result then
          Result.Code := Validation;
@@ -332,62 +315,73 @@ begin
          Saved_Name : String
            (1 .. Terminal.App.ITerm2_Files.Max_File_Name_Length);
          Saved_Length : Natural;
+         procedure Save_Download (Text : String) is
+         begin
+            Terminal.App.ITerm2_Files.Save
+              (Text,
+               R.Graphics_State.Policy.ITerm2_Downloads,
+               R.Graphics_State.Policy.Limits.Per_Image_Bytes,
+               Save_Status,
+               Saved_Name,
+               Saved_Length);
+         end Save_Download;
       begin
-         Terminal.App.ITerm2_Files.Save
-           (Complete_Event_Text (R, Event),
-            R.ITerm2_Downloads,
-            R.Graphics_Limits.Per_Image_Bytes,
-            Save_Status,
-            Saved_Name,
-            Saved_Length);
+         Event_Tracking.With_Complete_Event_Text
+           (R, Event, Save_Download'Access);
          pragma Unreferenced (Saved_Name, Saved_Length);
          Result.Code :=
            (case Save_Status is
               when Terminal.App.ITerm2_Files.Save_Ok =>
-                Terminal.Core.Kitty_OK,
+                Terminal.Core.Graphics_OK,
               when Terminal.App.ITerm2_Files.Save_Too_Large =>
-                Terminal.Core.Kitty_ENOSPC,
+                Terminal.Core.Graphics_ENOSPC,
               when Terminal.App.ITerm2_Files.Save_Allocation_Failed =>
-                Terminal.Core.Kitty_ENOMEM,
+                Terminal.Core.Graphics_ENOMEM,
               when Terminal.App.ITerm2_Files.Save_Disabled =>
-                Terminal.Core.Kitty_ENOTSUP,
+                Terminal.Core.Graphics_ENOTSUP,
               when Terminal.App.ITerm2_Files.Save_Invalid_Command
                  | Terminal.App.ITerm2_Files.Save_Invalid_Name
                  | Terminal.App.ITerm2_Files.Save_Invalid_Data =>
-                Terminal.Core.Kitty_EINVAL,
-              when others => Terminal.Core.Kitty_EBADF);
+                Terminal.Core.Graphics_EINVAL,
+              when others => Terminal.Core.Graphics_EBADF);
          if Save_Status =
            Terminal.App.ITerm2_Files.Save_Allocation_Failed
          then
-            R.Allocation_Failure_Count := R.Allocation_Failure_Count + 1;
+            Terminal.Common.Counters.Increment_Saturating
+              (R.Graphics_State.Telemetry.Allocation_Failure_Count);
          elsif Save_Status /= Terminal.App.ITerm2_Files.Save_Ok then
-            R.Transport_Failure_Count := R.Transport_Failure_Count + 1;
+            Terminal.Common.Counters.Increment_Saturating
+              (R.Graphics_State.Telemetry.Transport_Failure_Count);
          end if;
          Remember_Processed_Graphics_Event (R, Event, Result);
          return;
       end;
    end if;
 
-   R.Image_Store_Allocation_Failed := False;
-   R.Image_Transport_Failed := False;
-   R.Last_Animation_Result := Terminal.Core.Kitty_No_Response;
+   R.Graphics_State.Transaction.Image_Store_Allocation_Failed := False;
+   R.Graphics_State.Transaction.Image_Transport_Failed := False;
+   R.Graphics_State.Transaction.Last_Animation_Result := Terminal.Core.Graphics_No_Response;
    Apply_Image_Event (R, Event, Snapshot, Placement_Status);
-   if R.Kitty_Placement_Count > Placement_Count_Before then
-      R.Placement_Create_Count :=
-        R.Placement_Create_Count
-        + Interfaces.Unsigned_64
-            (R.Kitty_Placement_Count - Placement_Count_Before);
-   elsif R.Kitty_Placement_Count < Placement_Count_Before then
-      R.Placement_Delete_Count :=
-        R.Placement_Delete_Count
-        + Interfaces.Unsigned_64
-            (Placement_Count_Before - R.Kitty_Placement_Count);
+   if Placements_State.Stored_Placement_Count (R) > Placement_Count_Before then
+      Terminal.Common.Counters.Add_Saturating
+        (R.Graphics_State.Telemetry.Placement_Create_Count,
+         Interfaces.Unsigned_64
+           (Placements_State.Stored_Placement_Count (R)
+            - Placement_Count_Before));
+   elsif Placements_State.Stored_Placement_Count (R) < Placement_Count_Before then
+      Terminal.Common.Counters.Add_Saturating
+        (R.Graphics_State.Telemetry.Placement_Delete_Count,
+         Interfaces.Unsigned_64
+           (Placement_Count_Before
+            - Placements_State.Stored_Placement_Count (R)));
    end if;
-   if R.Image_Transport_Failed then
-      R.Transport_Failure_Count := R.Transport_Failure_Count + 1;
+   if R.Graphics_State.Transaction.Image_Transport_Failed then
+      Terminal.Common.Counters.Increment_Saturating
+        (R.Graphics_State.Telemetry.Transport_Failure_Count);
    end if;
-   if R.Image_Store_Allocation_Failed then
-      R.Allocation_Failure_Count := R.Allocation_Failure_Count + 1;
+   if R.Graphics_State.Transaction.Image_Store_Allocation_Failed then
+      Terminal.Common.Counters.Increment_Saturating
+        (R.Graphics_State.Telemetry.Allocation_Failure_Count);
    end if;
    if Event.Protocol = Terminal.Core.ITerm2_Graphics
      and then Header.Recognized
@@ -395,27 +389,34 @@ begin
      and then Header.ITerm2_Inline
    then
       declare
-         Placement : Conventional_Placement_Access :=
-           R.Conventional_Placements;
+         Position : Placements_State.Conventional_Cursor :=
+           Placements_State.First_Conventional (R);
+         Placement : Conventional_Placement_State;
+         Found : Boolean := False;
       begin
-         while Placement /= null loop
-            exit when Placement.Stream_ID = Event.Stream_ID
+         while Placements_State.Has_Element (Position) loop
+            Placement := Placements_State.Element (Position);
+            Found := Placement.Stream_ID = Event.Stream_ID
               and then Placement.Protocol = RM.Image_ITerm2
               and then Placement.Image_Storage_Order =
-                R.Last_Stored_Image_Order;
-            Placement := Placement.Next;
+                R.Graphics_State.Transaction.Last_Stored_Image_Order;
+            exit when Found;
+            Placements_State.Advance (Position);
+            Placement := (others => <>);
          end loop;
-         if Placement /= null and then R.Last_Stored_Image_Order /= 0 then
+         if Found
+           and then R.Graphics_State.Transaction.Last_Stored_Image_Order /= 0
+         then
             --  iTerm2 emits no protocol reply, but an internal success
             --  result commits its default cursor movement atomically with
             --  the decoded image. Complete_Graphics_Event serializes
             --  replies only for Kitty events.
-            Result.Code := Terminal.Core.Kitty_OK;
+            Result.Code := Terminal.Core.Graphics_OK;
             if not Header.ITerm2_Do_Not_Move_Cursor then
-               Result.Move_Cursor := True;
-               Result.Cursor_To_Line_Start := True;
-               Result.Placement_Columns := 1;
-               Result.Placement_Rows := Placement.Rows;
+               Result.Cursor.Move := True;
+               Result.Cursor.To_Line_Start := True;
+               Result.Cursor.Placement_Columns := 1;
+               Result.Cursor.Placement_Rows := Placement.Rows;
             end if;
          end if;
       end;
@@ -430,7 +431,7 @@ begin
       then
          declare
             Stored : constant Image_Object_Access :=
-              Find_Image_Object_By_Number
+              Image_Objects.Find_By_Number
                 (R, Event.Stream_ID, Header.Kitty_Image_Number);
          begin
             if Stored /= null then
@@ -441,38 +442,38 @@ begin
       if Placement_Image_ID /= 0 then
          declare
             Object : constant Image_Object_Access :=
-              Find_Image_Object
+              Image_Objects.Find
                 (R, Event.Stream_ID, Placement_Image_ID);
          begin
             if Object /= null then
                Resolved_Geometry :=
-                 Resolve_Placement_Geometry (R, Object, Header);
+                 Placements_State.Resolve_Placement_Geometry (R, Object, Header);
                Geometry_Checked := True;
             end if;
          end;
       elsif Header.Kitty_Action = 'T'
-        and then R.Last_Stored_Image_Order /= 0
+        and then R.Graphics_State.Transaction.Last_Stored_Image_Order /= 0
       then
          declare
             Object : constant Image_Object_Access :=
-              Find_Image_Object_By_Storage_Order
-                (R, Event.Stream_ID, R.Last_Stored_Image_Order);
+              Image_Objects.Find_By_Storage_Order
+                (R, Event.Stream_ID, R.Graphics_State.Transaction.Last_Stored_Image_Order);
          begin
             if Object /= null then
                Resolved_Geometry :=
-                 Resolve_Placement_Geometry (R, Object, Header);
+                 Placements_State.Resolve_Placement_Geometry (R, Object, Header);
                Geometry_Checked := True;
             end if;
          end;
       elsif Header.Kitty_Action = 'T'
-        and then Frame_Image_Commands (R) /= null
-        and then Frame_Image_Count (R) > Image_Count_Before
+        and then Image_Commands.Commands (R) /= null
+        and then Image_Commands.Count (R) > Image_Count_Before
       then
          Resolved_Geometry :=
-           Resolve_Placement_Geometry
+           Placements_State.Resolve_Placement_Geometry
              (R,
-              FIS.Element (R.Frame_Images, Frame_Image_Count (R)).Pixel_Width,
-              FIS.Element (R.Frame_Images, Frame_Image_Count (R)).Pixel_Height,
+              FIS.Element (R.Frame_State.Frame_Images, Image_Commands.Count (R)).Pixel_Width,
+              FIS.Element (R.Frame_State.Frame_Images, Image_Commands.Count (R)).Pixel_Height,
               Header);
          Geometry_Checked := True;
       end if;

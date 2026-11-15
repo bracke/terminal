@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with Ada.Command_Line;
 with Ada.Streams;
 with Ada.Streams.Stream_IO;
@@ -11,6 +12,7 @@ procedure Graphics_Pipeline_Fuzz_Target is
    use type Ada.Streams.Stream_Element_Offset;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Renderer.Graphics.Resource_Limit_Update_Status;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
 
@@ -32,12 +34,12 @@ procedure Graphics_Pipeline_Fuzz_Target is
       while Terminal.Core.Pending_Graphics_Event_Count (T) > 0 loop
          declare
             Event : Terminal.Core.Graphics_Event;
-            Result : Terminal.Core.Kitty_Graphics_Result;
+            Result : Terminal.Core.Graphics_Completion;
             Snapshot : Terminal.Core.Render_Snapshot;
          begin
             Terminal.Core.Peek_Graphics_Event (T, Event);
             Terminal.Core.Snapshot (T, Snapshot);
-            Snapshot.Graphics := Event;
+            Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
             Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
             Terminal.Core.Release (Snapshot);
             if Render_Status /= Terminal.App.Renderer.Ok then
@@ -118,6 +120,8 @@ begin
    declare
       Limits : Terminal.App.Renderer.Graphics_Resource_Limits :=
         Terminal.App.Renderer.Default_Graphics_Resource_Limits;
+      Limit_Status :
+        Terminal.App.Renderer.Graphics.Resource_Limit_Update_Status;
    begin
       Limits.Image_Objects := 16;
       Limits.Image_Bytes := 4 * 1_024 * 1_024;
@@ -125,7 +129,11 @@ begin
       Limits.Animation_Frames := 64;
       Limits.Per_Image_Bytes := 1 * 1_024 * 1_024;
       Limits.Pixel_Dimension := 1_024;
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Limits);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Limits, Limit_Status);
+      if Limit_Status /= Terminal.App.Renderer.Graphics.Limits_Applied then
+         raise Program_Error with "fresh renderer rejected graphics limits";
+      end if;
    end;
 
    declare
@@ -190,7 +198,7 @@ begin
       Limits : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
         Terminal.App.Renderer.Graphics.Resource_Limits (R);
    begin
-      Snapshot.Graphics := (others => <>);
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, (others => <>));
       Terminal.App.Renderer.Render (R, Snapshot, Render_Status);
       Terminal.Core.Release (Snapshot);
       if Render_Status /= Terminal.App.Renderer.Ok then

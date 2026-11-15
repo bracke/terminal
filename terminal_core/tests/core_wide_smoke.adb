@@ -10,10 +10,12 @@ procedure Core_Wide_Smoke is
    use type Terminal.Core.Cell_Width;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
+   use type Terminal.Core.Resize_Status;
 
    T : Terminal.Core.Terminal;
    Init : Terminal.Core.Initialize_Status;
    Feed_Status : Terminal.Core.Feed_Status;
+   Resize_Status : Terminal.Core.Resize_Status;
 
    procedure Feed_Bytes (Data : Byte_Array; Message : String) is
    begin
@@ -78,6 +80,60 @@ begin
    Assert
      (not Terminal.Core.Is_Renderable_Attachment (16#FE0F#),
       "variation selector should remain a non-rendering attachment");
+   Assert
+     (Terminal.Core.Is_Renderable_Attachment (16#11F00#),
+      "Unicode 15 Kawi combining mark should be renderable");
+   Assert
+     (Terminal.Core.Is_Renderable_Attachment (16#1E4EC#),
+      "Unicode 15 Nag Mundari combining mark should be renderable");
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize Unicode category test failed");
+   Feed_Bytes
+     ((1 => Byte (Character'Pos ('a')),
+       2 => 16#E0#, 3 => 16#A6#, 4 => 16#BC#,
+       5 => 16#E0#, 6 => 16#B8#, 7 => 16#B1#,
+       8 => 16#F0#, 9 => 16#91#, 10 => 16#BC#, 11 => 16#80#,
+       12 => 16#F0#, 13 => 16#9E#, 14 => 16#93#, 15 => 16#AC#,
+       16 => Byte (Character'Pos ('b'))),
+      "Unicode category feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      A : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+   begin
+      Assert_Char (S, 1, 16#61#, "category combining base");
+      Assert_Char (S, 2, 16#62#, "category combining marks use no cells");
+      Assert (A.Text.Attachment_Count = 4, "category combining count");
+      Assert (A.Text.Attachments (1) = 16#09BC#, "Bengali nukta attachment");
+      Assert (A.Text.Attachments (2) = 16#0E31#, "Thai vowel attachment");
+      Assert (A.Text.Attachments (3) = 16#11F00#, "Kawi attachment");
+      Assert (A.Text.Attachments (4) = 16#1E4EC#, "Nag Mundari attachment");
+      Assert (S.Cursor.Col = 3, "category combining cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize exact width test failed");
+   Feed_Bytes
+     ((1 => 16#E3#, 2 => 16#80#, 3 => 16#BF#,
+       4 => 16#E2#, 5 => 16#98#, 6 => 16#85#,
+       7 => 16#EF#, 8 => 16#B8#, 9 => 16#8F#,
+       10 => Byte (Character'Pos ('b'))),
+      "exact width feed failed");
+   declare
+      S    : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+      Half : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 1);
+      Star : constant Terminal.Core.Cell := Terminal.Core.Cell_At (S, 1, 2);
+   begin
+      Assert (Half.Text.Code_Point = 16#303F#, "narrow East Asian code point");
+      Assert (Half.Text.Width = Terminal.Core.Width_One, "neutral EAW stays narrow");
+      Assert (Star.Text.Code_Point = 16#2605#, "non-variation emoji base");
+      Assert (Star.Text.Width = Terminal.Core.Width_One, "VS16 requires a listed base");
+      Assert (Star.Text.Attachment_Count = 1, "VS16 remains attached");
+      Assert_Char (S, 3, 16#62#, "exact width suffix");
+      Assert (S.Cursor.Col = 4, "exact width cursor");
+      Terminal.Core.Release (S);
+   end;
 
    Terminal.Core.Initialize (T, 1, 6, 10, Init);
    Assert (Init = Terminal.Core.Ok, "initialize wide placement failed");
@@ -182,6 +238,84 @@ begin
       Assert_Empty (S, 3, "ICH continuation inserts blank");
       Assert_Empty (S, 4, "ICH continuation clears split continuation");
       Assert_Char (S, 5, 16#62#, "ICH continuation shifts suffix");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize cluster REP failed");
+   Feed_Bytes
+     ((1 => Byte (Character'Pos ('a')),
+       2 => 16#CC#, 3 => 16#81#,
+       4 => Byte (Character'Pos (ASCII.ESC)),
+       5 => Byte (Character'Pos ('[')),
+       6 => Byte (Character'Pos ('2')),
+       7 => Byte (Character'Pos ('b'))),
+      "cluster REP feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Attachment_Count = 1,
+         "cluster REP keeps the original attachment");
+      for Col in 2 .. 3 loop
+         Assert
+           (Terminal.Core.Cell_At (S, 1, Col).Text.Code_Point = 16#61#
+            and then
+              Terminal.Core.Cell_At (S, 1, Col).Text.Attachment_Count = 0,
+            "cluster REP repeats only the preceding graphic character");
+      end loop;
+      Assert (Terminal.Core.Is_Valid (S), "cluster REP snapshot invariant");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 1, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize one-column wide failed");
+   Feed_Bytes
+     ((1 => 16#E4#, 2 => 16#B8#, 3 => 16#80#),
+      "one-column wide feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#4E00#
+         and then Terminal.Core.Cell_At (S, 1, 1).Text.Width =
+           Terminal.Core.Width_One,
+         "one-column wide scalar uses a valid clipped cell");
+      Assert (Terminal.Core.Is_Valid (S), "one-column wide snapshot invariant");
+      Terminal.Core.Release (S);
+   end;
+   Terminal.Core.Resize (T, 1, 3, Resize_Status);
+   Assert (Resize_Status = Terminal.Core.Ok, "expand clipped wide cell failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Code_Point = 16#4E00#
+         and then Terminal.Core.Cell_At (S, 1, 1).Text.Width =
+           Terminal.Core.Width_Two,
+         "expanded clipped wide scalar restores semantic width");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Kind =
+           Terminal.Core.Wide_Continuation,
+         "expanded clipped wide scalar restores continuation");
+      Assert (Terminal.Core.Is_Valid (S), "expanded wide snapshot invariant");
+      Terminal.Core.Release (S);
+   end;
+   Feed_Bytes
+     ((1 => Byte (Character'Pos (ASCII.ESC)),
+       2 => Byte (Character'Pos ('[')),
+       3 => Byte (Character'Pos ('b'))),
+      "REP after expanding clipped wide cell failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 1).Text.Width =
+           Terminal.Core.Width_Two
+         and then Terminal.Core.Cell_At (S, 1, 2).Kind =
+           Terminal.Core.Wide_Continuation
+         and then S.Cursor.Col = 3,
+         "REP after resize uses restored wide semantics");
       Terminal.Core.Release (S);
    end;
 
@@ -569,6 +703,57 @@ begin
          "emoji ZWJ modifier continuation");
       Assert_Char (S, 4, 16#62#, "emoji ZWJ modifier suffix");
       Assert (S.Cursor.Col = 5, "emoji ZWJ modifier cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 8, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize wide REP failed");
+   Feed_Bytes
+     ((1 => 16#E4#, 2 => 16#B8#, 3 => 16#80#,
+       4 => Byte (Character'Pos (ASCII.ESC)),
+       5 => Byte (Character'Pos ('[')),
+       6 => Byte (Character'Pos ('2')),
+       7 => Byte (Character'Pos ('b'))),
+      "wide REP feed failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      for Col in 1 .. 3 loop
+         Assert_Char (S, Col * 2 - 1, 16#4E00#, "wide REP head");
+         Assert
+           (Terminal.Core.Cell_At (S, 1, Col * 2).Kind =
+              Terminal.Core.Wide_Continuation,
+            "wide REP continuation");
+      end loop;
+      Assert (S.Cursor.Col = 7, "wide REP cursor");
+      Terminal.Core.Release (S);
+   end;
+
+   Terminal.Core.Initialize (T, 1, 4, 10, Init);
+   Assert (Init = Terminal.Core.Ok, "initialize wide resize failed");
+   Feed_Bytes
+     ((1 => Byte (Character'Pos ('a')),
+       2 => Byte (Character'Pos ('b')),
+       3 => 16#E4#, 4 => 16#B8#, 5 => 16#80#),
+      "wide resize setup failed");
+   Terminal.Core.Resize (T, 1, 3, Resize_Status);
+   Assert (Resize_Status = Terminal.Core.Ok, "wide resize failed");
+   declare
+      S : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Assert
+        (Terminal.Core.Scrollback_Row_Count (T) = 1
+         and then
+           Terminal.Core.Scrollback_Cell_At (T, 1, 1).Text.Code_Point = 16#61#
+         and then
+           Terminal.Core.Scrollback_Cell_At (T, 1, 2).Text.Code_Point = 16#62#,
+         "wide resize moves the leading visual row into history");
+      Assert_Char (S, 1, 16#4E00#, "wide resize preserves wide head");
+      Assert
+        (Terminal.Core.Cell_At (S, 1, 2).Kind =
+           Terminal.Core.Wide_Continuation,
+         "wide resize preserves wide continuation");
+      Assert (Terminal.Core.Is_Valid (S), "wide resize snapshot invariant");
       Terminal.Core.Release (S);
    end;
 end Core_Wide_Smoke;

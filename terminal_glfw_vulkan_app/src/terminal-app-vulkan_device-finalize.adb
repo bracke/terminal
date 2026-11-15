@@ -1,7 +1,17 @@
+with Terminal.App.Vulkan_Destroy_Pair;
+with Terminal.App.Vulkan_Destroy_Triple;
+
 separate (Terminal.App.Vulkan_Device)
    overriding procedure Finalize (Device : in out Logical_Device) is
       Deferred_Cleanup_Succeeded : Boolean;
-      Cleanup_Failed : Boolean := False;
+      Chain_Cleanup_Succeeded : Boolean;
+      Cleanup_Succeeded : Boolean := not Device.Cleanup_Quarantined;
+      Step_Succeeded : Boolean;
+      Command_Buffers_Succeeded : Boolean := True;
+      Pipeline_Layout_Succeeded : Boolean := True;
+      Descriptor_Pool_Succeeded : Boolean := True;
+      Framebuffers_Succeeded : Boolean := True;
+      Swapchain_Views_Succeeded : Boolean := True;
       generic
          type Handle_Type is private;
          Null_Handle : Handle_Type;
@@ -9,15 +19,24 @@ separate (Terminal.App.Vulkan_Device)
            (Parent    : Vk.Device_T;
             Handle    : Handle_Type;
             Allocator : System.Address);
-      procedure Destroy_Safely (Handle : in out Handle_Type);
+         Operation : String;
+      procedure Destroy_Safely
+        (Handle : in out Handle_Type; Success : out Boolean);
 
-      procedure Destroy_Safely (Handle : in out Handle_Type) is
+      procedure Destroy_Safely
+        (Handle : in out Handle_Type; Success : out Boolean) is
       begin
+         Success := True;
          if Handle /= Null_Handle then
             begin
                Destroy (Device.Device, Handle, System.Null_Address);
             exception
-               when others => Cleanup_Failed := True;
+               when E : others =>
+                  Success := False;
+                  Terminal.App.Cleanup_Diagnostics.Note_Failure
+                    (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+                     E,
+                     Operation);
             end;
          end if;
          --  Never retry a handle after a best-effort destructor was called:
@@ -26,36 +45,76 @@ separate (Terminal.App.Vulkan_Device)
       end Destroy_Safely;
 
       procedure Destroy_Fence is new Destroy_Safely
-        (Vk.Fence_T, System.Null_Address, Vk.Destroy_Fence);
+        (Vk.Fence_T, System.Null_Address, Vk.Destroy_Fence, "destroy Vulkan fence");
       procedure Destroy_Semaphore is new Destroy_Safely
-        (Vk.Semaphore_T, System.Null_Address, Vk.Destroy_Semaphore);
+        (Vk.Semaphore_T, System.Null_Address, Vk.Destroy_Semaphore,
+         "destroy Vulkan semaphore");
       procedure Destroy_Command_Pool is new Destroy_Safely
-        (Vk.Command_Pool_T, System.Null_Address, Vk.Destroy_Command_Pool);
-      procedure Destroy_Buffer is new Destroy_Safely
-        (Vk.Buffer_T, System.Null_Address, Vk.Destroy_Buffer);
-      procedure Free_Memory is new Destroy_Safely
-        (Vk.Device_Memory_T, System.Null_Address, Vk.Free_Memory);
+        (Vk.Command_Pool_T, System.Null_Address, Vk.Destroy_Command_Pool,
+         "destroy Vulkan command pool");
       procedure Destroy_Image_View is new Destroy_Safely
-        (Vk.Image_View_T, System.Null_Address, Vk.Destroy_Image_View);
-      procedure Destroy_Image is new Destroy_Safely
-        (Vk.Image_T, System.Null_Address, Vk.Destroy_Image);
+        (Vk.Image_View_T, System.Null_Address, Vk.Destroy_Image_View,
+         "destroy Vulkan image view");
       procedure Destroy_Sampler is new Destroy_Safely
-        (Vk.Sampler_T, System.Null_Address, Vk.Destroy_Sampler);
+        (Vk.Sampler_T, System.Null_Address, Vk.Destroy_Sampler,
+         "destroy Vulkan sampler");
       procedure Destroy_Pipeline is new Destroy_Safely
-        (Vk.Pipeline_T, System.Null_Address, Vk.Destroy_Pipeline);
+        (Vk.Pipeline_T, System.Null_Address, Vk.Destroy_Pipeline,
+         "destroy Vulkan pipeline");
       procedure Destroy_Pipeline_Layout is new Destroy_Safely
-        (Vk.Pipeline_Layout_T, System.Null_Address, Vk.Destroy_Pipeline_Layout);
+        (Vk.Pipeline_Layout_T, System.Null_Address, Vk.Destroy_Pipeline_Layout,
+         "destroy Vulkan pipeline layout");
       procedure Destroy_Descriptor_Pool is new Destroy_Safely
-        (Vk.Descriptor_Pool_T, System.Null_Address, Vk.Destroy_Descriptor_Pool);
+        (Vk.Descriptor_Pool_T, System.Null_Address, Vk.Destroy_Descriptor_Pool,
+         "destroy Vulkan descriptor pool");
       procedure Destroy_Descriptor_Set_Layout is new Destroy_Safely
         (Vk.Descriptor_Set_Layout_T, System.Null_Address,
-         Vk.Destroy_Descriptor_Set_Layout);
+         Vk.Destroy_Descriptor_Set_Layout,
+         "destroy Vulkan descriptor-set layout");
       procedure Destroy_Framebuffer is new Destroy_Safely
-        (Vk.Framebuffer_T, System.Null_Address, Vk.Destroy_Framebuffer);
+        (Vk.Framebuffer_T, System.Null_Address, Vk.Destroy_Framebuffer,
+         "destroy Vulkan framebuffer");
       procedure Destroy_Render_Pass is new Destroy_Safely
-        (Vk.Render_Pass_T, System.Null_Address, Vk.Destroy_Render_Pass);
+        (Vk.Render_Pass_T, System.Null_Address, Vk.Destroy_Render_Pass,
+         "destroy Vulkan render pass");
       procedure Destroy_Swapchain is new Destroy_Safely
-        (Vk.Swapchain_KHR_T, System.Null_Address, Vk.Destroy_Swapchain_KHR);
+        (Vk.Swapchain_KHR_T, System.Null_Address, Vk.Destroy_Swapchain_KHR,
+         "destroy Vulkan swapchain");
+
+      procedure Destroy_Buffer_Call (Handle : Vk.Buffer_T) is
+      begin
+         Vk.Destroy_Buffer (Device.Device, Handle, System.Null_Address);
+      end Destroy_Buffer_Call;
+
+      procedure Free_Memory_Call (Handle : Vk.Device_Memory_T) is
+      begin
+         Vk.Free_Memory (Device.Device, Handle, System.Null_Address);
+      end Free_Memory_Call;
+
+      procedure Destroy_Image_View_Call (Handle : Vk.Image_View_T) is
+      begin
+         Vk.Destroy_Image_View
+           (Device.Device, Handle, System.Null_Address);
+      end Destroy_Image_View_Call;
+
+      procedure Destroy_Image_Call (Handle : Vk.Image_T) is
+      begin
+         Vk.Destroy_Image (Device.Device, Handle, System.Null_Address);
+      end Destroy_Image_Call;
+
+      procedure Destroy_Buffer_Chain is new Terminal.App.Vulkan_Destroy_Pair
+        (Vk.Buffer_T, System.Null_Address, "destroy Vulkan buffer",
+         Destroy_Buffer_Call,
+         Vk.Device_Memory_T, System.Null_Address,
+         "free Vulkan buffer memory", Free_Memory_Call);
+
+      procedure Destroy_Image_Chain is new Terminal.App.Vulkan_Destroy_Triple
+        (Vk.Image_View_T, System.Null_Address, "destroy Vulkan image view",
+         Destroy_Image_View_Call,
+         Vk.Image_T, System.Null_Address, "destroy Vulkan image",
+         Destroy_Image_Call,
+         Vk.Device_Memory_T, System.Null_Address,
+         "free Vulkan image memory", Free_Memory_Call);
    begin
       if Device.Device /= System.Null_Address then
          begin
@@ -63,20 +122,38 @@ separate (Terminal.App.Vulkan_Device)
                Result : constant Vk.Result_T :=
                  Vk.Device_Wait_Idle (Device.Device);
             begin
-               Cleanup_Failed := Cleanup_Failed or else Result /= Vk.SUCCESS;
+               if Result /= Vk.SUCCESS then
+                  Terminal.App.Cleanup_Diagnostics.Note_Failure
+                    (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+                     "wait for Vulkan device idle");
+               end if;
             end;
          exception
-            when others => Cleanup_Failed := True;
+            when E : others =>
+               Terminal.App.Cleanup_Diagnostics.Note_Failure
+                 (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+                  E,
+                  "wait for Vulkan device idle");
          end;
 
          Destroy_Deferred_Upload (Device, Deferred_Cleanup_Succeeded);
-         Cleanup_Failed :=
-           Cleanup_Failed or else not Deferred_Cleanup_Succeeded;
-         Destroy_Fence (Device.Upload_Fence);
+         if not Deferred_Cleanup_Succeeded then
+            Cleanup_Succeeded := False;
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+               "deferred Vulkan upload cleanup was incomplete");
+         end if;
+         Destroy_Fence (Device.Upload_Fence, Step_Succeeded);
+         Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
          for I in Device.In_Flight'Range loop
-            Destroy_Fence (Device.In_Flight (I));
-            Destroy_Semaphore (Device.Render_Finished (I));
-            Destroy_Semaphore (Device.Image_Available (I));
+            Destroy_Fence (Device.In_Flight (I), Step_Succeeded);
+            Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
+            Destroy_Semaphore
+              (Device.Render_Finished (I), Step_Succeeded);
+            Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
+            Destroy_Semaphore
+              (Device.Image_Available (I), Step_Succeeded);
+            Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
          end loop;
 
          if Device.Command_Pool /= System.Null_Address then
@@ -86,7 +163,12 @@ separate (Terminal.App.Vulkan_Device)
                     (Device.Device, Device.Command_Pool, 1,
                      Device.Upload_Command_Buffer'Address);
                exception
-                  when others => Cleanup_Failed := True;
+                  when E : others =>
+                     Command_Buffers_Succeeded := False;
+                     Terminal.App.Cleanup_Diagnostics.Note_Failure
+                       (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+                        E,
+                        "free Vulkan upload command buffer");
                end;
             end if;
             Device.Upload_Command_Buffer := System.Null_Address;
@@ -98,131 +180,146 @@ separate (Terminal.App.Vulkan_Device)
                      Interfaces.Unsigned_32 (Device.Command_Buffer_Count),
                      Device.Command_Buffers'Address);
                exception
-                  when others => Cleanup_Failed := True;
+                  when E : others =>
+                     Command_Buffers_Succeeded := False;
+                     Terminal.App.Cleanup_Diagnostics.Note_Failure
+                       (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+                        E,
+                        "free Vulkan draw command buffers");
                end;
             end if;
          end if;
          Device.Command_Buffers := (others => System.Null_Address);
          Device.Command_Buffer_Count := 0;
-         Destroy_Command_Pool (Device.Command_Pool);
+         if Command_Buffers_Succeeded then
+            Destroy_Command_Pool (Device.Command_Pool, Step_Succeeded);
+            Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
+         else
+            --  A command buffer may still be live in the pool after the
+            --  ambiguous free.  Quarantine the pool and ultimately the device.
+            Device.Command_Pool := System.Null_Address;
+            Cleanup_Succeeded := False;
+         end if;
 
-         Destroy_Buffer (Device.Vertex_Buffer);
-         Free_Memory (Device.Vertex_Memory);
-         Destroy_Buffer (Device.Readback_Buffer);
-         Free_Memory (Device.Readback_Memory);
-         Destroy_Image_View (Device.Atlas_View);
-         Destroy_Image (Device.Atlas_Image);
-         Free_Memory (Device.Atlas_Memory);
-         Destroy_Image_View (Device.Image_Texture_View);
-         Destroy_Image (Device.Image_Texture_Image);
-         Free_Memory (Device.Image_Texture_Memory);
-         Destroy_Sampler (Device.Atlas_Sampler);
-         Destroy_Pipeline (Device.Graphics_Pipeline);
-         Destroy_Pipeline_Layout (Device.Pipeline_Layout);
-         Destroy_Descriptor_Pool (Device.Descriptor_Pool);
-         Destroy_Descriptor_Set_Layout (Device.Descriptor_Set_Layout);
+         Destroy_Buffer_Chain
+           (Device.Vertex_Buffer, Device.Vertex_Memory,
+            Chain_Cleanup_Succeeded);
+         Cleanup_Succeeded := Cleanup_Succeeded and Chain_Cleanup_Succeeded;
+         Destroy_Buffer_Chain
+           (Device.Readback_Buffer, Device.Readback_Memory,
+            Chain_Cleanup_Succeeded);
+         Cleanup_Succeeded := Cleanup_Succeeded and Chain_Cleanup_Succeeded;
+         Destroy_Image_Chain
+           (Device.Atlas_View, Device.Atlas_Image, Device.Atlas_Memory,
+            Chain_Cleanup_Succeeded);
+         Cleanup_Succeeded := Cleanup_Succeeded and Chain_Cleanup_Succeeded;
+         Destroy_Image_Chain
+           (Device.Image_Texture_View, Device.Image_Texture_Image,
+            Device.Image_Texture_Memory, Chain_Cleanup_Succeeded);
+         Cleanup_Succeeded := Cleanup_Succeeded and Chain_Cleanup_Succeeded;
+         Destroy_Image_Chain
+           (Device.Colour_Sheet_View, Device.Colour_Sheet_Image,
+            Device.Colour_Sheet_Memory, Chain_Cleanup_Succeeded);
+         Cleanup_Succeeded := Cleanup_Succeeded and Chain_Cleanup_Succeeded;
+         Destroy_Sampler (Device.Atlas_Sampler, Step_Succeeded);
+         Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
+         Destroy_Pipeline (Device.Graphics_Pipeline, Step_Succeeded);
+         Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
+         if Step_Succeeded then
+            Destroy_Pipeline_Layout
+              (Device.Pipeline_Layout, Pipeline_Layout_Succeeded);
+            Cleanup_Succeeded :=
+              Cleanup_Succeeded and Pipeline_Layout_Succeeded;
+         else
+            Device.Pipeline_Layout := System.Null_Address;
+            Pipeline_Layout_Succeeded := False;
+         end if;
+         Destroy_Descriptor_Pool
+           (Device.Descriptor_Pool, Descriptor_Pool_Succeeded);
+         Cleanup_Succeeded :=
+           Cleanup_Succeeded and Descriptor_Pool_Succeeded;
+         if Pipeline_Layout_Succeeded and Descriptor_Pool_Succeeded then
+            Destroy_Descriptor_Set_Layout
+              (Device.Descriptor_Set_Layout, Step_Succeeded);
+            Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
+         else
+            --  A descriptor set or pipeline layout may still depend on this
+            --  set layout after an ambiguous parent cleanup.
+            Device.Descriptor_Set_Layout := System.Null_Address;
+         end if;
 
          for I in Device.Framebuffers'Range loop
-            Destroy_Framebuffer (Device.Framebuffers (I));
+            Destroy_Framebuffer
+              (Device.Framebuffers (I), Step_Succeeded);
+            Framebuffers_Succeeded :=
+              Framebuffers_Succeeded and Step_Succeeded;
          end loop;
-         Destroy_Render_Pass (Device.Render_Pass);
-         Destroy_Image_View (Device.Color_MSAA_View);
-         Destroy_Image (Device.Color_MSAA_Image);
-         Free_Memory (Device.Color_MSAA_Memory);
-         for I in Device.Swapchain_Views'Range loop
-            Destroy_Image_View (Device.Swapchain_Views (I));
-         end loop;
-         Destroy_Swapchain (Device.Swapchain);
+         Cleanup_Succeeded := Cleanup_Succeeded and Framebuffers_Succeeded;
+         if Framebuffers_Succeeded then
+            Destroy_Render_Pass (Device.Render_Pass, Step_Succeeded);
+            Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
+            Destroy_Image_Chain
+              (Device.Color_MSAA_View, Device.Color_MSAA_Image,
+               Device.Color_MSAA_Memory, Chain_Cleanup_Succeeded);
+            Cleanup_Succeeded :=
+              Cleanup_Succeeded and Chain_Cleanup_Succeeded;
+            for I in Device.Swapchain_Views'Range loop
+               Destroy_Image_View
+                 (Device.Swapchain_Views (I), Step_Succeeded);
+               Swapchain_Views_Succeeded :=
+                 Swapchain_Views_Succeeded and Step_Succeeded;
+            end loop;
+            Cleanup_Succeeded :=
+              Cleanup_Succeeded and Swapchain_Views_Succeeded;
+            if Swapchain_Views_Succeeded then
+               Destroy_Swapchain (Device.Swapchain, Step_Succeeded);
+               Cleanup_Succeeded := Cleanup_Succeeded and Step_Succeeded;
+            else
+               Device.Swapchain := System.Null_Address;
+            end if;
+         else
+            --  Framebuffers retain the render pass and attachment views.
+            --  Quarantine the whole dependent chain after an ambiguous
+            --  framebuffer destructor rather than issuing invalid calls.
+            Device.Render_Pass := System.Null_Address;
+            Device.Color_MSAA_View := System.Null_Address;
+            Device.Color_MSAA_Image := System.Null_Address;
+            Device.Color_MSAA_Memory := System.Null_Address;
+            Device.Swapchain_Views := (others => System.Null_Address);
+            Device.Swapchain := System.Null_Address;
+         end if;
 
-         begin
-            Vk.Destroy_Device (Device.Device, System.Null_Address);
-         exception
-            when others => Cleanup_Failed := True;
-         end;
+         if Cleanup_Succeeded then
+            begin
+               Vk.Destroy_Device (Device.Device, System.Null_Address);
+            exception
+               when E : others =>
+                  Terminal.App.Cleanup_Diagnostics.Note_Failure
+                    (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+                     E,
+                     "destroy Vulkan logical device");
+            end;
+         else
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+               "quarantine Vulkan logical device after incomplete child cleanup");
+         end if;
          Device.Device := System.Null_Address;
       end if;
 
-      Device.Initialized := False;
-      Device.Device := System.Null_Address;
-      Device.Queue := System.Null_Address;
-      Device.Swapchain := System.Null_Address;
-      Device.Swapchain_Format := Vk.FORMAT_UNDEFINED;
-      Device.Render_Pass := System.Null_Address;
-      Device.Pipeline_Layout := System.Null_Address;
-      Device.Graphics_Pipeline := System.Null_Address;
-      Device.Descriptor_Set_Layout := System.Null_Address;
-      Device.Descriptor_Pool := System.Null_Address;
-      Device.Descriptor_Set := System.Null_Address;
-      Device.Command_Pool := System.Null_Address;
-      Device.Vertex_Buffer := System.Null_Address;
-      Device.Vertex_Memory := System.Null_Address;
-      Device.Color_MSAA_Image := System.Null_Address;
-      Device.Color_MSAA_Memory := System.Null_Address;
-      Device.Color_MSAA_View := System.Null_Address;
-      Device.Color_Sample_Count := Vk.SAMPLE_COUNT_1_BIT;
-      Device.Atlas_Image := System.Null_Address;
-      Device.Atlas_Memory := System.Null_Address;
-      Device.Atlas_View := System.Null_Address;
-      Device.Atlas_Sampler := System.Null_Address;
-      Device.Image_Texture_Image := System.Null_Address;
-      Device.Image_Texture_Memory := System.Null_Address;
-      Device.Image_Texture_View := System.Null_Address;
-      Device.Image_Texture_Width := 0;
-      Device.Image_Texture_Height := 0;
-      Device.Image_Texture_Bytes := 0;
-      Device.Image_Texture_Content_Signature := 0;
-      Device.Image_Texture_Descriptor_Capacity := 0;
-      Device.Image_Texture_Descriptor_Bound_Count := 0;
-      Device.Image_Texture_Upload_Count := 0;
-      Device.Image_Texture_Cache_Hit_Count := 0;
-      Device.Swapchain_Images := (others => System.Null_Address);
-      Device.Swapchain_Views := (others => System.Null_Address);
-      Device.Framebuffers := (others => System.Null_Address);
-      Device.Command_Buffers := (others => System.Null_Address);
-      Device.Upload_Command_Buffer := System.Null_Address;
-      Device.Image_Available := (others => System.Null_Address);
-      Device.Render_Finished := (others => System.Null_Address);
-      Device.In_Flight := (others => System.Null_Address);
-      Device.Upload_Fence := System.Null_Address;
-      Device.Queue_Family_Index := 0;
-      Device.Swapchain_Image_Count := 0;
-      Device.Swapchain_View_Count := 0;
-      Device.Framebuffer_Count := 0;
-      Device.Command_Buffer_Count := 0;
-      Device.Sync_Frame_Count := 0;
-      Device.Vertex_Buffer_Bytes := 0;
-      Device.Uploaded_Vertex_Count := 0;
-      Device.Uploaded_Text_Run_Count := 0;
-      Device.Uploaded_Shaped_Glyph_Count := 0;
-      Device.Rendered_Frame_Count := 0;
-      Device.Current_Frame := 1;
-      Device.Atlas_Width := 0;
-      Device.Atlas_Height := 0;
-      Device.Atlas_Bytes := 0;
-      Device.Atlas_Upload_Count := 0;
-      Device.Fence_Deferred_Upload_Count := 0;
-      Device.Readback_Supported := False;
-      Device.Readback_Enabled := False;
-      Device.Readback_Pending := False;
-      Device.Readback_Buffer := System.Null_Address;
-      Device.Readback_Memory := System.Null_Address;
-      Device.Readback_Bytes := 0;
-      Device.Readback_Frame := 0;
-      Device.Swapchain_Width := 0;
-      Device.Swapchain_Height := 0;
-      Device.Last_Status := Selection_Not_Ready;
-      if Cleanup_Failed then
-         Terminal.App.Cleanup_Diagnostics.Note_Failure
-           (Terminal.App.Cleanup_Diagnostics.Vulkan_Device);
-      end if;
+      Reset_State (Device, Selection_Not_Ready);
    exception
-      when others =>
+      when E : others =>
          --  A controlled finalizer must not replace an exception already in
          --  flight.  Mark the device unusable even if a corrupted teardown
          --  invariant prevented complete release.
-         Device.Initialized := False;
-         Device.Last_Status := Selection_Not_Ready;
          Terminal.App.Cleanup_Diagnostics.Note_Failure
-           (Terminal.App.Cleanup_Diagnostics.Vulkan_Device);
+           (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+            E,
+            "finalize Vulkan logical device");
+         --  The state of the foreign handles is ambiguous after an unexpected
+         --  teardown failure.  Forget them rather than retrying a possibly
+         --  consumed handle on a later finalization pass.
+         Reset_State (Device, Selection_Not_Ready);
    end Finalize;
 

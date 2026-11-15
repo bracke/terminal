@@ -1,17 +1,15 @@
 with Ada.Strings;
 with Ada.Strings.Fixed;
 with Interfaces;
+with Terminal.Common.Status;
 
 package body Terminal.App.Image_Rendering is
    use type Interfaces.Unsigned_64;
    use type Terminal.App.Image_Decode.Status;
    use type Terminal.App.Image_Media.Decode_Limit_Kind;
 
-   function Trimmed_Natural (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
-   begin
-      return Text (Text'First + 1 .. Text'Last);
-   end Trimmed_Natural;
+   function Trimmed_Natural (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    function Trimmed_Unsigned (Value : Interfaces.Unsigned_64) return String is
      (Ada.Strings.Fixed.Trim

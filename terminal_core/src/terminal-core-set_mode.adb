@@ -54,10 +54,10 @@ begin
          T.Current_Modes.Sixel_Private_Colors := Enable;
       when 47 | 1047 =>
          if Enable then
-            T.Alternate_Graphics_Generation :=
-              T.Alternate_Graphics_Generation + 1;
-            if T.Alternate_Graphics_Generation = 0 then
-               T.Alternate_Graphics_Generation := 1;
+            T.Graphics.Alternate_Generation :=
+              T.Graphics.Alternate_Generation + 1;
+            if T.Graphics.Alternate_Generation = 0 then
+               T.Graphics.Alternate_Generation := 1;
             end if;
          end if;
          T.Current_Modes.Alternate_Screen := Enable;
@@ -80,10 +80,10 @@ begin
       when 1049 =>
          if Enable then
             Save_Cursor_State (T);
-            T.Alternate_Graphics_Generation :=
-              T.Alternate_Graphics_Generation + 1;
-            if T.Alternate_Graphics_Generation = 0 then
-               T.Alternate_Graphics_Generation := 1;
+            T.Graphics.Alternate_Generation :=
+              T.Graphics.Alternate_Generation + 1;
+            if T.Graphics.Alternate_Generation = 0 then
+               T.Graphics.Alternate_Generation := 1;
             end if;
          end if;
          T.Current_Modes.Alternate_Screen := Enable;
@@ -113,7 +113,7 @@ begin
             Queue_Resize_Report (T);
          end if;
       when others =>
-         T.Diag.Unsupported_Sequence := T.Diag.Unsupported_Sequence + 1;
+         Increment_Saturating (T.Diag.Unsupported_Sequence);
    end case;
 
    --  Switching screens switches keyboard stacks.

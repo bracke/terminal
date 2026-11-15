@@ -4,34 +4,34 @@ separate (Terminal.App.Renderer.Add_Image)
       if Track_Result then
          if Header.Recognized and then not Event_Header.Kitty_More then
             if Header.Kitty_Action in 'f' | 'a' | 'c' then
-               Result.Image_ID := Resolved_ID;
+               Result.Kitty_Response.Image_ID := Resolved_ID;
                Result.Code :=
-                 (if R.Image_Transport_Failed
-                  then Terminal.Core.Kitty_EBADF
-                  elsif R.Image_Store_Allocation_Failed
-                  then Terminal.Core.Kitty_ENOMEM
-                  elsif R.Last_Animation_Result = Terminal.Core.Kitty_No_Response
-                  then Terminal.Core.Kitty_EINVAL
-                  else R.Last_Animation_Result);
+                 (if R.Graphics_State.Transaction.Image_Transport_Failed
+                  then Terminal.Core.Graphics_EBADF
+                  elsif R.Graphics_State.Transaction.Image_Store_Allocation_Failed
+                  then Terminal.Core.Graphics_ENOMEM
+                  elsif R.Graphics_State.Transaction.Last_Animation_Result = Terminal.Core.Graphics_No_Response
+                  then Terminal.Core.Graphics_EINVAL
+                  else R.Graphics_State.Transaction.Last_Animation_Result);
             elsif Header.Kitty_Action = 'p' then
-               Result.Image_ID := Resolved_ID;
+               Result.Kitty_Response.Image_ID := Resolved_ID;
                if Placement_Status = Placement_Parent_Missing then
-                  Result.Code := Terminal.Core.Kitty_ENOPARENT;
+                  Result.Code := Terminal.Core.Graphics_ENOPARENT;
                elsif Placement_Status = Placement_Cycle then
-                  Result.Code := Terminal.Core.Kitty_ECYCLE;
+                  Result.Code := Terminal.Core.Graphics_ECYCLE;
                elsif Placement_Status = Placement_Too_Deep then
-                  Result.Code := Terminal.Core.Kitty_ETOODEEP;
+                  Result.Code := Terminal.Core.Graphics_ETOODEEP;
                elsif Placement_Status = Placement_No_Space then
-                  Result.Code := Terminal.Core.Kitty_ENOMEM;
+                  Result.Code := Terminal.Core.Graphics_ENOMEM;
                elsif Resolved_ID = 0
-                 or else Find_Image_Object
+                 or else Image_Objects.Find
                    (R, Event.Stream_ID, Resolved_ID) = null
                then
-                  Result.Code := Terminal.Core.Kitty_ENOENT;
+                  Result.Code := Terminal.Core.Graphics_ENOENT;
                elsif Header.Kitty_Virtual_Placement
                  and then Header.Kitty_Parent_ID /= 0
                then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
+                  Result.Code := Terminal.Core.Graphics_EINVAL;
                elsif Header.Kitty_Parent_ID /= 0 then
                   declare
                      Relative_Status : constant Relative_Placement_Status :=
@@ -47,106 +47,106 @@ separate (Terminal.App.Renderer.Add_Image)
                   begin
                      Result.Code :=
                        (case Relative_Status is
-                           when Relative_Valid => Terminal.Core.Kitty_OK,
+                           when Relative_Valid => Terminal.Core.Graphics_OK,
                            when Relative_Parent_Missing =>
-                             Terminal.Core.Kitty_ENOPARENT,
-                           when Relative_Cycle => Terminal.Core.Kitty_ECYCLE,
+                             Terminal.Core.Graphics_ENOPARENT,
+                           when Relative_Cycle => Terminal.Core.Graphics_ECYCLE,
                            when Relative_Too_Deep =>
-                             Terminal.Core.Kitty_ETOODEEP);
+                             Terminal.Core.Graphics_ETOODEEP);
                   end;
                elsif Placement_Status = Placement_Rejected then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
+                  Result.Code := Terminal.Core.Graphics_EINVAL;
                else
-                  Result.Code := Terminal.Core.Kitty_OK;
+                  Result.Code := Terminal.Core.Graphics_OK;
                end if;
             elsif Header.Kitty_Action in 't' | 'T' then
                if Placement_Status = Placement_Parent_Missing then
-                  Result.Code := Terminal.Core.Kitty_ENOPARENT;
+                  Result.Code := Terminal.Core.Graphics_ENOPARENT;
                elsif Placement_Status = Placement_Cycle then
-                  Result.Code := Terminal.Core.Kitty_ECYCLE;
+                  Result.Code := Terminal.Core.Graphics_ECYCLE;
                elsif Placement_Status = Placement_Too_Deep then
-                  Result.Code := Terminal.Core.Kitty_ETOODEEP;
+                  Result.Code := Terminal.Core.Graphics_ETOODEEP;
                elsif Placement_Status = Placement_No_Space then
-                  Result.Code := Terminal.Core.Kitty_ENOMEM;
+                  Result.Code := Terminal.Core.Graphics_ENOMEM;
                elsif Placement_Status = Placement_Rejected then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
+                  Result.Code := Terminal.Core.Graphics_EINVAL;
                elsif Header.Kitty_Image_Number /= 0 then
                   declare
                      Stored : constant Image_Object_Access :=
-                       Find_Image_Object_By_Number
+                       Image_Objects.Find_By_Number
                          (R, Event.Stream_ID, Header.Kitty_Image_Number);
                   begin
                      if Stored = null
                        or else Stored = Number_Object_Before
                      then
                         Result.Code :=
-                          (if R.Image_Store_Allocation_Failed
-                           then Terminal.Core.Kitty_ENOMEM
-                           elsif R.Image_Transport_Failed
-                           then Terminal.Core.Kitty_EBADF
-                           else Terminal.Core.Kitty_EINVAL);
+                          (if R.Graphics_State.Transaction.Image_Store_Allocation_Failed
+                           then Terminal.Core.Graphics_ENOMEM
+                           elsif R.Graphics_State.Transaction.Image_Transport_Failed
+                           then Terminal.Core.Graphics_EBADF
+                           else Terminal.Core.Graphics_EINVAL);
                      else
-                        Result.Image_ID := Stored.ID;
-                        Result.Code := Terminal.Core.Kitty_OK;
+                        Result.Kitty_Response.Image_ID := Stored.ID;
+                        Result.Code := Terminal.Core.Graphics_OK;
                      end if;
                   end;
                elsif Header.Kitty_ID /= 0 then
                   Result.Code :=
-                    (if R.Image_Store_Allocation_Failed
-                     then Terminal.Core.Kitty_ENOMEM
-                     elsif R.Image_Transport_Failed
-                     then Terminal.Core.Kitty_EBADF
-                     elsif R.Last_Stored_Image_Order = 0
-                       or else Find_Image_Object
+                    (if R.Graphics_State.Transaction.Image_Store_Allocation_Failed
+                     then Terminal.Core.Graphics_ENOMEM
+                     elsif R.Graphics_State.Transaction.Image_Transport_Failed
+                     then Terminal.Core.Graphics_EBADF
+                     elsif R.Graphics_State.Transaction.Last_Stored_Image_Order = 0
+                       or else Image_Objects.Find
                          (R, Event.Stream_ID, Header.Kitty_ID) = null
-                     then Terminal.Core.Kitty_EINVAL
-                     else Terminal.Core.Kitty_OK);
+                     then Terminal.Core.Graphics_EINVAL
+                     else Terminal.Core.Graphics_OK);
                elsif Header.Kitty_Action = 'T' then
                   Result.Code :=
-                    (if (R.Last_Stored_Image_Order /= 0
+                    (if (R.Graphics_State.Transaction.Last_Stored_Image_Order /= 0
                          and then Placement_Exists (0))
-                       or else Frame_Image_Count (R) > Image_Count_Before
-                     then Terminal.Core.Kitty_OK
-                     elsif R.Image_Store_Allocation_Failed
-                     then Terminal.Core.Kitty_ENOMEM
-                     elsif R.Image_Transport_Failed
-                     then Terminal.Core.Kitty_EBADF
-                     else Terminal.Core.Kitty_EINVAL);
+                       or else Image_Commands.Count (R) > Image_Count_Before
+                     then Terminal.Core.Graphics_OK
+                     elsif R.Graphics_State.Transaction.Image_Store_Allocation_Failed
+                     then Terminal.Core.Graphics_ENOMEM
+                     elsif R.Graphics_State.Transaction.Image_Transport_Failed
+                     then Terminal.Core.Graphics_EBADF
+                     else Terminal.Core.Graphics_EINVAL);
                end if;
             elsif Header.Kitty_Action = 'd' then
-               Result.Image_ID := Resolved_ID;
-               Result.Code := Terminal.Core.Kitty_OK;
+               Result.Kitty_Response.Image_ID := Resolved_ID;
+               Result.Code := Terminal.Core.Graphics_OK;
             end if;
    
             if Header.Kitty_Action in 'T' | 'p'
               and then
-                (Result.Code = Terminal.Core.Kitty_OK
+                (Result.Code = Terminal.Core.Graphics_OK
                  or else
                    (Placement_Status in
                       Placement_Rejected | Placement_Parent_Missing
                         | Placement_Cycle | Placement_Too_Deep
                     and then Header.Kitty_Parent_ID /= 0))
             then
-               if Result.Image_ID = 0
+               if Result.Kitty_Response.Image_ID = 0
                  and then Header.Kitty_Image_Number /= 0
                then
                   declare
                      Stored : constant Image_Object_Access :=
-                       Find_Image_Object_By_Number
+                       Image_Objects.Find_By_Number
                          (R, Event.Stream_ID, Header.Kitty_Image_Number);
                   begin
                      if Stored /= null then
-                        Result.Image_ID := Stored.ID;
+                        Result.Kitty_Response.Image_ID := Stored.ID;
                      end if;
                   end;
                end if;
    
                if Geometry_Checked and then not Resolved_Geometry.Valid then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
+                  Result.Code := Terminal.Core.Graphics_EINVAL;
                elsif Header.Kitty_Virtual_Placement
                  and then Header.Kitty_Parent_ID /= 0
                then
-                  Result.Code := Terminal.Core.Kitty_EINVAL;
+                  Result.Code := Terminal.Core.Graphics_EINVAL;
                elsif Header.Kitty_Parent_ID /= 0 then
                   Result.Code :=
                     (case Validate_Relative_Placement
@@ -154,47 +154,48 @@ separate (Terminal.App.Renderer.Add_Image)
                         Event.Stream_ID,
                         Event.Alternate_Screen,
                         Event.Screen_Generation,
-                        Result.Image_ID,
+                        Result.Kitty_Response.Image_ID,
                         Header.Kitty_Placement_ID,
                         Header.Kitty_Parent_ID,
                         Header.Kitty_Parent_Placement_ID) is
-                       when Relative_Valid => Terminal.Core.Kitty_OK,
+                       when Relative_Valid => Terminal.Core.Graphics_OK,
                        when Relative_Parent_Missing =>
-                         Terminal.Core.Kitty_ENOPARENT,
-                       when Relative_Cycle => Terminal.Core.Kitty_ECYCLE,
-                       when Relative_Too_Deep => Terminal.Core.Kitty_ETOODEEP);
+                         Terminal.Core.Graphics_ENOPARENT,
+                       when Relative_Cycle => Terminal.Core.Graphics_ECYCLE,
+                       when Relative_Too_Deep => Terminal.Core.Graphics_ETOODEEP);
                end if;
    
-               if Result.Code = Terminal.Core.Kitty_OK
-                 and then not Placement_Exists (Result.Image_ID)
+               if Result.Code = Terminal.Core.Graphics_OK
+                 and then not Placement_Exists (Result.Kitty_Response.Image_ID)
                then
                   Result.Code :=
                     (if Placement_Status = Placement_Rejected
-                     then Terminal.Core.Kitty_EINVAL
-                     else Terminal.Core.Kitty_ENOMEM);
-               elsif Result.Code = Terminal.Core.Kitty_OK
+                     then Terminal.Core.Graphics_EINVAL
+                     else Terminal.Core.Graphics_ENOMEM);
+               elsif Result.Code = Terminal.Core.Graphics_OK
                  and then not Header.Kitty_No_Cursor_Move
                  and then not Header.Kitty_Virtual_Placement
                  and then Header.Kitty_Parent_ID = 0
                then
-                  Result.Move_Cursor := True;
+                  Result.Cursor.Move := True;
                   if Geometry_Checked and then Resolved_Geometry.Valid then
-                     Result.Placement_Columns := Resolved_Geometry.Columns;
-                     Result.Placement_Rows := Resolved_Geometry.Rows;
+                     Result.Cursor.Placement_Columns := Resolved_Geometry.Columns;
+                     Result.Cursor.Placement_Rows := Resolved_Geometry.Rows;
                   else
-                     Result.Placement_Columns := Header.Placeholder_Cols;
-                     Result.Placement_Rows := Header.Placeholder_Rows;
+                     Result.Cursor.Placement_Columns := Header.Placeholder_Cols;
+                     Result.Cursor.Placement_Rows := Header.Placeholder_Rows;
                   end if;
                end if;
             end if;
          end if;
-         if Result.Code = Terminal.Core.Kitty_EINVAL
+         if Result.Code = Terminal.Core.Graphics_EINVAL
            and then Header.Kitty_Action in 't' | 'T' | 'f' | 'q'
            and then Header.Has_Data
-           and then not R.Image_Transport_Failed
-           and then not R.Image_Store_Allocation_Failed
+           and then not R.Graphics_State.Transaction.Image_Transport_Failed
+           and then not R.Graphics_State.Transaction.Image_Store_Allocation_Failed
          then
-            R.Decode_Failure_Count := R.Decode_Failure_Count + 1;
+            Terminal.Common.Counters.Increment_Saturating
+              (R.Graphics_State.Telemetry.Decode_Failure_Count);
          end if;
          Remember_Processed_Graphics_Event (R, Event, Result);
       elsif Replay_Guarded then

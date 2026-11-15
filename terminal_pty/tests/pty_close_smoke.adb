@@ -3,6 +3,7 @@ with AUnit.Assertions;
 
 with Terminal.Common.Bytes;
 with Terminal.PTY.Backend;
+with Terminal.PTY.Backend.Testing;
 
 procedure PTY_Close_Smoke is
    use Terminal.Common.Bytes;
@@ -116,8 +117,8 @@ begin
      (Terminal.PTY.Backend.Child_State (S) = Terminal.PTY.Backend.Exited,
       "Is_Alive preserves the reaped child state");
    Assert
-     (Terminal.PTY.Backend.Child_Status (S) /= 0,
-      "Is_Alive preserves the reaped child status");
+     (Terminal.PTY.Backend.Child_Status (S) = 7,
+      "child status is the platform-neutral process exit code");
    --  A pseudo-console keeps its output pipe open until the console itself
    --  is closed, so only a POSIX slave reports the end of file on its own.
    if not On_Windows then
@@ -151,4 +152,57 @@ begin
      (Terminal.PTY.Backend.Child_State (S) in
         Terminal.PTY.Backend.Exited | Terminal.PTY.Backend.Signaled,
       "forced close records a terminal child state");
+
+   Terminal.PTY.Backend.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
+   Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "deferred-close spawn failed");
+   Terminal.PTY.Backend.Defer_Close (S);
+   Assert
+     (not Terminal.PTY.Backend.Is_Alive (S),
+      "deferred close immediately withdraws session ownership");
+
+   Assert
+     (Terminal.PTY.Backend.Testing.Exercise_POSIX_Deferred_Cleanup,
+      "POSIX deferred child ownership is bounded and drainable");
+   declare
+      Complete : Boolean;
+      Rejected : Terminal.PTY.Backend.Session;
+      Rejected_Status : Terminal.PTY.Backend.Spawn_Status;
+      Retained : Terminal.PTY.Backend.Session;
+      Retained_Status : Terminal.PTY.Backend.Spawn_Status;
+      Handoff_Rejected : Boolean := False;
+   begin
+      Terminal.PTY.Backend.Drain_Closed_Deferred_Cleanup (0, Complete);
+      Assert
+        (not Complete,
+         "closed cleanup drain rejects an open admission phase");
+      Terminal.PTY.Backend.Spawn_Default_Shell
+        (Retained, 24, 80, Retained_Status);
+      Assert
+        (Retained_Status = Terminal.PTY.Backend.Ok,
+         "retained-owner shell spawn failed");
+      Terminal.PTY.Backend.Stop_Deferred_Cleanup_Admission;
+      begin
+         Terminal.PTY.Backend.Defer_Close (Retained);
+      exception
+         when Terminal.PTY.Backend.Deferred_Cleanup_Unavailable =>
+            Handoff_Rejected := True;
+      end;
+      Assert
+        (Handoff_Rejected,
+         "rejected deferred close must report retained ownership");
+      Terminal.PTY.Backend.Close (Retained);
+      Assert
+        (not Terminal.PTY.Backend.Is_Alive (Retained),
+         "rejected deferred close keeps child ownership retryable");
+      Terminal.PTY.Backend.Spawn_Default_Shell
+        (Rejected, 24, 80, Rejected_Status);
+      Assert
+        (Rejected_Status = Terminal.PTY.Backend.Cleanup_Shutdown,
+         "PTY spawn is rejected after cleanup admission closes");
+      Terminal.PTY.Backend.Drain_Closed_Deferred_Cleanup (1_000, Complete);
+      Assert (Complete, "closed PTY cleanup admission drains accepted owners");
+   end;
+   Assert
+     (Terminal.PTY.Backend.Testing.Exercise_POSIX_Cleanup_Diagnostic,
+      "POSIX terminal cleanup failures are counted as abandoned owners");
 end PTY_Close_Smoke;

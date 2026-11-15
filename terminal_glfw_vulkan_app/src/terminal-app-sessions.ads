@@ -30,6 +30,7 @@ package Terminal.App.Sessions is
    type Session_Table is private;
 
    procedure Initialize (Table : out Session_Table);
+   procedure Clear (Table : out Session_Table);
    procedure New_Session
      (Table  : in out Session_Table;
       Status : out Session_Status);
@@ -61,7 +62,7 @@ package Terminal.App.Sessions is
 
 private
    type Session_Table is record
-      Current_Count : Session_Count := 1;
+      Current_Count : Session_Count := 0;
       Active_Index  : Session_Index := 1;
       States        : Session_Lifecycle_Array := (others => Unused);
    end record;

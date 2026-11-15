@@ -19,14 +19,6 @@ package body Terminal.Common.Base64 is
       end case;
    end Value;
 
-   function Value (Ch : Terminal.Common.Bytes.Byte) return Integer is
-   begin
-      if Ch > Terminal.Common.Bytes.Byte (Character'Pos (Character'Last)) then
-         return -1;
-      end if;
-      return Value (Character'Val (Ch));
-   end Value;
-
    function Is_Whitespace (Ch : Character) return Boolean is
      (Ch in ' ' | ASCII.CR | ASCII.LF);
 
@@ -110,7 +102,7 @@ package body Terminal.Common.Base64 is
       Status : out Decoder_Status)
    is
    begin
-      Output := (others => 0);
+      Output := [others => 0];
       Length := 0;
       if not Is_Valid_Quantum
         (State.Values, State.Count, State.Padding, State.Allow_Unpadded)
@@ -124,7 +116,7 @@ package body Terminal.Common.Base64 is
          Output (I) := Decode_Byte (State.Values, I);
       end loop;
       State.Finished := State.Padding > 0;
-      State.Values := (others => 0);
+      State.Values := [others => 0];
       State.Count := 0;
       State.Padding := 0;
       Status := Produced;
@@ -139,7 +131,7 @@ package body Terminal.Common.Base64 is
    is
       V : constant Integer := Value (Ch);
    begin
-      Output := (others => 0);
+      Output := [others => 0];
       Length := 0;
       Status := Accepted;
       if State.Invalid then
@@ -183,14 +175,7 @@ package body Terminal.Common.Base64 is
       Length : out Natural;
       Status : out Decoder_Status) is
    begin
-      if Ch > Terminal.Common.Bytes.Byte (Character'Pos (Character'Last)) then
-         Output := (others => 0);
-         Length := 0;
-         State.Invalid := True;
-         Status := Invalid_Data;
-      else
-         Push (State, Character'Val (Ch), Output, Length, Status);
-      end if;
+      Push (State, Character'Val (Ch), Output, Length, Status);
    end Push;
 
    procedure Finish
@@ -199,7 +184,7 @@ package body Terminal.Common.Base64 is
       Length : out Natural;
       Status : out Decoder_Status) is
    begin
-      Output := (others => 0);
+      Output := [others => 0];
       Length := 0;
       if State.Invalid then
          Status := Invalid_Data;

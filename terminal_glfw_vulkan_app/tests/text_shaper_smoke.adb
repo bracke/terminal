@@ -2,6 +2,7 @@ with AUnit.Assertions;
 with Terminal.App.Fonts;
 with Terminal.App.Render_Model;
 with Terminal.App.Text_Shaper;
+with Terminal.App.Text_Shaping_Tags_Testing;
 
 procedure Text_Shaper_Smoke is
    use AUnit.Assertions;
@@ -12,6 +13,8 @@ procedure Text_Shaper_Smoke is
    use type RM.Text_Run_Kind;
    use type RM.Text_Run_Script;
    use type RM.Text_Run_Shape_Status;
+
+   Shaper : TS.Shaper;
 
    function Run
      (A : Natural;
@@ -58,6 +61,8 @@ procedure Text_Shaper_Smoke is
    end Run;
 
    Simple    : RM.Text_Run_Command := Run (Character'Pos ('A'));
+   Narrow_A  : RM.Text_Run_Command := Run (Character'Pos ('A'), Width => 8.0);
+   Wide_A    : RM.Text_Run_Command := Run (Character'Pos ('A'), Width => 24.0);
    Text      : RM.Text_Run_Command :=
      Run
        (Character'Pos ('a'),
@@ -178,6 +183,7 @@ procedure Text_Shaper_Smoke is
    Dogra     : RM.Text_Run_Command := Run (16#11800#);
    Warang    : RM.Text_Run_Command := Run (16#118A0#);
    Dives     : RM.Text_Run_Command := Run (16#11900#);
+   Kawi      : RM.Text_Run_Command := Run (16#11F12#);
    Nandinagari : RM.Text_Run_Command := Run (16#119A0#);
    Zanabazar : RM.Text_Run_Command := Run (16#11A00#);
    Soyombo   : RM.Text_Run_Command := Run (16#11A50#);
@@ -244,7 +250,7 @@ procedure Text_Shaper_Smoke is
    is
    begin
       Assert (TS.Classify (Text) = RM.Complex_Script, Label & " class");
-      TS.Prepare (Text, Status);
+      TS.Prepare (Shaper, Text, Status);
       Assert
         (Text.Direction = RM.Direction_Left_To_Right,
          Label & " direction");
@@ -259,7 +265,7 @@ procedure Text_Shaper_Smoke is
    is
    begin
       Assert (TS.Classify (Text) = RM.Simple_Glyph, Label & " class");
-      TS.Prepare (Text, Status);
+      TS.Prepare (Shaper, Text, Status);
       Assert (Status = RM.Shape_Ok, Label & " simple status");
       Assert
         (Text.Direction = RM.Direction_Left_To_Right,
@@ -274,7 +280,7 @@ procedure Text_Shaper_Smoke is
    is
    begin
       Assert (TS.Classify (Text) = RM.Bidi_Text, Label & " class");
-      TS.Prepare (Text, Status);
+      TS.Prepare (Shaper, Text, Status);
       Assert_Shaped_Or_Needs_Backend (Text, Status, Label);
       Assert
         (Text.Direction = RM.Direction_Right_To_Left,
@@ -299,6 +305,9 @@ procedure Text_Shaper_Smoke is
          Label & " scalar script should match run classification");
    end Assert_Scalar_Properties;
 begin
+   Assert
+     (Terminal.App.Text_Shaping_Tags_Testing.Language_Tag = "und",
+      "shaping must not invent a language from script classification");
    Assert
      (TS.Backend_Status_Label (TS.Backend_Ok) = "Shaping backend ready",
       "backend ok status label");
@@ -339,18 +348,18 @@ begin
       "shape status label should be bounded");
 
    TS.Configure_Font
-     (Path       => Terminal.App.Fonts.Default_Font_Path,
-      Pixel_Size => 16,
-      Status     => Backend);
+     (Item   => Shaper,
+      Path   => Terminal.App.Fonts.Default_Font_Path,
+      Status => Backend);
    Assert
-     (Backend = TS.Backend_Ok and then TS.Backend_Available,
+     (Backend = TS.Backend_Ok and then TS.Backend_Available (Shaper),
       "HarfBuzz shaping backend should load the default font");
    Assert
      (TS.Backend_Status_Label (Backend)'Length <= TS.Max_Status_Label_Length,
       "backend status label should be bounded");
 
    Assert (TS.Classify (Simple) = RM.Simple_Glyph, "simple glyph class");
-   TS.Prepare (Simple, Status);
+   TS.Prepare (Shaper, Simple, Status);
    Assert (Status = RM.Shape_Ok, "simple glyph status");
    Assert
      (TS.Shape_Status_Label (Status) = "Text shaping complete",
@@ -379,8 +388,17 @@ begin
       "simple glyph advance");
    Assert (not Simple.Fallback_Glyphs, "simple glyph should not need fallback");
 
+   TS.Prepare (Shaper, Narrow_A, Status);
+   TS.Prepare (Shaper, Wide_A, Status);
+   Assert
+     (Narrow_A.Shaped_Glyph_Count = 1
+      and then Wide_A.Shaped_Glyph_Count = 1
+      and then Narrow_A.Shaped_Glyphs (1).X_Advance /=
+        Wide_A.Shaped_Glyphs (1).X_Advance,
+      "shape cache separates runs with different cell metrics");
+
    Assert (TS.Classify (Text) = RM.Simple_Text, "simple text class");
-   TS.Prepare (Text, Status);
+   TS.Prepare (Shaper, Text, Status);
    Assert (Status = RM.Shape_Ok, "simple text status");
    Assert (Text.Run_Kind = RM.Simple_Text, "simple text stored class");
    Assert (Text.Direction = RM.Direction_Left_To_Right, "simple text direction");
@@ -404,7 +422,7 @@ begin
    Assert (not Text.Fallback_Glyphs, "simple text fallback flag");
 
    Assert (TS.Classify (Digit_Text) = RM.Simple_Text, "digit text class");
-   TS.Prepare (Digit_Text, Status);
+   TS.Prepare (Shaper, Digit_Text, Status);
    Assert (Status = RM.Shape_Ok, "digit text status");
    Assert
      (Digit_Text.Direction = RM.Direction_Left_To_Right,
@@ -417,7 +435,7 @@ begin
    Assert
      (TS.Classify (Ligature) = RM.Ligature_Candidate,
       "ligature text class");
-   TS.Prepare (Ligature, Status);
+   TS.Prepare (Shaper, Ligature, Status);
    Assert
      (Status = RM.Shape_Ok,
       "ligature text should shape through HarfBuzz");
@@ -433,7 +451,7 @@ begin
    Assert
      (TS.Classify (Combining) = RM.Combining_Cluster,
       "combining cluster class");
-   TS.Prepare (Combining, Status);
+   TS.Prepare (Shaper, Combining, Status);
    Assert
      (Status = RM.Shape_Ok,
       "combining cluster should shape through HarfBuzz");
@@ -455,7 +473,7 @@ begin
    Assert
      (TS.Classify (Joined) = RM.Joined_Emoji_Cluster,
       "joined emoji class");
-   TS.Prepare (Joined, Status);
+   TS.Prepare (Shaper, Joined, Status);
    Assert
      (Status in RM.Shape_Ok | RM.Needs_Shaping_Backend,
       "joined emoji should shape or report explicit backend need");
@@ -472,19 +490,19 @@ begin
    Assert
      (TS.Classify (Modified) = RM.Emoji_Modified_Cluster,
       "emoji modifier class");
-   TS.Prepare (Modified, Status);
+   TS.Prepare (Shaper, Modified, Status);
    Assert
      (Status in RM.Shape_Ok | RM.Needs_Shaping_Backend,
       "modifier should shape or report explicit backend need");
 
    Assert (TS.Classify (RTL) = RM.Bidi_Text, "RTL class");
-   TS.Prepare (RTL, Status);
+   TS.Prepare (Shaper, RTL, Status);
    Assert_Shaped_Or_Needs_Backend (RTL, Status, "RTL");
    Assert (RTL.Direction = RM.Direction_Right_To_Left, "RTL direction");
    Assert (RTL.Script = RM.Script_Hebrew, "RTL script");
 
    Assert (TS.Classify (LRM_Text) = RM.Bidi_Text, "LRM text class");
-   TS.Prepare (LRM_Text, Status);
+   TS.Prepare (Shaper, LRM_Text, Status);
    Assert (Status = RM.Shape_Ok, "LRM text should shape through HarfBuzz");
    Assert
      (LRM_Text.Direction = RM.Direction_Left_To_Right,
@@ -492,7 +510,7 @@ begin
    Assert (LRM_Text.Script = RM.Script_Latin, "LRM text script");
 
    Assert (TS.Classify (RLM_Text) = RM.Bidi_Text, "RLM text class");
-   TS.Prepare (RLM_Text, Status);
+   TS.Prepare (Shaper, RLM_Text, Status);
    Assert (Status = RM.Shape_Ok, "RLM text should shape through HarfBuzz");
    Assert
      (RLM_Text.Direction = RM.Direction_Right_To_Left,
@@ -500,7 +518,7 @@ begin
    Assert (RLM_Text.Script = RM.Script_Latin, "RLM text script");
 
    Assert (TS.Classify (Greek) = RM.Simple_Text, "Greek text class");
-   TS.Prepare (Greek, Status);
+   TS.Prepare (Shaper, Greek, Status);
    Assert (Status = RM.Shape_Ok, "Greek text should shape through HarfBuzz");
    Assert
      (Greek.Direction = RM.Direction_Left_To_Right,
@@ -511,7 +529,7 @@ begin
       "Greek text shaped glyph count");
 
    Assert (TS.Classify (Cyrillic) = RM.Simple_Text, "Cyrillic text class");
-   TS.Prepare (Cyrillic, Status);
+   TS.Prepare (Shaper, Cyrillic, Status);
    Assert
      (Status = RM.Shape_Ok,
       "Cyrillic text should shape through HarfBuzz");
@@ -526,7 +544,7 @@ begin
       "Cyrillic text shaped glyph count");
 
    Assert (TS.Classify (Glagolitic) = RM.Simple_Glyph, "Glagolitic class");
-   TS.Prepare (Glagolitic, Status);
+   TS.Prepare (Shaper, Glagolitic, Status);
    Assert (Status = RM.Shape_Ok, "Glagolitic simple status");
    Assert
      (Glagolitic.Direction = RM.Direction_Left_To_Right,
@@ -534,19 +552,19 @@ begin
    Assert (Glagolitic.Script = RM.Script_Glagolitic, "Glagolitic script");
 
    Assert (TS.Classify (Coptic) = RM.Simple_Glyph, "Coptic class");
-   TS.Prepare (Coptic, Status);
+   TS.Prepare (Shaper, Coptic, Status);
    Assert (Status = RM.Shape_Ok, "Coptic simple status");
    Assert (Coptic.Direction = RM.Direction_Left_To_Right, "Coptic direction");
    Assert (Coptic.Script = RM.Script_Coptic, "Coptic script");
 
    Assert (TS.Classify (Gothic) = RM.Simple_Glyph, "Gothic class");
-   TS.Prepare (Gothic, Status);
+   TS.Prepare (Shaper, Gothic, Status);
    Assert (Status = RM.Shape_Ok, "Gothic simple status");
    Assert (Gothic.Direction = RM.Direction_Left_To_Right, "Gothic direction");
    Assert (Gothic.Script = RM.Script_Gothic, "Gothic script");
 
    Assert (TS.Classify (Old_Italic) = RM.Simple_Glyph, "Old Italic class");
-   TS.Prepare (Old_Italic, Status);
+   TS.Prepare (Shaper, Old_Italic, Status);
    Assert (Status = RM.Shape_Ok, "Old Italic simple status");
    Assert
      (Old_Italic.Direction = RM.Direction_Left_To_Right,
@@ -554,7 +572,7 @@ begin
    Assert (Old_Italic.Script = RM.Script_Old_Italic, "Old Italic script");
 
    Assert (TS.Classify (Old_Persian) = RM.Simple_Glyph, "Old Persian class");
-   TS.Prepare (Old_Persian, Status);
+   TS.Prepare (Shaper, Old_Persian, Status);
    Assert (Status = RM.Shape_Ok, "Old Persian simple status");
    Assert
      (Old_Persian.Direction = RM.Direction_Left_To_Right,
@@ -564,7 +582,7 @@ begin
       "Old Persian script");
 
    Assert (TS.Classify (Ugaritic) = RM.Simple_Glyph, "Ugaritic class");
-   TS.Prepare (Ugaritic, Status);
+   TS.Prepare (Shaper, Ugaritic, Status);
    Assert (Status = RM.Shape_Ok, "Ugaritic simple status");
    Assert
      (Ugaritic.Direction = RM.Direction_Left_To_Right,
@@ -572,7 +590,7 @@ begin
    Assert (Ugaritic.Script = RM.Script_Ugaritic, "Ugaritic script");
 
    Assert_Simple_Script (Linear_B, RM.Script_Linear_B, "Linear B");
-   Assert_Simple_Script (Cypriot, RM.Script_Cypriot, "Cypriot");
+   Assert_Bidi_Script (Cypriot, RM.Script_Cypriot, "Cypriot");
    Assert_Simple_Script
      (Egyptian, RM.Script_Egyptian_Hieroglyphs, "Egyptian Hieroglyphs");
    Assert_Simple_Script
@@ -590,7 +608,7 @@ begin
    Assert_Simple_Script (Cuneiform, RM.Script_Cuneiform, "Cuneiform");
    Assert_Simple_Script (Lycian, RM.Script_Lycian, "Lycian");
    Assert_Simple_Script (Carian, RM.Script_Carian, "Carian");
-   Assert_Simple_Script (Old_Turkic, RM.Script_Old_Turkic, "Old Turkic");
+   Assert_Bidi_Script (Old_Turkic, RM.Script_Old_Turkic, "Old Turkic");
    Assert_Simple_Script
      (Medefaidrin, RM.Script_Medefaidrin, "Medefaidrin");
    Assert_Simple_Script (Toto, RM.Script_Toto, "Toto");
@@ -607,7 +625,7 @@ begin
    Assert_Simple_Script (Khitan, RM.Script_Khitan_Small, "Khitan Small");
 
    Assert (TS.Classify (Armenian) = RM.Simple_Text, "Armenian text class");
-   TS.Prepare (Armenian, Status);
+   TS.Prepare (Shaper, Armenian, Status);
    Assert
      (Status = RM.Shape_Ok,
       "Armenian text should shape through HarfBuzz");
@@ -619,7 +637,7 @@ begin
       "Armenian text script");
 
    Assert (TS.Classify (Georgian) = RM.Simple_Text, "Georgian text class");
-   TS.Prepare (Georgian, Status);
+   TS.Prepare (Shaper, Georgian, Status);
    Assert
      (Status = RM.Shape_Ok,
       "Georgian text should shape through HarfBuzz");
@@ -631,7 +649,7 @@ begin
       "Georgian text script");
 
    Assert (TS.Classify (Ethiopic) = RM.Simple_Text, "Ethiopic text class");
-   TS.Prepare (Ethiopic, Status);
+   TS.Prepare (Shaper, Ethiopic, Status);
    Assert
      (Status = RM.Shape_Ok,
       "Ethiopic text should shape or fall back as simple text");
@@ -643,7 +661,7 @@ begin
       "Ethiopic text script");
 
    Assert (TS.Classify (Cherokee) = RM.Simple_Text, "Cherokee text class");
-   TS.Prepare (Cherokee, Status);
+   TS.Prepare (Shaper, Cherokee, Status);
    Assert
      (Status = RM.Shape_Ok,
       "Cherokee text should shape or fall back as simple text");
@@ -655,7 +673,7 @@ begin
       "Cherokee text script");
 
    Assert (TS.Classify (Canadian) = RM.Simple_Text, "Canadian text class");
-   TS.Prepare (Canadian, Status);
+   TS.Prepare (Shaper, Canadian, Status);
    Assert
      (Status = RM.Shape_Ok,
       "Canadian text should shape or fall back as simple text");
@@ -667,19 +685,19 @@ begin
       "Canadian text script");
 
    Assert (TS.Classify (Ogham) = RM.Simple_Text, "Ogham text class");
-   TS.Prepare (Ogham, Status);
+   TS.Prepare (Shaper, Ogham, Status);
    Assert (Status = RM.Shape_Ok, "Ogham text simple status");
    Assert (Ogham.Direction = RM.Direction_Left_To_Right, "Ogham direction");
    Assert (Ogham.Script = RM.Script_Ogham, "Ogham script");
 
    Assert (TS.Classify (Runic) = RM.Simple_Text, "Runic text class");
-   TS.Prepare (Runic, Status);
+   TS.Prepare (Shaper, Runic, Status);
    Assert (Status = RM.Shape_Ok, "Runic text simple status");
    Assert (Runic.Direction = RM.Direction_Left_To_Right, "Runic direction");
    Assert (Runic.Script = RM.Script_Runic, "Runic script");
 
    Assert (TS.Classify (Tifinagh) = RM.Simple_Text, "Tifinagh text class");
-   TS.Prepare (Tifinagh, Status);
+   TS.Prepare (Shaper, Tifinagh, Status);
    Assert (Status = RM.Shape_Ok, "Tifinagh text simple status");
    Assert
      (Tifinagh.Direction = RM.Direction_Left_To_Right,
@@ -687,13 +705,13 @@ begin
    Assert (Tifinagh.Script = RM.Script_Tifinagh, "Tifinagh script");
 
    Assert (TS.Classify (Vai) = RM.Simple_Text, "Vai text class");
-   TS.Prepare (Vai, Status);
+   TS.Prepare (Shaper, Vai, Status);
    Assert (Status = RM.Shape_Ok, "Vai text simple status");
    Assert (Vai.Direction = RM.Direction_Left_To_Right, "Vai direction");
    Assert (Vai.Script = RM.Script_Vai, "Vai script");
 
    Assert (TS.Classify (Arabic) = RM.Bidi_Text, "Arabic class");
-   TS.Prepare (Arabic, Status);
+   TS.Prepare (Shaper, Arabic, Status);
    Assert_Shaped_Or_Needs_Backend (Arabic, Status, "Arabic");
    Assert
      (Arabic.Direction = RM.Direction_Right_To_Left,
@@ -701,7 +719,7 @@ begin
    Assert (Arabic.Script = RM.Script_Arabic, "Arabic script");
 
    Assert (TS.Classify (Syriac) = RM.Bidi_Text, "Syriac class");
-   TS.Prepare (Syriac, Status);
+   TS.Prepare (Shaper, Syriac, Status);
    Assert_Shaped_Or_Needs_Backend (Syriac, Status, "Syriac");
    Assert
      (Syriac.Direction = RM.Direction_Right_To_Left,
@@ -709,7 +727,7 @@ begin
    Assert (Syriac.Script = RM.Script_Syriac, "Syriac script");
 
    Assert (TS.Classify (Thaana) = RM.Bidi_Text, "Thaana class");
-   TS.Prepare (Thaana, Status);
+   TS.Prepare (Shaper, Thaana, Status);
    Assert_Shaped_Or_Needs_Backend (Thaana, Status, "Thaana");
    Assert
      (Thaana.Direction = RM.Direction_Right_To_Left,
@@ -717,7 +735,7 @@ begin
    Assert (Thaana.Script = RM.Script_Thaana, "Thaana script");
 
    Assert (TS.Classify (NKo) = RM.Bidi_Text, "NKo class");
-   TS.Prepare (NKo, Status);
+   TS.Prepare (Shaper, NKo, Status);
    Assert_Shaped_Or_Needs_Backend (NKo, Status, "NKo");
    Assert
      (NKo.Direction = RM.Direction_Right_To_Left,
@@ -779,6 +797,7 @@ begin
    Assert_Complex_Script (Dogra, RM.Script_Dogra, "Dogra");
    Assert_Complex_Script (Warang, RM.Script_Warang_Citi, "Warang Citi");
    Assert_Complex_Script (Dives, RM.Script_Dives_Akuru, "Dives Akuru");
+   Assert_Complex_Script (Kawi, RM.Script_Kawi, "Kawi");
    Assert_Complex_Script (Nandinagari, RM.Script_Nandinagari, "Nandinagari");
    Assert_Complex_Script
      (Zanabazar, RM.Script_Zanabazar_Square, "Zanabazar Square");
@@ -815,11 +834,11 @@ begin
    Assert_Simple_Script (Han, RM.Script_CJK, "Han");
 
    Assert (TS.Classify (Emoji) = RM.Simple_Glyph, "emoji scalar class");
-   TS.Prepare (Emoji, Status);
+   TS.Prepare (Shaper, Emoji, Status);
    Assert (Status = RM.Shape_Ok, "emoji scalar status");
    Assert (Emoji.Script = RM.Script_Emoji, "emoji scalar script");
 
-   TS.Prepare (Missing, Status);
+   TS.Prepare (Shaper, Missing, Status);
    Assert
      (Status = RM.Shape_Ok,
       "simple missing scalar should fall back to codepoint rendering");
@@ -830,11 +849,11 @@ begin
      (Missing.Shaped_Glyph_Count = 0,
       "simple missing scalar should not expose notdef as shaped glyph");
 
-   TS.Configure_Font ("", 16, Backend);
+   TS.Configure_Font (Shaper, "", Backend);
    Assert
      (Backend = TS.Backend_Unavailable,
       "empty shaping font path should disable backend");
-   TS.Prepare (Backendless, Status);
+   TS.Prepare (Shaper, Backendless, Status);
    Assert
      (Status = RM.Shape_Ok,
       "simple text should still be renderable without shaping backend");
@@ -844,4 +863,8 @@ begin
    Assert
      (Backendless.Shaped_Glyph_Count = 0,
       "backendless simple text should not fabricate glyph indexes");
+   TS.Reset (Shaper);
+   Assert
+     (not TS.Backend_Available (Shaper),
+      "reset shaping state should release the configured backend");
 end Text_Shaper_Smoke;

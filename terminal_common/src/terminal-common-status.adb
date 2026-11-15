@@ -1,4 +1,10 @@
 package body Terminal.Common.Status is
+   function Trimmed_Natural (Value : Natural) return String is
+      Text : constant String := Natural'Image (Value);
+   begin
+      return Text (Text'First + 1 .. Text'Last);
+   end Trimmed_Natural;
+
    function Hex_Nibble (Value : Natural) return Character is
    begin
       if Value < 10 then

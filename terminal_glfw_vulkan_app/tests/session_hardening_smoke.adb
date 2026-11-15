@@ -4,6 +4,7 @@ with AUnit.Assertions;
 with Terminal.App.PTY_Write;
 with Terminal.App.Render_Model;
 with Terminal.App.Renderer;
+with Terminal.App.Renderer.Graphics;
 with Terminal.App.Renderer.Layout;
 with Terminal.App.Renderer.Testing;
 with Terminal.App.Session_Graphics;
@@ -15,6 +16,7 @@ with Terminal.App.Tabs;
 with Terminal.App.Queues;
 with Terminal.Common.Bytes;
 with Terminal.Core;
+with Terminal.Core.Snapshot_Testing;
 
 procedure Session_Hardening_Smoke is
    use AUnit.Assertions;
@@ -22,6 +24,7 @@ procedure Session_Hardening_Smoke is
    use type Terminal.App.PTY_Write.Write_All_Status;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
+   use type Terminal.App.Renderer.Graphics.Stage_Event_Status;
    use type Terminal.App.Session_Runtime.Runtime_Status;
    use type Terminal.App.Session_Runtime.Start_Status;
    use type Terminal.App.Session_Table.Table_Status;
@@ -37,6 +40,18 @@ procedure Session_Hardening_Smoke is
    package Tables renames Terminal.App.Session_Table;
    package Splits renames Terminal.App.Splits;
    package Tabs renames Terminal.App.Tabs;
+
+   procedure Set_Stream
+     (Snapshot : in out Terminal.Core.Render_Snapshot;
+      Stream   : Terminal.Core.Graphics_Stream_ID) is
+   begin
+      Terminal.Core.Snapshot_Testing.Set_Presentation_Context
+        (Snapshot,
+         Stream,
+         Snapshot.Graphics_Transaction,
+         Snapshot.Alternate_Screen,
+         Snapshot.Screen_Generation);
+   end Set_Stream;
 
    function Chunk_From_String (Text : String) return Terminal.App.Queues.Byte_Chunk
    is
@@ -92,7 +107,7 @@ procedure Session_Hardening_Smoke is
    end Repeated_Runtime_Start_Close;
 
    procedure Runtime_Table_Churn is
-      Table : Tables.Runtime_Table;
+      Table : aliased Tables.Runtime_Table;
       Tab_State : Tabs.Tab_State;
       Split_State : Splits.Split_State;
       Status : Tables.Table_Status;
@@ -118,13 +133,12 @@ procedure Session_Hardening_Smoke is
 
       for I in 1 .. Tables.Count (Table) loop
          declare
-            R : constant access Runtime.Runtime :=
+            Borrow : constant Tables.Runtime_Borrow :=
               Tables.Runtime_At
                 (Table, Terminal.App.Sessions.Session_Index (I));
          begin
-            Assert (R /= null, "churn runtime present" & Natural'Image (I));
-            Runtime.Write
-              (R.all,
+            Tables.Write
+              (Borrow,
                Chunk_From_String
                  ("printf tab-" & Natural'Image (I) & ASCII.LF),
                Write_Status);
@@ -167,7 +181,7 @@ procedure Session_Hardening_Smoke is
       Tables.Close_Tab (Table, Status);
       Assert (Status = Tables.Last_Session, "churn last tab guarded");
       Assert
-        (Runtime.State (Tables.Active_Runtime (Table).all) = Runtime.Active,
+        (Tables.State (Tables.Active_Runtime (Table)) = Runtime.Active,
          "churn last runtime survives");
       Tables.Close_All (Table);
 
@@ -227,6 +241,9 @@ procedure Session_Hardening_Smoke is
       Assert (Core_Status = Terminal.Core.Ok, "composition core 2");
       Terminal.Core.Initialize (T3, 2, 10, 16, Core_Status);
       Assert (Core_Status = Terminal.Core.Ok, "composition core 3");
+      Terminal.Core.Set_Graphics_Stream_ID (T1, 501);
+      Terminal.Core.Set_Graphics_Stream_ID (T2, 502);
+      Terminal.Core.Set_Graphics_Stream_ID (T3, 503);
       Terminal.Core.Feed (T1, To_Bytes ("one"), Feed_Status);
       Assert (Feed_Status = Terminal.Core.Ok, "composition feed 1");
       Terminal.Core.Feed (T2, To_Bytes ("two"), Feed_Status);
@@ -268,6 +285,31 @@ procedure Session_Hardening_Smoke is
       Assert
         (Terminal.App.Renderer.Diagnostics (R).Last_Dirty_Rows = 6,
          "composition diagnostics count dirty rows across every pane");
+
+      Terminal.Core.Clear_Damage (T1);
+      Terminal.Core.Clear_Damage (T2);
+      Terminal.Core.Clear_Damage (T3);
+      declare
+         Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 3) :=
+           (1 => Terminal.Core.Snapshot (T1),
+            2 => Terminal.Core.Snapshot (T2),
+            3 => Terminal.Core.Snapshot (T3));
+      begin
+         Terminal.App.Renderer.Layout.Render_App
+           (R,
+            Snaps,
+            3,
+            Tabs.Snapshot (Tab_State),
+            Splits.Snapshot (Split_State),
+            Render_Status);
+         Terminal.Core.Release (Snaps (1));
+         Terminal.Core.Release (Snaps (2));
+         Terminal.Core.Release (Snaps (3));
+      end;
+      Assert
+        (Render_Status = Terminal.App.Renderer.Ok
+         and then Terminal.App.Renderer.Diagnostics (R).Last_Cached_Rows = 6,
+         "clean composition reuses every pane row");
 
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
@@ -321,6 +363,139 @@ procedure Session_Hardening_Smoke is
             Assert
               (Render_Status = Terminal.App.Renderer.Ok,
                "empty tab snapshot does not read an unassigned status");
+            Terminal.App.Renderer.Layout.Render_App
+              (R,
+               Snaps,
+               2,
+               Tabs.Snapshot (Tiny_Tabs),
+               Splits.Snapshot (Tiny_Splits),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Invalid_Snapshot
+               and then Terminal.App.Renderer.Diagnostics (R).Last_Render_Status =
+                 Terminal.App.Renderer.Invalid_Snapshot,
+               "layout rejection updates renderer diagnostics");
+            Terminal.App.Renderer.Layout.Render_App
+              (R,
+               Snaps,
+               1,
+               Tabs.Snapshot (Tiny_Tabs),
+               (Count       => 1,
+                Active      => 2,
+                Orientation => Splits.Horizontal),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Invalid_Snapshot,
+               "layout rejects a split snapshot with a different active pane");
+            Terminal.Core.Release (Snaps (1));
+         end;
+         declare
+            Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 2) :=
+              (1 => Terminal.Core.Snapshot (Tiny),
+               2 => Terminal.Core.Snapshot (Tiny));
+         begin
+            Set_Stream (Snaps (1), 98);
+            Set_Stream (Snaps (2), 99);
+            Terminal.App.Renderer.Layout.Render_App
+              (R,
+               Snaps,
+               1,
+               Tabs.Snapshot (Tiny_Tabs),
+               Splits.Snapshot (Tiny_Splits),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Invalid_Snapshot,
+               "layout rejects snapshot and split-count disagreement");
+            Set_Stream (Snaps (1), 0);
+            Set_Stream (Snaps (2), 0);
+            Terminal.App.Renderer.Layout.Render_App
+              (R,
+               Snaps,
+               1,
+               Tabs.Snapshot (Tiny_Tabs),
+               (Count       => 2,
+                Active      => 1,
+                Orientation => Splits.Horizontal),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Invalid_Snapshot,
+               "zero-valued graphics streams still require pane isolation");
+            Set_Stream (Snaps (1), 99);
+            Set_Stream (Snaps (2), 99);
+            Terminal.App.Renderer.Layout.Render_App
+              (R,
+               Snaps,
+               1,
+               Tabs.Snapshot (Tiny_Tabs),
+               (Count       => 2,
+                Active      => 1,
+                Orientation => Splits.Horizontal),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Invalid_Snapshot,
+               "composite panes cannot share borrowed graphics storage");
+            Terminal.Core.Release (Snaps (1));
+            Terminal.Core.Release (Snaps (2));
+         end;
+         declare
+            Snaps : Terminal.App.Renderer.Snapshot_Array (2 .. 3) :=
+              (2 => Terminal.Core.Snapshot (Tiny),
+               3 => Terminal.Core.Snapshot (Tiny));
+         begin
+            Set_Stream (Snaps (2), 98);
+            Set_Stream (Snaps (3), 99);
+            Terminal.App.Renderer.Layout.Render_App
+              (R,
+               Snaps,
+               2,
+               Tabs.Snapshot (Tiny_Tabs),
+               (Count       => 2,
+                Active      => 2,
+                Orientation => Splits.Horizontal),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Invalid_Snapshot,
+               "layout rejects noncanonical snapshot bounds");
+            Terminal.Core.Release (Snaps (2));
+            Terminal.Core.Release (Snaps (3));
+         end;
+         declare
+            Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1) :=
+              (1 => Terminal.Core.Snapshot (Tiny));
+            Invalid_Tabs : Tabs.Tab_Snapshot := Tabs.Snapshot (Tiny_Tabs);
+         begin
+            Invalid_Tabs.Count := 2;
+            Invalid_Tabs.Active := 3;
+            Terminal.App.Renderer.Layout.Render_App
+              (R,
+               Snaps,
+               1,
+               Invalid_Tabs,
+               Splits.Snapshot (Tiny_Splits),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Invalid_Snapshot,
+               "layout rejects an active tab outside the visible tab count");
+            Terminal.Core.Release (Snaps (1));
+         end;
+         declare
+            Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1) :=
+              (1 => Terminal.Core.Snapshot (Tiny));
+            Empty_Labels : Tabs.Tab_Snapshot :=
+              (Count  => 2,
+               Active => 1,
+               Labels => (others => <>));
+         begin
+            Terminal.App.Renderer.Layout.Render_App
+              (R,
+               Snaps,
+               1,
+               Empty_Labels,
+               Splits.Snapshot (Tiny_Splits),
+               Render_Status);
+            Assert
+              (Render_Status = Terminal.App.Renderer.Ok,
+               "layout safely omits empty public tab labels");
             Terminal.Core.Release (Snaps (1));
          end;
          Terminal.Core.Finalize (Tiny);
@@ -330,7 +505,7 @@ procedure Session_Hardening_Smoke is
    end Renderer_Composition_Churn;
 
    procedure Background_Graphics_Progress is
-      Table : Tables.Runtime_Table;
+      Table : aliased Tables.Runtime_Table;
       Tab_State : Tabs.Tab_State;
       Split_State : Splits.Split_State;
       Table_Status : Tables.Table_Status;
@@ -340,8 +515,12 @@ procedure Session_Hardening_Smoke is
       Write_Status : Terminal.App.PTY_Write.Write_All_Status;
       Feed_Status : Terminal.Core.Feed_Status;
       Processed : Boolean;
-      Hidden : access Runtime.Runtime;
-      Visible : access Runtime.Runtime;
+      Retained_Visible_Event : constant Terminal.Core.Graphics_Event :=
+        (Pending        => True,
+         Stream_ID      => 99_001,
+         Sequence       => 1,
+         Payload_Length => 1,
+         others         => <>);
       Command : constant String :=
         ASCII.ESC & "_Ga=q,f=32,i=501,s=1,v=1;/wAA/w=="
         & ASCII.ESC & "\";
@@ -353,19 +532,57 @@ procedure Session_Hardening_Smoke is
       Tables.New_Tab
         (Table, 4, 12, 16, Table_Status);
       Assert (Table_Status = Tables.Ok, "background tab initialize");
-      Hidden := Tables.Runtime_At (Table, 1);
-      Visible := Tables.Runtime_At (Table, 2);
-      Assert (Hidden /= null and then Visible /= null, "background runtimes");
-
-      Terminal.Core.Feed
-        (Runtime.Core (Hidden.all).all, To_Bytes (Command & "Z"), Feed_Status);
-      Assert (Feed_Status = Terminal.Core.Ok, "hidden graphics feed");
-      Terminal.Core.Feed
-        (Runtime.Core (Visible.all).all, To_Bytes (Command), Feed_Status);
-      Assert (Feed_Status = Terminal.Core.Ok, "visible graphics feed");
+      declare
+         Hidden_Borrow : constant Tables.Runtime_Borrow :=
+           Tables.Runtime_At (Table, 1);
+         Visible_Borrow : constant Tables.Runtime_Borrow :=
+           Tables.Runtime_At (Table, 2);
+         Hidden_Core : constant Runtime.Core_Borrow :=
+           Tables.Core (Hidden_Borrow);
+         Visible_Core : constant Runtime.Core_Borrow :=
+           Tables.Core (Visible_Borrow);
+         Hidden_Pending : Natural := 0;
+         Visible_Pending : Natural := 0;
+         procedure Feed_Hidden (Core : in out Terminal.Core.Terminal) is
+         begin
+            Terminal.Core.Feed
+              (Core, To_Bytes (Command & "Z"), Feed_Status);
+         end Feed_Hidden;
+         procedure Feed_Visible (Core : in out Terminal.Core.Terminal) is
+         begin
+            Terminal.Core.Feed (Core, To_Bytes (Command), Feed_Status);
+         end Feed_Visible;
+         procedure Inspect_Hidden (Core : in out Terminal.Core.Terminal) is
+            Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (Core);
+         begin
+            Hidden_Pending := Terminal.Core.Pending_Graphics_Event_Count (Core);
+            Assert
+              (Terminal.Core.Cell_At (Snap, 1, 1).Text.Code_Point =
+                 Character'Pos ('Z'),
+               "hidden graphics completion resumes deferred terminal input");
+            Terminal.Core.Release (Snap);
+         exception
+            when others =>
+               Terminal.Core.Release (Snap);
+               raise;
+         end Inspect_Hidden;
+         procedure Inspect_Visible (Core : in out Terminal.Core.Terminal) is
+         begin
+            Visible_Pending := Terminal.Core.Pending_Graphics_Event_Count (Core);
+         end Inspect_Visible;
+      begin
+         Runtime.With_Core (Hidden_Core, Feed_Hidden'Access);
+         Assert (Feed_Status = Terminal.Core.Ok, "hidden graphics feed");
+         Runtime.With_Core (Visible_Core, Feed_Visible'Access);
+         Assert (Feed_Status = Terminal.Core.Ok, "visible graphics feed");
 
       Terminal.App.Renderer.Initialize_Headless (R, Init_Status);
       Assert (Init_Status = Terminal.App.Renderer.Ok, "background renderer init");
+      Assert
+        (Terminal.App.Renderer.Graphics.Stage_Event
+           (R, Retained_Visible_Event, "v") =
+             Terminal.App.Renderer.Graphics.Stage_Stored,
+         "visible retry transaction staged");
       Terminal.App.Session_Graphics.Process_Hidden
         (Table,
          R,
@@ -380,39 +597,33 @@ procedure Session_Hardening_Smoke is
         (Write_Status in
            Terminal.App.PTY_Write.Ok | Terminal.App.PTY_Write.Incomplete,
          "hidden graphics response is retained or written");
+      Runtime.With_Core (Hidden_Core, Inspect_Hidden'Access);
+      Runtime.With_Core (Visible_Core, Inspect_Visible'Access);
       Assert
-        (Terminal.Core.Pending_Graphics_Event_Count
-           (Runtime.Core (Hidden.all).all) = 0,
+        (Hidden_Pending = 0,
          "hidden graphics queue advances");
       Assert
-        (Terminal.Core.Pending_Graphics_Event_Count
-           (Runtime.Core (Visible.all).all) = 1,
+        (Visible_Pending = 1,
          "visible graphics remains on presentation path");
-      declare
-         Snap : Terminal.Core.Render_Snapshot :=
-           Terminal.Core.Snapshot (Runtime.Core (Hidden.all).all);
-      begin
-         Assert
-           (Terminal.Core.Cell_At (Snap, 1, 1).Text.Code_Point =
-              Character'Pos ('Z'),
-            "hidden graphics completion resumes deferred terminal input");
-         Terminal.Core.Release (Snap);
+      Assert
+        (Terminal.App.Renderer.Graphics.Stage_Event
+           (R, Retained_Visible_Event, "v") =
+             Terminal.App.Renderer.Graphics.Stage_Already_Stored,
+         "hidden progress preserves the visible retry transaction");
+         Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
+         Terminal.App.Renderer.Finalize (R);
       end;
-
-      Terminal.App.Renderer.Finalize (R);
       Tables.Close_All (Table);
    end Background_Graphics_Progress;
 
    procedure Background_Runtime_Exit_Is_Isolated is
-      Table : Tables.Runtime_Table;
+      Table : aliased Tables.Runtime_Table;
       Tab_State : Tabs.Tab_State;
       Split_State : Splits.Split_State;
       Table_Status : Tables.Table_Status;
       Write_Status : Terminal.App.PTY_Write.Write_All_Status;
       Feed_Status : Terminal.Core.Feed_Status;
       Had_Output : Tables.Runtime_Output_Set;
-      Hidden : access Runtime.Runtime;
-      Visible : access Runtime.Runtime;
       Deadline : constant Ada.Real_Time.Time :=
         Ada.Real_Time.Clock + Ada.Real_Time.Seconds (2);
    begin
@@ -423,26 +634,33 @@ procedure Session_Hardening_Smoke is
       Tables.New_Tab
         (Table, 4, 12, 16, Table_Status);
       Assert (Table_Status = Tables.Ok, "exit isolation second tab");
-      Hidden := Tables.Runtime_At (Table, 1);
-      Visible := Tables.Runtime_At (Table, 2);
-      Runtime.Write
-        (Hidden.all, Chunk_From_String ("exit" & ASCII.LF), Write_Status);
-      Assert
-        (Write_Status = Terminal.App.PTY_Write.Ok,
-         "background runtime accepts exit command");
-      while Runtime.State (Hidden.all) = Runtime.Active
-        and then Ada.Real_Time.Clock < Deadline
-      loop
-         Tables.Poll_Output
-           (Table, Had_Output, Feed_Status, Write_Status);
-         delay 0.01;
-      end loop;
-      Assert
-        (Runtime.State (Hidden.all) = Runtime.Exited,
-         "background runtime records its own exit");
-      Assert
-        (Runtime.State (Visible.all) = Runtime.Active,
-         "background exit leaves active runtime running");
+      declare
+         Hidden_Borrow : constant Tables.Runtime_Borrow :=
+           Tables.Runtime_At (Table, 1);
+         Visible_Borrow : constant Tables.Runtime_Borrow :=
+           Tables.Runtime_At (Table, 2);
+      begin
+         Tables.Write
+           (Hidden_Borrow,
+            Chunk_From_String ("exit" & ASCII.LF),
+            Write_Status);
+         Assert
+           (Write_Status = Terminal.App.PTY_Write.Ok,
+            "background runtime accepts exit command");
+         while Tables.State (Hidden_Borrow) = Runtime.Active
+           and then Ada.Real_Time.Clock < Deadline
+         loop
+            Tables.Poll_Output
+              (Table, Had_Output, Feed_Status, Write_Status);
+            delay 0.01;
+         end loop;
+         Assert
+           (Tables.State (Hidden_Borrow) = Runtime.Exited,
+            "background runtime records its own exit");
+         Assert
+           (Tables.State (Visible_Borrow) = Runtime.Active,
+            "background exit leaves active runtime running");
+      end;
       Tables.Close_All (Table);
    end Background_Runtime_Exit_Is_Isolated;
 begin

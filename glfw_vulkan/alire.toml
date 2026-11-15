@@ -4,6 +4,10 @@ version = "0.1.0-dev"
 licenses = "MIT"
 
 [[depends-on]]
+c_string_ownership = "*"
 df_vulkan = "*"
 libglfw3 = "*"
+
+[[pins]]
+c_string_ownership = { path = "../c_string_ownership" }
 

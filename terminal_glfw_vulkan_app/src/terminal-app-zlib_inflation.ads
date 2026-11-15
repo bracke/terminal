@@ -3,12 +3,13 @@ with Ada.Streams;
 with Terminal.Common.Bytes;
 with Terminal.App.Image_Decode;
 with Terminal.App.Render_Model;
-with Zlib;
+with Terminal.App.Inflate_Filter;
+with Terminal.App.Owned_Image_Data;
 
 --  One bounded streaming zlib inflater shared by direct and Base64 transports.
 --  The caller feeds compressed bytes and receives the completed allocation only
 --  after Finish has verified the stream terminator and length contract.
-package Terminal.App.Zlib_Inflation is
+private package Terminal.App.Zlib_Inflation is
    type Decoder is limited private;
 
    procedure Start
@@ -24,22 +25,21 @@ package Terminal.App.Zlib_Inflation is
 
    procedure Finish
      (State           : in out Decoder;
-      Inflated        : out Terminal.App.Render_Model.Image_Data_Access;
+      Inflated        : in out Terminal.App.Owned_Image_Data.Owner;
       Inflated_Length : out Natural;
       Status          : out Terminal.App.Image_Decode.Status);
 
 private
    Buffer_Size : constant := 4_096;
+   type Lifecycle_State is (Idle, Ready, Failed);
    type Decoder is new Ada.Finalization.Limited_Controlled with record
-      Filter         : Zlib.Filter_Type;
-      Opened         : Boolean := False;
-      Ready          : Boolean := False;
-      Failed         : Boolean := False;
+      Filter         : Terminal.App.Inflate_Filter.Decoder;
+      State          : Lifecycle_State := Idle;
       Failure_Status : Terminal.App.Image_Decode.Status :=
         Terminal.App.Image_Decode.Decode_Invalid_Byte;
       Maximum_Length : Natural := 0;
       Exact_Length   : Boolean := False;
-      Output         : Terminal.App.Render_Model.Image_Data_Access := null;
+      Output         : Terminal.App.Owned_Image_Data.Owner;
       Output_Length  : Natural := 0;
       Input          : Ada.Streams.Stream_Element_Array
         (1 .. Ada.Streams.Stream_Element_Offset (Buffer_Size)) := (others => 0);

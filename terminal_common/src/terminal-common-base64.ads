@@ -35,7 +35,6 @@ private
    type Quantum is array (Positive range 1 .. 4) of Sextet;
 
    function Value (Ch : Character) return Integer;
-   function Value (Ch : Terminal.Common.Bytes.Byte) return Integer;
    function Is_Valid_Quantum
      (Values         : Quantum;
       Count          : Natural;
@@ -49,7 +48,7 @@ private
       Index  : Positive) return Terminal.Common.Bytes.Byte;
 
    type Decoder_State is record
-      Values           : Quantum := (others => 0);
+      Values           : Quantum := [others => 0];
       Count            : Natural range 0 .. 4 := 0;
       Padding          : Natural range 0 .. 2 := 0;
       Allow_Unpadded   : Boolean := False;

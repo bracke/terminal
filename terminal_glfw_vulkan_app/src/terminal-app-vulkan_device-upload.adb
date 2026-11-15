@@ -13,10 +13,49 @@ separate (Terminal.App.Vulkan_Device)
       Data  : aliased System.Address := System.Null_Address;
       Result : Vk.Result_T;
       Frame_Resources_Available : Boolean;
+
+      Mapped : Boolean := False;
+
+      procedure Unmap_Vertex_Memory (Success : out Boolean) is
+         procedure Perform_Unmap is
+         begin
+            Vk.Unmap_Memory (Device.Device, Device.Vertex_Memory);
+         end Perform_Unmap;
+
+         procedure Handle_Failure
+           (E : Ada.Exceptions.Exception_Occurrence) is
+         begin
+            Device.Cleanup_Quarantined := True;
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+               E,
+               "unmap Vulkan vertex memory");
+            Device.Vertex_Buffer := System.Null_Address;
+            Device.Vertex_Memory := System.Null_Address;
+            Device.Vertex_Buffer_Bytes := 0;
+         end Handle_Failure;
+      begin
+         Data := System.Null_Address;
+         Terminal.App.Vulkan_Unmap_Once.Run
+           (Mapped, Perform_Unmap'Access, Handle_Failure'Access, Success);
+      end Unmap_Vertex_Memory;
+
+      procedure Upload_Colour_Pixels (Pixels : System.Address) is
+      begin
+         Upload_Image_Texture_Data
+           (Device        => Device,
+            Choice        => Choice,
+            Width         => VS.Colour_Atlas_Width (Batch),
+            Height        => VS.Colour_Atlas_Height (Batch),
+            Bytes_Natural => VS.Colour_Atlas_Bytes (Batch),
+            Pixels        => Pixels,
+            Status        => Status,
+            Slot          => Colour_Glyphs);
+      end Upload_Colour_Pixels;
    begin
       if not Device.Initialized
         or else not Choice.Selected
-        or else VS.Vertices (Batch) = null
+        or else not VS.Has_Vertex_Data (Batch)
       then
          Device.Uploaded_Image_Command_Count := 0;
          Device.Uploaded_Image_Vertex_Count := 0;
@@ -98,15 +137,12 @@ separate (Terminal.App.Vulkan_Device)
            or else Device.Colour_Sheet_Width /= VS.Colour_Atlas_Width (Batch)
            or else Device.Colour_Sheet_Height /= VS.Colour_Atlas_Height (Batch))
       then
-         Upload_Image_Texture_Data
-           (Device        => Device,
-            Choice        => Choice,
-            Width         => VS.Colour_Atlas_Width (Batch),
-            Height        => VS.Colour_Atlas_Height (Batch),
-            Bytes_Natural => VS.Colour_Atlas_Bytes (Batch),
-            Pixels        => VS.Colour_Atlas_Pixels (Batch),
-            Status        => Status,
-            Slot          => Colour_Glyphs);
+         if not VS.Has_Colour_Atlas_Pixels (Batch) then
+            Status := Image_Staging_Invalid_Source;
+            return;
+         end if;
+         VS.Visit_Colour_Atlas_Pixels
+           (Batch, Upload_Colour_Pixels'Access);
 
          if Status /= Ok then
             return;
@@ -180,35 +216,64 @@ separate (Terminal.App.Vulkan_Device)
            Bytes,
            0,
            Data'Address);
+      Mapped := Result = Vk.SUCCESS;
       if Result /= Vk.SUCCESS or else Data = System.Null_Address then
+         declare
+            Cleanup_Ok : Boolean;
+         begin
+            Unmap_Vertex_Memory (Cleanup_Ok);
+         end;
          Status := Map_Vertex_Buffer_Failed;
          return;
       end if;
 
-      declare
-         Mapped : constant Vertex_Mapping.Object_Pointer :=
-           Vertex_Mapping.To_Pointer (Data);
       begin
-         for I in 1 .. Count loop
+         declare
+            Target : constant Vertex_Mapping.Object_Pointer :=
+           Vertex_Mapping.To_Pointer (Data);
+         begin
+            for I in 1 .. Count loop
+               declare
+                  Source : constant VS.Vertex := VS.Vertex_At (Batch, I);
+               begin
+                  Target.all (I) :=
+                    (X          => Interfaces.C.C_float (Source.X),
+                     Y          => Interfaces.C.C_float (Source.Y),
+                     U          => Interfaces.C.C_float (Source.U),
+                     V          => Interfaces.C.C_float (Source.V),
+                     R          => Interfaces.C.C_float (Source.Color.R),
+                     G          => Interfaces.C.C_float (Source.Color.G),
+                     B          => Interfaces.C.C_float (Source.Color.B),
+                     A          => Interfaces.C.C_float (Source.Color.A),
+                     Textured   => To_Float (Source.Textured),
+                     Texture_ID => Texture_ID (Source.Texture));
+               end;
+            end loop;
+         end;
+      exception
+         when E : others =>
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+               E,
+               "copy Vulkan vertex data");
             declare
-               Source : constant VS.Vertex := VS.Vertices (Batch) (I);
+               Cleanup_Ok : Boolean;
             begin
-               Mapped.all (I) :=
-                 (X          => Interfaces.C.C_float (Source.X),
-                  Y          => Interfaces.C.C_float (Source.Y),
-                  U          => Interfaces.C.C_float (Source.U),
-                  V          => Interfaces.C.C_float (Source.V),
-                  R          => Interfaces.C.C_float (Source.Color.R),
-                  G          => Interfaces.C.C_float (Source.Color.G),
-                  B          => Interfaces.C.C_float (Source.Color.B),
-                  A          => Interfaces.C.C_float (Source.Color.A),
-                  Textured   => To_Float (Source.Textured),
-                  Texture_ID => Texture_ID (Source.Texture));
+               Unmap_Vertex_Memory (Cleanup_Ok);
             end;
-         end loop;
+            Status := Map_Vertex_Buffer_Failed;
+            return;
       end;
 
-      Vk.Unmap_Memory (Device.Device, Device.Vertex_Memory);
+      declare
+         Cleanup_Ok : Boolean;
+      begin
+         Unmap_Vertex_Memory (Cleanup_Ok);
+         if not Cleanup_Ok then
+            Status := Map_Vertex_Buffer_Failed;
+            return;
+         end if;
+      end;
       Device.Uploaded_Vertex_Count := Count;
       Device.Uploaded_Image_Command_Count := VS.Image_Command_Count (Batch);
       Device.Uploaded_Image_Vertex_Count := VS.Image_Vertex_Count (Batch);

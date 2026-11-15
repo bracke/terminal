@@ -51,6 +51,7 @@ package Terminal.App.Tabs is
    type Tab_State is private;
 
    procedure Initialize (State : out Tab_State);
+   procedure Clear (State : out Tab_State);
    procedure Apply
      (State  : in out Tab_State;
       Command : Tab_Command;
@@ -74,6 +75,11 @@ package Terminal.App.Tabs is
       Layout : Tab_Layout;
       Col    : Positive;
       Status : out Tab_Status);
+   procedure Move
+     (State  : in out Tab_State;
+      From   : Tab_Index;
+      To     : Tab_Index;
+      Status : out Tab_Status);
 
    function Count (State : Tab_State) return Tab_Count;
    function Active (State : Tab_State) return Tab_Index;
@@ -96,7 +102,7 @@ package Terminal.App.Tabs is
 
 private
    type Tab_State is record
-      Current_Count : Tab_Count := 1;
+      Current_Count : Tab_Count := 0;
       Active_Index  : Tab_Index := 1;
       Labels        : Tab_Label_Array := (others => <>);
    end record;

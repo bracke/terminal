@@ -7,6 +7,9 @@ project Graphics_Tools is
      ("external_graphics_clients_probe.adb",
       "tmux_graphics_passthrough_probe.adb",
       "graphics_fuzz_runner.adb",
+      "unicode_generator_support_smoke.adb",
+      "generate_unicode_character_properties.adb",
+      "generate_text_properties.adb",
       "compile_shaders.adb");
 
    package Compiler is

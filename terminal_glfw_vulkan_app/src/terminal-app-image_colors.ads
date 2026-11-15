@@ -19,7 +19,7 @@ package Terminal.App.Image_Colors is
       Indexed_Format : Natural;
       Pixel_Width    : Natural;
       Pixel_Height   : Natural;
-      Source         : Terminal.App.Render_Model.Image_Data_View;
-      Target         : Terminal.App.Render_Model.Image_Data_Access)
+      Source         : Terminal.Common.Bytes.Byte_Array;
+      Target         : in out Terminal.Common.Bytes.Byte_Array)
       return Boolean;
 end Terminal.App.Image_Colors;

@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with Ada.Strings.Fixed;
 with AUnit.Assertions;
 
@@ -13,7 +14,6 @@ with Terminal.Core;
 procedure PICT_Renderer_Smoke is
    use AUnit.Assertions;
    use type Terminal.Common.Bytes.Byte;
-   use type Terminal.App.Render_Model.Image_Data_Access;
    use type Terminal.App.Render_Model.Image_Data_View;
    use type Terminal.App.Render_Model.Image_Decoded_Source_Kind;
    use type Terminal.App.Render_Model.Image_Protocol;
@@ -58,8 +58,8 @@ procedure PICT_Renderer_Smoke is
      "AAAAAAAAABgAMAARAv8MAP/+AAAASAAAAEgAAAAAAAAAGAAwAAAAAAAECAAA"
      & "KAAPAAICSGkAAP8=";
    Red_PNG_Base64 : constant String :=
-     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4"
-     & "z8AAAAMBAQDJAMaU4gAAAABJRU5ErkJggg==";
+     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4"
+     & "z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
 
    function To_Bytes (Text : String) return Terminal.Common.Bytes.Byte_Array is
       Result : Terminal.Common.Bytes.Byte_Array (1 .. Text'Length);
@@ -96,12 +96,12 @@ begin
    declare
       Event : Terminal.Core.Graphics_Event;
       Snapshot : Terminal.Core.Render_Snapshot;
-      Outcome : Terminal.Core.Kitty_Graphics_Result;
+      Outcome : Terminal.Core.Graphics_Completion;
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "PICT graphics event");
       Terminal.Core.Snapshot (T, Snapshot);
-      Snapshot.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
       Terminal.App.Renderer.Render (R, Snapshot, Render);
       Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
@@ -178,12 +178,12 @@ begin
    declare
       Event : Terminal.Core.Graphics_Event;
       Snapshot : Terminal.Core.Render_Snapshot;
-      Outcome : Terminal.Core.Kitty_Graphics_Result;
+      Outcome : Terminal.Core.Graphics_Completion;
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "compatible PICT graphics event");
       Terminal.Core.Snapshot (T, Snapshot);
-      Snapshot.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
       Terminal.App.Renderer.Render (R, Snapshot, Render);
       Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
@@ -214,11 +214,11 @@ begin
    declare
       Event : Terminal.Core.Graphics_Event;
       Snapshot : Terminal.Core.Render_Snapshot;
-      Outcome : Terminal.Core.Kitty_Graphics_Result;
+      Outcome : Terminal.Core.Graphics_Completion;
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Terminal.Core.Snapshot (T, Snapshot);
-      Snapshot.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
       Terminal.App.Renderer.Render (R, Snapshot, Render);
       Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
@@ -241,13 +241,13 @@ begin
    declare
       Event : Terminal.Core.Graphics_Event;
       Snapshot : Terminal.Core.Render_Snapshot;
-      Outcome : Terminal.Core.Kitty_Graphics_Result;
+      Outcome : Terminal.Core.Graphics_Completion;
       Image_Count_Before : Natural;
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "truncated PICT graphics event");
       Terminal.Core.Snapshot (T, Snapshot);
-      Snapshot.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
       Terminal.App.Renderer.Render (R, Snapshot, Render);
       Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);
@@ -282,7 +282,7 @@ begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
       Assert (Event.Pending, "invalid iTerm2 dimensions graphics event");
       Terminal.Core.Snapshot (T, Snapshot);
-      Snapshot.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
       Terminal.App.Renderer.Render (R, Snapshot, Render);
       Outcome := Terminal.App.Renderer.Graphics.Result (R, Event);
       Terminal.Core.Release (Snapshot);

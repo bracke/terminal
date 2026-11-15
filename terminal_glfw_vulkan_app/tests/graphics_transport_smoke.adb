@@ -4,6 +4,7 @@ with GNAT.OS_Lib;
 with Interfaces.C;
 with Interfaces.C.Strings;
 with Terminal.App.Graphics_Transport;
+with Terminal.App.Graphics_Transport.Testing;
 with Terminal.Common.Bytes;
 with Test_Support;
 
@@ -15,6 +16,7 @@ procedure Graphics_Transport_Smoke is
    use type Terminal.Common.Bytes.Byte;
 
    package Transport renames Terminal.App.Graphics_Transport;
+   package Transport_Testing renames Terminal.App.Graphics_Transport.Testing;
    package OS renames GNAT.OS_Lib;
    package C renames Interfaces.C;
    package CS renames Interfaces.C.Strings;
@@ -218,6 +220,27 @@ begin
    Assert
      (not Ada.Directories.Exists (Shm_Path),
       "POSIX shared-memory transfer must unlink its object");
+
+   Write_File (Shm_Path);
+   declare
+      Bytes : Transport.Byte_Array_Access := null;
+      Length : Natural;
+      Status : Transport.Load_Status;
+   begin
+      Transport_Testing.Load_With_Shared_Memory_Unlink_Failure
+        ('s', Shm_Name, 0, 0, False,
+         Transport.Trusted_Access_Policy,
+         Transport.Max_Transfer_Bytes,
+         Bytes, Length, Status);
+      Assert
+        (Status = Transport.Load_Access_Failed
+         and then Bytes = null
+         and then Length = 0,
+         "shared-memory unlink failure rejects and releases loaded bytes");
+      Assert
+        (Ada.Directories.Exists (Shm_Path),
+         "injected unlink failure must leave the shared-memory name intact");
+   end;
 
       Test_Support.Delete_If_Present (File_Path);
    end;

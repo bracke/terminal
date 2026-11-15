@@ -1,4 +1,4 @@
 package Terminal.App.Main_Loop is
-   procedure Run;
+   procedure Run (Workspace_Override : String := "");
 end Terminal.App.Main_Loop;
 

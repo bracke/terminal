@@ -1,21 +1,10 @@
+with Terminal.Core.Snapshot_Editing;
 package body Terminal.App.Text_Blink is
-   use type Terminal.Core.Cell_Array_Access;
-
    function Contains_Blinking_Text
      (Snapshot : Terminal.Core.Render_Snapshot) return Boolean
    is
    begin
-      if Snapshot.Cells = null then
-         return False;
-      end if;
-
-      for Index in Snapshot.Cells'Range loop
-         if Snapshot.Cells (Index).Style.Blink then
-            return True;
-         end if;
-      end loop;
-
-      return False;
+      return Terminal.Core.Blinking_Cell_Count (Snapshot) > 0;
    end Contains_Blinking_Text;
 
    function Status_Label
@@ -37,13 +26,25 @@ package body Terminal.App.Text_Blink is
       Current_Tick : Natural)
    is
    begin
-      if Snapshot.Cells = null or else Current_Tick mod 2 = 0 then
+      if Terminal.Core.Cell_Count (Snapshot) = 0
+        or else Current_Tick mod 2 = 0
+      then
          return;
       end if;
 
-      for Index in Snapshot.Cells'Range loop
-         if Snapshot.Cells (Index).Style.Blink then
-            Snapshot.Cells (Index).Style.Conceal := True;
+      for Index in 1 .. Terminal.Core.Cell_Count (Snapshot) loop
+         if Terminal.Core.Cell_Style_At_Index (Snapshot, Index).Blink then
+            declare
+               Value : Terminal.Core.Cell_Style :=
+                 Terminal.Core.Cell_Style_At_Index (Snapshot, Index);
+            begin
+               Value.Conceal := True;
+               Terminal.Core.Snapshot_Editing.Set_Cell_Style (Snapshot, Index, Value);
+               Terminal.Core.Snapshot_Editing.Set_Dirty_Row
+                 (Snapshot,
+                  (Index - 1) / Positive (Snapshot.Cols) + 1,
+                  True);
+            end;
          end if;
       end loop;
    end Apply;

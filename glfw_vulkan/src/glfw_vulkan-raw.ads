@@ -31,19 +31,15 @@ package GLFW_Vulkan.Raw is
    function Init return Interfaces.C.int
      with Import, Convention => C, External_Name => "glfwInit";
 
-   procedure Terminate_GLFW
-     with Import, Convention => C, External_Name => "glfwTerminate";
+   procedure Terminate_Tracked (Completed : access Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_terminate";
 
    function Vulkan_Supported return Interfaces.C.int
      with Import, Convention => C, External_Name => "glfwVulkanSupported";
 
-   type Extension_Pointer_Array is
-     array (Interfaces.C.unsigned range 0 .. 31) of Interfaces.C.Strings.chars_ptr
-     with Convention => C;
-   type Extension_Pointer_Array_Access is access all Extension_Pointer_Array;
-
    function Get_Required_Instance_Extensions
-     (Count : access Interfaces.C.unsigned) return Extension_Pointer_Array_Access
+     (Count : access Interfaces.C.unsigned) return System.Address
      with Import, Convention => C, External_Name => "glfwGetRequiredInstanceExtensions";
 
    procedure Window_Hint
@@ -51,13 +47,15 @@ package GLFW_Vulkan.Raw is
       Value : Interfaces.C.int)
      with Import, Convention => C, External_Name => "glfwWindowHint";
 
-   function Create_Window
-     (Width   : Interfaces.C.int;
+   procedure Create_Window_Owned
+     (Target  : access GLFW_Window_Handle;
+      Width   : Interfaces.C.int;
       Height  : Interfaces.C.int;
       Title   : Interfaces.C.Strings.chars_ptr;
       Monitor : System.Address;
-      Share   : System.Address) return GLFW_Window_Handle
-     with Import, Convention => C, External_Name => "glfwCreateWindow";
+      Share   : System.Address)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_create_window";
 
    procedure Destroy_Window (Window : GLFW_Window_Handle)
      with Import, Convention => C, External_Name => "glfwDestroyWindow";
@@ -75,9 +73,11 @@ package GLFW_Vulkan.Raw is
       Title  : Interfaces.C.Strings.chars_ptr)
      with Import, Convention => C, External_Name => "glfwSetWindowTitle";
 
-   function Create_Standard_Cursor
-     (Shape : Interfaces.C.int) return GLFW_Cursor_Handle
-     with Import, Convention => C, External_Name => "glfwCreateStandardCursor";
+   procedure Create_Standard_Cursor_Owned
+     (Target : access GLFW_Cursor_Handle;
+      Shape  : Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_create_standard_cursor";
 
    procedure Destroy_Cursor (Cursor : GLFW_Cursor_Handle)
      with Import, Convention => C, External_Name => "glfwDestroyCursor";
@@ -86,6 +86,13 @@ package GLFW_Vulkan.Raw is
      (Window : GLFW_Window_Handle;
       Cursor : GLFW_Cursor_Handle)
      with Import, Convention => C, External_Name => "glfwSetCursor";
+
+   procedure Set_Cursor_Tracked
+     (Window    : GLFW_Window_Handle;
+      Cursor    : GLFW_Cursor_Handle;
+      Installed : access Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_set_cursor";
 
    procedure Get_Framebuffer_Size
      (Window : GLFW_Window_Handle;
@@ -182,6 +189,49 @@ package GLFW_Vulkan.Raw is
       Callback : Window_Focus_Callback_Access)
       return Window_Focus_Callback_Access
      with Import, Convention => C, External_Name => "glfwSetWindowFocusCallback";
+
+   procedure Set_Key_Callback_Owned
+     (Window    : GLFW_Window_Handle;
+      Callback  : Key_Callback_Access;
+      Previous  : access Key_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_set_key_callback_owned";
+   procedure Set_Char_Callback_Owned
+     (Window    : GLFW_Window_Handle;
+      Callback  : Char_Callback_Access;
+      Previous  : access Char_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_set_char_callback_owned";
+   procedure Set_Mouse_Button_Callback_Owned
+     (Window    : GLFW_Window_Handle;
+      Callback  : Mouse_Button_Callback_Access;
+      Previous  : access Mouse_Button_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_set_mouse_button_callback_owned";
+   procedure Set_Cursor_Pos_Callback_Owned
+     (Window    : GLFW_Window_Handle;
+      Callback  : Cursor_Pos_Callback_Access;
+      Previous  : access Cursor_Pos_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_set_cursor_pos_callback_owned";
+   procedure Set_Scroll_Callback_Owned
+     (Window    : GLFW_Window_Handle;
+      Callback  : Scroll_Callback_Access;
+      Previous  : access Scroll_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_set_scroll_callback_owned";
+   procedure Set_Window_Focus_Callback_Owned
+     (Window    : GLFW_Window_Handle;
+      Callback  : Window_Focus_Callback_Access;
+      Previous  : access Window_Focus_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Import, Convention => C,
+          External_Name => "terminal_glfw_set_window_focus_callback_owned";
 
    procedure Get_Cursor_Pos
      (Window : GLFW_Window_Handle;

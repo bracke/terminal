@@ -6,16 +6,16 @@ with Ada.Strings.Fixed;
 with Ada.Text_IO;
 
 with Ada.Characters.Handling;
+with Terminal.Common.Status;
+with Terminal.App.Key_Bindings;
+with Terminal.App.Session_Profiles;
 
 package body Terminal.App.Config is
    function Trimmed (Text : String) return String is
      (Ada.Strings.Fixed.Trim (Text, Ada.Strings.Both));
 
-   function Trim_Image (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
-   begin
-      return Text (Text'First + 1 .. Text'Last);
-   end Trim_Image;
+   function Trim_Image (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    procedure Apply_Line
      (C      : in out Config;
@@ -96,6 +96,10 @@ package body Terminal.App.Config is
          Cells : Natural;
          Limit : Natural;
          Enabled : Boolean;
+         Font_Size : Natural;
+         Binding : Terminal.App.Key_Bindings.Binding;
+         Binding_Action : Terminal.App.Key_Bindings.Configurable_Action;
+         Profile_Accepted : Boolean;
       begin
          if Key = "theme" or else Key = "color-theme" then
             if Terminal.App.Theme.Parse_Name (Value, Name) then
@@ -146,7 +150,7 @@ package body Terminal.App.Config is
          elsif Key = "startup-rows" then
             if Parse_Natural (Value, Cells)
               and then Cells >= 1
-              and then Cells <= Max_Startup_Cells
+              and then Cells <= Max_Startup_Dimension
             then
                C.Startup_Rows := Positive (Cells);
                Status := Accepted;
@@ -156,13 +160,113 @@ package body Terminal.App.Config is
          elsif Key = "startup-cols" then
             if Parse_Natural (Value, Cells)
               and then Cells >= 1
-              and then Cells <= Max_Startup_Cells
+              and then Cells <= Max_Startup_Dimension
             then
                C.Startup_Cols := Positive (Cells);
                Status := Accepted;
             else
                Status := Invalid_Value;
             end if;
+         elsif Key = "font" or else Key = "font-path" then
+            if Value = "default" or else Value = "auto" then
+               C.Font_Path := (others => <>);
+               Status := Accepted;
+            elsif Value'Length in 1 .. Max_Font_Path_Length then
+               C.Font_Path := (others => <>);
+               C.Font_Path.Length := Value'Length;
+               C.Font_Path.Text (1 .. Value'Length) := Value;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "font-size" then
+            if Parse_Natural (Value, Font_Size)
+              and then Font_Size in Min_Font_Pixel_Size .. Max_Font_Pixel_Size
+            then
+               C.Font_Pixel_Size := Positive (Font_Size);
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key'Length > 5
+           and then Key (Key'First .. Key'First + 4) = "bind-"
+           and then Terminal.App.Key_Bindings.Parse_Action_Name
+             (Key (Key'First + 5 .. Key'Last), Binding_Action)
+         then
+            if Terminal.App.Key_Bindings.Parse (Value, Binding) then
+               C.Bindings (Binding_Action) := Binding;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "notifications" or else Key = "desktop-notifications" then
+            if Parse_Boolean (Value, Enabled) then
+               C.Desktop_Notifications := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "bell-notifications" then
+            if Parse_Boolean (Value, Enabled) then
+               C.Bell_Notifications := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "command-completion-notifications" then
+            if Parse_Boolean (Value, Enabled) then
+               C.Command_Completion_Notifications := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "workspace-file" then
+            if Value'Length in 1 .. Max_Font_Path_Length then
+               C.Workspace_Path := (others => <>);
+               C.Workspace_Path.Length := Value'Length;
+               C.Workspace_Path.Text (1 .. Value'Length) := Value;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "restore-workspace" then
+            if Parse_Boolean (Value, Enabled) then
+               C.Restore_Workspace := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "save-workspace" then
+            if Parse_Boolean (Value, Enabled) then
+               C.Save_Workspace := Enabled;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "startup-command" then
+            if Value'Length <= Max_Startup_Command_Length then
+               C.Startup_Command := (others => <>);
+               C.Startup_Command.Length := Value'Length;
+               if Value'Length > 0 then
+                  C.Startup_Command.Text (1 .. Value'Length) := Value;
+               end if;
+               Status := Accepted;
+            else
+               Status := Invalid_Value;
+            end if;
+         elsif Key = "default-profile" then
+            Terminal.App.Session_Profiles.Set_Default
+              (C.Session_Profiles, Value, Profile_Accepted);
+            Status := (if Profile_Accepted then Accepted else Invalid_Value);
+         elsif Key'Length > 8
+           and then Key (Key'First .. Key'First + 7) = "profile."
+         then
+            Terminal.App.Session_Profiles.Apply_Field
+              (C.Session_Profiles,
+               Key (Key'First + 8 .. Key'Last),
+               Value,
+               Profile_Accepted);
+            Status := (if Profile_Accepted then Accepted else Invalid_Value);
          elsif Key = "kitty-file-transfer" then
             if Parse_Boolean (Value, Enabled) then
                C.Kitty_File_Transfer := Enabled;
@@ -437,6 +541,48 @@ package body Terminal.App.Config is
    begin
       return Terminal.App.Theme.Built_In (C.Color_Theme);
    end Active_Theme;
+
+   function Font_Path_String (C : Config) return String is
+   begin
+      if C.Font_Path.Length = 0 then
+         return "";
+      else
+         return C.Font_Path.Text (1 .. C.Font_Path.Length);
+      end if;
+   end Font_Path_String;
+
+   function Workspace_Path_String (C : Config) return String is
+      XDG_State : constant String :=
+        Ada.Environment_Variables.Value ("XDG_STATE_HOME", "");
+      Home : constant String :=
+        Ada.Environment_Variables.Value ("HOME", "");
+   begin
+      if C.Workspace_Path.Length > 0 then
+         return C.Workspace_Path.Text (1 .. C.Workspace_Path.Length);
+      elsif XDG_State /= "" then
+         return XDG_State & "/ada-terminal/workspace";
+      elsif Home /= "" then
+         return Home & "/.local/state/ada-terminal/workspace";
+      else
+         return "";
+      end if;
+   end Workspace_Path_String;
+
+   procedure Set_Workspace_Path
+     (C : in out Config; Path : String; Accepted : out Boolean) is
+   begin
+      Accepted := Path'Length > 0 and then Path'Length <= Max_Font_Path_Length;
+      if not Accepted then return; end if;
+      C.Workspace_Path := (others => <>);
+      C.Workspace_Path.Length := Path'Length;
+      C.Workspace_Path.Text (1 .. Path'Length) := Path;
+      C.Restore_Workspace := True;
+      C.Save_Workspace := True;
+   end Set_Workspace_Path;
+
+   function Startup_Command_String (C : Config) return String is
+     (if C.Startup_Command.Length = 0 then ""
+      else C.Startup_Command.Text (1 .. C.Startup_Command.Length));
 
    function Image (C : Config) return String is
    begin

@@ -1,13 +1,17 @@
-with Ada.Finalization;
 with Terminal.App.Graphics;
+with Terminal.App.Graphics.Media_Decoders;
+with Terminal.App.Graphics.Decoding;
 with Terminal.Common.Bytes;
 
 package body Terminal.App.Image_Staging is
    package RM renames Terminal.App.Render_Model;
-   use type RM.Image_Data_Access;
    use type RM.Image_Data_View;
    use type RM.Image_Decoded_Source_Kind;
    use type Terminal.App.Graphics.Data_Decode_Status;
+
+   pragma Compile_Time_Error
+     (Terminal.Common.Bytes.Byte'Size /= Character'Size,
+      "encoded byte and character representations must match");
 
    procedure Decode_Encoded_Rows
      (Source : RM.Image_Command;
@@ -18,26 +22,16 @@ package body Terminal.App.Image_Staging is
       Status : out Decode_Status)
    is
       Data : Terminal.App.Graphics.Graphics_Data_Preview :=
-        (Ada.Finalization.Limited_Controlled with
-         Header_Recognized => True,
-         Has_Data          => True,
-         Raw_Format        => Source.Raw_Format,
-         Pixel_Width       => Source.Pixel_Width,
-         Pixel_Height      => Source.Pixel_Height,
-         others            => <>);
+        Terminal.App.Graphics.Metadata_Preview
+          (Header_Recognized => True,
+           Has_Data          => True,
+           Raw_Format        => Source.Raw_Format,
+           Pixel_Width       => Source.Pixel_Width,
+           Pixel_Height      => Source.Pixel_Height);
       Decoded_Encoded_Length : Natural := 0;
       PNG_Length : Natural := 0;
       Rows_Seen : Natural := 0;
       Sink_Failed : Boolean := False;
-
-      function Encoded_Text return String is
-         Result : String (1 .. Source.Encoded_Source_Length);
-      begin
-         for I in Result'Range loop
-            Result (I) := Character'Val (Source.Encoded_Source_Bytes (I));
-         end loop;
-         return Result;
-      end Encoded_Text;
 
       procedure Capture_Row
         (Y        : Natural;
@@ -66,14 +60,21 @@ package body Terminal.App.Image_Staging is
       end if;
 
       declare
-         Text : constant String := Encoded_Text;
+         --  Decoder entry points consume text because terminal protocols are
+         --  textual, but frame storage already owns the identical octets.
+         --  Overlay a read-only String view instead of allocating and copying
+         --  a transaction-sized temporary for every GPU upload.
+         Text : constant String (1 .. Source.Encoded_Source_Length)
+           with Import,
+                Address => Source.Encoded_Source_Bytes
+                  (Source.Encoded_Source_Bytes'First)'Address;
 
          function Chunk_Text (Index : Positive) return String is
            (if Index = 1 then Text else "");
       begin
          case Source.Decoded_Source is
             when RM.Image_Decoded_Source_Raw_Base64 =>
-               Terminal.App.Graphics.Decode_Base64_Raw_Rows
+               Terminal.App.Graphics.Decoding.Decode_Base64_Raw_Rows
                  (Text,
                   Source.Raw_Format,
                   Source.Pixel_Width,
@@ -81,7 +82,7 @@ package body Terminal.App.Image_Staging is
                   Capture_Row'Access,
                   Data);
             when RM.Image_Decoded_Source_PNG_Base64 =>
-               Terminal.App.Graphics.Decode_Base64_PNG_Chunk_Rows
+               Terminal.App.Graphics.Decoding.Decode_Base64_PNG_Chunk_Rows
                  (1,
                   Chunk_Text'Access,
                   Decoded_Encoded_Length,
@@ -89,7 +90,7 @@ package body Terminal.App.Image_Staging is
                   Capture_Row'Access,
                   Data);
             when RM.Image_Decoded_Source_Sixel_Text =>
-               Terminal.App.Graphics.Decode_Sixel_Rows
+               Terminal.App.Graphics.Media_Decoders.Decode_Sixel_Rows
                  (Text, Capture_Row'Access, Data);
             when others =>
                return;

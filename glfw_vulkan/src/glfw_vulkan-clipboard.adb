@@ -1,3 +1,4 @@
+with C_String_Ownership;
 with Interfaces.C.Strings;
 with GLFW_Vulkan.Raw;
 with GLFW_Vulkan.Windows.Internal;
@@ -20,9 +21,11 @@ package body GLFW_Vulkan.Clipboard is
      (W    : GLFW_Vulkan.Windows.Window;
       Text : String)
    is
-      C_Text : Interfaces.C.Strings.chars_ptr := Interfaces.C.Strings.New_String (Text);
+      C_Text : C_String_Ownership.Owner;
    begin
-      Raw.Set_Clipboard_String (GLFW_Vulkan.Windows.Internal.Handle (W), C_Text);
-      Interfaces.C.Strings.Free (C_Text);
+      C_String_Ownership.Set (C_Text, Text);
+      Raw.Set_Clipboard_String
+        (GLFW_Vulkan.Windows.Internal.Handle (W),
+         C_String_Ownership.Unsafe_Pointer (C_Text));
    end Set_Text;
 end GLFW_Vulkan.Clipboard;

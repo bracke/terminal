@@ -3,7 +3,7 @@ procedure Decode_Image_Cell
   (T          : in out Terminal;
    Cell_Index : Positive)
 is
-   Cells : constant Cell_Array_Access := Active_Cells (T);
+   Cells : constant Stored_Cell_Array_Access := Active_Cells (T);
    Low_ID : Graphics_ID;
    Placement_Valid : Boolean;
    Image_Valid : Boolean;
@@ -57,7 +57,7 @@ begin
    Col := Positive (((Cell_Index - 1) mod T.Cols) + 1);
    if Col > 1 then
       declare
-         Left : Cell renames Cells (Cell_Index - 1);
+         Left : Stored_Cell renames Cells (Cell_Index - 1);
          Same_Colors : constant Boolean :=
            Left.Image.Is_Placeholder
            and then Left.Style.Foreground =

@@ -1,11 +1,12 @@
 with Ada.Containers;
 with Ada.Containers.Hashed_Maps;
+with Ada.Containers.Hashed_Sets;
 with Interfaces;
 with Terminal.App.Image_Placements;
 with Terminal.App.Image_Store;
 with Terminal.Core;
 
-package Terminal.App.Placeholder_Index is
+private package Terminal.App.Placeholder_Index is
    type Index is limited private;
 
    procedure Build
@@ -42,6 +43,11 @@ package Terminal.App.Placeholder_Index is
       Stream_ID     : Terminal.Core.Graphics_Stream_ID;
       Storage_Order : Interfaces.Unsigned_64)
       return Terminal.App.Image_Store.Image_Object_Access;
+
+   function Has_Object_Placement
+     (Item          : Index;
+      Stream_ID     : Terminal.Core.Graphics_Stream_ID;
+      Storage_Order : Interfaces.Unsigned_64) return Boolean;
 
    function Find_Origin
      (Item              : Index;
@@ -97,6 +103,10 @@ private
       Hash            => Hash_Storage_Order,
       Equivalent_Keys => "=",
       "="             => Terminal.App.Image_Store."=");
+   package Object_Sets is new Ada.Containers.Hashed_Sets
+     (Element_Type        => Object_Key,
+      Hash                => Hash_Storage_Order,
+      Equivalent_Elements => "=");
    package Origin_Maps is new Ada.Containers.Hashed_Maps
      (Key_Type        => Placement_Key,
       Element_Type    => Origin_Value,
@@ -107,6 +117,7 @@ private
       Placements    : Placement_Maps.Map;
       Conventionals : Conventional_Maps.Map;
       Objects       : Object_Maps.Map;
+      Referenced_Objects : Object_Sets.Set;
       Origins       : Origin_Maps.Map;
       Origin_Epoch  : Interfaces.Unsigned_64 := 0;
    end record;

@@ -7,7 +7,8 @@ package Terminal.App.Session_Graphics is
    --  This keeps protocol queries, chunks, and parser backpressure moving even
    --  while another tab is selected.
    procedure Process_Hidden
-     (Table        : in out Terminal.App.Session_Table.Runtime_Table;
+     (Table        : aliased in out
+        Terminal.App.Session_Table.Runtime_Table;
       Renderer     : in out Terminal.App.Renderer.Renderer;
       Processed    : out Boolean;
       Render_Status : out Terminal.App.Renderer.Render_Status;

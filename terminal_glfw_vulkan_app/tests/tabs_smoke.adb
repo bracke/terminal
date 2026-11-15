@@ -138,6 +138,15 @@ begin
       Tabs.Activate_At (State, Layout, 16, Status);
       Assert (Status = Tabs.Invalid_Index, "activate tab miss status");
       Assert (Tabs.Active (State) = 2, "activate tab miss preserves active");
+      Tabs.Move (State, 1, 2, Status);
+      Assert
+        (Status = Tabs.Ok and then Tabs.Active (State) = 2
+         and then Tabs.Label_Text (Tabs.Label (State, 2)) = "Tab 1",
+         "drag-style tab move preserves label and activates destination");
+      Tabs.Move (State, 2, 1, Status);
+      Assert
+        (Status = Tabs.Ok and then Tabs.Active (State) = 1,
+         "reverse tab move restores ordering");
       Tabs.Close_At (State, Layout, 1, Status);
       Assert (Status = Tabs.Ok, "close tab by column status");
       Assert (Tabs.Count (State) = 1, "close tab by column count");
@@ -210,4 +219,12 @@ begin
      (Terminal.App.Input_Map.Tab_Command
         (Key_Event (GI.T, Control => True)) = Tabs.No_Command,
       "plain ctrl-t remains terminal input");
+   Tabs.Clear (State);
+   Assert
+     (Tabs.Count (State) = 0
+      and then Tabs.Layout (State, 80).Count = 0
+      and then Tabs.Status_Label (State) = "No live tab sessions",
+      "cleared tab state has an empty layout");
+   Tabs.Apply (State, Tabs.Next_Tab, Status);
+   Assert (Status = Tabs.Invalid_Index, "empty tab navigation is rejected");
 end Tabs_Smoke;

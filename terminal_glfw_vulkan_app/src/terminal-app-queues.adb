@@ -1,11 +1,9 @@
 with GLFW_Vulkan.Input;
+with Terminal.Common.Status;
 
 package body Terminal.App.Queues is
-   function Natural_Image (Value : Natural) return String is
-      Image : constant String := Natural'Image (Value);
-   begin
-      return Image (Image'First + 1 .. Image'Last);
-   end Natural_Image;
+   function Natural_Image (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    function Queue_Status_Label
      (Name      : String;
@@ -140,22 +138,13 @@ package body Terminal.App.Queues is
       begin
          if Count = 0 then
             Event :=
-              (Kind            => Bytes,
-               Width           => 0,
-               Height          => 0,
-               Bytes           => (others => <>),
+              (Kind            => Key,
                Key_Event       =>
                  (Key       => GLFW_Vulkan.Input.Unknown,
                   Raw_Key   => 0,
                   Scancode  => 0,
                   Action    => GLFW_Vulkan.Input.Release,
-                  Modifiers => (others => False)),
-               Character_Event =>
-                 (Code_Point => Wide_Wide_Character'Val (0)),
-               Button_Event    => (others => <>),
-               Cursor_Event    => (others => <>),
-               Scroll_Event    => (others => <>),
-               Focus_Event     => (others => <>));
+                  Modifiers => (others => False)));
             Available := False;
             return;
          end if;

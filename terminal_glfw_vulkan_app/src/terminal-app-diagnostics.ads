@@ -20,6 +20,7 @@ with Terminal.App.Text_Blink;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Presenter;
 with Terminal.PTY.Backend;
+with GLFW_Vulkan.Input;
 
 package Terminal.App.Diagnostics is
    type Runtime_Status_Kind is
@@ -64,12 +65,18 @@ package Terminal.App.Diagnostics is
       Last_Write_Status : Terminal.App.PTY_Write.Write_All_Status :=
         Terminal.App.PTY_Write.Ok;
       Statuses       : Runtime_Statuses := (others => <>);
-      Cleanup        : Terminal.App.Cleanup_Diagnostics.Failure_Counts :=
-        (others => 0);
+      Cleanup        : Terminal.App.Cleanup_Diagnostics.Failure_Snapshot :=
+        (others => <>);
       PTY_Length    : Natural := 0;
       PTY_Overflows : Natural := 0;
       Input_Length  : Natural := 0;
       Input_Overflows : Natural := 0;
+      Callback_Failures : Natural := 0;
+      Last_Callback_Failure : GLFW_Vulkan.Input.Failure_Detail :=
+        (others => <>);
+      Input_Infrastructure_Failures : Natural := 0;
+      Last_Input_Infrastructure_Failure : GLFW_Vulkan.Input.Failure_Detail :=
+        (others => <>);
       Renderer      : Terminal.App.Renderer.Renderer_Diagnostics;
       Presenter     : Terminal.App.Vulkan_Presenter.Diagnostic_Snapshot;
    end record;

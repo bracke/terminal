@@ -4,6 +4,7 @@ with Ada.Real_Time;
 with Terminal.App.PTY_Write;
 with Terminal.App.Queues;
 with Terminal.App.Session_Runtime;
+with Terminal.App.Session_Runtime.Testing;
 with Terminal.Common.Bytes;
 with Terminal.Core;
 with Terminal.PTY.Backend;
@@ -21,9 +22,10 @@ procedure Session_Runtime_Smoke is
    use type Ada.Real_Time.Time;
 
    package Runtime renames Terminal.App.Session_Runtime;
+   package Runtime_Testing renames Terminal.App.Session_Runtime.Testing;
 
-   A : Runtime.Runtime;
-   B : Runtime.Runtime;
+   A : aliased Runtime.Runtime;
+   B : aliased Runtime.Runtime;
    Start_Status : Runtime.Start_Status;
    Feed_Status : Terminal.Core.Feed_Status;
    Write_Status : Terminal.App.PTY_Write.Write_All_Status;
@@ -63,6 +65,15 @@ begin
    Assert
      (Runtime.Status_Label (A)'Length <= Runtime.Max_Status_Label_Length,
       "runtime status label bounded");
+   Runtime_Testing.Queue_Deferred_Parser_Recovery (A);
+   Runtime.Poll_Output (A, Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Parser_Recovered,
+      "runtime reports deferred parser recovery");
+   Runtime.Poll_Output (A, Feed_Status);
+   Assert
+     (Feed_Status /= Terminal.Core.Parser_Recovered,
+      "runtime consumes deferred parser recovery once");
 
    Runtime.Start (B, 24, 80, 100, Start_Status);
    Assert (Start_Status = Runtime.Ok, "second runtime should start");
@@ -74,6 +85,53 @@ begin
       and then Runtime.Graphics_Stream_ID (A) /=
         Runtime.Graphics_Stream_ID (B),
       "active runtimes need distinct graphics stream identities");
+
+   declare
+      Rejected : Boolean := False;
+   begin
+      begin
+         Runtime_Testing.Write_Paste_With_Construction_Failure
+           (A, "not queued", True, Write_Status);
+      exception
+         when Storage_Error =>
+            Rejected := True;
+      end;
+      Assert
+        (Rejected and then not Runtime.Has_Pending_Write (A),
+         "paste allocation failure leaves no partial bracketed payload");
+   end;
+
+   declare
+      Long_Paste : constant String
+        (1 .. Terminal.App.Queues.Max_Chunk_Length + 37) := (others => 'x');
+      Flushes : Natural := 0;
+   begin
+      Runtime.Write_Paste (A, Long_Paste, True, Write_Status);
+      Assert
+        (Write_Status = Terminal.App.PTY_Write.Incomplete
+         and then Runtime.Has_Pending_Write (A),
+         "long bracketed paste should remain queued after its first chunk");
+      while Runtime.Has_Pending_Write (A) loop
+         Runtime.Flush_Write (A, Write_Status);
+         Flushes := Flushes + 1;
+         Assert
+           (Write_Status in
+              Terminal.App.PTY_Write.Ok | Terminal.App.PTY_Write.Incomplete,
+            "long paste flush should make progress");
+         Assert (Flushes <= 3, "long paste should drain in bounded chunks");
+      end loop;
+      Assert
+        (Write_Status = Terminal.App.PTY_Write.Ok,
+         "long bracketed paste should include and drain its closing marker");
+      --  The paste test deliberately leaves a large, unsubmitted shell line.
+      --  Restart the fixture instead of depending on interactive signal and
+      --  prompt timing before the resize assertions below.
+      Runtime.Close (A);
+      Runtime.Start (A, 24, 80, 100, Start_Status);
+      Assert
+        (Start_Status = Runtime.Ok and then Runtime.State (A) = Runtime.Active,
+         "paste fixture restarts with a clean shell");
+   end;
 
    Runtime.Write (A, Chunk_From_String ("printf A-runtime" & ASCII.LF), Write_Status);
    Assert (Write_Status = Terminal.App.PTY_Write.Ok, "write first runtime");
@@ -114,7 +172,34 @@ begin
      (Start_Status = Runtime.Ok and then Runtime.State (B) = Runtime.Active,
       "an exited runtime can restart without retaining old resources");
 
+   declare
+      Borrow : constant Runtime.Core_Borrow := Runtime.Core (A);
+      procedure Clear (Core : in out Terminal.Core.Terminal) is
+      begin
+         Terminal.Core.Clear_Damage (Core);
+      end Clear;
+   begin
+      Runtime.Close (A);
+      Assert
+        (Runtime.State (A) = Runtime.Cleanup_Pending,
+         "core borrow defers runtime resource deallocation");
+      Runtime.With_Core (Borrow, Clear'Access);
+   end;
    Runtime.Close (A);
+   declare
+      Borrow : constant Runtime.PTY_Queue_Borrow := Runtime.PTY_Queue (B);
+      procedure Shut_Down
+        (Queue : in out Terminal.App.Queues.PTY_Output_Queue) is
+      begin
+         Queue.Shut_Down;
+      end Shut_Down;
+   begin
+      Runtime.Close (B);
+      Assert
+        (Runtime.State (B) = Runtime.Cleanup_Pending,
+         "queue borrow defers runtime resource deallocation");
+      Runtime.With_PTY_Queue (Borrow, Shut_Down'Access);
+   end;
    Runtime.Close (B);
    Assert (Runtime.State (A) = Runtime.Closed, "first runtime closed");
    Assert (Runtime.State (B) = Runtime.Closed, "second runtime closed");

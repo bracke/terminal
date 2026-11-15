@@ -1,3 +1,5 @@
+with Interfaces;
+with GLFW_Vulkan.Raw;
 with GLFW_Vulkan.Windows;
 
 package GLFW_Vulkan.Input is
@@ -72,6 +74,15 @@ package GLFW_Vulkan.Input is
    type Scroll_Callback is access procedure (Event : Scroll_Event);
    type Focus_Callback is access procedure (Event : Focus_Event);
 
+   type Callback_Set is record
+      Key             : Key_Callback := null;
+      Character       : Character_Callback := null;
+      Mouse_Button    : Mouse_Button_Callback := null;
+      Cursor_Position : Cursor_Position_Callback := null;
+      Scroll          : Scroll_Callback := null;
+      Focus           : Focus_Callback := null;
+   end record;
+
    procedure Set_Key_Callback
      (W        : in out GLFW_Vulkan.Windows.Window;
       Callback : Key_Callback);
@@ -99,4 +110,118 @@ package GLFW_Vulkan.Input is
    --  Remove every callback associated with W.  Window destruction calls this
    --  automatically so nested Ada callbacks cannot outlive their scope.
    procedure Clear_Callbacks (W : in out GLFW_Vulkan.Windows.Window);
+
+   --  Exceptions cannot cross GLFW's C callback boundary. This counter makes
+   --  callback failures observable to diagnostics and tests.
+   type Failure_Source is
+     (No_Failure,
+      Key_Callback_Failure,
+      Character_Callback_Failure,
+      Mouse_Button_Callback_Failure,
+      Cursor_Position_Callback_Failure,
+      Scroll_Callback_Failure,
+      Focus_Callback_Failure,
+      Registry_Infrastructure_Failure);
+   Max_Exception_Name_Length : constant := 128;
+   subtype Exception_Name_Length is
+     Natural range 0 .. Max_Exception_Name_Length;
+   type Failure_Detail is record
+      Source : Failure_Source := No_Failure;
+      Exception_Name : String (1 .. Max_Exception_Name_Length) :=
+        (others => ASCII.NUL);
+      Name_Length : Exception_Name_Length := 0;
+   end record;
+   type Failure_Snapshot is record
+      Callback_Count       : Natural := 0;
+      Callback_Detail      : Failure_Detail;
+      Infrastructure_Count : Natural := 0;
+      Infrastructure_Detail : Failure_Detail;
+   end record;
+
+   function Failure_Diagnostics return Failure_Snapshot;
+
+private
+   type Raw_Callback_Set is record
+      Key        : aliased GLFW_Vulkan.Raw.Key_Callback_Access := null;
+      Character  : aliased GLFW_Vulkan.Raw.Char_Callback_Access := null;
+      Mouse      : aliased GLFW_Vulkan.Raw.Mouse_Button_Callback_Access := null;
+      Cursor     : aliased GLFW_Vulkan.Raw.Cursor_Pos_Callback_Access := null;
+      Scroll     : aliased GLFW_Vulkan.Raw.Scroll_Callback_Access := null;
+      Focus      : aliased GLFW_Vulkan.Raw.Window_Focus_Callback_Access := null;
+   end record;
+   type Callback_Channel is
+     (Key_Channel,
+      Character_Channel,
+      Mouse_Channel,
+      Cursor_Channel,
+      Scroll_Channel,
+      Focus_Channel);
+   type Callback_Channel_Set is
+     array (Callback_Channel) of aliased Interfaces.C.int;
+
+   type Set_Key_Operation is access procedure
+     (Window   : GLFW_Vulkan.Raw.GLFW_Window_Handle;
+      Callback : GLFW_Vulkan.Raw.Key_Callback_Access;
+      Previous : access GLFW_Vulkan.Raw.Key_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Convention => C;
+   type Set_Character_Operation is access procedure
+     (Window   : GLFW_Vulkan.Raw.GLFW_Window_Handle;
+      Callback : GLFW_Vulkan.Raw.Char_Callback_Access;
+      Previous : access GLFW_Vulkan.Raw.Char_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Convention => C;
+   type Set_Mouse_Operation is access procedure
+     (Window   : GLFW_Vulkan.Raw.GLFW_Window_Handle;
+      Callback : GLFW_Vulkan.Raw.Mouse_Button_Callback_Access;
+      Previous : access GLFW_Vulkan.Raw.Mouse_Button_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Convention => C;
+   type Set_Cursor_Operation is access procedure
+     (Window   : GLFW_Vulkan.Raw.GLFW_Window_Handle;
+      Callback : GLFW_Vulkan.Raw.Cursor_Pos_Callback_Access;
+      Previous : access GLFW_Vulkan.Raw.Cursor_Pos_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Convention => C;
+   type Set_Scroll_Operation is access procedure
+     (Window   : GLFW_Vulkan.Raw.GLFW_Window_Handle;
+      Callback : GLFW_Vulkan.Raw.Scroll_Callback_Access;
+      Previous : access GLFW_Vulkan.Raw.Scroll_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Convention => C;
+   type Set_Focus_Operation is access procedure
+     (Window   : GLFW_Vulkan.Raw.GLFW_Window_Handle;
+      Callback : GLFW_Vulkan.Raw.Window_Focus_Callback_Access;
+      Previous : access GLFW_Vulkan.Raw.Window_Focus_Callback_Access;
+      Installed : access Interfaces.C.int)
+     with Convention => C;
+   type Callback_Backend is record
+      Set_Key       : not null Set_Key_Operation;
+      Set_Character : not null Set_Character_Operation;
+      Set_Mouse     : not null Set_Mouse_Operation;
+      Set_Cursor    : not null Set_Cursor_Operation;
+      Set_Scroll    : not null Set_Scroll_Operation;
+      Set_Focus     : not null Set_Focus_Operation;
+   end record;
+   procedure Configure_Callback_Backend (Value : Callback_Backend);
+   procedure Reset_Callback_Backend;
+
+   type Callback_Binding_Token is record
+      Window : GLFW_Vulkan.Raw.GLFW_Window_Handle :=
+        GLFW_Vulkan.Raw.Null_Window;
+      Owner : Interfaces.Unsigned_64 := 0;
+      Previous : Callback_Set;
+      Previous_Raw : aliased Raw_Callback_Set;
+      Installed : aliased Callback_Channel_Set := (others => 0);
+      Active : Boolean := False;
+   end record;
+
+   procedure Attach_Callbacks
+     (W         : in out GLFW_Vulkan.Windows.Window;
+      Callbacks : Callback_Set;
+      Token     : in out Callback_Binding_Token);
+   procedure Detach_Callbacks
+     (W     : in out GLFW_Vulkan.Windows.Window;
+      Token : in out Callback_Binding_Token);
+   procedure Abandon_Callbacks (Token : in out Callback_Binding_Token);
 end GLFW_Vulkan.Input;

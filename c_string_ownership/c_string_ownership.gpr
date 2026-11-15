@@ -1,0 +1,17 @@
+library project C_String_Ownership is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use ("src");
+   for Object_Dir use "obj";
+   for Library_Dir use "lib";
+   for Library_Name use "c_string_ownership";
+   for Library_Kind use "static";
+   --  Keep the C ownership primitives and Ada implementation private.
+   for Library_Interface use ("C_String_Ownership");
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwe");
+      for Default_Switches ("C") use
+        ("-Wall", "-Wextra", "-Wpedantic", "-Werror",
+         "-fvisibility=hidden");
+   end Compiler;
+end C_String_Ownership;

@@ -6,8 +6,38 @@ separate (Terminal.App.Vulkan_Device)
       Status : out Readback_Status)
    is
       Mapped : aliased System.Address := System.Null_Address;
+      Mapping_Active : Boolean := False;
       Result : Vk.Result_T;
       Offset : Natural := 0;
+
+      procedure Unmap_Readback (Success : out Boolean) is
+         procedure Perform_Unmap is
+         begin
+            Vk.Unmap_Memory (Device.Device, Device.Readback_Memory);
+         end Perform_Unmap;
+
+         procedure Handle_Failure
+           (E : Ada.Exceptions.Exception_Occurrence) is
+         begin
+            Device.Cleanup_Quarantined := True;
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+               E,
+               "unmap Vulkan readback memory");
+            Device.Readback_Buffer := System.Null_Address;
+            Device.Readback_Memory := System.Null_Address;
+            Device.Readback_Bytes := 0;
+            Device.Readback_Enabled := False;
+            Device.Readback_Pending := False;
+         end Handle_Failure;
+      begin
+         Mapped := System.Null_Address;
+         Terminal.App.Vulkan_Unmap_Once.Run
+           (Mapping_Active,
+            Perform_Unmap'Access,
+            Handle_Failure'Access,
+            Success);
+      end Unmap_Readback;
    begin
       Red := 0;
       Green := 0;
@@ -47,11 +77,13 @@ separate (Terminal.App.Vulkan_Device)
            Interfaces.Unsigned_64 (Device.Readback_Bytes),
            0,
            Mapped'Address);
+      Mapping_Active := Result = Vk.SUCCESS;
       if Result /= Vk.SUCCESS or else Mapped = System.Null_Address then
-         if Mapped /= System.Null_Address then
-            Vk.Unmap_Memory (Device.Device, Device.Readback_Memory);
-            Mapped := System.Null_Address;
-         end if;
+         declare
+            Cleanup_Ok : Boolean;
+         begin
+            Unmap_Readback (Cleanup_Ok);
+         end;
          Status := Readback_Map_Failed;
          return;
       end if;
@@ -83,14 +115,23 @@ separate (Terminal.App.Vulkan_Device)
             Alpha := C3;
          end if;
       end;
-      Vk.Unmap_Memory (Device.Device, Device.Readback_Memory);
-      Mapped := System.Null_Address;
-      Status := Readback_Ok;
+      declare
+         Cleanup_Ok : Boolean;
+      begin
+         Unmap_Readback (Cleanup_Ok);
+         Status := (if Cleanup_Ok then Readback_Ok else Readback_Map_Failed);
+      end;
    exception
-      when others =>
-         if Mapped /= System.Null_Address then
-            Vk.Unmap_Memory (Device.Device, Device.Readback_Memory);
-         end if;
+      when E : others =>
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+            E,
+            "read Vulkan framebuffer pixel");
+         declare
+            Cleanup_Ok : Boolean;
+         begin
+            Unmap_Readback (Cleanup_Ok);
+         end;
          Device.Readback_Pending := False;
          Status := Readback_Map_Failed;
    end Readback_Pixel;

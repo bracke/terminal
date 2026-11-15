@@ -5,6 +5,8 @@ package Terminal.Common.Status is
 
    type Operation_Status is (Ok, Invalid_Argument, Overflow, Failed);
 
+   function Trimmed_Natural (Value : Natural) return String;
+
    function Preview_Bytes_Label
      (Bytes  : Terminal.Common.Bytes.Byte_Array;
       Length : Natural;

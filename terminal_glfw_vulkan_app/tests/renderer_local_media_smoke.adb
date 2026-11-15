@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with AUnit.Assertions;
 with GNAT.OS_Lib;
 
@@ -21,7 +22,7 @@ procedure Renderer_Local_Media_Smoke is
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
-   use type Terminal.Core.Kitty_Graphics_Result_Code;
+   use type Terminal.Core.Graphics_Completion_Code;
 
    function To_Bytes (Text : String) return Byte_Array is
       Result : Byte_Array (1 .. Text'Length);
@@ -60,23 +61,23 @@ begin
          16#E5#, 16#92#, 16#E2#, 16#62#, 16#60#, 16#60#, 16#E0#,
          16#F5#, 16#F4#, 16#70#, 16#09#, 16#02#, 16#D2#, 16#8C#,
          16#20#, 16#CC#, 16#C1#, 16#04#, 16#24#, 16#27#, 16#94#,
-         16#07#, 16#DF#, 16#03#, 16#4B#, 16#B8#, 16#38#, 16#86#,
-         16#54#, 16#CC#, 16#49#, 16#FE#, 16#71#, 16#FE#, 16#00#,
-         16#03#, 16#03#, 16#33#, 16#23#, 16#23#, 16#C3#, 16#49#,
-         16#86#, 16#63#, 16#53#, 16#1E#, 16#01#, 16#25#, 16#18#,
-         16#3C#, 16#5D#, 16#FD#, 16#5C#, 16#D6#, 16#39#, 16#25#,
-         16#34#, 16#01#, 16#00#, 16#D5#, 16#D6#, 16#10#, 16#4B#);
+         16#07#, 16#DF#, 16#03#, 16#52#, 16#3C#, 16#9E#, 16#2E#,
+         16#8E#, 16#21#, 16#15#, 16#73#, 16#92#, 16#7F#, 16#9C#,
+         16#3F#, 16#C0#, 16#C0#, 16#C0#, 16#CC#, 16#C8#, 16#C8#,
+         16#70#, 16#F2#, 16#DF#, 16#A4#, 16#F7#, 16#40#, 16#71#,
+         16#06#, 16#4F#, 16#57#, 16#3F#, 16#97#, 16#75#, 16#4E#,
+         16#09#, 16#4D#, 16#00#, 16#CE#, 16#6D#, 16#10#, 16#8D#);
       FD : GNAT.OS_Lib.File_Descriptor;
       Written : Integer;
       Deleted : Boolean;
 
       procedure Process
         (Command : String;
-         Expected : Terminal.Core.Kitty_Graphics_Result_Code;
+         Expected : Terminal.Core.Graphics_Completion_Code;
          Label_Text : String)
       is
          Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
-         Result : Terminal.Core.Kitty_Graphics_Result;
+         Result : Terminal.Core.Graphics_Completion;
       begin
          Terminal.Core.Feed
            (Local_T,
@@ -85,7 +86,7 @@ begin
          Assert (Local_Feed = Terminal.Core.Ok, Label_Text & " feed");
          Terminal.Core.Peek_Graphics_Event (Local_T, Event);
          Terminal.Core.Snapshot (Local_T, Snaps (1));
-         Snaps (1).Graphics := Event;
+         Terminal.Core.Snapshot_Editing.Set_Graphics (Snaps (1), Event);
          Terminal.App.Renderer.Layout.Render_App
            (R,
             Snaps,
@@ -118,7 +119,7 @@ begin
       Process
         ("Gq=2,a=T,t=f,i=81,f=32,s=1,v=1,c=1,r=1,C=1;"
          & Encoded_Path,
-         Terminal.Core.Kitty_OK,
+         Terminal.Core.Graphics_OK,
          "regular-file graphics");
       declare
          Frame : constant Terminal.App.Render_Model.Frame_Commands :=
@@ -135,7 +136,7 @@ begin
       end;
       Process
         ("Gq=2,a=t,t=f,i=82,f=32,s=1,v=1;L2Rldi9udWxs",
-         Terminal.Core.Kitty_EBADF,
+         Terminal.Core.Graphics_EBADF,
          "uniform local-file failure");
       FD := GNAT.OS_Lib.Create_File (Path, GNAT.OS_Lib.Binary);
       Assert
@@ -150,7 +151,7 @@ begin
          "compressed local PNG fixture write");
       Process
         ("Ga=q,t=f,i=83,f=100,o=z;" & Encoded_Path,
-         Terminal.Core.Kitty_OK,
+         Terminal.Core.Graphics_OK,
          "local compressed PNG query self-sizes inflated data");
       GNAT.OS_Lib.Delete_File (Path, Deleted);
       Terminal.App.Renderer.Graphics.Release_Stream (R, 2_101);

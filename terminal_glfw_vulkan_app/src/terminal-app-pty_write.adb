@@ -31,7 +31,7 @@ package body Terminal.App.PTY_Write is
       Offset : in out Positive;
       Status : out Write_All_Status)
    is
-      Last   : Natural := 0;
+      Written : Natural := 0;
       W      : Terminal.PTY.Backend.Write_Status;
    begin
       if Chunk.Length = 0 then
@@ -47,12 +47,12 @@ package body Terminal.App.PTY_Write is
          exit when Offset > Chunk.Length;
 
          Terminal.PTY.Backend.Write
-           (S, Chunk.Data (Offset .. Chunk.Length), Last, W);
+           (S, Chunk.Data (Offset .. Chunk.Length), Written, W);
 
          case W is
             when Terminal.PTY.Backend.Ok | Terminal.PTY.Backend.Partial =>
-               if Last > 0 then
-                  Offset := Offset + Last;
+               if Written > 0 then
+                  Offset := Offset + Written;
                else
                   delay 0.001;
                end if;

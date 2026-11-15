@@ -1,4 +1,6 @@
+with Terminal.Core.Snapshot_Editing;
 with AUnit.Assertions;
+with Ada.Text_IO;
 with Interfaces;
 with Terminal.Common.Bytes;
 with Terminal.Core;
@@ -16,11 +18,12 @@ procedure Renderer_Kitty_Object_Smoke is
    use Terminal.Common.Bytes;
    use type Terminal.Core.Feed_Status;
    use type Terminal.Core.Initialize_Status;
-   use type Terminal.Core.Kitty_Graphics_Result_Code;
+   use type Terminal.Core.Graphics_Completion_Code;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Renderer.Theme_Update_Status;
-   use type Terminal.App.Render_Model.Image_Data_Access;
+   use type
+     Terminal.App.Renderer.Graphics.Resource_Limit_Update_Status;
    use type Terminal.App.Render_Model.Image_Data_View;
    use type Interfaces.Unsigned_64;
 
@@ -33,6 +36,8 @@ procedure Renderer_Kitty_Object_Smoke is
    Theme_Status : Terminal.App.Renderer.Theme_Update_Status;
    Tabs : Terminal.App.Tabs.Tab_State;
    Splits : Terminal.App.Splits.Split_State;
+   Limit_Status :
+     Terminal.App.Renderer.Graphics.Resource_Limit_Update_Status;
 
    function To_Bytes (Text : String) return Byte_Array is
       Result : Byte_Array (1 .. Text'Length);
@@ -46,20 +51,28 @@ procedure Renderer_Kitty_Object_Smoke is
    procedure Process
      (Command    : String;
       Label_Text : String;
-      Expected   : Terminal.Core.Kitty_Graphics_Result_Code :=
-        Terminal.Core.Kitty_OK)
+      Expected   : Terminal.Core.Graphics_Completion_Code :=
+        Terminal.Core.Graphics_OK)
    is
       Event : Terminal.Core.Graphics_Event;
-      Result : Terminal.Core.Kitty_Graphics_Result;
+      Result : Terminal.Core.Graphics_Completion;
       Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
    begin
       Terminal.Core.Feed
         (T, To_Bytes (ASCII.ESC & "_" & Command & ASCII.ESC & "\"), Feed_Status);
+      if Feed_Status /= Terminal.Core.Ok then
+         Ada.Text_IO.Put_Line
+           (Ada.Text_IO.Standard_Error, Label_Text & " feed failed");
+      end if;
       Assert (Feed_Status = Terminal.Core.Ok, Label_Text & " feed");
       Terminal.Core.Peek_Graphics_Event (T, Event);
+      if not Event.Pending then
+         Ada.Text_IO.Put_Line
+           (Ada.Text_IO.Standard_Error, Label_Text & " event missing");
+      end if;
       Assert (Event.Pending, Label_Text & " event");
       Terminal.Core.Snapshot (T, Snaps (1));
-      Snaps (1).Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snaps (1), Event);
       Terminal.App.Renderer.Layout.Render_App
         (R,
          Snaps,
@@ -68,8 +81,20 @@ procedure Renderer_Kitty_Object_Smoke is
          Terminal.App.Splits.Snapshot (Splits),
          Render_Status);
       Terminal.Core.Release (Snaps (1));
+      if Render_Status /= Terminal.App.Renderer.Ok then
+         Ada.Text_IO.Put_Line
+           (Ada.Text_IO.Standard_Error, Label_Text & " render failed");
+      end if;
       Assert (Render_Status = Terminal.App.Renderer.Ok, Label_Text & " render");
       Result := Terminal.App.Renderer.Graphics.Result (R, Event);
+      if Result.Code /= Expected then
+         Ada.Text_IO.Put_Line
+           (Ada.Text_IO.Standard_Error,
+            Label_Text & " result="
+            & Terminal.Core.Graphics_Completion_Code'Image (Result.Code)
+            & " expected="
+            & Terminal.Core.Graphics_Completion_Code'Image (Expected));
+      end if;
       Assert (Result.Code = Expected, Label_Text & " protocol result");
       Terminal.Core.Complete_Graphics_Event (T, Event, Result);
       Terminal.App.Renderer.Graphics.Commit_Visible_Events (R);
@@ -79,7 +104,7 @@ procedure Renderer_Kitty_Object_Smoke is
       Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
    begin
       Terminal.Core.Snapshot (T, Snaps (1));
-      Snaps (1).Graphics := (others => <>);
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snaps (1), (others => <>));
       Terminal.App.Renderer.Layout.Render_App
         (R,
          Snaps,
@@ -136,6 +161,12 @@ begin
    Assert
      (Theme_Status = Terminal.App.Renderer.Theme_Allocation_Failed,
       "failed theme switch reports allocation failure");
+   Terminal.App.Renderer.Testing.Fail_Image_Allocation_After (R, 3);
+   Terminal.App.Renderer.Set_Theme
+     (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light), Theme_Status);
+   Assert
+     (Theme_Status = Terminal.App.Renderer.Theme_Allocation_Failed,
+      "indexed source-copy allocation failure is reported");
    Render_Retained ("failed indexed image theme refresh");
    declare
       Frame : constant Terminal.App.Render_Model.Frame_Commands :=
@@ -167,11 +198,11 @@ begin
    Process
      ("Gq=2,a=f,i=230,f=8,s=1,v=1;Ag==",
       "indexed animation frame",
-      Terminal.Core.Kitty_OK);
+      Terminal.Core.Graphics_OK);
    Process
      ("Gq=2,a=a,i=230,c=2",
       "select indexed animation frame",
-      Terminal.Core.Kitty_OK);
+      Terminal.Core.Graphics_OK);
    Render_Retained ("indexed animation light theme");
    declare
       Light_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
@@ -209,7 +240,7 @@ begin
       Process
         ("Gq=2,a=f,i=230,f=8,r=2,s=1,v=1;Aw==",
          "indexed animation edit commit rejection",
-         Terminal.Core.Kitty_ENOMEM);
+         Terminal.Core.Graphics_ENOMEM);
       Render_Retained ("indexed animation after rejected edit");
       After := Terminal.App.Renderer.Testing.Last_Frame (R).Images (1)
         .Decoded_Bytes (1 .. 4);
@@ -221,15 +252,15 @@ begin
    Process
      ("Gq=2,a=f,i=230,f=8,r=1,s=1,v=1;Ag==",
       "indexed animation root edit",
-      Terminal.Core.Kitty_OK);
+      Terminal.Core.Graphics_OK);
    Process
      ("Gq=2,a=a,i=230,c=1",
       "select edited indexed root",
-      Terminal.Core.Kitty_OK);
+      Terminal.Core.Graphics_OK);
    Process
      ("Gq=2,a=d,d=f,i=230",
       "delete indexed animation frames",
-      Terminal.Core.Kitty_OK);
+      Terminal.Core.Graphics_OK);
    Render_Retained ("indexed root retained after frame deletion");
    declare
       Dark_Frame : constant Terminal.App.Render_Model.Frame_Commands :=
@@ -264,11 +295,11 @@ begin
       Process
         ("Gq=2,a=f,i=230,f=32,s=1,v=1;/wAA/w==",
          "temporary animation frame after deletion",
-         Terminal.Core.Kitty_OK);
+         Terminal.Core.Graphics_OK);
       Process
         ("Gq=2,a=d,d=f,i=230",
          "delete unrelated temporary animation frame",
-         Terminal.Core.Kitty_OK);
+         Terminal.Core.Graphics_OK);
       Assert
         (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Bytes =
            Root_Only_Bytes,
@@ -283,14 +314,16 @@ begin
       --  Even the smallest one-pixel replay needs a root backup, two work
       --  canvases, and one retained-state canvas: sixteen bytes exactly.
       Tight.Theme_Transaction_Bytes := 15;
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Tight, Limit_Status);
       Terminal.App.Renderer.Set_Theme
         (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark),
          Theme_Status);
       Assert
         (Theme_Status = Terminal.App.Renderer.Theme_Allocation_Failed,
          "theme replay canvases are charged to the scratch quota");
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Original);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Original, Limit_Status);
    end;
 
    Reset;
@@ -327,7 +360,7 @@ begin
    Process
      ("Ga=p,i=91,C=1,c=2147483647,r=2147483647;",
       "overflowing placement geometry",
-      Terminal.Core.Kitty_EINVAL);
+      Terminal.Core.Graphics_EINVAL);
    for I in 1 .. 12 loop
       Process
         ("Ga=p,i=91,C=1,c=1,r=1;",
@@ -363,7 +396,7 @@ begin
    Assert (Feed_Status = Terminal.Core.Ok, "cancelled chunk feed");
    declare
       Event : Terminal.Core.Graphics_Event;
-      Result : Terminal.Core.Kitty_Graphics_Result;
+      Result : Terminal.Core.Graphics_Completion;
       Snap : Terminal.Core.Render_Snapshot;
    begin
       Terminal.Core.Peek_Graphics_Event (T, Event);
@@ -371,7 +404,7 @@ begin
         (Event.Pending and then Event.Cancelled,
          "CAN queues an ordered Kitty chunk cancellation");
       Terminal.Core.Snapshot (T, Snap);
-      Snap.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snap, Event);
       Terminal.App.Renderer.Render (R, Snap, Render_Status);
       Terminal.Core.Release (Snap);
       Assert
@@ -600,7 +633,7 @@ begin
            ("Gq=2,f=32,a=T,i=200,s=1,v=1,C=1,c=1,r=1;"
             & (if Iteration mod 2 = 0 then "/wAA/w==" else "AP8A/w=="),
             "rapid thumbnail replacement",
-            Terminal.Core.Kitty_OK);
+            Terminal.Core.Graphics_OK);
       end loop;
       Render_Retained ("rapid replacement retained render");
       declare
@@ -625,16 +658,72 @@ begin
         Terminal.App.Renderer.Graphics.Resource_Limits (R);
       Tight : Terminal.App.Renderer.Graphics_Resource_Limits := Original;
    begin
+      Process
+        ("Gq=2,f=32,a=t,i=237,s=1,v=1;/wAA/w==",
+         "unplaced image indexed before eviction");
+      Render_Retained ("build placeholder index before limit eviction");
+      Assert
+        (not Terminal.App.Renderer.Testing.Placement_Index_Is_Dirty (R),
+         "retained render builds a clean placement index");
+      Tight.Per_Image_Bytes := 1;
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Tight, Limit_Status);
+      Assert
+        (Limit_Status = Terminal.App.Renderer.Graphics.Limits_Applied
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count = 0,
+         "lowered item limit evicts an oversized unplaced image");
+      Assert
+        (Terminal.App.Renderer.Testing.Placement_Index_Is_Dirty (R),
+         "object eviction invalidates the placeholder index");
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Original, Limit_Status);
+   end;
+
+   Reset;
+   declare
+      Original : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
+        Terminal.App.Renderer.Graphics.Resource_Limits (R);
+      Tight : Terminal.App.Renderer.Graphics_Resource_Limits := Original;
+   begin
+      Process
+        ("Gq=2,f=32,a=T,i=238,s=2,v=1,C=1,c=1,r=1;AP8A/wD/AP8=",
+         "retained oversized placed image");
+      Process
+        ("Gq=2,f=32,a=t,i=239,s=1,v=1;/wAA/w==",
+         "unplaced image within lowered limit");
       Tight.Per_Image_Bytes := 4;
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Tight, Limit_Status);
+      Assert
+        (Limit_Status =
+           Terminal.App.Renderer.Graphics.Limits_Applied_Overcommitted
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count = 2
+         and then
+           Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Bytes = 12,
+         "lowering an item limit preserves unrelated valid images");
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Original, Limit_Status);
+   end;
+
+   Reset;
+   declare
+      Original : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
+        Terminal.App.Renderer.Graphics.Resource_Limits (R);
+      Tight : Terminal.App.Renderer.Graphics_Resource_Limits := Original;
+   begin
+      Tight.Per_Image_Bytes := 4;
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Tight, Limit_Status);
       Process
         ("Gq=2,f=32,a=t,i=240,s=1,v=1;AP8A/w==",
          "bounded explicit image install",
-         Terminal.Core.Kitty_OK);
+         Terminal.Core.Graphics_OK);
       Process
         ("Gq=2,f=32,a=t,i=240,s=2,v=1;AP8A/wD/AP8=",
          "oversized explicit image replacement",
-         Terminal.Core.Kitty_ENOMEM);
+         Terminal.Core.Graphics_ENOMEM);
       Assert
         (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count = 1
          and then
@@ -642,17 +731,19 @@ begin
          "failed explicit replacement preserves the prior bounded object");
 
       Tight.Image_Bytes := 7;
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Tight, Limit_Status);
       Process
         ("Gq=2,f=32,a=T,i=240,s=1,v=1,C=1,c=1,r=1;/wAA/w==",
          "transactional replacement resident-byte quota",
-         Terminal.Core.Kitty_ENOMEM);
+         Terminal.Core.Graphics_ENOMEM);
       Assert
         (Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Count = 1
          and then
            Terminal.App.Renderer.Diagnostics (R).Kitty_Image_Object_Bytes = 4,
          "rejected transaction never owns old and replacement bytes together");
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Original);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Original, Limit_Status);
    end;
 
    declare
@@ -674,21 +765,25 @@ begin
    Process
      ("Gq=2,f=8,a=T,i=241,s=1,v=1,C=1,c=1,r=1;Ag==",
       "theme scratch quota indexed image",
-      Terminal.Core.Kitty_OK);
+      Terminal.Core.Graphics_OK);
    declare
       Original : constant Terminal.App.Renderer.Graphics_Resource_Limits :=
         Terminal.App.Renderer.Graphics.Resource_Limits (R);
       Tight : Terminal.App.Renderer.Graphics_Resource_Limits := Original;
    begin
-      Tight.Theme_Transaction_Bytes := 1;
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Tight);
+      --  One RGBA backup, one recolor canvas, and one indexed source byte.
+      --  Eight bytes covers only the first two and must be rejected.
+      Tight.Theme_Transaction_Bytes := 8;
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Tight, Limit_Status);
       Terminal.App.Renderer.Set_Theme
         (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light),
          Theme_Status);
       Assert
         (Theme_Status = Terminal.App.Renderer.Theme_Allocation_Failed,
          "theme scratch quota failure is reported");
-      Terminal.App.Renderer.Graphics.Set_Resource_Limits (R, Original);
+      Terminal.App.Renderer.Graphics.Set_Resource_Limits
+        (R, Original, Limit_Status);
    end;
 
    Terminal.App.Renderer.Graphics.Release_Stream (R, 4_001);

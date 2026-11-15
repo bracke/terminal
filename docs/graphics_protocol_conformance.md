@@ -48,7 +48,7 @@ Status meanings:
 | Formats | Supported | Indexed RGB (`f=8`), indexed RGBA (`f=16`), direct RGB (`f=24`), direct RGBA (`f=32`), and PNG (`f=100`) are decoded. Indices 0–247 use the terminal palette and 248–254 resolve the specification's dynamic default/selection/cursor/URL colors; indexed textures are regenerated after theme changes. `f=100` is strictly PNG. Strict RFC 1950 zlib (`o=z`) is bounded before output allocation. |
 | Transfer media | Supported / Policy-gated | Direct (`t=d`), regular file (`t=f`), temporary file (`t=t`), and POSIX shared memory (`t=s`) are implemented. Regular-file access is disabled by default; temporary-file and shared-memory access are separately configurable and reported by queries. |
 | Local-media security | Supported | Locations are bounded and Base64-decoded, files must be regular files, offsets/sizes are checked, sensitive pseudo-filesystems are rejected, temporary deletion requires the protocol marker under an approved temporary directory, and shared-memory names are unlinked according to protocol lifetime. Access failures use a uniform error surface. |
-| Actions | Supported | Transmit (`a=t`), transmit-and-place (`a=T`), put (`a=p`), query (`a=q`), delete (`a=d`), frame (`a=f`), animation control (`a=a`), and frame composition (`a=c`) are validated independently. Omitted `a` means transmit-only. |
+| Actions | Supported | Transmit (`a=t`), transmit-and-place (`a=T`), put (`a=p`), query (`a=q`), delete (`a=d`), frame (`a=f`), animation control (`a=a`), and frame composition (`a=c`) are validated independently. Composition treats `x,y` as the source origin and `X,Y` as the destination origin. Omitted `a` means transmit-only. |
 | Image identity | Supported | Explicit unsigned 32-bit IDs, collision-free implicit IDs, non-unique image numbers, newest-number lookup, replacement, and per-stream isolation are implemented. Successful numbered transmissions report the allocated ID. |
 | Placement identity | Supported | Explicit and implicit placement IDs, multiple placements per image, and conventional and virtual placements are implemented. A nonzero `(image ID, placement ID)` pair is unique per terminal stream even across primary/alternate screens; screen generation controls visibility and lifetime rather than changing protocol identity. |
 | Relative placement | Supported | Full-width parent image/placement IDs, signed offsets, virtual or conventional parents, cycle rejection, missing-parent rejection, depth limits, dynamic resolution, and descendant cleanup are implemented. |
@@ -57,8 +57,8 @@ Status meanings:
 | Z-index and opacity | Supported | Signed 32-bit z values are sorted deterministically. Values below `INT32_MIN / 2` render below explicit cell backgrounds; other negative images render below text and non-negative images above text. RGBA alpha is preserved. |
 | Unicode placeholders | Supported | Foreground color supplies the low image-ID bits, underline color supplies placement ID, and the complete 297-entry combining-diacritic table supplies row, column, and optional high image-ID byte. Placeholder glyphs are never submitted as missing text glyphs. |
 | Deletion | Supported | Lower/uppercase image, number, placement, visible/location, row, column, z-index, ID-range, and animation-frame selectors are implemented with the required distinction between placement removal and unreferenced-data cleanup. Parent deletion cascades to relative descendants. |
-| Animation | Supported | Frames are quota-accounted; direct, chunked, raw, zlib, and PNG paths use bounded decoding. Frame replacement/editing, gap updates, replace/alpha composition, region composition, running/loading/stopped states, loop counts, automatic scheduling, and frame deletion are implemented. |
-| Responses and quiet mode | Supported | Immediate queries are side-effect free and ordered before later replies. Deferred renderer outcomes return `OK` or precise `EINVAL`, `ENOENT`, `ENOMEM`, `ENOSPC`, `EBADF`, `ENOTSUP`, `ENOPARENT`, `ECYCLE`, or `ETOODEEP` results. Allocation failure, including animation-composition working storage, reports `ENOMEM`; configured quota exhaustion reports `ENOSPC`. `q=1` suppresses success and `q=2` suppresses errors. |
+| Animation | Supported | Frames are quota-accounted; direct, chunked, raw, zlib, and PNG paths use bounded decoding. Frame replacement/editing, gap updates, replace/alpha composition, region composition, running/loading/stopped states, loop counts, automatic scheduling, and frame deletion are implemented. Zero gaps receive a bounded minimum delay; stale deadlines fast-forward whole cycles with finite-loop accounting and walk at most one normal cycle plus a terminal partial cycle; explicit negative gaps retain immediate-advance semantics. |
+| Responses and quiet mode | Supported | Immediate queries are side-effect free and ordered before later replies. Deferred renderer outcomes and direct staging rejections preserve response policy and identifiers while returning `OK` or precise `EINVAL`, `ENOENT`, `ENOMEM`, `ENOSPC`, `EBADF`, `ENOTSUP`, `ENOPARENT`, `ECYCLE`, or `ETOODEEP` results. Allocation failure, including animation-composition working storage, reports `ENOMEM`; configured quota exhaustion reports `ENOSPC`. `q=1` suppresses success and `q=2` suppresses errors. |
 | Scrolling and screen lifetime | Supported | Conventional anchors follow full-screen and margin scrolling, including scrollback offsets. Placeholder metadata follows ordinary cells through scroll, resize, insert/delete, erase, and alternate-screen switching. Primary placements restore after alternate-screen use; clearing/resetting a screen retires that screen's placements. |
 | Multi-image rendering | Supported | Distinct image sources share a packed RGBA atlas with one-pixel gutters. Cropped placements remap UVs to their slots, so simultaneous objects cannot alias a shared texture slot. Stable content signatures skip redundant uploads. |
 
@@ -83,7 +83,10 @@ application layers:
 
 The store evicts unplaced/transient objects before reusable or placed objects.
 Encoded input, decoded pixels, animation frames, placements, and atlas data all
-participate in explicit bounds. An upload first polls all frame fences and is
+participate in explicit bounds. Reducing core limits immediately reconciles
+allocated transfer, chunk, multipart, deferred-input, and event-queue storage;
+oversized active transactions are cancelled and queued events retain only the
+oldest prefix that satisfies both count and byte limits. An upload first polls all frame fences and is
 deferred without blocking while shared descriptors or buffers are still in
 use. Atlas/image copies use a dedicated command buffer and transfer fence;
 replacement destroys the old resources only after those fences prove they are
@@ -96,9 +99,14 @@ rebuilding the logical device and its dependent resources. Failed reconstruction
 attempts remain pending with exponential retry delays bounded at 128 loop ticks
 instead of terminating the application or spinning.
 
-Provisional image-store changes use controlled Ada rollback guards. Uncommitted
-object installation is deleted on scope exit, and an appended theme-replay
-operation is detached and released unless explicitly committed. Session cleanup
+Provisional image-store changes use controlled Ada rollback guards. Failed root
+installation returns the transferred buffer to its owner, animation frame bytes
+and metadata are replaced in one store transaction, and theme-history staging
+is side-effect free. Animation edits reject persistent-quota exhaustion without
+evicting unrelated images while later commit steps remain fallible. Uncommitted object installation
+is deleted on scope exit, and the complete prepared theme-replay suffix,
+including a first-use baseline, is detached and released unless explicitly
+committed. Session cleanup
 similarly retains failed native owners in `Cleanup_Pending` rather than
 advertising a successful close or allowing restart to overwrite them.
 
@@ -119,6 +127,10 @@ modes; private and shared palette registers; vertical aspect expansion; DECSDM
 page-origin behavior; Sixel scrolling/right-scroll modes; cursor advancement;
 persistent placement; and the same decoded-byte/pixel-dimension limits as
 other images.
+
+Core cursor advancement and renderer raster allocation use the same
+`Terminal.Common.Sixel` analysis, including trailing raster-newline extent, so
+the text cursor cannot advance by a geometry different from the rendered image.
 
 The iTerm2 feature report advertises `Sx` only when this decoder is enabled.
 
@@ -143,7 +155,8 @@ The implemented and tested subset is:
 - default next-line cursor movement and `doNotMoveCursor=1`, committed only
   after the rendered image height is known;
 - `size` as a non-binding progress hint, as required by the protocol;
-- bounded metadata, Base64 input, decoded bytes, and pixel dimensions;
+- bounded metadata, Base64 input, decoded bytes, source pixel dimensions, and
+  scaled placement rectangles;
 - one authoritative decode pass per inline payload; malformed or unsupported
   input is rejected without a second preview decode or fallback image;
 - borrowed native PICT input without an encoded-input copy, rendering through a
@@ -192,8 +205,10 @@ formats as portable protocol requirements.
 - `OSC 1337;Capabilities` responds with `Sx` when Sixel is available and adds
   `F` only when FILE downloads are explicitly enabled; byte-exact regressions
   prevent accidental over-advertising.
-- The status label advertises only the built-in PNG/JPEG/GIF/PICT decoders.
-  Format acceptance is reported by the actual decode result.
+- Capability records and their default status labels report only compiled
+  decoders. Rendering and color-emoji availability remain false unless an
+  initialized backend and loaded color font are explicitly supplied by the
+  runtime caller. Format acceptance is reported by the actual decode result.
 - Each spawned PTY receives the same launch-time `TERM_FEATURES` value (`Sx` or
   `FSx`) as that configured profile, including newly created tabs and panes.
 - Graphics commands in non-visible tabs continue through protocol validation,
@@ -203,9 +218,11 @@ formats as portable protocol requirements.
 - The PTY uses `TERM=xterm-256color`, `COLORTERM=truecolor`,
   `TERM_PROGRAM=bracke-terminal`, and the project version. It does not claim to
   be Kitty, iTerm2, or another emulator.
-- tmux DCS passthrough is decoded recursively with escape unquoting and bounded
-  nesting/input. Automated tests cover fragmented wrapped Kitty queries and raw
-  response ordering without modifying persistent tmux sessions.
+- tmux DCS passthrough is decoded with escape unquoting, a 16-level nesting
+  ceiling, and bounded input. Nested parser recovery/overflow status is
+  propagated to the outer feed. Automated tests cover fragmented wrapped Kitty
+  queries, excessive nesting, and raw response ordering without modifying
+  persistent tmux sessions.
 
 ## Automated evidence
 

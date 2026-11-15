@@ -4,26 +4,44 @@ separate (Terminal.App.Vulkan_Device)
       Surface : Vk.Surface_KHR_T;
       Desired_Width : Natural;
       Desired_Height : Natural;
-      Device : out Logical_Device;
+      Device : in out Logical_Device;
       Status : out Create_Status)
    is
+      type Queue_Info_Array is array (Positive range <>) of
+        Vk.Device_Queue_Create_Info_T with Convention => C;
+      Queue_Plan : constant Terminal.App.Vulkan_Creation_Plan.Queue_Plan :=
+        Terminal.App.Vulkan_Creation_Plan.Build_Queue_Plan
+          (Choice.Queue_Family_Index, Choice.Present_Queue_Family_Index);
       Priority : aliased Interfaces.C.C_float := 1.0;
+      Extension_Owner : Terminal.Common.C_Strings.Owner;
       Extension_Name : Interfaces.C.Strings.chars_ptr :=
-        Interfaces.C.Strings.New_String ("VK_KHR_swapchain");
-      Extensions : Chars_Ptr_Array (1 .. 1) := (1 => Extension_Name);
-      Queue_Info : aliased Vk.Device_Queue_Create_Info_T :=
-        (s_Type             => Vk.STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-         p_Next             => System.Null_Address,
-         flags              => 0,
-         queue_Family_Index => Interfaces.Unsigned_32 (Choice.Queue_Family_Index),
-         queue_Count        => 1,
-         p_Queue_Priorities => Priority'Address);
+        Interfaces.C.Strings.Null_Ptr;
+      Extensions : Chars_Ptr_Array (1 .. 1) :=
+        (others => Interfaces.C.Strings.Null_Ptr);
+      Queue_Infos : aliased Queue_Info_Array (1 .. 2) :=
+        (1 =>
+           (s_Type             => Vk.STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            p_Next             => System.Null_Address,
+            flags              => 0,
+            queue_Family_Index =>
+              Queue_Plan.Graphics_Family,
+            queue_Count        => 1,
+            p_Queue_Priorities => Priority'Address),
+         2 =>
+           (s_Type             => Vk.STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+            p_Next             => System.Null_Address,
+            flags              => 0,
+            queue_Family_Index =>
+              Queue_Plan.Present_Family,
+            queue_Count        => 1,
+            p_Queue_Priorities => Priority'Address));
       Create_Info : aliased Vk.Device_Create_Info_T :=
         (s_Type                   => Vk.STRUCTURE_TYPE_DEVICE_CREATE_INFO,
          p_Next                   => System.Null_Address,
          flags                    => 0,
-         queue_Create_Info_Count  => 1,
-         p_Queue_Create_Infos     => Queue_Info'Address,
+         queue_Create_Info_Count  =>
+           Queue_Plan.Device_Queue_Info_Count,
+         p_Queue_Create_Infos     => Queue_Infos'Address,
          enabled_Layer_Count      => 0,
          pp_Enabled_Layer_Names   => System.Null_Address,
          enabled_Extension_Count  => 1,
@@ -31,129 +49,14 @@ separate (Terminal.App.Vulkan_Device)
          p_Enabled_Features       => System.Null_Address);
       Handle : aliased Vk.Device_T := System.Null_Address;
       Queue  : aliased Vk.Queue_T := System.Null_Address;
+      Present_Queue : aliased Vk.Queue_T := System.Null_Address;
       Result : Vk.Result_T;
       Extension_Count : Natural := 0;
-
-      procedure Reset_Device (Status_Value : Create_Status) is
-      begin
-         Device.Initialized := False;
-         Device.Device := System.Null_Address;
-         Device.Queue := System.Null_Address;
-         Device.Swapchain := System.Null_Address;
-         Device.Swapchain_Format := Vk.FORMAT_UNDEFINED;
-         Device.Render_Pass := System.Null_Address;
-         Device.Pipeline_Layout := System.Null_Address;
-         Device.Graphics_Pipeline := System.Null_Address;
-         Device.Descriptor_Set_Layout := System.Null_Address;
-         Device.Descriptor_Pool := System.Null_Address;
-         Device.Descriptor_Set := System.Null_Address;
-         Device.Command_Pool := System.Null_Address;
-         Device.Vertex_Buffer := System.Null_Address;
-         Device.Vertex_Memory := System.Null_Address;
-         Device.Color_MSAA_Image := System.Null_Address;
-         Device.Color_MSAA_Memory := System.Null_Address;
-         Device.Color_MSAA_View := System.Null_Address;
-         Device.Color_Sample_Count := Vk.SAMPLE_COUNT_1_BIT;
-         Device.Atlas_Image := System.Null_Address;
-         Device.Atlas_Memory := System.Null_Address;
-         Device.Atlas_View := System.Null_Address;
-         Device.Atlas_Sampler := System.Null_Address;
-         Device.Image_Texture_Image := System.Null_Address;
-         Device.Image_Texture_Memory := System.Null_Address;
-         Device.Image_Texture_View := System.Null_Address;
-         Device.Image_Texture_Width := 0;
-         Device.Image_Texture_Height := 0;
-         Device.Image_Texture_Bytes := 0;
-         Device.Image_Texture_Content_Signature := 0;
-         Device.Image_Texture_Descriptor_Capacity := 0;
-         Device.Image_Texture_Descriptor_Bound_Count := 0;
-         Device.Image_Texture_Upload_Count := 0;
-         Device.Image_Texture_Cache_Hit_Count := 0;
-         Device.Swapchain_Images := (others => System.Null_Address);
-         Device.Swapchain_Views := (others => System.Null_Address);
-         Device.Framebuffers := (others => System.Null_Address);
-         Device.Command_Buffers := (others => System.Null_Address);
-         Device.Upload_Command_Buffer := System.Null_Address;
-         Device.Image_Available := (others => System.Null_Address);
-         Device.Render_Finished := (others => System.Null_Address);
-         Device.In_Flight := (others => System.Null_Address);
-         Device.Upload_Fence := System.Null_Address;
-         Device.Queue_Family_Index := 0;
-         Device.Swapchain_Image_Count := 0;
-         Device.Swapchain_View_Count := 0;
-         Device.Framebuffer_Count := 0;
-         Device.Command_Buffer_Count := 0;
-         Device.Sync_Frame_Count := 0;
-         Device.Vertex_Buffer_Bytes := 0;
-         Device.Uploaded_Vertex_Count := 0;
-         Device.Uploaded_Text_Run_Count := 0;
-         Device.Uploaded_Shaped_Glyph_Count := 0;
-         Device.Uploaded_Image_Vertex_Count := 0;
-         Device.Uploaded_Image_Texture_Vertex_Count := 0;
-         Device.Fence_Deferred_Upload_Count := 0;
-         Device.Readback_Supported := False;
-         Device.Readback_Enabled := False;
-         Device.Readback_Pending := False;
-         Device.Readback_Buffer := System.Null_Address;
-         Device.Readback_Memory := System.Null_Address;
-         Device.Readback_Bytes := 0;
-         Device.Readback_Frame := 0;
-         Device.Swapchain_Width := 0;
-         Device.Swapchain_Height := 0;
-         Device.Last_Status := Status_Value;
-      end Reset_Device;
 
       function Create_Image_Views
         (Handle : Vk.Device_T)
          return Create_Status
       is separate;
-
-      procedure Destroy_Framebuffers (Handle : Vk.Device_T) is
-      begin
-         for I in 1 .. Device.Framebuffer_Count loop
-            if Device.Framebuffers (I) /= System.Null_Address then
-               Vk.Destroy_Framebuffer
-                 (Handle, Device.Framebuffers (I), System.Null_Address);
-               Device.Framebuffers (I) := System.Null_Address;
-            end if;
-         end loop;
-         Device.Framebuffer_Count := 0;
-      end Destroy_Framebuffers;
-
-      procedure Destroy_Image_Views (Handle : Vk.Device_T) is
-      begin
-         for I in 1 .. Device.Swapchain_View_Count loop
-            if Device.Swapchain_Views (I) /= System.Null_Address then
-               Vk.Destroy_Image_View
-                 (Handle, Device.Swapchain_Views (I), System.Null_Address);
-               Device.Swapchain_Views (I) := System.Null_Address;
-            end if;
-         end loop;
-         Device.Swapchain_View_Count := 0;
-      end Destroy_Image_Views;
-
-      procedure Destroy_Color_MSAA_Target (Handle : Vk.Device_T) is
-      begin
-         if Device.Color_MSAA_View /= System.Null_Address then
-            Vk.Destroy_Image_View
-              (Handle, Device.Color_MSAA_View, System.Null_Address);
-            Device.Color_MSAA_View := System.Null_Address;
-         end if;
-
-         if Device.Color_MSAA_Image /= System.Null_Address then
-            Vk.Destroy_Image
-              (Handle, Device.Color_MSAA_Image, System.Null_Address);
-            Device.Color_MSAA_Image := System.Null_Address;
-         end if;
-
-         if Device.Color_MSAA_Memory /= System.Null_Address then
-            Vk.Free_Memory
-              (Handle, Device.Color_MSAA_Memory, System.Null_Address);
-            Device.Color_MSAA_Memory := System.Null_Address;
-         end if;
-
-         Device.Color_Sample_Count := Vk.SAMPLE_COUNT_1_BIT;
-      end Destroy_Color_MSAA_Target;
 
       function Choose_Color_Sample_Count
         return Vk.Sample_Count_Flag_Bits_T;
@@ -163,83 +66,6 @@ separate (Terminal.App.Vulkan_Device)
          Format  : Vk.Format_T;
          Samples : Vk.Sample_Count_Flag_Bits_T)
          return Create_Status;
-
-      procedure Destroy_Sync (Handle : Vk.Device_T) is
-      begin
-         if Device.Upload_Fence /= System.Null_Address then
-            Vk.Destroy_Fence
-              (Handle, Device.Upload_Fence, System.Null_Address);
-            Device.Upload_Fence := System.Null_Address;
-         end if;
-         for I in 1 .. Device.Sync_Frame_Count loop
-            if Device.In_Flight (I) /= System.Null_Address then
-               Vk.Destroy_Fence (Handle, Device.In_Flight (I), System.Null_Address);
-               Device.In_Flight (I) := System.Null_Address;
-            end if;
-            if Device.Render_Finished (I) /= System.Null_Address then
-               Vk.Destroy_Semaphore
-                 (Handle, Device.Render_Finished (I), System.Null_Address);
-               Device.Render_Finished (I) := System.Null_Address;
-            end if;
-            if Device.Image_Available (I) /= System.Null_Address then
-               Vk.Destroy_Semaphore
-                 (Handle, Device.Image_Available (I), System.Null_Address);
-               Device.Image_Available (I) := System.Null_Address;
-            end if;
-         end loop;
-         Device.Sync_Frame_Count := 0;
-      end Destroy_Sync;
-
-      procedure Destroy_Command_Resources (Handle : Vk.Device_T) is
-      begin
-         if Device.Command_Pool /= System.Null_Address then
-            if Device.Upload_Command_Buffer /= System.Null_Address then
-               Vk.Free_Command_Buffers
-                 (Handle,
-                  Device.Command_Pool,
-                  1,
-                  Device.Upload_Command_Buffer'Address);
-               Device.Upload_Command_Buffer := System.Null_Address;
-            end if;
-            if Device.Command_Buffer_Count > 0 then
-               Vk.Free_Command_Buffers
-                 (Handle,
-                  Device.Command_Pool,
-                  Interfaces.Unsigned_32 (Device.Command_Buffer_Count),
-                  Device.Command_Buffers'Address);
-            end if;
-
-            Vk.Destroy_Command_Pool
-              (Handle, Device.Command_Pool, System.Null_Address);
-         end if;
-
-         Device.Command_Pool := System.Null_Address;
-         Device.Command_Buffers := (others => System.Null_Address);
-         Device.Command_Buffer_Count := 0;
-      end Destroy_Command_Resources;
-
-      procedure Destroy_Descriptor_Resources (Handle : Vk.Device_T) is
-      begin
-         if Device.Atlas_Sampler /= System.Null_Address then
-            Vk.Destroy_Sampler (Handle, Device.Atlas_Sampler, System.Null_Address);
-            Device.Atlas_Sampler := System.Null_Address;
-         end if;
-
-         if Device.Descriptor_Pool /= System.Null_Address then
-            Vk.Destroy_Descriptor_Pool
-              (Handle, Device.Descriptor_Pool, System.Null_Address);
-            Device.Descriptor_Pool := System.Null_Address;
-            Device.Descriptor_Set := System.Null_Address;
-         end if;
-
-         if Device.Descriptor_Set_Layout /= System.Null_Address then
-            Vk.Destroy_Descriptor_Set_Layout
-              (Handle, Device.Descriptor_Set_Layout, System.Null_Address);
-            Device.Descriptor_Set_Layout := System.Null_Address;
-         end if;
-         Device.Image_Texture_Descriptor_Capacity := 0;
-         Device.Image_Texture_Descriptor_Bound_Count := 0;
-      end Destroy_Descriptor_Resources;
 
       function Create_Descriptor_Resources
         (Handle : Vk.Device_T)
@@ -448,6 +274,7 @@ separate (Terminal.App.Vulkan_Device)
             Result :=
               Vk.Create_Image
                 (Handle, Image_Info'Address, System.Null_Address, Image'Address);
+            Device.Color_MSAA_Image := Image;
             if Result /= Vk.SUCCESS or else Image = System.Null_Address then
                return Create_Color_Target_Failed;
             end if;
@@ -460,7 +287,6 @@ separate (Terminal.App.Vulkan_Device)
          if not Has_Memory_Type
            (Memory_Properties, Requirements.memory_Type_Bits, 0, Memory_Type_Index)
          then
-            Vk.Destroy_Image (Handle, Image, System.Null_Address);
             return Create_Color_Target_Failed;
          end if;
 
@@ -477,16 +303,14 @@ separate (Terminal.App.Vulkan_Device)
                  Allocate_Info'Address,
                  System.Null_Address,
                  Image_Memory'Address);
+            Device.Color_MSAA_Memory := Image_Memory;
             if Result /= Vk.SUCCESS or else Image_Memory = System.Null_Address then
-               Vk.Destroy_Image (Handle, Image, System.Null_Address);
                return Create_Color_Target_Failed;
             end if;
          end;
 
          Result := Vk.Bind_Image_Memory (Handle, Image, Image_Memory, 0);
          if Result /= Vk.SUCCESS then
-            Vk.Free_Memory (Handle, Image_Memory, System.Null_Address);
-            Vk.Destroy_Image (Handle, Image, System.Null_Address);
             return Create_Color_Target_Failed;
          end if;
 
@@ -516,16 +340,12 @@ separate (Terminal.App.Vulkan_Device)
                  View_Info'Address,
                  System.Null_Address,
                  Image_View'Address);
+            Device.Color_MSAA_View := Image_View;
             if Result /= Vk.SUCCESS or else Image_View = System.Null_Address then
-               Vk.Free_Memory (Handle, Image_Memory, System.Null_Address);
-               Vk.Destroy_Image (Handle, Image, System.Null_Address);
                return Create_Color_Target_Failed;
             end if;
          end;
 
-         Device.Color_MSAA_Image := Image;
-         Device.Color_MSAA_Memory := Image_Memory;
-         Device.Color_MSAA_View := Image_View;
          return Ok;
       end Create_Color_MSAA_Target;
 
@@ -534,14 +354,19 @@ separate (Terminal.App.Vulkan_Device)
          return Create_Status
       is separate;
 
+      procedure Release_Extension_Name is
+      begin
+         Extensions (1) := Interfaces.C.Strings.Null_Ptr;
+         Extension_Name := Interfaces.C.Strings.Null_Ptr;
+         Terminal.Common.C_Strings.Release (Extension_Owner);
+      end Release_Extension_Name;
+
       procedure Fail_Creation (Cause : Create_Status) is
       begin
          --  Logical_Device is the single owner for every handle acquired by
          --  this transaction.  Publishing a partial device to that controlled
          --  owner lets every failure use one reverse-order cleanup path.
-         if Extension_Name /= Interfaces.C.Strings.Null_Ptr then
-            Interfaces.C.Strings.Free (Extension_Name);
-         end if;
+         Release_Extension_Name;
          if Device.Device = System.Null_Address
            and then Handle /= System.Null_Address
          then
@@ -552,17 +377,30 @@ separate (Terminal.App.Vulkan_Device)
          Status := Cause;
       end Fail_Creation;
    begin
-      Reset_Device (Selection_Not_Ready);
+      --  Create_Logical_Device is a replacing operation.  Release any complete
+      --  or partially created device before publishing the new transaction.
+      Finalize (Device);
+      Terminal.Common.C_Strings.Set (Extension_Owner, "VK_KHR_swapchain");
+      Extension_Name := Terminal.Common.C_Strings.Unsafe_Pointer (Extension_Owner);
+      Extensions (1) := Extension_Name;
 
       if not Choice.Selected or else Choice.Physical_Device = System.Null_Address then
          Fail_Creation (Selection_Not_Ready);
          return;
       end if;
 
-      if not Device_Supports_Swapchain (Choice.Physical_Device, Extension_Count) then
-         Fail_Creation (Swapchain_Extension_Missing);
-         return;
-      end if;
+      case Device_Supports_Swapchain
+        (Choice.Physical_Device, Extension_Count)
+      is
+         when Selection_Logic.Capability_Available =>
+            null;
+         when Selection_Logic.Capability_Unavailable =>
+            Fail_Creation (Swapchain_Extension_Missing);
+            return;
+         when Selection_Logic.Capability_Query_Failed =>
+            Fail_Creation (Surface_Query_Failed);
+            return;
+      end case;
 
       Result :=
         Vk.Create_Device
@@ -570,7 +408,7 @@ separate (Terminal.App.Vulkan_Device)
            Create_Info'Address,
            System.Null_Address,
            Handle'Address);
-      Interfaces.C.Strings.Free (Extension_Name);
+      Release_Extension_Name;
 
       if Result /= Vk.SUCCESS or else Handle = System.Null_Address then
          Fail_Creation (Create_Device_Failed);
@@ -593,6 +431,22 @@ separate (Terminal.App.Vulkan_Device)
 
       Device.Queue := Queue;
       Device.Queue_Family_Index := Choice.Queue_Family_Index;
+
+      if Choice.Present_Queue_Family_Index = Choice.Queue_Family_Index then
+         Present_Queue := Queue;
+      else
+         Vk.Get_Device_Queue
+           (Handle,
+            Interfaces.Unsigned_32 (Choice.Present_Queue_Family_Index),
+            0,
+            Present_Queue'Address);
+      end if;
+      if Present_Queue = System.Null_Address then
+         Fail_Creation (Queue_Unavailable);
+         return;
+      end if;
+      Device.Present_Queue := Present_Queue;
+      Device.Present_Queue_Family_Index := Choice.Present_Queue_Family_Index;
 
       declare
          Swapchain_Status : constant Create_Status := Create_Swapchain (Handle);

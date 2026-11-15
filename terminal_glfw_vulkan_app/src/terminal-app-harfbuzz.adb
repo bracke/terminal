@@ -2,6 +2,8 @@ with Ada.Unchecked_Conversion;
 
 with Interfaces.C;
 with Interfaces.C.Strings;
+with Terminal.Common.C_Strings;
+with Terminal.App.Text_Shaping_Tags;
 
 package body Terminal.App.HarfBuzz is
    package C renames Interfaces.C;
@@ -152,553 +154,46 @@ package body Terminal.App.HarfBuzz is
    function To_Float_Pixels (Value : C.int) return Float is
      (Float (Value) / 64.0);
 
-   function Direction_Tag
-     (Direction : RM.Text_Run_Direction) return String
-   is
-   begin
-      case Direction is
-         when RM.Direction_Right_To_Left =>
-            return "rtl";
-         when RM.Direction_Left_To_Right =>
-            return "ltr";
-         when RM.Direction_Neutral =>
-            return "ltr";
-      end case;
-   end Direction_Tag;
-
-   function Script_Tag (Script : RM.Text_Run_Script) return String is
-   begin
-      case Script is
-         when RM.Script_Latin =>
-            return "latn";
-         when RM.Script_Greek =>
-            return "grek";
-         when RM.Script_Cyrillic =>
-            return "cyrl";
-         when RM.Script_Glagolitic =>
-            return "glag";
-         when RM.Script_Coptic =>
-            return "copt";
-         when RM.Script_Gothic =>
-            return "goth";
-         when RM.Script_Old_Italic =>
-            return "ital";
-         when RM.Script_Old_Persian =>
-            return "xpeo";
-         when RM.Script_Ugaritic =>
-            return "ugar";
-         when RM.Script_Linear_B =>
-            return "linb";
-         when RM.Script_Cypriot =>
-            return "cprt";
-         when RM.Script_Egyptian_Hieroglyphs =>
-            return "egyp";
-         when RM.Script_Anatolian_Hieroglyphs =>
-            return "hluw";
-         when RM.Script_Old_Permic =>
-            return "perm";
-         when RM.Script_Elbasan =>
-            return "elba";
-         when RM.Script_Caucasian_Albanian =>
-            return "aghb";
-         when RM.Script_Mro =>
-            return "mroo";
-         when RM.Script_Bassa_Vah =>
-            return "bass";
-         when RM.Script_Pahawh_Hmong =>
-            return "hmng";
-         when RM.Script_Linear_A =>
-            return "lina";
-         when RM.Script_Phaistos_Disc =>
-            return "disc";
-         when RM.Script_Cuneiform =>
-            return "xsux";
-         when RM.Script_Lycian =>
-            return "lyci";
-         when RM.Script_Carian =>
-            return "cari";
-         when RM.Script_Old_Turkic =>
-            return "orkh";
-         when RM.Script_Medefaidrin =>
-            return "medf";
-         when RM.Script_Toto =>
-            return "toto";
-         when RM.Script_Wancho =>
-            return "wcho";
-         when RM.Script_Deseret =>
-            return "dsrt";
-         when RM.Script_Shavian =>
-            return "shaw";
-         when RM.Script_Osmanya =>
-            return "osma";
-         when RM.Script_Osage =>
-            return "osge";
-         when RM.Script_Bamum =>
-            return "bamu";
-         when RM.Script_Lisu =>
-            return "lisu";
-         when RM.Script_Miao =>
-            return "plrd";
-         when RM.Script_Nushu =>
-            return "nshu";
-         when RM.Script_Tangut =>
-            return "tang";
-         when RM.Script_Khitan_Small =>
-            return "kits";
-         when RM.Script_Armenian =>
-            return "armn";
-         when RM.Script_Georgian =>
-            return "geor";
-         when RM.Script_Ethiopic =>
-            return "ethi";
-         when RM.Script_Cherokee =>
-            return "cher";
-         when RM.Script_Canadian_Aboriginal =>
-            return "cans";
-         when RM.Script_Ogham =>
-            return "ogam";
-         when RM.Script_Runic =>
-            return "runr";
-         when RM.Script_Tifinagh =>
-            return "tfng";
-         when RM.Script_Vai =>
-            return "vaii";
-         when RM.Script_Hebrew =>
-            return "hebr";
-         when RM.Script_Arabic =>
-            return "arab";
-         when RM.Script_Syriac =>
-            return "syrc";
-         when RM.Script_Thaana =>
-            return "thaa";
-         when RM.Script_NKo =>
-            return "nkoo";
-         when RM.Script_Samaritan =>
-            return "samr";
-         when RM.Script_Mandaic =>
-            return "mand";
-         when RM.Script_Adlam =>
-            return "adlm";
-         when RM.Script_Hanifi_Rohingya =>
-            return "rohg";
-         when RM.Script_Imperial_Aramaic =>
-            return "armi";
-         when RM.Script_Palmyrene =>
-            return "palm";
-         when RM.Script_Nabataean =>
-            return "nbat";
-         when RM.Script_Hatran =>
-            return "hatr";
-         when RM.Script_Phoenician =>
-            return "phnx";
-         when RM.Script_Lydian =>
-            return "lydi";
-         when RM.Script_Avestan =>
-            return "avst";
-         when RM.Script_Inscriptional_Parthian =>
-            return "prti";
-         when RM.Script_Inscriptional_Pahlavi =>
-            return "phli";
-         when RM.Script_Psalter_Pahlavi =>
-            return "phlp";
-         when RM.Script_Old_South_Arabian =>
-            return "sarb";
-         when RM.Script_Old_North_Arabian =>
-            return "narb";
-         when RM.Script_Manichaean =>
-            return "mani";
-         when RM.Script_Tibetan =>
-            return "tibt";
-         when RM.Script_Devanagari =>
-            return "deva";
-         when RM.Script_Bengali =>
-            return "beng";
-         when RM.Script_Gurmukhi =>
-            return "guru";
-         when RM.Script_Gujarati =>
-            return "gujr";
-         when RM.Script_Oriya =>
-            return "orya";
-         when RM.Script_Tamil =>
-            return "taml";
-         when RM.Script_Telugu =>
-            return "telu";
-         when RM.Script_Kannada =>
-            return "knda";
-         when RM.Script_Malayalam =>
-            return "mlym";
-         when RM.Script_Sinhala =>
-            return "sinh";
-         when RM.Script_Brahmi =>
-            return "brah";
-         when RM.Script_Kaithi =>
-            return "kthi";
-         when RM.Script_Chakma =>
-            return "cakm";
-         when RM.Script_Mahajani =>
-            return "mahj";
-         when RM.Script_Sharada =>
-            return "shrd";
-         when RM.Script_Khojki =>
-            return "khoj";
-         when RM.Script_Khudawadi =>
-            return "sind";
-         when RM.Script_Grantha =>
-            return "gran";
-         when RM.Script_Newa =>
-            return "newa";
-         when RM.Script_Tirhuta =>
-            return "tirh";
-         when RM.Script_Siddham =>
-            return "sidd";
-         when RM.Script_Modi =>
-            return "modi";
-         when RM.Script_Takri =>
-            return "takr";
-         when RM.Script_Ahom =>
-            return "ahom";
-         when RM.Script_Dogra =>
-            return "dogr";
-         when RM.Script_Warang_Citi =>
-            return "wara";
-         when RM.Script_Dives_Akuru =>
-            return "diak";
-         when RM.Script_Nandinagari =>
-            return "nand";
-         when RM.Script_Zanabazar_Square =>
-            return "zanb";
-         when RM.Script_Soyombo =>
-            return "soyo";
-         when RM.Script_Thai =>
-            return "thai";
-         when RM.Script_Lao =>
-            return "laoo";
-         when RM.Script_Myanmar =>
-            return "mymr";
-         when RM.Script_Mongolian =>
-            return "mong";
-         when RM.Script_Limbu =>
-            return "limb";
-         when RM.Script_Tai_Le =>
-            return "tale";
-         when RM.Script_New_Tai_Lue =>
-            return "talu";
-         when RM.Script_Khmer =>
-            return "khmr";
-         when RM.Script_Balinese =>
-            return "bali";
-         when RM.Script_Sundanese =>
-            return "sund";
-         when RM.Script_Batak =>
-            return "batk";
-         when RM.Script_Lepcha =>
-            return "lepc";
-         when RM.Script_Ol_Chiki =>
-            return "olck";
-         when RM.Script_Syloti_Nagri =>
-            return "sylo";
-         when RM.Script_Phags_Pa =>
-            return "phag";
-         when RM.Script_Saurashtra =>
-            return "saur";
-         when RM.Script_Kayah_Li =>
-            return "kali";
-         when RM.Script_Rejang =>
-            return "rjng";
-         when RM.Script_Buginese =>
-            return "bugi";
-         when RM.Script_Tai_Tham =>
-            return "lana";
-         when RM.Script_Javanese =>
-            return "java";
-         when RM.Script_Cham =>
-            return "cham";
-         when RM.Script_Tai_Viet =>
-            return "tavt";
-         when RM.Script_Meetei_Mayek =>
-            return "mtei";
-         when RM.Script_Hiragana =>
-            return "hira";
-         when RM.Script_Katakana =>
-            return "kana";
-         when RM.Script_Bopomofo =>
-            return "bopo";
-         when RM.Script_Hangul =>
-            return "hang";
-         when RM.Script_Yi =>
-            return "yiii";
-         when RM.Script_CJK =>
-            return "hani";
-         when RM.Script_Emoji =>
-            return "zyyy";
-         when RM.Script_Common | RM.Script_Unknown =>
-            return "zyyy";
-      end case;
-   end Script_Tag;
-
-   function Language_Tag (Script : RM.Text_Run_Script) return String is
-   begin
-      case Script is
-         when RM.Script_Latin =>
-            return "en";
-         when RM.Script_Greek =>
-            return "el";
-         when RM.Script_Cyrillic =>
-            return "ru";
-         when RM.Script_Coptic =>
-            return "cop";
-         when RM.Script_Glagolitic
-            | RM.Script_Gothic
-            | RM.Script_Old_Italic
-            | RM.Script_Old_Persian
-            | RM.Script_Ugaritic
-            | RM.Script_Linear_B
-            | RM.Script_Cypriot
-            | RM.Script_Anatolian_Hieroglyphs
-            | RM.Script_Caucasian_Albanian =>
-            return "und";
-         when RM.Script_Egyptian_Hieroglyphs =>
-            return "egy";
-         when RM.Script_Old_Permic =>
-            return "kv";
-         when RM.Script_Elbasan =>
-            return "sq";
-         when RM.Script_Mro =>
-            return "mro";
-         when RM.Script_Bassa_Vah =>
-            return "bsq";
-         when RM.Script_Pahawh_Hmong =>
-            return "hmn";
-         when RM.Script_Linear_A
-            | RM.Script_Phaistos_Disc
-            | RM.Script_Cuneiform
-            | RM.Script_Lycian
-            | RM.Script_Carian
-            | RM.Script_Old_Turkic =>
-            return "und";
-         when RM.Script_Medefaidrin =>
-            return "dmf";
-         when RM.Script_Toto =>
-            return "txo";
-         when RM.Script_Wancho =>
-            return "nnp";
-         when RM.Script_Deseret | RM.Script_Shavian =>
-            return "en";
-         when RM.Script_Osmanya =>
-            return "so";
-         when RM.Script_Osage =>
-            return "osa";
-         when RM.Script_Bamum =>
-            return "bax";
-         when RM.Script_Lisu =>
-            return "lis";
-         when RM.Script_Miao =>
-            return "hmn";
-         when RM.Script_Nushu =>
-            return "zh";
-         when RM.Script_Tangut | RM.Script_Khitan_Small =>
-            return "und";
-         when RM.Script_Armenian =>
-            return "hy";
-         when RM.Script_Georgian =>
-            return "ka";
-         when RM.Script_Ethiopic =>
-            return "am";
-         when RM.Script_Cherokee =>
-            return "chr";
-         when RM.Script_Canadian_Aboriginal =>
-            return "cr";
-         when RM.Script_Vai =>
-            return "vai";
-         when RM.Script_Ogham | RM.Script_Runic | RM.Script_Tifinagh =>
-            return "und";
-         when RM.Script_Hebrew =>
-            return "he";
-         when RM.Script_Arabic =>
-            return "ar";
-         when RM.Script_Syriac =>
-            return "syr";
-         when RM.Script_Thaana =>
-            return "dv";
-         when RM.Script_NKo =>
-            return "nqo";
-         when RM.Script_Samaritan =>
-            return "sam";
-         when RM.Script_Mandaic =>
-            return "mid";
-         when RM.Script_Adlam =>
-            return "ff";
-         when RM.Script_Hanifi_Rohingya =>
-            return "rhg";
-         when RM.Script_Avestan =>
-            return "ae";
-         when RM.Script_Imperial_Aramaic
-            | RM.Script_Palmyrene
-            | RM.Script_Nabataean
-            | RM.Script_Hatran
-            | RM.Script_Phoenician
-            | RM.Script_Lydian
-            | RM.Script_Inscriptional_Parthian
-            | RM.Script_Inscriptional_Pahlavi
-            | RM.Script_Psalter_Pahlavi
-            | RM.Script_Old_South_Arabian
-            | RM.Script_Old_North_Arabian
-            | RM.Script_Manichaean =>
-            return "und";
-         when RM.Script_Tibetan =>
-            return "bo";
-         when RM.Script_Devanagari =>
-            return "hi";
-         when RM.Script_Bengali =>
-            return "bn";
-         when RM.Script_Gurmukhi =>
-            return "pa";
-         when RM.Script_Gujarati =>
-            return "gu";
-         when RM.Script_Oriya =>
-            return "or";
-         when RM.Script_Tamil =>
-            return "ta";
-         when RM.Script_Telugu =>
-            return "te";
-         when RM.Script_Kannada =>
-            return "kn";
-         when RM.Script_Malayalam =>
-            return "ml";
-         when RM.Script_Sinhala =>
-            return "si";
-         when RM.Script_Brahmi | RM.Script_Mahajani =>
-            return "und";
-         when RM.Script_Kaithi =>
-            return "bho";
-         when RM.Script_Chakma =>
-            return "ccp";
-         when RM.Script_Sharada | RM.Script_Grantha =>
-            return "sa";
-         when RM.Script_Khojki | RM.Script_Khudawadi =>
-            return "sd";
-         when RM.Script_Newa =>
-            return "new";
-         when RM.Script_Tirhuta =>
-            return "mai";
-         when RM.Script_Siddham
-            | RM.Script_Warang_Citi
-            | RM.Script_Dives_Akuru
-            | RM.Script_Zanabazar_Square
-            | RM.Script_Soyombo =>
-            return "und";
-         when RM.Script_Modi | RM.Script_Dogra | RM.Script_Nandinagari =>
-            return "hi";
-         when RM.Script_Takri =>
-            return "doi";
-         when RM.Script_Ahom =>
-            return "aho";
-         when RM.Script_Thai =>
-            return "th";
-         when RM.Script_Lao =>
-            return "lo";
-         when RM.Script_Myanmar =>
-            return "my";
-         when RM.Script_Mongolian =>
-            return "mn";
-         when RM.Script_Limbu =>
-            return "lif";
-         when RM.Script_Tai_Le =>
-            return "tdd";
-         when RM.Script_New_Tai_Lue =>
-            return "khb";
-         when RM.Script_Khmer =>
-            return "km";
-         when RM.Script_Balinese =>
-            return "ban";
-         when RM.Script_Sundanese =>
-            return "su";
-         when RM.Script_Batak =>
-            return "bbc";
-         when RM.Script_Lepcha =>
-            return "lep";
-         when RM.Script_Ol_Chiki =>
-            return "sat";
-         when RM.Script_Syloti_Nagri =>
-            return "syl";
-         when RM.Script_Phags_Pa =>
-            return "und";
-         when RM.Script_Saurashtra =>
-            return "saz";
-         when RM.Script_Kayah_Li =>
-            return "eky";
-         when RM.Script_Rejang =>
-            return "rej";
-         when RM.Script_Buginese =>
-            return "bug";
-         when RM.Script_Tai_Tham =>
-            return "nod";
-         when RM.Script_Javanese =>
-            return "jv";
-         when RM.Script_Cham =>
-            return "cjm";
-         when RM.Script_Tai_Viet =>
-            return "blt";
-         when RM.Script_Meetei_Mayek =>
-            return "mni";
-         when RM.Script_Hiragana | RM.Script_Katakana =>
-            return "ja";
-         when RM.Script_Bopomofo =>
-            return "zh";
-         when RM.Script_Hangul =>
-            return "ko";
-         when RM.Script_Yi =>
-            return "ii";
-         when RM.Script_CJK =>
-            return "zh";
-         when RM.Script_Emoji | RM.Script_Common | RM.Script_Unknown =>
-            return "und";
-      end case;
-   end Language_Tag;
-
    procedure Set_Buffer_Properties
      (Buffer : System.Address;
       Run    : RM.Text_Run_Command)
    is
-      Direction_Tag_Text : constant String := Direction_Tag (Run.Direction);
-      Script_Tag_Text    : constant String := Script_Tag (Run.Script);
-      Language_Tag_Text  : constant String := Language_Tag (Run.Script);
-      Direction_Text : CStr.chars_ptr :=
-        CStr.New_String (Direction_Tag_Text);
-      Script_Text    : CStr.chars_ptr :=
-        CStr.New_String (Script_Tag_Text);
-      Language_Text  : CStr.chars_ptr := CStr.New_String (Language_Tag_Text);
+      Direction_Tag_Text : constant String :=
+        Terminal.App.Text_Shaping_Tags.Direction_Tag (Run.Direction);
+      Script_Tag_Text : constant String :=
+        Terminal.App.Text_Shaping_Tags.Script_Tag (Run.Script);
+      Language_Tag_Text : constant String :=
+        Terminal.App.Text_Shaping_Tags.Language_Tag;
+      Direction_Text : Terminal.Common.C_Strings.Owner;
+      Script_Text    : Terminal.Common.C_Strings.Owner;
+      Language_Text  : Terminal.Common.C_Strings.Owner;
    begin
+      Terminal.Common.C_Strings.Set (Direction_Text, Direction_Tag_Text);
+      Terminal.Common.C_Strings.Set (Script_Text, Script_Tag_Text);
+      Terminal.Common.C_Strings.Set (Language_Text, Language_Tag_Text);
       HB_Buffer_Set_Direction
         (Buffer,
          HB_Direction_From_String
-           (Direction_Text, C.int (Direction_Tag_Text'Length)));
+           (Terminal.Common.C_Strings.Unsafe_Pointer (Direction_Text),
+            C.int (Direction_Tag_Text'Length)));
       HB_Buffer_Set_Script
         (Buffer,
          HB_Script_From_String
-           (Script_Text, C.int (Script_Tag_Text'Length)));
+           (Terminal.Common.C_Strings.Unsafe_Pointer (Script_Text),
+            C.int (Script_Tag_Text'Length)));
       HB_Buffer_Set_Language
         (Buffer,
          HB_Language_From_String
-           (Language_Text, C.int (Language_Tag_Text'Length)));
-      CStr.Free (Direction_Text);
-      CStr.Free (Script_Text);
-      CStr.Free (Language_Text);
-   exception
-      when others =>
-         CStr.Free (Direction_Text);
-         CStr.Free (Script_Text);
-         CStr.Free (Language_Text);
-         raise;
+           (Terminal.Common.C_Strings.Unsafe_Pointer (Language_Text),
+            C.int (Language_Tag_Text'Length)));
    end Set_Buffer_Properties;
 
    procedure Load
-     (Face        : in out Font_Face;
-      Path        : String;
-      Pixel_Size  : Positive;
-      Status      : out Load_Status)
+     (Face   : in out Font_Face;
+      Path   : String;
+      Status : out Load_Status)
    is
-      File_Name : CStr.chars_ptr;
+      File_Name : Terminal.Common.C_Strings.Owner;
    begin
       Reset (Face);
 
@@ -707,9 +202,9 @@ package body Terminal.App.HarfBuzz is
          return;
       end if;
 
-      File_Name := CStr.New_String (Path);
-      Face.Blob := HB_Blob_Create_From_File_Or_Fail (File_Name);
-      CStr.Free (File_Name);
+      Terminal.Common.C_Strings.Set (File_Name, Path);
+      Face.Blob := HB_Blob_Create_From_File_Or_Fail
+        (Terminal.Common.C_Strings.Unsafe_Pointer (File_Name));
 
       if Face.Blob = System.Null_Address then
          Status := Load_Failed;
@@ -731,7 +226,6 @@ package body Terminal.App.HarfBuzz is
       end if;
 
       HB_OT_Font_Set_Funcs (Face.Font);
-      Face.Pixel_Size := Pixel_Size;
       Status := Loaded;
    exception
       when others =>
@@ -755,6 +249,11 @@ package body Terminal.App.HarfBuzz is
       Face.Face := System.Null_Address;
       Face.Blob := System.Null_Address;
    end Reset;
+
+   overriding procedure Finalize (Face : in out Font_Face) is
+   begin
+      Reset (Face);
+   end Finalize;
 
    function Is_Loaded (Face : Font_Face) return Boolean is
      (Face.Font /= System.Null_Address);

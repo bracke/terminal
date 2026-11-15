@@ -20,11 +20,17 @@ is
       return Result;
    end Resolved_Header;
 
-   function Event_Text
-     (Item : Terminal.Core.Graphics_Event) return String is
+   function Command_Content_Serial return Interfaces.Unsigned_64 is
    begin
-      return Complete_Event_Text (R, Item);
-   end Event_Text;
+      if R.Graphics_State.Transaction.Last_Stored_Image_Content_Serial /= 0 then
+         return R.Graphics_State.Transaction.Last_Stored_Image_Content_Serial;
+      end if;
+      --  Event sequences are local to each core stream, while the atlas cache
+      --  survives active-session changes. Allocate fallback identities from the
+      --  renderer-wide image-store serial domain as well.
+      return Terminal.App.Image_Store.Allocate_Content_Serial
+        (R.Graphics_State.Resources.Image_Objects);
+   end Command_Content_Serial;
 
    type Install_Guard
      (Stream_ID : Terminal.Core.Graphics_Stream_ID) is
@@ -49,7 +55,7 @@ is
       Order : constant Interfaces.Unsigned_64 := Guard.Storage_Order;
    begin
       if Order /= 0 then
-         Delete_Image_Object_By_Storage_Order (R, Guard.Stream_ID, Order);
+         Image_Objects.Delete_By_Storage_Order (R, Guard.Stream_ID, Order);
       end if;
       Guard.Storage_Order := 0;
    end Rollback;
@@ -58,9 +64,11 @@ is
    begin
       Rollback (Guard);
    exception
-      when others =>
+      when E : others =>
          Terminal.App.Cleanup_Diagnostics.Note_Failure
-           (Terminal.App.Cleanup_Diagnostics.Image_Install);
+           (Terminal.App.Cleanup_Diagnostics.Image_Install,
+            E,
+            "rollback image installation");
    end Finalize;
 
    function Emit_Raw_Kitty
@@ -102,12 +110,12 @@ is
       Image_Text : String)
    is separate;
 
-   Text : constant String := Event_Text (Event);
-   Header : constant Terminal.App.Graphics.Graphics_Header :=
-     Resolved_Header (Terminal.App.Graphics.Header (Event));
-begin
-   if FIS.Is_Full (R.Frame_Images) then
-      R.Frame_Command_Overflowed := True;
+   procedure Process (Text : String) is
+      Header : constant Terminal.App.Graphics.Graphics_Header :=
+        Resolved_Header (Terminal.App.Graphics.Header (Event));
+   begin
+   if FIS.Is_Full (R.Frame_State.Frame_Images) then
+      R.Frame_State.Frame_Command_Overflowed := True;
       return;
    end if;
    if not Event.Pending
@@ -136,8 +144,8 @@ begin
       if Header.Kitty_ID > 0 then
          Delete_Image_Object (R, Event.Stream_ID, Header.Kitty_ID);
       else
-         Delete_Virtual_Placements (R, Event.Stream_ID, 0);
-         Delete_Conventional_Placements (R, Event.Stream_ID, 0);
+         Placements_State.Delete_Virtual_Placements (R, Event.Stream_ID, 0);
+         Placements_State.Delete_Conventional_Placements (R, Event.Stream_ID, 0);
       end if;
       return;
    end if;
@@ -218,5 +226,8 @@ begin
       return;
    end if;
 
-   Emit_Image (Event, Text);
+      Emit_Image (Event, Text);
+   end Process;
+begin
+   Event_Tracking.With_Complete_Event_Text (R, Event, Process'Access);
 end Add_Image_Event;

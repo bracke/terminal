@@ -18,11 +18,10 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
            Vk.Create_Pipeline_Layout
              (Handle, Layout_Info'Address, System.Null_Address, Layout'Address);
       begin
+         Device.Pipeline_Layout := Layout;
          if Result /= Vk.SUCCESS or else Layout = System.Null_Address then
             return Create_Pipeline_Layout_Failed;
          end if;
-
-         Device.Pipeline_Layout := Layout;
          return Ok;
       end Create_Pipeline_Layout;
 

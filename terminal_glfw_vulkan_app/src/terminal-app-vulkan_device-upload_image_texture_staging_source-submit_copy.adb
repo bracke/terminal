@@ -166,13 +166,15 @@ begin
        (Device.Queue, 1, Submit_Info'Address, Device.Upload_Fence);
    if Result /= Vk.SUCCESS then
       if Result /= Vk.ERROR_DEVICE_LOST then
-         Restore_Upload_Fence (Device);
+         Restore_Upload_Fence (Device, Fence_Restore_Status);
          Upload_Fence_Reset := False;
       end if;
       Cleanup_New_Image;
       Destroy_Staging;
       Status :=
-        (if Result = Vk.ERROR_DEVICE_LOST then Device_Lost
+        (if Result = Vk.ERROR_DEVICE_LOST
+              or else Fence_Restore_Status = Device_Lost
+         then Device_Lost
          else Copy_Atlas_Failed);
       return;
    end if;

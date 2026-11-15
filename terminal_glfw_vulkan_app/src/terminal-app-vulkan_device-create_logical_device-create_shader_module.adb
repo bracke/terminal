@@ -16,12 +16,10 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
            Vk.Create_Shader_Module
              (Handle, Create_Info'Address, System.Null_Address, Shader'Address);
       begin
-         Module := System.Null_Address;
+         Module := Shader;
          if Result /= Vk.SUCCESS or else Shader = System.Null_Address then
             return Create_Shader_Module_Failed;
          end if;
-
-         Module := Shader;
          return Ok;
       end Create_Shader_Module;
 

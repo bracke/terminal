@@ -97,12 +97,10 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
          Result :=
            Vk.Create_Render_Pass
              (Handle, Render_Info'Address, System.Null_Address, Render_Pass'Address);
+         Device.Render_Pass := Render_Pass;
          if Result /= Vk.SUCCESS or else Render_Pass = System.Null_Address then
-            Destroy_Color_MSAA_Target (Handle);
             return Create_Render_Pass_Failed;
          end if;
-
-         Device.Render_Pass := Render_Pass;
 
          for I in 1 .. Device.Swapchain_View_Count loop
             declare
@@ -130,17 +128,13 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
                Result :=
                  Vk.Create_Framebuffer
                    (Handle, FB_Info'Address, System.Null_Address, Framebuffer'Address);
+               if Framebuffer /= System.Null_Address then
+                  Device.Framebuffers (I) := Framebuffer;
+                  Device.Framebuffer_Count := I;
+               end if;
                if Result /= Vk.SUCCESS or else Framebuffer = System.Null_Address then
-                  Destroy_Framebuffers (Handle);
-                  Vk.Destroy_Render_Pass
-                    (Handle, Device.Render_Pass, System.Null_Address);
-                  Device.Render_Pass := System.Null_Address;
-                  Destroy_Color_MSAA_Target (Handle);
                   return Create_Framebuffer_Failed;
                end if;
-
-               Device.Framebuffers (I) := Framebuffer;
-               Device.Framebuffer_Count := I;
             end;
          end loop;
 

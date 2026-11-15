@@ -1,4 +1,34 @@
 package body Terminal.App.Image_Upload_Layout is
+   function Required_Source_Bytes
+     (Width                  : Natural;
+      Height                 : Natural;
+      Source_Bytes_Per_Pixel : Natural;
+      Row_Stride_Bytes       : Natural;
+      Maximum_Bytes          : Positive) return Natural
+   is
+      Source_Row : Natural;
+   begin
+      if Width = 0
+        or else Height = 0
+        or else Source_Bytes_Per_Pixel = 0
+        or else Width > Maximum_Bytes / Source_Bytes_Per_Pixel
+      then
+         return 0;
+      end if;
+
+      Source_Row := Width * Source_Bytes_Per_Pixel;
+      if Row_Stride_Bytes < Source_Row
+        or else Row_Stride_Bytes > Maximum_Bytes
+        or else
+          (Height > 1
+           and then Row_Stride_Bytes >
+             (Maximum_Bytes - Source_Row) / (Height - 1))
+      then
+         return 0;
+      end if;
+      return (Height - 1) * Row_Stride_Bytes + Source_Row;
+   end Required_Source_Bytes;
+
    procedure Calculate
      (Width                  : Natural;
       Height                 : Natural;
@@ -33,19 +63,18 @@ package body Terminal.App.Image_Upload_Layout is
 
       Target_Row := Width * Target_Bytes_Per_Pixel;
       Source_Row := Width * Source_Bytes_Per_Pixel;
-      if Row_Stride_Bytes < Source_Row
-        or else Row_Stride_Bytes > Maximum_Bytes
-        or else Height > Maximum_Bytes / Target_Row
-        or else
-          (Height > 1
-           and then Row_Stride_Bytes >
-             (Maximum_Bytes - Source_Row) / (Height - 1))
+      Required := Required_Source_Bytes
+        (Width,
+         Height,
+         Source_Bytes_Per_Pixel,
+         Row_Stride_Bytes,
+         Maximum_Bytes);
+      if Required = 0 or else Height > Maximum_Bytes / Target_Row
       then
          return;
       end if;
 
       Upload := Target_Row * Height;
-      Required := (Height - 1) * Row_Stride_Bytes + Source_Row;
       if Source_Bytes_Per_Pixel = 4
         and then Row_Stride_Bytes > Target_Row
         and then Row_Stride_Bytes mod 4 = 0

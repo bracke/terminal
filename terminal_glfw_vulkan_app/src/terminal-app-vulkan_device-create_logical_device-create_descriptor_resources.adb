@@ -73,19 +73,18 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
          Result :=
            Vk.Create_Descriptor_Set_Layout
              (Handle, Layout_Info'Address, System.Null_Address, Layout'Address);
+         Device.Descriptor_Set_Layout := Layout;
          if Result /= Vk.SUCCESS or else Layout = System.Null_Address then
             return Create_Descriptor_Set_Layout_Failed;
          end if;
-         Device.Descriptor_Set_Layout := Layout;
 
          Result :=
            Vk.Create_Descriptor_Pool
              (Handle, Pool_Info'Address, System.Null_Address, Pool'Address);
+         Device.Descriptor_Pool := Pool;
          if Result /= Vk.SUCCESS or else Pool = System.Null_Address then
-            Destroy_Descriptor_Resources (Handle);
             return Create_Descriptor_Pool_Failed;
          end if;
-         Device.Descriptor_Pool := Pool;
 
          Layouts (1) := Device.Descriptor_Set_Layout;
          Allocate_Info :=
@@ -97,20 +96,18 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
          Result :=
            Vk.Allocate_Descriptor_Sets
              (Handle, Allocate_Info'Address, Descriptor_Set'Address);
+         Device.Descriptor_Set := Descriptor_Set;
          if Result /= Vk.SUCCESS or else Descriptor_Set = System.Null_Address then
-            Destroy_Descriptor_Resources (Handle);
             return Allocate_Descriptor_Set_Failed;
          end if;
-         Device.Descriptor_Set := Descriptor_Set;
 
          Result :=
            Vk.Create_Sampler
              (Handle, Sampler_Info'Address, System.Null_Address, Sampler'Address);
+         Device.Atlas_Sampler := Sampler;
          if Result /= Vk.SUCCESS or else Sampler = System.Null_Address then
-            Destroy_Descriptor_Resources (Handle);
             return Create_Atlas_Sampler_Failed;
          end if;
-         Device.Atlas_Sampler := Sampler;
          Device.Image_Texture_Descriptor_Capacity := 2;
          Device.Image_Texture_Descriptor_Bound_Count := 0;
 

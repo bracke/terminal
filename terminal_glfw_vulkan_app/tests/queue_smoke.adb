@@ -26,29 +26,12 @@ procedure Queue_Smoke is
    end Push_PTY_Byte;
 
    procedure Push_Input_Byte (Value : Byte) is
-      Chunk : Q.Byte_Chunk;
       Event : Q.Input_Event;
    begin
-      Chunk := (others => <>);
-      Chunk.Length := 1;
-      Chunk.Data (1) := Value;
       Event :=
-        (Kind => Q.Bytes,
-         Width => 0,
-         Height => 0,
-         Bytes => Chunk,
-         Key_Event =>
-           (Key => GLFW_Vulkan.Input.Unknown,
-            Raw_Key => 0,
-            Scancode => 0,
-            Action => GLFW_Vulkan.Input.Release,
-            Modifiers => (others => False)),
+        (Kind => Q.Character,
          Character_Event =>
-           (Code_Point => Wide_Wide_Character'Val (0)),
-         Button_Event => (others => <>),
-         Cursor_Event => (others => <>),
-         Scroll_Event => (others => <>),
-         Focus_Event => (others => <>));
+           (Code_Point => Wide_Wide_Character'Val (Natural (Value))));
       Input.Push (Event);
    end Push_Input_Byte;
 
@@ -68,9 +51,11 @@ procedure Queue_Smoke is
    begin
       Input.Pop (Event, Available);
       Assert (Available, Message & " available");
-      Assert (Event.Kind = Q.Bytes, Message & " kind");
-      Assert (Event.Bytes.Length = 1, Message & " length");
-      Assert (Event.Bytes.Data (1) = Expected, Message & " value");
+      Assert (Event.Kind = Q.Character, Message & " kind");
+      Assert
+        (Wide_Wide_Character'Pos (Event.Character_Event.Code_Point) =
+           Natural (Expected),
+         Message & " value");
    end Assert_Input_Byte;
 
    Empty_Chunk : Q.Byte_Chunk;
@@ -270,7 +255,7 @@ begin
 
    declare
       Motion : Q.Input_Event :=
-        (Kind => Q.Cursor_Position, others => <>);
+        (Kind => Q.Cursor_Position, Cursor_Event => (others => <>));
    begin
       Input.Push (Motion);
       Input.Push (Motion);

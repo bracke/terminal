@@ -3,6 +3,11 @@ procedure Resize_Surface is
    New_Rows : Positive;
    New_Cols : Positive;
    Resized : Boolean;
+   procedure Clamp_Scroll (Core : in out Terminal.Core.Terminal) is
+   begin
+      Scroll_Offset :=
+        Terminal.App.Scrollback_View.Clamp_Offset (Core, Scroll_Offset);
+   end Clamp_Scroll;
 begin
    GLFW_Vulkan.Windows.Framebuffer_Size (W, FB_Width, FB_Height);
    Terminal.App.Renderer.Set_Framebuffer_Size (R, FB_Width, FB_Height);
@@ -26,8 +31,8 @@ begin
    if Resized then
       Last_Rows := New_Rows;
       Last_Cols := New_Cols;
-      Scroll_Offset := Terminal.App.Scrollback_View.Clamp_Offset
-        (Active_Core.all, Scroll_Offset);
+      Terminal.App.Session_Runtime.With_Core
+        (Active_Core, Clamp_Scroll'Access);
       Terminal.App.Selection.Clear (Selection);
       Apply_Hovered_Link ((others => <>));
       Dirty := True;

@@ -2,10 +2,12 @@ name = "terminal"
 description = "Ada GLFW/Vulkan terminal emulator application"
 version = "0.1.0-dev"
 licenses = "MIT"
-long-description = "terminal is a Linux-first Ada 2022 terminal emulator with a Windows ConPTY backend, split so that the parts worth reusing are reusable: glfw_vulkan is a GLFW window, event and surface helper for any Vulkan application; terminal_common holds platform-neutral byte and status types; terminal_core is a deterministic byte-oriented emulator core that can be tested without a display; terminal_pty selects the POSIX or Windows session backend; and terminal_glfw_vulkan_app is the wiring that makes an application of them."
+long-description = "terminal is a Linux-first Ada 2022 terminal emulator with a Windows ConPTY backend, split so that the parts worth reusing are reusable: c_string_ownership provides neutral cancellation-safe temporary C strings; glfw_vulkan is a GLFW window, event and surface helper for any Vulkan application; terminal_common holds platform-neutral byte and status types; terminal_core is a deterministic byte-oriented emulator core that can be tested without a display; terminal_pty selects the POSIX or Windows session backend; and terminal_glfw_vulkan_app is the wiring that makes an application of them."
 project-files = ["terminal.gpr"]
 
 [[depends-on]]
+gnat_native = "=15.2.1"
+c_string_ownership = "*"
 terminal_common = "*"
 terminal_core = "*"
 terminal_pty = "*"
@@ -16,8 +18,13 @@ zlib = "*"
 jpeglib = "*"
 giflib = "*"
 pictlib = "*"
+a11y = "*"
+hostkit = "*"
+messages = "*"
+i18n = "*"
 
 [[pins]]
+c_string_ownership = { path = "c_string_ownership" }
 terminal_common = { path = "terminal_common" }
 terminal_core = { path = "terminal_core" }
 terminal_pty = { path = "terminal_pty" }
@@ -27,3 +34,7 @@ zlib = { path = "../zlib" }
 jpeglib = { path = "../jpeglib" }
 giflib = { path = "../giflib" }
 pictlib = { path = "../pictlib" }
+a11y = { path = "../a11ykit" }
+hostkit = { path = "../hostkit" }
+messages = { path = "../messages" }
+i18n = { path = "../i18n" }

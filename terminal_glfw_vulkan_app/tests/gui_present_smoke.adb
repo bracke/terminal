@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with Ada.Command_Line;
 with Ada.Environment_Variables;
 with Ada.Streams;
@@ -37,9 +38,9 @@ procedure GUI_Present_Smoke is
    use type Terminal.App.Vulkan_Presenter.Present_Status;
    use type Terminal.App.Vulkan_Presenter.Readback_Status;
    use type Terminal.Core.Feed_Status;
-   use type Terminal.Core.Ignored_Graphics_Protocol;
+   use type Terminal.Core.Graphics_Protocol_Kind;
    use type Terminal.Core.Initialize_Status;
-   use type Terminal.Core.Kitty_Graphics_Result_Code;
+   use type Terminal.Core.Graphics_Completion_Code;
 
    --  AUnit's Assert outside a test case raises with no word of what
    --  failed; say it on standard error first, so a CI log names the check.
@@ -54,8 +55,10 @@ procedure GUI_Present_Smoke is
    end Assert;
 
    Ctx : GLFW_Vulkan.Context;
+   Lease_Ctx : GLFW_Vulkan.Context;
    W   : GLFW_Vulkan.Windows.Window;
    Init : GLFW_Vulkan.Init_Status;
+   Lease_Init : GLFW_Vulkan.Init_Status;
    Window_Status : GLFW_Vulkan.Windows.Create_Status;
    Vk_Ctx : Terminal.App.Vulkan_Context.Context;
    Vk_Status : Terminal.App.Vulkan_Context.Init_Status;
@@ -117,7 +120,7 @@ procedure GUI_Present_Smoke is
       while Terminal.Core.Pending_Graphics_Event_Count (T) > 0 loop
          declare
             Event : Terminal.Core.Graphics_Event;
-            Result : Terminal.Core.Kitty_Graphics_Result;
+            Result : Terminal.Core.Graphics_Completion;
             Snap : Terminal.Core.Render_Snapshot;
             Snaps : Terminal.App.Renderer.Snapshot_Array (1 .. 1);
          begin
@@ -129,7 +132,7 @@ procedure GUI_Present_Smoke is
             --  results; Render_App leaves the commit to the caller, so the
             --  result can be read first.
             Terminal.Core.Snapshot (T, Snaps (1));
-            Snaps (1).Graphics := Event;
+            Terminal.Core.Snapshot_Editing.Set_Graphics (Snaps (1), Event);
             Terminal.App.Renderer.Layout.Render_App
               (R,
                Snaps,
@@ -148,7 +151,7 @@ procedure GUI_Present_Smoke is
             --  Render immediately after commit, before subsequent bytes can
             --  switch screens or erase the placement as tmux exits.
             Terminal.Core.Snapshot (T, Snap);
-            Snap.Graphics := (others => <>);
+            Terminal.Core.Snapshot_Editing.Set_Graphics (Snap, (others => <>));
             Terminal.App.Renderer.Render (R, Snap, Render_Status);
             Terminal.Core.Release (Snap);
             Assert
@@ -170,7 +173,7 @@ procedure GUI_Present_Smoke is
                   Target_Index : Natural := 0;
                begin
                   Assert
-                    (Result.Code = Terminal.Core.Kitty_OK,
+                    (Result.Code = Terminal.Core.Graphics_OK,
                      "graphics event should install successfully");
                   for Index in 1 .. Frame.Image_Count loop
                      if Frame.Images (Index).Protocol = Expected_Protocol then
@@ -325,6 +328,16 @@ begin
          & GLFW_Vulkan.Windows.Create_Status'Image (Window_Status));
       return;
    end if;
+
+   --  A live window owns a runtime lease independently of the context used
+   --  to create it.  Releasing that context must therefore leave GLFW usable,
+   --  and another context must be able to join and leave the same runtime.
+   GLFW_Vulkan.Finalize (Ctx);
+   GLFW_Vulkan.Initialize (Lease_Ctx, Lease_Init);
+   Assert
+     (Lease_Init = GLFW_Vulkan.Ok,
+      "a second context should share the live GLFW runtime");
+   GLFW_Vulkan.Finalize (Lease_Ctx);
 
    GLFW_Vulkan.Events.Poll;
    Assert (GLFW_Vulkan.Windows.Is_Valid (W), "window should be valid");

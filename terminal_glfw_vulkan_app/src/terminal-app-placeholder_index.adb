@@ -64,27 +64,30 @@ package body Terminal.App.Placeholder_Index is
       Item.Placements.Clear;
       Item.Conventionals.Clear;
       Item.Objects.Clear;
+      Item.Referenced_Objects.Clear;
       Item.Origins.Clear;
       Item.Origin_Epoch := 0;
 
       while Virtual /= null loop
          declare
+            S : constant Terminal.App.Image_Placements.Virtual_Placement_State :=
+              Terminal.App.Image_Placements.State (Virtual);
             Exact : constant Placement_Key :=
               Key_Of
-                (Virtual.Stream_ID,
-                 Virtual.Alternate_Screen,
-                 Virtual.Screen_Generation,
-                 Virtual.Image_ID,
-                 Virtual.Placement_ID);
+                (S.Stream_ID,
+                 S.Alternate_Screen,
+                 S.Screen_Generation,
+                 S.Image_ID,
+                 S.Placement_ID);
             Fallback : constant Placement_Key :=
               Key_Of
-                (Virtual.Stream_ID,
-                 Virtual.Alternate_Screen,
-                 Virtual.Screen_Generation,
-                 Virtual.Image_ID,
+                (S.Stream_ID,
+                 S.Alternate_Screen,
+                 S.Screen_Generation,
+                 S.Image_ID,
                  0);
          begin
-            if Virtual.Placement_ID /= 0
+            if S.Placement_ID /= 0
               and then not Item.Placements.Contains (Exact)
             then
                Item.Placements.Insert (Exact, Virtual);
@@ -92,25 +95,46 @@ package body Terminal.App.Placeholder_Index is
             if not Item.Placements.Contains (Fallback) then
                Item.Placements.Insert (Fallback, Virtual);
             end if;
+            declare
+               Object : constant Object_Key :=
+                 (Stream_ID     => S.Stream_ID,
+                  Storage_Order => S.Image_Storage_Order);
+            begin
+               if not Item.Referenced_Objects.Contains (Object) then
+                  Item.Referenced_Objects.Insert (Object);
+               end if;
+            end;
          end;
-         Virtual := Virtual.Next;
+         Virtual := Terminal.App.Image_Placements.Next (Virtual);
       end loop;
 
       while Conventional /= null loop
          declare
+            S : constant
+              Terminal.App.Image_Placements.Conventional_Placement_State :=
+                Terminal.App.Image_Placements.State (Conventional);
             Exact : constant Placement_Key :=
               Key_Of
-                (Conventional.Stream_ID,
-                 Conventional.Alternate_Screen,
-                 Conventional.Screen_Generation,
-                 Conventional.Image_ID,
-                 Conventional.Placement_ID);
+                (S.Stream_ID,
+                 S.Alternate_Screen,
+                 S.Screen_Generation,
+                 S.Image_ID,
+                 S.Placement_ID);
          begin
             if not Item.Conventionals.Contains (Exact) then
                Item.Conventionals.Insert (Exact, Conventional);
             end if;
+            declare
+               Object : constant Object_Key :=
+                 (Stream_ID     => S.Stream_ID,
+                  Storage_Order => S.Image_Storage_Order);
+            begin
+               if not Item.Referenced_Objects.Contains (Object) then
+                  Item.Referenced_Objects.Insert (Object);
+               end if;
+            end;
          end;
-         Conventional := Conventional.Next;
+         Conventional := Terminal.App.Image_Placements.Next (Conventional);
       end loop;
 
       while Object /= null loop
@@ -144,15 +168,15 @@ package body Terminal.App.Placeholder_Index is
       --  retained cell array.  Advancing the epoch is enough to invalidate
       --  origins from the preceding snapshot when there are none to index;
       --  do not add another full-grid traversal to ordinary text frames.
-      if Snapshot.Image_Cell_Count = 0 then
+      if Terminal.Core.Image_Cell_Count (Snapshot) = 0 then
          return;
       end if;
 
       for Row in 1 .. Snapshot.Rows loop
          for Col in 1 .. Snapshot.Cols loop
             declare
-               Cell : constant Terminal.Core.Cell :=
-                 Terminal.Core.Cell_At (Snapshot, Row, Col);
+               Cell : constant Terminal.Core.Cell_Content :=
+                 Terminal.Core.Cell_Content_At (Snapshot, Row, Col);
             begin
                if Cell.Image.Is_Placeholder
                  and then Cell.Image.Image_ID_Valid
@@ -257,6 +281,13 @@ package body Terminal.App.Placeholder_Index is
       end if;
       return null;
    end Find_Object;
+
+   function Has_Object_Placement
+     (Item          : Index;
+      Stream_ID     : Terminal.Core.Graphics_Stream_ID;
+      Storage_Order : Interfaces.Unsigned_64) return Boolean is
+     (Item.Referenced_Objects.Contains
+        ((Stream_ID => Stream_ID, Storage_Order => Storage_Order)));
 
    function Find_Origin
      (Item              : Index;

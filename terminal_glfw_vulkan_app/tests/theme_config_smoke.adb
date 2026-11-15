@@ -390,7 +390,7 @@ begin
       Terminal.App.Config.Apply_Line
         (C,
          "startup-cols ="
-         & Natural'Image (Terminal.App.Config.Max_Startup_Cells + 1),
+         & Natural'Image (Terminal.App.Config.Max_Startup_Dimension + 1),
          Status);
       Assert
         (Status = Terminal.App.Config.Invalid_Value,

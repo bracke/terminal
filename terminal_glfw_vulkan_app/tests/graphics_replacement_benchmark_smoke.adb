@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with Ada.Environment_Variables;
 with Ada.Real_Time;
 with Ada.Text_IO;
@@ -61,7 +62,7 @@ procedure Graphics_Replacement_Benchmark_Smoke is
 
    procedure Replace (Payload : String) is
       Event : Terminal.Core.Graphics_Event;
-      Result : Terminal.Core.Kitty_Graphics_Result;
+      Result : Terminal.Core.Graphics_Completion;
       Snapshot : Terminal.Core.Render_Snapshot;
       Command : constant String :=
         ASCII.ESC
@@ -74,7 +75,7 @@ procedure Graphics_Replacement_Benchmark_Smoke is
       Assert (Event.Pending, "replacement event");
 
       Terminal.Core.Snapshot (T, Snapshot);
-      Snapshot.Graphics := Event;
+      Terminal.Core.Snapshot_Editing.Set_Graphics (Snapshot, Event);
       Terminal.App.Renderer.Render (R, Snapshot, Render_Result);
       Terminal.Core.Release (Snapshot);
       Assert (Render_Result = Terminal.App.Renderer.Ok, "replacement render");

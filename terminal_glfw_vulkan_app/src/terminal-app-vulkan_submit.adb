@@ -1,9 +1,13 @@
 with Ada.Containers.Generic_Array_Sort;
 with Ada.Unchecked_Deallocation;
+with System.Address_To_Access_Conversions;
+with System.Storage_Elements;
 
 with Terminal.Common.Bytes;
-with Terminal.Common.Status;
-with Terminal.App.Status_Labels;
+with Terminal.App.Bounded_Append;
+with Terminal.App.Vulkan_Submit.Diagnostics;
+with Terminal.App.Vulkan_Submit.Source_Rows;
+with Terminal.App.Vulkan_Submit.Validation;
 
 package body Terminal.App.Vulkan_Submit is
    package RM renames Terminal.App.Render_Model;
@@ -12,7 +16,6 @@ package body Terminal.App.Vulkan_Submit is
    use type RM.Glyph_Array_View;
    use type RM.Image_Array_Access;
    use type RM.Image_Array_View;
-   use type RM.Image_Data_Access;
    use type RM.Image_Data_View;
    use type RM.Image_Decode_Status;
    use type RM.Image_Decoded_Source_Kind;
@@ -27,40 +30,14 @@ package body Terminal.App.Vulkan_Submit is
    use type Vertex_Array_Access;
    use type Vertex_Array_View;
 
-   function Trimmed_Natural (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
-   begin
-      return Text (Text'First + 1 .. Text'Last);
-   end Trimmed_Natural;
+   function Status_Label (Status : Build_Status) return String
+     renames Diagnostics.Status_Label;
 
-   function Humanize (Text : String) return String
-      renames Terminal.App.Status_Labels.Humanize;
-
-   function Status_Label (Status : Build_Status) return String is
-      Label : constant String := "Submit build: " & Humanize (Build_Status'Image (Status));
-   begin
-      if Label'Length > Max_Status_Label_Length then
-         return Label (1 .. Max_Status_Label_Length);
-      else
-         return Label;
-      end if;
-   end Status_Label;
-
-   function Texture_Source_Label (Source : Texture_Source) return String is
-   begin
-      case Source is
-         when Texture_None =>
-            return "none";
-         when Texture_Text_Atlas =>
-            return "text-atlas";
-         when Texture_Image =>
-            return "image";
-         when Texture_Colour_Glyphs =>
-            return "colour-glyphs";
-      end case;
-   end Texture_Source_Label;
+   function Texture_Source_Label (Source : Texture_Source) return String
+     renames Diagnostics.Texture_Source_Label;
 
    use type System.Address;
+   use System.Storage_Elements;
    use type RM.Colour_Glyph_Array_Access;
    use type RM.Colour_Glyph_Array_View;
 
@@ -72,6 +49,220 @@ package body Terminal.App.Vulkan_Submit is
      (Image_Atlas_Source_Array, Image_Atlas_Source_Array_Access);
    procedure Free_Image_Order is new Ada.Unchecked_Deallocation
      (Image_Order_Array, Image_Order_Array_Access);
+
+   procedure Append_Bounded_Vertex is new Terminal.App.Bounded_Append
+     (Vertex, Vertex_Array, Vertex_Array_Access);
+
+   package Byte_Addresses is new System.Address_To_Access_Conversions
+     (Terminal.Common.Bytes.Byte);
+
+   procedure Copy_Address
+     (Source : System.Address;
+      Length : Natural;
+      Target : in out Terminal.App.Owned_Image_Data.Owner)
+   is
+      Replacement : Terminal.App.Owned_Image_Data.Owner;
+
+      procedure Fill (Data : in out Terminal.Common.Bytes.Byte_Array) is
+      begin
+         for Offset in 0 .. Length - 1 loop
+            Data (Data'First + Offset) := Byte_Addresses.To_Pointer
+              (Source + System.Storage_Elements.Storage_Offset (Offset)).all;
+         end loop;
+      end Fill;
+   begin
+      if Length = 0 or else Source = System.Null_Address then
+         Terminal.App.Owned_Image_Data.Release (Target);
+         return;
+      end if;
+      Terminal.App.Owned_Image_Data.Allocate (Replacement, Positive (Length));
+      Terminal.App.Owned_Image_Data.Modify (Replacement, Fill'Access);
+      Terminal.App.Owned_Image_Data.Release (Target);
+      Terminal.App.Owned_Image_Data.Move (Replacement, Target);
+   end Copy_Address;
+
+   procedure Release_Image_Source (Source : in out Image_Atlas_Source) is
+   begin
+      Terminal.App.Shared_Image_Data.Reset (Source.Decoded);
+      Terminal.App.Shared_Image_Data.Reset (Source.Encoded);
+      Terminal.App.Shared_Image_Data.Reset (Source.Preview);
+      Source.Command := (others => <>);
+      Source.Input_Decoded := null;
+      Source.Input_Encoded := null;
+      Source.X := 0;
+      Source.Y := 0;
+      Source.Width := 0;
+      Source.Height := 0;
+   end Release_Image_Source;
+
+   function Source_View_Length
+     (View : RM.Image_Data_View;
+      Declared_Length : Natural) return Natural is
+     (if View = null then 0
+      else Natural'Min (Declared_Length, View'Length));
+
+   function Image_Source_Copy_Bytes
+     (Command : RM.Image_Command) return Natural
+   is
+      Decoded_Length : constant Natural := Source_View_Length
+        (Command.Decoded_Bytes, Command.Decoded_Byte_Length);
+      Encoded_Length : constant Natural := Source_View_Length
+        (Command.Encoded_Source_Bytes, Command.Encoded_Source_Length);
+      Preview_Length : constant Natural := Source_View_Length
+        (Command.Decoded_Preview_Bytes, Command.Decoded_Preview_Length);
+      Total : Natural := Decoded_Length;
+   begin
+      if Encoded_Length > 0
+        and then not
+          (Command.Encoded_Source_Bytes = Command.Decoded_Bytes
+           and then Encoded_Length <= Decoded_Length)
+      then
+         if Encoded_Length > Natural'Last - Total then
+            return Natural'Last;
+         end if;
+         Total := Total + Encoded_Length;
+      end if;
+      if Preview_Length > 0
+        and then not
+          ((Command.Decoded_Preview_Bytes = Command.Decoded_Bytes
+            and then Preview_Length <= Decoded_Length)
+           or else
+             (Command.Decoded_Preview_Bytes = Command.Encoded_Source_Bytes
+              and then Preview_Length <= Encoded_Length))
+      then
+         if Preview_Length > Natural'Last - Total then
+            return Natural'Last;
+         end if;
+         Total := Total + Preview_Length;
+      end if;
+      return Total;
+   end Image_Source_Copy_Bytes;
+
+   procedure Own_Image_Source
+     (Command : RM.Image_Command;
+      Source  : in out Image_Atlas_Source)
+   is
+      Decoded_Length : constant Natural := Source_View_Length
+        (Command.Decoded_Bytes, Command.Decoded_Byte_Length);
+      Encoded_Length : constant Natural := Source_View_Length
+        (Command.Encoded_Source_Bytes, Command.Encoded_Source_Length);
+      Preview_Length : constant Natural := Source_View_Length
+        (Command.Decoded_Preview_Bytes, Command.Decoded_Preview_Length);
+   begin
+      Release_Image_Source (Source);
+      Source.Command := Command;
+      Source.Input_Decoded := Command.Decoded_Bytes;
+      Source.Input_Encoded := Command.Encoded_Source_Bytes;
+      Terminal.App.Shared_Image_Data.Set
+        (Source.Decoded, Command.Decoded_Bytes, Decoded_Length);
+      if Encoded_Length > 0
+        and then Command.Encoded_Source_Bytes = Command.Decoded_Bytes
+        and then Encoded_Length <= Decoded_Length
+      then
+         Source.Encoded := Source.Decoded;
+      else
+         Terminal.App.Shared_Image_Data.Set
+           (Source.Encoded,
+            Command.Encoded_Source_Bytes,
+            Encoded_Length);
+      end if;
+      if Preview_Length > 0
+        and then Command.Decoded_Preview_Bytes = Command.Decoded_Bytes
+        and then Preview_Length <= Decoded_Length
+      then
+         Source.Preview := Source.Decoded;
+      elsif Preview_Length > 0
+        and then Command.Decoded_Preview_Bytes = Command.Encoded_Source_Bytes
+        and then Preview_Length <= Encoded_Length
+      then
+         Source.Preview := Source.Encoded;
+      else
+         Terminal.App.Shared_Image_Data.Set
+           (Source.Preview,
+            Command.Decoded_Preview_Bytes,
+            Preview_Length);
+      end if;
+      Source.Command.Decoded_Bytes :=
+        Terminal.App.Shared_Image_Data.View (Source.Decoded);
+      Source.Command.Encoded_Source_Bytes :=
+        Terminal.App.Shared_Image_Data.View (Source.Encoded);
+      Source.Command.Decoded_Preview_Bytes :=
+        Terminal.App.Shared_Image_Data.View (Source.Preview);
+   exception
+      when others =>
+         Release_Image_Source (Source);
+         raise;
+   end Own_Image_Source;
+
+   function Owner_Address
+     (Owner : Terminal.App.Owned_Image_Data.Owner) return System.Address
+   is
+      View : constant RM.Image_Data_View :=
+        Terminal.App.Owned_Image_Data.Unsafe_View (Owner);
+   begin
+      return
+        (if View = null then System.Null_Address else View.all'Address);
+   end Owner_Address;
+
+   procedure Publish_Text_Atlas
+     (Frame : RM.Frame_Commands;
+      Batch : in out Submission_Batch)
+   is
+      Required : Natural := 0;
+   begin
+      if Frame.Glyph_Count > 0 then
+         --  Validation has already proved this multiplication and the backend
+         --  limits safe.  Copy only the texels glyph commands can address,
+         --  never an arbitrary producer capacity.
+         Required := Frame.Atlas_Width * Frame.Atlas_Height;
+      end if;
+      if Required = 0 or else Frame.Atlas_Pixels = System.Null_Address
+      then
+         Terminal.App.Owned_Image_Data.Release (Batch.Text_Atlas_Owner);
+      elsif Frame.Atlas_Dirty
+        or else Terminal.App.Owned_Image_Data.Length
+          (Batch.Text_Atlas_Owner) /= Required
+      then
+         Copy_Address
+           (Frame.Atlas_Pixels, Required, Batch.Text_Atlas_Owner);
+      end if;
+      Batch.Text_Atlas_Width := (if Required = 0 then 0 else Frame.Atlas_Width);
+      Batch.Text_Atlas_Height := (if Required = 0 then 0 else Frame.Atlas_Height);
+      Batch.Text_Atlas_Pixels := Owner_Address (Batch.Text_Atlas_Owner);
+      Batch.Text_Atlas_Bytes :=
+        Terminal.App.Owned_Image_Data.Length (Batch.Text_Atlas_Owner);
+      Batch.Dirty_Atlas := Required > 0 and then Frame.Atlas_Dirty;
+   end Publish_Text_Atlas;
+
+   procedure Publish_Colour_Atlas
+     (Frame : RM.Frame_Commands;
+      Batch : in out Submission_Batch)
+   is
+      Byte_Count : Natural := 0;
+   begin
+      if Frame.Colour_Glyph_Count > 0
+        and then Frame.Colour_Sheet_Pixels /= System.Null_Address
+      then
+         Byte_Count :=
+           Frame.Colour_Sheet_Width * Frame.Colour_Sheet_Height * 4;
+      end if;
+      if Byte_Count = 0 then
+         Terminal.App.Owned_Image_Data.Release (Batch.Colour_Sheet_Owner);
+      elsif Frame.Colour_Sheet_Dirty
+        or else Terminal.App.Owned_Image_Data.Length
+          (Batch.Colour_Sheet_Owner) /= Byte_Count
+      then
+         Copy_Address
+           (Frame.Colour_Sheet_Pixels, Byte_Count, Batch.Colour_Sheet_Owner);
+      end if;
+      if Byte_Count > 0 then
+         Batch.Colour_Atlas_W := Frame.Colour_Sheet_Width;
+         Batch.Colour_Atlas_H := Frame.Colour_Sheet_Height;
+         Batch.Colour_Atlas_Byte_Count := Byte_Count;
+         Batch.Colour_Sheet_Source := Owner_Address (Batch.Colour_Sheet_Owner);
+         Batch.Dirty_Colour_Atlas := Frame.Colour_Sheet_Dirty;
+      end if;
+   end Publish_Colour_Atlas;
 
    function Clip_X (Frame_Width : Natural; X : Float) return Float is
    begin
@@ -93,20 +284,22 @@ package body Terminal.App.Vulkan_Submit is
       Textured : Boolean;
       Texture : Texture_Source)
    is
+      Appended : Boolean;
    begin
-      if Batch.Items = null or else Batch.Count >= Batch.Items'Length then
-         return;
+      Append_Bounded_Vertex
+        (Batch.Items,
+         Batch.Count,
+         (X        => X,
+          Y        => Y,
+          U        => U,
+          V        => V,
+          Color    => Color,
+          Textured => Textured,
+          Texture  => Texture),
+         Appended);
+      if not Appended then
+         Batch.Vertex_Overflowed := True;
       end if;
-
-      Batch.Count := Batch.Count + 1;
-      Batch.Items (Batch.Count) :=
-        (X        => X,
-         Y        => Y,
-         U        => U,
-         V        => V,
-         Color    => Color,
-         Textured => Textured,
-         Texture  => Texture);
    end Append_Vertex;
 
    procedure Append_Quad
@@ -145,7 +338,14 @@ package body Terminal.App.Vulkan_Submit is
 
    procedure Reset (Batch : in out Submission_Batch) is
    begin
+      if Batch.Image_Atlas_Sources /= null then
+         for I in 1 .. Batch.Image_Atlas_Cached_Source_Total loop
+            Batch.Image_Atlas_Sources (I).Input_Decoded := null;
+            Batch.Image_Atlas_Sources (I).Input_Encoded := null;
+         end loop;
+      end if;
       Batch.Count := 0;
+      Batch.Vertex_Overflowed := False;
       Batch.Rectangle_Vertex_Total := 0;
       Batch.Glyph_Vertex_Total := 0;
       Batch.Image_Vertex_Total := 0;
@@ -201,6 +401,8 @@ package body Terminal.App.Vulkan_Submit is
    procedure Release (Batch : in out Submission_Batch) is
    begin
       Reset (Batch);
+      Terminal.App.Owned_Image_Data.Release (Batch.Text_Atlas_Owner);
+      Terminal.App.Owned_Image_Data.Release (Batch.Colour_Sheet_Owner);
       if Batch.Items /= null then
          Free_Vertices (Batch.Items);
       end if;
@@ -210,6 +412,8 @@ package body Terminal.App.Vulkan_Submit is
       if Batch.Image_Atlas_Sources /= null then
          Free_Image_Atlas_Sources (Batch.Image_Atlas_Sources);
       end if;
+      Batch.Image_Atlas_Cached_Source_Total := 0;
+      Batch.Image_Atlas_Cached_Byte_Count := 0;
       if Batch.Image_Order /= null then
          Free_Image_Order (Batch.Image_Order);
       end if;
@@ -242,28 +446,62 @@ package body Terminal.App.Vulkan_Submit is
      (Batch : Submission_Batch) return Image_Atlas_Limits is
      (Batch.Image_Atlas_Limit_Value);
 
+   function Has_Vertex_Data (Batch : Submission_Batch) return Boolean is
+     (Batch.Items /= null and then Batch.Count > 0);
+
+   function Vertex_At
+     (Batch : Submission_Batch;
+      Index : Positive) return Vertex
+   is
+   begin
+      if Batch.Items = null or else Index > Batch.Count then
+         raise Constraint_Error with "submission vertex index out of range";
+      end if;
+      return Batch.Items (Index);
+   end Vertex_At;
+
+   function Has_Colour_Atlas_Pixels
+     (Batch : Submission_Batch) return Boolean is
+     (Batch.Colour_Sheet_Source /= System.Null_Address
+      and then Batch.Colour_Atlas_Byte_Count > 0);
+
+   procedure Visit_Colour_Atlas_Pixels
+     (Batch : Submission_Batch;
+      Visit : not null access procedure (Pixels : System.Address)) is
+   begin
+      if Has_Colour_Atlas_Pixels (Batch) then
+         Visit (Batch.Colour_Sheet_Source);
+      end if;
+   end Visit_Colour_Atlas_Pixels;
+
+   function Has_Atlas_Pixels (Batch : Submission_Batch) return Boolean is
+     (Batch.Text_Atlas_Pixels /= System.Null_Address
+      and then Batch.Text_Atlas_Bytes > 0);
+
+   procedure Visit_Atlas_Pixels
+     (Batch : Submission_Batch;
+      Visit : not null access procedure (Pixels : System.Address)) is
+   begin
+      if Has_Atlas_Pixels (Batch) then
+         Visit (Batch.Text_Atlas_Pixels);
+      end if;
+   end Visit_Atlas_Pixels;
+
    overriding procedure Finalize (Batch : in out Submission_Batch) is
    begin
       Release (Batch);
    end Finalize;
 
-   function Colour_Atlas_Width (Batch : Submission_Batch) return Natural is
-     (Batch.Colour_Atlas_W);
-
-   function Colour_Atlas_Height (Batch : Submission_Batch) return Natural is
-     (Batch.Colour_Atlas_H);
-
-   function Colour_Atlas_Bytes (Batch : Submission_Batch) return Natural is
-     (Batch.Colour_Atlas_Byte_Count);
-
-   function Colour_Atlas_Pixels (Batch : Submission_Batch) return System.Address is
-     (Batch.Colour_Sheet_Source);
-
-   function Colour_Atlas_Dirty (Batch : Submission_Batch) return Boolean is
-     (Batch.Dirty_Colour_Atlas);
-
-   function Colour_Glyph_Vertex_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Colour_Glyph_Vertex_Total);
+   function Colour_Atlas_Width (Batch : Submission_Batch) return Natural
+     is (Batch.Colour_Atlas_W);
+   function Colour_Atlas_Height (Batch : Submission_Batch) return Natural
+     is (Batch.Colour_Atlas_H);
+   function Colour_Atlas_Bytes (Batch : Submission_Batch) return Natural
+     is (Batch.Colour_Atlas_Byte_Count);
+   function Colour_Atlas_Dirty (Batch : Submission_Batch) return Boolean
+     is (Batch.Dirty_Colour_Atlas);
+   function Colour_Glyph_Vertex_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Colour_Glyph_Vertex_Total);
 
    --  Draw this frame's colour glyphs from the sheet Textrender packed.
    --
@@ -340,20 +578,30 @@ package body Terminal.App.Vulkan_Submit is
         and then RM.Image_Decoded_Source_Available (Image);
    end Texture_Eligible;
 
+   function Same_Image_Layout
+     (Left  : RM.Image_Command;
+      Right : RM.Image_Command) return Boolean is
+     (Left.Decoded_Source = Right.Decoded_Source
+      and then Left.Raw_Format = Right.Raw_Format
+      and then Left.Pixel_Width = Right.Pixel_Width
+      and then Left.Pixel_Height = Right.Pixel_Height
+      and then Left.Decoded_Row_Stride_Bytes =
+        Right.Decoded_Row_Stride_Bytes
+      and then Left.Decoded_Byte_Length = Right.Decoded_Byte_Length
+      and then Left.Encoded_Source_Length = Right.Encoded_Source_Length);
+
    function Same_Image_Source
      (Left  : RM.Image_Command;
       Right : RM.Image_Command) return Boolean
    is
    begin
-      if Left.Decoded_Source /= Right.Decoded_Source
-        or else Left.Raw_Format /= Right.Raw_Format
-        or else Left.Pixel_Width /= Right.Pixel_Width
-        or else Left.Pixel_Height /= Right.Pixel_Height
-        or else Left.Decoded_Row_Stride_Bytes /=
-          Right.Decoded_Row_Stride_Bytes
-        or else Left.Decoded_Byte_Length /= Right.Decoded_Byte_Length
-      then
+      if not Same_Image_Layout (Left, Right) then
          return False;
+      end if;
+
+      if Left.Content_Serial /= 0 and then Right.Content_Serial /= 0 then
+         return Left.Content_Serial = Right.Content_Serial
+           and then Left.Image_ID = Right.Image_ID;
       end if;
 
       case Left.Decoded_Source is
@@ -379,7 +627,25 @@ package body Terminal.App.Vulkan_Submit is
          return 0;
       end if;
       for I in 1 .. Batch.Image_Atlas_Source_Total loop
-         if Same_Image_Source (Image, Batch.Image_Atlas_Sources (I).Command) then
+         if Same_Image_Source (Image, Batch.Image_Atlas_Sources (I).Command)
+           or else
+             (Image.Decoded_Source = RM.Image_Decoded_Source_Buffer
+              and then Image.Decoded_Bytes /= null
+              and then Image.Decoded_Bytes =
+                Batch.Image_Atlas_Sources (I).Input_Decoded
+              and then Same_Image_Layout
+                (Image, Batch.Image_Atlas_Sources (I).Command))
+           or else
+             (Image.Decoded_Source in
+                RM.Image_Decoded_Source_Raw_Base64 |
+                RM.Image_Decoded_Source_PNG_Base64 |
+                RM.Image_Decoded_Source_Sixel_Text
+              and then Image.Encoded_Source_Bytes /= null
+              and then Image.Encoded_Source_Bytes =
+                Batch.Image_Atlas_Sources (I).Input_Encoded
+              and then Same_Image_Layout
+                (Image, Batch.Image_Atlas_Sources (I).Command))
+         then
             return I;
          end if;
       end loop;
@@ -390,919 +656,196 @@ package body Terminal.App.Vulkan_Submit is
      (Frame : RM.Frame_Commands;
       Batch : in out Submission_Batch) is separate;
 
+   procedure Copy_Text_Runs
+     (Frame : RM.Frame_Commands;
+      Batch : in out Submission_Batch) is separate;
+
+   procedure Append_Image_Command
+     (Frame : RM.Frame_Commands;
+      Batch : in out Submission_Batch;
+      Image : RM.Image_Command) is separate;
+
    procedure Build
      (Frame  : RM.Frame_Commands;
       Batch  : in out Submission_Batch;
-      Status : out Build_Status)
-   is
-      Max_Vertices : Natural;
+      Status : out Build_Status) is separate;
 
-      function Finite (Value : Float) return Boolean is
-        (Value >= -Float'Last and then Value <= Float'Last);
-
-      function Color_Valid (Value : RM.Pixel_Color) return Boolean is
-        (Value.R in 0.0 .. 1.0
-         and then Value.G in 0.0 .. 1.0
-         and then Value.B in 0.0 .. 1.0
-         and then Value.A in 0.0 .. 1.0);
-
-      function Texture_Coordinates_Valid
-        (U0, V0, U1, V1 : Float) return Boolean is
-        (U0 in 0.0 .. 1.0
-         and then V0 in 0.0 .. 1.0
-         and then U1 in 0.0 .. 1.0
-         and then V1 in 0.0 .. 1.0);
-
-      --  Append_Quad adds each extent to its origin and maps both results to
-      --  clip space with a final multiplication by two.  Validate those
-      --  operations up front so malformed finite values cannot overflow after
-      --  the frame has already mutated the retained batch.
-      function Quad_Geometry_Valid
-        (X, Y, Width, Height : Float) return Boolean
-      is
-         Clip_Limit : constant Float := Float'Last / 2.0;
-      begin
-         return Finite (X)
-           and then Finite (Y)
-           and then Width >= 0.0
-           and then Height >= 0.0
-           and then X >= -Clip_Limit
-           and then X <= Clip_Limit
-           and then Y >= -Clip_Limit
-           and then Y <= Clip_Limit
-           and then Width <= Clip_Limit - X
-           and then Height <= Clip_Limit - Y;
-      end Quad_Geometry_Valid;
-
-      function Geometry_Valid (Image : RM.Image_Command) return Boolean is
-        (Quad_Geometry_Valid
-           (Image.X, Image.Y, Image.Width, Image.Height)
-         and then Image.Width <= Float (Natural'Last)
-         and then Image.Height <= Float (Natural'Last)
-         and then Texture_Coordinates_Valid
-           (Image.U0, Image.V0, Image.U1, Image.V1)
-         and then Color_Valid (Image.Tint));
-
-      function Command_Count_Valid return Boolean is
-        ((Frame.Rectangle_Count = 0
-          or else
-            (Frame.Rectangles /= null
-             and then Frame.Rectangles'First = 1
-             and then Frame.Rectangle_Count <= Frame.Rectangles'Length))
-         and then
-           (Frame.Glyph_Count = 0
-            or else
-              (Frame.Glyphs /= null
-               and then Frame.Glyphs'First = 1
-               and then Frame.Glyph_Count <= Frame.Glyphs'Length))
-         and then
-           (Frame.Colour_Glyph_Count = 0
-            or else
-              (Frame.Colour_Glyphs /= null
-               and then Frame.Colour_Glyphs'First = 1
-               and then
-                 Frame.Colour_Glyph_Count <= Frame.Colour_Glyphs'Length))
-         and then
-           (Frame.Image_Count = 0
-            or else
-              (Frame.Images /= null
-               and then Frame.Images'First = 1
-               and then Frame.Image_Count <= Frame.Images'Length))
-         and then
-           (Frame.Text_Run_Count = 0
-            or else
-              (Frame.Text_Runs /= null
-               and then Frame.Text_Runs'First = 1
-               and then Frame.Text_Run_Count <= Frame.Text_Runs'Length)));
-
-      function Vertex_Capacity_Valid return Boolean is
-         Total : Natural := Frame.Rectangle_Count;
-      begin
-         if Frame.Glyph_Count > Natural'Last - Total then
-            return False;
-         end if;
-         Total := Total + Frame.Glyph_Count;
-         if Frame.Image_Count > Natural'Last - Total then
-            return False;
-         end if;
-         Total := Total + Frame.Image_Count;
-         if Frame.Colour_Glyph_Count > Natural'Last - Total then
-            return False;
-         end if;
-         Total := Total + Frame.Colour_Glyph_Count;
-         return Total <= Natural'Last / 6;
-      end Vertex_Capacity_Valid;
-
-      function Command_Geometry_Valid return Boolean is
-      begin
-         for I in 1 .. Frame.Rectangle_Count loop
-            if not Quad_Geometry_Valid
-              (Frame.Rectangles (I).X,
-               Frame.Rectangles (I).Y,
-               Frame.Rectangles (I).Width,
-               Frame.Rectangles (I).Height)
-              or else not Color_Valid (Frame.Rectangles (I).Color)
-            then
-               return False;
-            end if;
-         end loop;
-         for I in 1 .. Frame.Glyph_Count loop
-            if not Quad_Geometry_Valid
-              (Frame.Glyphs (I).X,
-               Frame.Glyphs (I).Y,
-               Frame.Glyphs (I).Width,
-               Frame.Glyphs (I).Height)
-              or else not Texture_Coordinates_Valid
-                (Frame.Glyphs (I).U0,
-                 Frame.Glyphs (I).V0,
-                 Frame.Glyphs (I).U1,
-                 Frame.Glyphs (I).V1)
-              or else not Color_Valid (Frame.Glyphs (I).Color)
-            then
-               return False;
-            end if;
-         end loop;
-         for I in 1 .. Frame.Colour_Glyph_Count loop
-            if not Quad_Geometry_Valid
-              (Frame.Colour_Glyphs (I).X,
-               Frame.Colour_Glyphs (I).Y,
-               Float (Frame.Colour_Glyphs (I).Width),
-               Float (Frame.Colour_Glyphs (I).Height))
-              or else not Texture_Coordinates_Valid
-                (Frame.Colour_Glyphs (I).U0,
-                 Frame.Colour_Glyphs (I).V0,
-                 Frame.Colour_Glyphs (I).U1,
-                 Frame.Colour_Glyphs (I).V1)
-            then
-               return False;
-            end if;
-         end loop;
-         for I in 1 .. Frame.Image_Count loop
-            if not Geometry_Valid (Frame.Images (I)) then
-               return False;
-            end if;
-         end loop;
-         for I in 1 .. Frame.Text_Run_Count loop
-            if not Finite (Frame.Text_Runs (I).X)
-              or else not Finite (Frame.Text_Runs (I).Y)
-              or else not Finite (Frame.Text_Runs (I).Cell_Width)
-              or else Frame.Text_Runs (I).Cell_Width < 0.0
-              or else not Finite (Frame.Text_Runs (I).Cell_Height)
-              or else Frame.Text_Runs (I).Cell_Height < 0.0
-              or else not Color_Valid (Frame.Text_Runs (I).Color)
-            then
-               return False;
-            end if;
-            for J in 1 .. Frame.Text_Runs (I).Shaped_Glyph_Count loop
-               if not Finite (Frame.Text_Runs (I).Shaped_Glyphs (J).X_Offset)
-                 or else not Finite
-                   (Frame.Text_Runs (I).Shaped_Glyphs (J).Y_Offset)
-                 or else not Finite
-                   (Frame.Text_Runs (I).Shaped_Glyphs (J).X_Advance)
-                 or else not Finite
-                   (Frame.Text_Runs (I).Shaped_Glyphs (J).Y_Advance)
-               then
-                  return False;
-               end if;
-            end loop;
-         end loop;
-         return True;
-      end Command_Geometry_Valid;
-
-      function Colour_Atlas_Size_Valid return Boolean is
-        (Frame.Colour_Glyph_Count = 0
-         or else
-           (Frame.Colour_Sheet_Pixels /= System.Null_Address
-            and then Frame.Colour_Sheet_Width > 0
-            and then Frame.Colour_Sheet_Height > 0
-            and then Frame.Colour_Sheet_Width <= Natural'Last / 4
-            and then Frame.Colour_Sheet_Height <=
-              Natural'Last / (Frame.Colour_Sheet_Width * 4)));
-
-      function Shaped_Glyph_Total_Valid return Boolean is
-         Total : Natural := 0;
-      begin
-         for I in 1 .. Frame.Text_Run_Count loop
-            if Natural (Frame.Text_Runs (I).Shaped_Glyph_Count) >
-              Natural'Last - Total
-            then
-               return False;
-            end if;
-            Total := Total + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
-         end loop;
-         return True;
-      end Shaped_Glyph_Total_Valid;
-
-      procedure Copy_Text_Runs is
-      begin
-         if Frame.Text_Run_Count = 0 then
-            return;
-         end if;
-         if Batch.Text_Runs = null
-           or else Batch.Text_Runs'Length < Frame.Text_Run_Count
-         then
-            declare
-               Replacement : RM.Text_Run_Array_Access :=
-                 new RM.Text_Run_Array
-                   (1 .. Grown_Capacity
-                     ((if Batch.Text_Runs = null
-                       then 0
-                       else Batch.Text_Runs'Length),
-                      Positive (Frame.Text_Run_Count)));
-            begin
-               if Batch.Text_Runs /= null then
-                  Free_Text_Runs (Batch.Text_Runs);
-               end if;
-               Batch.Text_Runs := Replacement;
-            end;
-         end if;
-         for I in 1 .. Frame.Text_Run_Count loop
-            Batch.Text_Runs (I) := Frame.Text_Runs (I);
-            Batch.Shaped_Glyph_Total :=
-              Batch.Shaped_Glyph_Total
-              + Natural (Frame.Text_Runs (I).Shaped_Glyph_Count);
-         end loop;
-         Batch.Text_Run_Total := Frame.Text_Run_Count;
-      end Copy_Text_Runs;
-
-      procedure Append_Image_Command (Image : RM.Image_Command) is
-         Before : constant Natural := Batch.Count;
-         Bytes_Per_Pixel : constant Natural :=
-           (if Image.Raw_Format = 24 then 3
-            elsif Image.Raw_Format = 32 then 4
-            else 0);
-         Row_Bytes : constant Natural :=
-           (if Bytes_Per_Pixel > 0
-              and then Image.Pixel_Width <= Natural'Last / Bytes_Per_Pixel
-            then Image.Pixel_Width * Bytes_Per_Pixel
-            else 0);
-         Row_Stride_Bytes : constant Natural :=
-           (if Image.Decoded_Row_Stride_Bytes > 0
-            then Image.Decoded_Row_Stride_Bytes
-            else Row_Bytes);
-         Atlas_Index : constant Natural := Atlas_Source_Index (Batch, Image);
-         Image_Texture_Eligible : constant Boolean :=
-           Texture_Eligible (Image) and then Atlas_Index > 0;
-         Source : constant Texture_Source :=
-           (if Image_Texture_Eligible then Texture_Image else Texture_None);
-         Atlas_U0 : Float := Image.U0;
-         Atlas_V0 : Float := Image.V0;
-         Atlas_U1 : Float := Image.U1;
-         Atlas_V1 : Float := Image.V1;
-      begin
-         if Image_Texture_Eligible then
-            Atlas_U0 :=
-              (Float (Batch.Image_Atlas_Sources (Atlas_Index).X)
-               + Image.U0
-                 * Float (Batch.Image_Atlas_Sources (Atlas_Index).Width)) /
-              Float (Batch.Image_Atlas_W);
-            Atlas_U1 :=
-              (Float (Batch.Image_Atlas_Sources (Atlas_Index).X)
-               + Image.U1
-                 * Float (Batch.Image_Atlas_Sources (Atlas_Index).Width)) /
-              Float (Batch.Image_Atlas_W);
-            Atlas_V0 :=
-              (Float (Batch.Image_Atlas_Sources (Atlas_Index).Y)
-               + Image.V0
-                 * Float (Batch.Image_Atlas_Sources (Atlas_Index).Height)) /
-              Float (Batch.Image_Atlas_H);
-            Atlas_V1 :=
-              (Float (Batch.Image_Atlas_Sources (Atlas_Index).Y)
-               + Image.V1
-                 * Float (Batch.Image_Atlas_Sources (Atlas_Index).Height)) /
-              Float (Batch.Image_Atlas_H);
-         end if;
-         Batch.Image_Command_Total := Batch.Image_Command_Total + 1;
-         Batch.Last_Image_Protocol := Image.Protocol;
-         Batch.Last_Image_Width := Natural (Image.Width);
-         Batch.Last_Image_Height := Natural (Image.Height);
-         Batch.Last_Image_Raw_Format := Image.Raw_Format;
-         Batch.Last_Image_Pixel_Width := Image.Pixel_Width;
-         Batch.Last_Image_Pixel_Height := Image.Pixel_Height;
-         Batch.Last_Image_Payload_Length := Image.Payload_Length;
-         Batch.Last_Image_Payload_Preview_Complete :=
-           Image.Payload_Preview_Complete;
-         Batch.Last_Image_Encoded_Preview_Length :=
-           Image.Encoded_Preview_Length;
-         Batch.Last_Image_Decoded_Preview_Length :=
-           Image.Decoded_Preview_Length;
-         Batch.Last_Image_Decoded_Source :=
-           (if Image_Texture_Eligible
-            then Image.Decoded_Source
-            else RM.Image_Decoded_Source_None);
-         Batch.Last_Image_Row_Source := Image;
-         Batch.Last_Image_Decoded_Row_Stride_Bytes :=
-           (if Image_Texture_Eligible then Row_Stride_Bytes else 0);
-         Batch.Last_Image_Preview_Decode_Complete :=
-           Image.Preview_Decode_Complete;
-         Batch.Last_Image_Decode_Status := Image.Decode_Status;
-         Batch.Last_Image_Placeholder := not Image_Texture_Eligible;
-         Batch.Last_Image_Texture_Downgraded :=
-           not Image.Placeholder and then not Image_Texture_Eligible;
-         Batch.Last_Image_Texture_Source := Source;
-         Append_Quad
-           (Batch,
-            Frame.Width,
-            Frame.Height,
-            Image.X,
-            Image.Y,
-            Image.Width,
-            Image.Height,
-            Atlas_U0,
-            Atlas_V0,
-            Atlas_U1,
-            Atlas_V1,
-            Image.Tint,
-            Source = Texture_Image,
-            Source);
-         Batch.Image_Vertex_Total :=
-           Batch.Image_Vertex_Total + (Batch.Count - Before);
-         if Batch.Last_Image_Texture_Source = Texture_Image then
-            Batch.Image_Texture_Vertex_Total :=
-              Batch.Image_Texture_Vertex_Total + (Batch.Count - Before);
-         end if;
-      end Append_Image_Command;
-
-      type Image_Layer is
-        (Image_Below_Cell_Background,
-         Image_Below_Text,
-         Image_Above_Text);
-
-      Deep_Image_Threshold : constant Integer := -1_073_741_824;
-
-      function In_Image_Layer
-        (Image : RM.Image_Command;
-         Layer : Image_Layer) return Boolean is
-        (case Layer is
-            when Image_Below_Cell_Background =>
-              Image.Z_Index < Deep_Image_Threshold,
-            when Image_Below_Text =>
-              Image.Z_Index >= Deep_Image_Threshold
-              and then Image.Z_Index < 0,
-            when Image_Above_Text =>
-              Image.Z_Index >= 0);
-
-      function Image_Index_Less
-        (Left  : Positive;
-         Right : Positive) return Boolean
-      is
-         Left_Image  : RM.Image_Command renames Frame.Images (Left);
-         Right_Image : RM.Image_Command renames Frame.Images (Right);
-      begin
-         return Left_Image.Z_Index < Right_Image.Z_Index
-           or else
-             (Left_Image.Z_Index = Right_Image.Z_Index
-              and then
-                (Left_Image.Image_ID < Right_Image.Image_ID
-                 or else
-                   (Left_Image.Image_ID = Right_Image.Image_ID
-                    and then Left < Right)));
-      end Image_Index_Less;
-
-      procedure Sort_Image_Order is new Ada.Containers.Generic_Array_Sort
-        (Index_Type   => Positive,
-         Element_Type => Positive,
-         Array_Type   => Image_Order_Array,
-         "<"          => Image_Index_Less);
-
-      procedure Prepare_Image_Order is
-      begin
-         if Frame.Image_Count = 0 then
-            return;
-         end if;
-
-         if Batch.Image_Order = null
-           or else Batch.Image_Order'Length < Frame.Image_Count
-         then
-            declare
-               Replacement : Image_Order_Array_Access :=
-                 new Image_Order_Array
-                   (1 .. Grown_Capacity
-                     ((if Batch.Image_Order = null
-                       then 0
-                       else Batch.Image_Order'Length),
-                      Positive (Frame.Image_Count)));
-            begin
-               if Batch.Image_Order /= null then
-                  Free_Image_Order (Batch.Image_Order);
-               end if;
-               Batch.Image_Order := Replacement;
-            end;
-         end if;
-
-         for I in 1 .. Frame.Image_Count loop
-            Batch.Image_Order (I) := I;
-         end loop;
-         Batch.Image_Order_Total := Frame.Image_Count;
-         if Frame.Image_Count > 1 then
-            Sort_Image_Order
-              (Batch.Image_Order (1 .. Batch.Image_Order_Total));
-         end if;
-      end Prepare_Image_Order;
-
-      procedure Append_Image_Layer (Layer : Image_Layer) is
-      begin
-         for Position in 1 .. Batch.Image_Order_Total loop
-            declare
-               Image_Index : constant Positive :=
-                 Batch.Image_Order (Position);
-            begin
-               if In_Image_Layer (Frame.Images (Image_Index), Layer) then
-                  Append_Image_Command (Frame.Images (Image_Index));
-               end if;
-            end;
-         end loop;
-      end Append_Image_Layer;
-
-      procedure Append_Rectangle_Layer (Layer : RM.Rectangle_Layer) is
-      begin
-         for I in 1 .. Frame.Rectangle_Count loop
-            if Frame.Rectangles (I).Layer = Layer then
-               declare
-                  Rect : constant RM.Rectangle_Command := Frame.Rectangles (I);
-                  Before : constant Natural := Batch.Count;
-               begin
-                  Append_Quad
-                    (Batch,
-                     Frame.Width,
-                     Frame.Height,
-                     Rect.X,
-                     Rect.Y,
-                     Rect.Width,
-                     Rect.Height,
-                     0.0,
-                     0.0,
-                     0.0,
-                     0.0,
-                     Rect.Color,
-                     False,
-                     Texture_None);
-                  Batch.Rectangle_Vertex_Total :=
-                    Batch.Rectangle_Vertex_Total + (Batch.Count - Before);
-               end;
-            end if;
-         end loop;
-      end Append_Rectangle_Layer;
-   begin
-      Reset (Batch);
-
-      if Frame.Width = 0
-        or else Frame.Height = 0
-        or else not Command_Count_Valid
-        or else not Vertex_Capacity_Valid
-        or else not Command_Geometry_Valid
-        or else not Colour_Atlas_Size_Valid
-        or else not Shaped_Glyph_Total_Valid
-      then
-         Status := Invalid_Frame;
-         return;
-      end if;
-
-      Max_Vertices :=
-        (Frame.Rectangle_Count + Frame.Glyph_Count + Frame.Image_Count
-         + Frame.Colour_Glyph_Count) * 6;
-      if Max_Vertices = 0 then
-         Batch.Frame_Width := Frame.Width;
-         Batch.Frame_Height := Frame.Height;
-         Batch.Text_Atlas_Width := Frame.Atlas_Width;
-         Batch.Text_Atlas_Height := Frame.Atlas_Height;
-         Batch.Text_Atlas_Pixels := Frame.Atlas_Pixels;
-         Batch.Text_Atlas_Bytes := Frame.Atlas_Bytes;
-         Batch.Dirty_Atlas := Frame.Atlas_Dirty;
-         Copy_Text_Runs;
-         Status := Ok;
-         return;
-      end if;
-
-      if Batch.Items = null or else Batch.Items'Length < Max_Vertices then
-         declare
-            Replacement : Vertex_Array_Access :=
-              new Vertex_Array
-                (1 .. Grown_Capacity
-                  ((if Batch.Items = null then 0 else Batch.Items'Length),
-                   Positive (Max_Vertices)));
-         begin
-            if Batch.Items /= null then
-               Free_Vertices (Batch.Items);
-            end if;
-            Batch.Items := Replacement;
-         end;
-      end if;
-      Copy_Text_Runs;
-      Batch.Frame_Width := Frame.Width;
-      Batch.Frame_Height := Frame.Height;
-      Batch.Text_Atlas_Width := Frame.Atlas_Width;
-      Batch.Text_Atlas_Height := Frame.Atlas_Height;
-      Batch.Text_Atlas_Pixels := Frame.Atlas_Pixels;
-      Batch.Text_Atlas_Bytes := Frame.Atlas_Bytes;
-      Batch.Dirty_Atlas := Frame.Atlas_Dirty;
-      Prepare_Image_Order;
-      Prepare_Image_Atlas (Frame, Batch);
-
-      Append_Rectangle_Layer (RM.Rectangle_Base_Background);
-      Append_Image_Layer (Image_Below_Cell_Background);
-      Append_Rectangle_Layer (RM.Rectangle_Cell_Background);
-      Append_Image_Layer (Image_Below_Text);
-      Append_Rectangle_Layer (RM.Rectangle_Foreground);
-
-      for I in 1 .. Frame.Glyph_Count loop
-         declare
-            Glyph : constant RM.Glyph_Command := Frame.Glyphs (I);
-            Before : constant Natural := Batch.Count;
-         begin
-            Append_Quad
-              (Batch,
-               Frame.Width,
-               Frame.Height,
-               Glyph.X,
-               Glyph.Y,
-               Glyph.Width,
-               Glyph.Height,
-               Glyph.U0,
-               Glyph.V0,
-               Glyph.U1,
-               Glyph.V1,
-               Glyph.Color,
-               True,
-               Texture_Text_Atlas);
-            Batch.Glyph_Vertex_Total := Batch.Glyph_Vertex_Total + (Batch.Count - Before);
-            if Batch.Count > Before then
-               Batch.Uses_Text_Atlas := True;
-            end if;
-         end;
-      end loop;
-
-      --  After the outlines, so an emoji sits over the cell background rather
-      --  than under it. Unconditional: colour glyphs have a texture of their own,
-      --  so an inline picture in the same frame does not displace them.
-      Batch.Colour_Atlas_W := Frame.Colour_Sheet_Width;
-      Batch.Colour_Atlas_H := Frame.Colour_Sheet_Height;
-      Batch.Colour_Atlas_Byte_Count :=
-        (if Frame.Colour_Sheet_Pixels = System.Null_Address then 0
-         else Frame.Colour_Sheet_Width * Frame.Colour_Sheet_Height * 4);
-      Batch.Colour_Sheet_Source := Frame.Colour_Sheet_Pixels;
-      Batch.Dirty_Colour_Atlas := Frame.Colour_Sheet_Dirty;
-
-      Append_Colour_Glyphs (Frame, Batch);
-
-      --  Kitty reserves the range below INT32_MIN / 2 for images below
-      --  non-default cell backgrounds. Other negative images remain below
-      --  text, and non-negative images are above it. Each layer is emitted in
-      --  ascending z-index order, then by ascending image ID.
-      Append_Image_Layer (Image_Above_Text);
-
-      --  Diagnostics need one bounded prefix, not one copy per image tile.
-      --  Last_Image_Row_Source is a compact borrowed descriptor and remains
-      --  valid through presentation of this batch.
-      for I in 1 .. Natural'Min
-        (Batch.Last_Image_Decoded_Preview_Length,
-         RM.Max_Image_Decoded_Preview_Length)
-      loop
-         Batch.Last_Image_Decoded_Preview_Bytes (I) :=
-           RM.Image_Decoded_Preview_Byte (Batch.Last_Image_Row_Source, I);
-      end loop;
-      if Batch.Last_Image_Texture_Source /= Texture_Image then
-         Batch.Last_Image_Row_Source := (others => <>);
-      end if;
-
-
-      Status := Ok;
-   exception
-      when Storage_Error =>
-         Release (Batch);
-         Status := Allocation_Failed;
-   end Build;
-
-   function Vertices (Batch : Submission_Batch) return Vertex_Array_View is
-     (Vertex_Array_View (Batch.Items));
-
-   function Vertex_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Count);
-
-   function Rectangle_Vertex_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Rectangle_Vertex_Total);
-
-   function Glyph_Vertex_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Glyph_Vertex_Total);
-
-   function Image_Vertex_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Image_Vertex_Total);
-
+   function Vertex_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Count);
+   function Rectangle_Vertex_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Rectangle_Vertex_Total);
+   function Glyph_Vertex_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Glyph_Vertex_Total);
+   function Image_Vertex_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Image_Vertex_Total);
    function Image_Texture_Vertex_Count
-     (Batch : Submission_Batch) return Natural is
-     (Batch.Image_Texture_Vertex_Total);
-
-   function Image_Command_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Image_Command_Total);
-
-   function Image_Atlas_Width (Batch : Submission_Batch) return Natural is
-     (Batch.Image_Atlas_W);
-
-   function Image_Atlas_Height (Batch : Submission_Batch) return Natural is
-     (Batch.Image_Atlas_H);
-
-   function Image_Atlas_Bytes (Batch : Submission_Batch) return Natural is
-     (Batch.Image_Atlas_Byte_Count);
-
+     (Batch : Submission_Batch) return Natural
+     is (Batch.Image_Texture_Vertex_Total);
+   function Image_Command_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Image_Command_Total);
+   function Image_Atlas_Width (Batch : Submission_Batch) return Natural
+     is (Batch.Image_Atlas_W);
+   function Image_Atlas_Height (Batch : Submission_Batch) return Natural
+     is (Batch.Image_Atlas_H);
+   function Image_Atlas_Bytes (Batch : Submission_Batch) return Natural
+     is (Batch.Image_Atlas_Byte_Count);
    function Image_Atlas_Signature
-     (Batch : Submission_Batch) return Interfaces.Unsigned_64 is
-     (Batch.Image_Atlas_Content_Signature);
-
-   function Image_Atlas_Source_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Image_Atlas_Source_Total);
-
-   function Image_Atlas_Source_Command
+     (Batch : Submission_Batch) return Interfaces.Unsigned_64
+     is (Batch.Image_Atlas_Content_Signature);
+   function Image_Atlas_Source_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Image_Atlas_Source_Total);
+   function Image_Atlas_Source_Raw_Format
+     (Batch : Submission_Batch; Index : Positive) return Natural
+     renames Source_Rows.Raw_Format;
+   function Image_Atlas_Source_Pixel_Width
+     (Batch : Submission_Batch; Index : Positive) return Natural
+     renames Source_Rows.Pixel_Width;
+   function Image_Atlas_Source_Pixel_Height
+     (Batch : Submission_Batch; Index : Positive) return Natural
+     renames Source_Rows.Pixel_Height;
+   procedure Read_Image_Atlas_Source_Rows
      (Batch : Submission_Batch;
-      Index : Positive) return RM.Image_Command is
-   begin
-      if Batch.Image_Atlas_Sources = null
-        or else Index > Batch.Image_Atlas_Source_Total
-      then
-         return (others => <>);
-      end if;
-      return Batch.Image_Atlas_Sources (Index).Command;
-   end Image_Atlas_Source_Command;
-
+      Index : Positive;
+      Write : not null access procedure
+        (Y        : Natural;
+         Row      : Terminal.Common.Bytes.Byte_Array;
+         Continue : in out Boolean);
+      Status : out Image_Source_Read_Status)
+     renames Source_Rows.Read;
    function Image_Atlas_Source_X
-     (Batch : Submission_Batch;
-      Index : Positive) return Natural is
-   begin
-      if Batch.Image_Atlas_Sources = null
-        or else Index > Batch.Image_Atlas_Source_Total
-      then
-         return 0;
-      end if;
-      return Batch.Image_Atlas_Sources (Index).X;
-   end Image_Atlas_Source_X;
-
+     (Batch : Submission_Batch; Index : Positive) return Natural
+     is (if Batch.Image_Atlas_Sources = null
+           or else Index > Batch.Image_Atlas_Source_Total
+         then 0 else Batch.Image_Atlas_Sources (Index).X);
    function Image_Atlas_Source_Y
-     (Batch : Submission_Batch;
-      Index : Positive) return Natural is
-   begin
-      if Batch.Image_Atlas_Sources = null
-        or else Index > Batch.Image_Atlas_Source_Total
-      then
-         return 0;
-      end if;
-      return Batch.Image_Atlas_Sources (Index).Y;
-   end Image_Atlas_Source_Y;
-
+     (Batch : Submission_Batch; Index : Positive) return Natural
+     is (if Batch.Image_Atlas_Sources = null
+           or else Index > Batch.Image_Atlas_Source_Total
+         then 0 else Batch.Image_Atlas_Sources (Index).Y);
    function Image_Atlas_Source_Width
-     (Batch : Submission_Batch;
-      Index : Positive) return Natural is
-   begin
-      if Batch.Image_Atlas_Sources = null
-        or else Index > Batch.Image_Atlas_Source_Total
-      then
-         return 0;
-      end if;
-      return Batch.Image_Atlas_Sources (Index).Width;
-   end Image_Atlas_Source_Width;
-
+     (Batch : Submission_Batch; Index : Positive) return Natural
+     is (if Batch.Image_Atlas_Sources = null
+           or else Index > Batch.Image_Atlas_Source_Total
+         then 0 else Batch.Image_Atlas_Sources (Index).Width);
    function Image_Atlas_Source_Height
-     (Batch : Submission_Batch;
-      Index : Positive) return Natural is
-   begin
-      if Batch.Image_Atlas_Sources = null
-        or else Index > Batch.Image_Atlas_Source_Total
-      then
-         return 0;
-      end if;
-      return Batch.Image_Atlas_Sources (Index).Height;
-   end Image_Atlas_Source_Height;
-
+     (Batch : Submission_Batch; Index : Positive) return Natural
+     is (if Batch.Image_Atlas_Sources = null
+           or else Index > Batch.Image_Atlas_Source_Total
+         then 0 else Batch.Image_Atlas_Sources (Index).Height);
    function Last_Image_Protocol
-     (Batch : Submission_Batch) return RM.Image_Protocol is
-     (Batch.Last_Image_Protocol);
-
-   function Last_Image_Width (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Width);
-
-   function Last_Image_Height (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Height);
-
-   function Last_Image_Raw_Format (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Raw_Format);
-
-   function Last_Image_Pixel_Width (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Pixel_Width);
-
-   function Last_Image_Pixel_Height (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Pixel_Height);
-
-   function Last_Image_Payload_Length (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Payload_Length);
-
+     (Batch : Submission_Batch) return RM.Image_Protocol
+     is (Batch.Last_Image_Protocol);
+   function Last_Image_Width (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Width);
+   function Last_Image_Height (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Height);
+   function Last_Image_Raw_Format (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Raw_Format);
+   function Last_Image_Pixel_Width (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Pixel_Width);
+   function Last_Image_Pixel_Height (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Pixel_Height);
+   function Last_Image_Payload_Length (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Payload_Length);
    function Last_Image_Payload_Preview_Complete
-     (Batch : Submission_Batch) return Boolean is
-     (Batch.Last_Image_Payload_Preview_Complete);
-
+     (Batch : Submission_Batch) return Boolean
+     is (Batch.Last_Image_Payload_Preview_Complete);
    function Last_Image_Encoded_Preview_Length
-     (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Encoded_Preview_Length);
-
+     (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Encoded_Preview_Length);
    function Last_Image_Decoded_Preview_Length
-     (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Decoded_Preview_Length);
-
+     (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Decoded_Preview_Length);
    function Last_Image_Decoded_Preview_Byte
-     (Batch : Submission_Batch;
-      Index : Positive) return Terminal.Common.Bytes.Byte
-   is
-   begin
-      if Index > Batch.Last_Image_Decoded_Preview_Length
-        or else Index > RM.Max_Image_Decoded_Preview_Length
-      then
-         return 0;
-      else
-         return Batch.Last_Image_Decoded_Preview_Bytes (Index);
-      end if;
-   end Last_Image_Decoded_Preview_Byte;
-
+     (Batch : Submission_Batch; Index : Positive)
+      return Terminal.Common.Bytes.Byte
+     is (if Index > Batch.Last_Image_Decoded_Preview_Length
+           or else Index > RM.Max_Image_Decoded_Preview_Length
+         then 0 else Batch.Last_Image_Decoded_Preview_Bytes (Index));
    function Last_Image_Decoded_Data_Byte
-     (Batch : Submission_Batch;
-      Index : Positive) return Terminal.Common.Bytes.Byte
+     (Batch : Submission_Batch; Index : Positive)
+      return Terminal.Common.Bytes.Byte
    is
-      Source_Bytes : constant Natural := Last_Image_Decoded_Source_Bytes (Batch);
-      Row_Stride : constant Natural := Batch.Last_Image_Decoded_Row_Stride_Bytes;
+      Accessible_Bytes : constant Natural :=
+        Last_Image_Decoded_Random_Access_Bytes (Batch);
+      Row_Stride : constant Natural :=
+        Batch.Last_Image_Decoded_Row_Stride_Bytes;
       Zero_Based : constant Natural := Index - 1;
    begin
-      if Source_Bytes = 0
-        or else Row_Stride = 0
-        or else Index > Source_Bytes
+      if Accessible_Bytes = 0 or else Row_Stride = 0
+        or else Index > Accessible_Bytes
       then
          return 0;
       end if;
-
       return Last_Image_Decoded_Row_Byte
-        (Batch,
-         Zero_Based / Row_Stride,
-         Zero_Based mod Row_Stride);
+        (Batch, Zero_Based / Row_Stride, Zero_Based mod Row_Stride);
    end Last_Image_Decoded_Data_Byte;
-
    function Last_Image_Decoded_Source
-     (Batch : Submission_Batch) return RM.Image_Decoded_Source_Kind is
-     (Batch.Last_Image_Decoded_Source);
-
-   function Last_Image_Source_Command
-     (Batch : Submission_Batch) return RM.Image_Command is
-     (Batch.Last_Image_Row_Source);
-
+     (Batch : Submission_Batch) return RM.Image_Decoded_Source_Kind
+     is (Batch.Last_Image_Decoded_Source);
    function Last_Image_Decoded_Source_Bytes
      (Batch : Submission_Batch) return Natural
-   is
-     (if Batch.Last_Image_Texture_Source = Texture_Image
-      then RM.Image_Decoded_Source_Bytes (Batch.Last_Image_Row_Source)
-      else 0);
-
+     is (if Batch.Last_Image_Texture_Source = Texture_Image
+         then RM.Image_Decoded_Source_Bytes (Batch.Last_Image_Row_Source)
+         else 0);
+   function Last_Image_Decoded_Random_Access_Bytes
+     (Batch : Submission_Batch) return Natural
+     is (if Batch.Last_Image_Texture_Source = Texture_Image
+         then RM.Image_Decoded_Random_Access_Bytes
+           (Batch.Last_Image_Row_Source)
+         else 0);
    function Last_Image_Decoded_Source_Available
      (Batch : Submission_Batch) return Boolean
-   is
-     (Batch.Last_Image_Texture_Source = Texture_Image
-      and then RM.Image_Decoded_Source_Available (Batch.Last_Image_Row_Source));
-
+     is (Batch.Last_Image_Texture_Source = Texture_Image
+         and then RM.Image_Decoded_Source_Available
+           (Batch.Last_Image_Row_Source));
    function Last_Image_Decoded_Row_Byte
-     (Batch       : Submission_Batch;
-      Row         : Natural;
-      Byte_Offset : Natural) return Terminal.Common.Bytes.Byte
-   is
-   begin
-      if Batch.Last_Image_Texture_Source /= Texture_Image then
-         return 0;
-      end if;
-      return RM.Image_Decoded_Row_Byte
-        (Batch.Last_Image_Row_Source, Row, Byte_Offset);
-   end Last_Image_Decoded_Row_Byte;
-
+     (Batch : Submission_Batch; Row, Byte_Offset : Natural)
+      return Terminal.Common.Bytes.Byte
+     is (if Batch.Last_Image_Texture_Source /= Texture_Image then 0
+         else RM.Image_Decoded_Row_Byte
+           (Batch.Last_Image_Row_Source, Row, Byte_Offset));
    function Last_Image_Decoded_Row_Stride_Bytes
-     (Batch : Submission_Batch) return Natural is
-     (Batch.Last_Image_Decoded_Row_Stride_Bytes);
-
+     (Batch : Submission_Batch) return Natural
+     is (Batch.Last_Image_Decoded_Row_Stride_Bytes);
    function Last_Image_Preview_Decode_Complete
-     (Batch : Submission_Batch) return Boolean is
-     (Batch.Last_Image_Preview_Decode_Complete);
-
+     (Batch : Submission_Batch) return Boolean
+     is (Batch.Last_Image_Preview_Decode_Complete);
    function Last_Image_Decode_Status
-     (Batch : Submission_Batch)
-      return RM.Image_Decode_Status is
-     (Batch.Last_Image_Decode_Status);
-
-   function Last_Image_Placeholder (Batch : Submission_Batch) return Boolean is
-     (Batch.Last_Image_Placeholder);
-
+     (Batch : Submission_Batch) return RM.Image_Decode_Status
+     is (Batch.Last_Image_Decode_Status);
+   function Last_Image_Placeholder (Batch : Submission_Batch) return Boolean
+     is (Batch.Last_Image_Placeholder);
    function Last_Image_Texture_Downgraded
-     (Batch : Submission_Batch) return Boolean is
-     (Batch.Last_Image_Texture_Downgraded);
-
+     (Batch : Submission_Batch) return Boolean
+     is (Batch.Last_Image_Texture_Downgraded);
    function Last_Image_Texture_Source
-     (Batch : Submission_Batch) return Texture_Source is
-     (Batch.Last_Image_Texture_Source);
+     (Batch : Submission_Batch) return Texture_Source
+     is (Batch.Last_Image_Texture_Source);
 
    function Image_Status_Label (Batch : Submission_Batch) return String
-   is
-      function Protocol_Name return String is
-      begin
-         case Batch.Last_Image_Protocol is
-            when RM.Image_Sixel =>
-               return "sixel";
-            when RM.Image_Kitty =>
-               return "kitty";
-            when RM.Image_ITerm2 =>
-               return "iTerm2";
-         end case;
-      end Protocol_Name;
-   begin
-      if Batch.Image_Command_Total = 0 then
-         return "";
-      end if;
-
-      return
-        "submit image " & Protocol_Name
-        & " size=" & Trimmed_Natural (Batch.Last_Image_Width)
-        & "x" & Trimmed_Natural (Batch.Last_Image_Height)
-        & (if Batch.Last_Image_Pixel_Width > 0
-           and then Batch.Last_Image_Pixel_Height > 0
-           then
-             " pixels=" & Trimmed_Natural (Batch.Last_Image_Pixel_Width)
-             & "x" & Trimmed_Natural (Batch.Last_Image_Pixel_Height)
-             & " format=" & Trimmed_Natural (Batch.Last_Image_Raw_Format)
-           else "")
-        & " payload=" & Trimmed_Natural (Batch.Last_Image_Payload_Length)
-        & RM.Image_Payload_Status_Suffix
-            (Batch.Last_Image_Payload_Preview_Complete)
-        & " preview="
-        & Trimmed_Natural (Batch.Last_Image_Decoded_Preview_Length)
-        & "/"
-        & Trimmed_Natural (Batch.Last_Image_Encoded_Preview_Length)
-        & Terminal.Common.Status.Preview_Bytes_Label
-            (Batch.Last_Image_Decoded_Preview_Bytes,
-             Batch.Last_Image_Decoded_Preview_Length)
-        & " texture=" & Texture_Source_Label (Batch.Last_Image_Texture_Source)
-        & (if Batch.Last_Image_Placeholder then " placeholder" else " textured")
-        & (if Batch.Last_Image_Texture_Downgraded then " downgraded" else "")
-        & (if Batch.Last_Image_Preview_Decode_Complete
-           then " decoded"
-           else " partial")
-        & RM.Image_Decode_Status_Suffix (Batch.Last_Image_Decode_Status);
-   end Image_Status_Label;
+     renames Diagnostics.Image_Status_Label;
 
    function Image_Texture_Status_Label
      (Batch : Submission_Batch) return String
-   is
-   begin
-      if Batch.Image_Command_Total = 0 then
-         return "";
-      elsif Batch.Last_Image_Texture_Downgraded then
-         return
-           "submit image texture downgraded; texture="
-           & Texture_Source_Label (Batch.Last_Image_Texture_Source)
-           & " vertices=" & Trimmed_Natural (Batch.Image_Texture_Vertex_Total);
-      elsif Batch.Last_Image_Texture_Source = Texture_Image
-        and then not Batch.Last_Image_Placeholder
-      then
-         return
-           "submit image texture ready; vertices="
-           & Trimmed_Natural (Batch.Image_Texture_Vertex_Total);
-      else
-         return
-           "submit image texture unavailable; texture="
-           & Texture_Source_Label (Batch.Last_Image_Texture_Source)
-           & " vertices=" & Trimmed_Natural (Batch.Image_Texture_Vertex_Total);
-      end if;
-   end Image_Texture_Status_Label;
+     renames Diagnostics.Image_Texture_Status_Label;
 
-   function Text_Runs
-     (Batch : Submission_Batch)
-      return RM.Text_Run_Array_View is
-     (RM.Text_Run_Array_View (Batch.Text_Runs));
-
-   function Text_Run_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Text_Run_Total);
-
-   function Shaped_Glyph_Count (Batch : Submission_Batch) return Natural is
-     (Batch.Shaped_Glyph_Total);
-
-   function Width (Batch : Submission_Batch) return Natural is
-     (Batch.Frame_Width);
-
-   function Height (Batch : Submission_Batch) return Natural is
-     (Batch.Frame_Height);
-
-   function Text_Atlas_Used (Batch : Submission_Batch) return Boolean is
-     (Batch.Uses_Text_Atlas);
-
-   function Atlas_Width (Batch : Submission_Batch) return Natural is
-     (Batch.Text_Atlas_Width);
-
-   function Atlas_Height (Batch : Submission_Batch) return Natural is
-     (Batch.Text_Atlas_Height);
-
-   function Atlas_Pixels (Batch : Submission_Batch) return System.Address is
-     (Batch.Text_Atlas_Pixels);
-
-   function Atlas_Bytes (Batch : Submission_Batch) return Natural is
-     (Batch.Text_Atlas_Bytes);
-
-   function Atlas_Dirty (Batch : Submission_Batch) return Boolean is
-     (Batch.Dirty_Atlas);
+   function Text_Run_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Text_Run_Total);
+   function Shaped_Glyph_Count (Batch : Submission_Batch) return Natural
+     is (Batch.Shaped_Glyph_Total);
+   function Width (Batch : Submission_Batch) return Natural
+     is (Batch.Frame_Width);
+   function Height (Batch : Submission_Batch) return Natural
+     is (Batch.Frame_Height);
+   function Text_Atlas_Used (Batch : Submission_Batch) return Boolean
+     is (Batch.Uses_Text_Atlas);
+   function Atlas_Width (Batch : Submission_Batch) return Natural
+     is (Batch.Text_Atlas_Width);
+   function Atlas_Height (Batch : Submission_Batch) return Natural
+     is (Batch.Text_Atlas_Height);
+   function Atlas_Bytes (Batch : Submission_Batch) return Natural
+     is (Batch.Text_Atlas_Bytes);
+   function Atlas_Dirty (Batch : Submission_Batch) return Boolean
+     is (Batch.Dirty_Atlas);
 end Terminal.App.Vulkan_Submit;

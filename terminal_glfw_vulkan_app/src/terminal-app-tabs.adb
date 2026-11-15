@@ -1,9 +1,8 @@
+with Terminal.Common.Status;
+
 package body Terminal.App.Tabs is
-   function Trim_Image (Value : Natural) return String is
-      Text : constant String := Natural'Image (Value);
-   begin
-      return Text (Text'First + 1 .. Text'Last);
-   end Trim_Image;
+   function Trim_Image (Value : Natural) return String
+      renames Terminal.Common.Status.Trimmed_Natural;
 
    function Default_Label (Index : Tab_Index) return Tab_Label is
       Prefix : constant String := "Tab ";
@@ -33,6 +32,14 @@ package body Terminal.App.Tabs is
       State.Labels (1) := Default_Label (1);
    end Initialize;
 
+   procedure Clear (State : out Tab_State) is
+   begin
+      State :=
+        (Current_Count => 0,
+         Active_Index  => 1,
+         Labels        => (others => <>));
+   end Clear;
+
    procedure Apply
      (State  : in out Tab_State;
       Command : Tab_Command;
@@ -53,7 +60,9 @@ package body Terminal.App.Tabs is
                Status := Ok;
             end if;
          when Close_Tab =>
-            if State.Current_Count <= 1 then
+            if State.Current_Count = 0 then
+               Status := Invalid_Index;
+            elsif State.Current_Count = 1 then
                Status := Last_Tab;
             else
                if State.Active_Index < State.Current_Count then
@@ -69,14 +78,20 @@ package body Terminal.App.Tabs is
                Status := Ok;
             end if;
          when Next_Tab =>
-            if State.Active_Index = State.Current_Count then
+            if State.Current_Count = 0 then
+               Status := Invalid_Index;
+               return;
+            elsif State.Active_Index = State.Current_Count then
                State.Active_Index := 1;
             else
                State.Active_Index := State.Active_Index + 1;
             end if;
             Status := Ok;
          when Previous_Tab =>
-            if State.Active_Index = 1 then
+            if State.Current_Count = 0 then
+               Status := Invalid_Index;
+               return;
+            elsif State.Active_Index = 1 then
                State.Active_Index := Positive (State.Current_Count);
             else
                State.Active_Index := State.Active_Index - 1;
@@ -159,6 +174,38 @@ package body Terminal.App.Tabs is
       end if;
    end Close_At;
 
+   procedure Move
+     (State  : in out Tab_State;
+      From   : Tab_Index;
+      To     : Tab_Index;
+      Status : out Tab_Status)
+   is
+      Saved : Tab_Label;
+   begin
+      if From > State.Current_Count or else To > State.Current_Count then
+         Status := Invalid_Index;
+         return;
+      elsif From = To then
+         State.Active_Index := To;
+         Status := Ok;
+         return;
+      end if;
+
+      Saved := State.Labels (From);
+      if From < To then
+         for I in From .. To - 1 loop
+            State.Labels (I) := State.Labels (I + 1);
+         end loop;
+      else
+         for I in reverse To + 1 .. From loop
+            State.Labels (I) := State.Labels (I - 1);
+         end loop;
+      end if;
+      State.Labels (To) := Saved;
+      State.Active_Index := To;
+      Status := Ok;
+   end Move;
+
    function Count (State : Tab_State) return Tab_Count is
      (State.Current_Count);
 
@@ -212,11 +259,17 @@ package body Terminal.App.Tabs is
       Cols  : Positive) return Tab_Layout
    is
       Result : Tab_Layout := (Count => State.Current_Count, Rects => (others => <>));
-      Count  : constant Positive := Positive (State.Current_Count);
-      Base   : constant Natural := Cols / Count;
-      Extra  : constant Natural := Cols mod Count;
       Cursor : Positive := 1;
    begin
+      if State.Current_Count = 0 then
+         return Result;
+      end if;
+
+      declare
+         Count : constant Positive := Positive (State.Current_Count);
+         Base  : constant Natural := Cols / Count;
+         Extra : constant Natural := Cols mod Count;
+      begin
       for I in 1 .. State.Current_Count loop
          declare
             Width : constant Natural :=
@@ -231,6 +284,7 @@ package body Terminal.App.Tabs is
             Cursor := Cursor + Width;
          end;
       end loop;
+      end;
 
       return Result;
    end Layout;
@@ -258,7 +312,9 @@ package body Terminal.App.Tabs is
 
    function Status_Label (State : Tab_State) return String is
    begin
-      if State.Current_Count <= 1 then
+      if State.Current_Count = 0 then
+         return "No live tab sessions";
+      elsif State.Current_Count = 1 then
          return "Single live session";
       else
          return "Live tab sessions="

@@ -47,8 +47,12 @@ is
 
       for Source_Index in 1 .. VS.Image_Atlas_Source_Count (Batch) loop
          declare
-            Source : constant RM.Image_Command :=
-              VS.Image_Atlas_Source_Command (Batch, Source_Index);
+            Source_Raw_Format : constant Natural :=
+              VS.Image_Atlas_Source_Raw_Format (Batch, Source_Index);
+            Source_Pixel_Width : constant Natural :=
+              VS.Image_Atlas_Source_Pixel_Width (Batch, Source_Index);
+            Source_Pixel_Height : constant Natural :=
+              VS.Image_Atlas_Source_Pixel_Height (Batch, Source_Index);
             X : constant Natural :=
               VS.Image_Atlas_Source_X (Batch, Source_Index);
             Y : constant Natural :=
@@ -58,8 +62,8 @@ is
             Target_Height : constant Natural :=
               VS.Image_Atlas_Source_Height (Batch, Source_Index);
             Bytes_Per_Pixel : constant Natural :=
-              (if Source.Raw_Format = 24 then 3
-               elsif Source.Raw_Format = 32 then 4
+              (if Source_Raw_Format = 24 then 3
+               elsif Source_Raw_Format = 32 then 4
                else 0);
             Rows_Seen : Natural := 0;
             Target_Rows_Written : Natural := 0;
@@ -71,8 +75,8 @@ is
                Continue : in out Boolean)
             is
             begin
-               if Row_Y >= Source.Pixel_Height
-                 or else Row'Length < Source.Pixel_Width * Bytes_Per_Pixel
+               if Row_Y >= Source_Pixel_Height
+                 or else Row'Length < Source_Pixel_Width * Bytes_Per_Pixel
                  or else X = 0
                  or else Y = 0
                  or else Target_Width = 0
@@ -90,7 +94,7 @@ is
                --  source row can supply zero or more destination rows.
                while Target_Rows_Written < Target_Height
                  and then
-                   (Target_Rows_Written * Source.Pixel_Height) /
+                   (Target_Rows_Written * Source_Pixel_Height) /
                      Target_Height = Row_Y
                loop
                   declare
@@ -100,7 +104,7 @@ is
                      for Pixel in 0 .. Target_Width - 1 loop
                         declare
                            Source_Pixel : constant Natural :=
-                             (Pixel * Source.Pixel_Width) / Target_Width;
+                             (Pixel * Source_Pixel_Width) / Target_Width;
                            Source_Offset : constant Natural :=
                              Source_Pixel * Bytes_Per_Pixel;
                            Target_Offset : constant Natural := Pixel * 4;
@@ -126,48 +130,31 @@ is
                end loop;
             end Write_Row;
 
-            procedure Write_Buffer_Rows is
-               Row : Terminal.Common.Bytes.Byte_Array
-                 (1 .. Source.Pixel_Width * Bytes_Per_Pixel);
-               Continue : Boolean := True;
+            procedure Read_Source_Rows is
+               Read_Status : VS.Image_Source_Read_Status;
             begin
-               for Row_Y in 0 .. Source.Pixel_Height - 1 loop
-                  for Offset in 0 .. Row'Length - 1 loop
-                     Row (Offset + 1) :=
-                       RM.Image_Decoded_Row_Byte (Source, Row_Y, Offset);
-                  end loop;
-                  Write_Row (Row_Y, Row, Continue);
-                  exit when not Continue;
-               end loop;
-            end Write_Buffer_Rows;
-
-            procedure Write_Encoded_Rows is
-               Decode_Status : Terminal.App.Image_Staging.Decode_Status;
-            begin
-               Terminal.App.Image_Staging.Decode_Encoded_Rows
-                 (Source, Write_Row'Access, Decode_Status);
-               case Decode_Status is
-                  when Terminal.App.Image_Staging.Decode_Ok =>
+               VS.Read_Image_Atlas_Source_Rows
+                 (Batch, Source_Index, Write_Row'Access, Read_Status);
+               case Read_Status is
+                  when VS.Image_Source_Ok =>
                      null;
-                  when Terminal.App.Image_Staging.Invalid_Source =>
+                  when VS.Image_Source_Invalid =>
                      Decode_Failed := True;
                      Fill_Status := Image_Staging_Invalid_Source;
-                  when Terminal.App.Image_Staging.Allocation_Failed =>
+                  when VS.Image_Source_Allocation_Failed =>
                      Decode_Failed := True;
                      Fill_Status := Image_Staging_Allocation_Failed;
                end case;
-            end Write_Encoded_Rows;
+            end Read_Source_Rows;
          begin
             if Bytes_Per_Pixel = 0 then
                Decode_Failed := True;
-            elsif Source.Decoded_Source = RM.Image_Decoded_Source_Buffer then
-               Write_Buffer_Rows;
             else
-               Write_Encoded_Rows;
+               Read_Source_Rows;
             end if;
 
             if Decode_Failed
-              or else Rows_Seen /= Source.Pixel_Height
+              or else Rows_Seen /= Source_Pixel_Height
               or else Target_Rows_Written /= Target_Height
             then
                if Fill_Status = Ok then

@@ -1,3 +1,4 @@
+with Terminal.Core.Snapshot_Editing;
 with AUnit.Assertions;
 
 with Terminal.App.Render_Model;
@@ -53,7 +54,7 @@ procedure ITerm2_Media_Smoke is
       procedure Render_Retained is
          Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
       begin
-         Snap.Graphics := (others => <>);
+         Terminal.Core.Snapshot_Editing.Set_Graphics (Snap, (others => <>));
          Terminal.App.Renderer.Render (R, Snap, Render_Status);
          Terminal.Core.Release (Snap);
          Assert
@@ -106,13 +107,13 @@ procedure ITerm2_Media_Smoke is
       Assert (Feed_Status = Terminal.Core.Ok, Label_Text & " event feed");
       declare
          Event : Terminal.Core.Graphics_Event;
-         Result : Terminal.Core.Kitty_Graphics_Result;
+         Result : Terminal.Core.Graphics_Completion;
          Snap : Terminal.Core.Render_Snapshot;
       begin
          Terminal.Core.Peek_Graphics_Event (T, Event);
          Assert (Event.Pending, Label_Text & " event queued");
          Terminal.Core.Snapshot (T, Snap);
-         Snap.Graphics := Event;
+         Terminal.Core.Snapshot_Editing.Set_Graphics (Snap, Event);
          Terminal.App.Renderer.Render (R, Snap, Render_Status);
          Terminal.Core.Release (Snap);
          Assert
@@ -125,11 +126,14 @@ procedure ITerm2_Media_Smoke is
 
       Render_Retained;
       Assert
-        (Terminal.App.Renderer.Diagnostics (R).Image_Object_Count = 1
-         and then Terminal.App.Renderer.Diagnostics (R).Placement_Count = 1
-         and then
-           Terminal.App.Renderer.Diagnostics (R).Kitty_Animation_Frame_Count = 1,
-         Label_Text & " bounded image store");
+        (Terminal.App.Renderer.Diagnostics (R).Image_Object_Count = 1,
+         Label_Text & " bounded image object store");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Placement_Count = 1,
+         Label_Text & " bounded placement store");
+      Assert
+        (Terminal.App.Renderer.Diagnostics (R).Kitty_Animation_Frame_Count = 1,
+         Label_Text & " bounded animation-frame store");
       Assert_Pixel (16#FF#, 0, 0, "starts on red frame");
 
       delay 0.060;

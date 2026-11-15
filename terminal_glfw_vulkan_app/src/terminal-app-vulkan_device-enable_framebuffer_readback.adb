@@ -1,3 +1,5 @@
+with Terminal.App.Vulkan_Destroy_Pair;
+
 separate (Terminal.App.Vulkan_Device)
    procedure Enable_Framebuffer_Readback
      (Device : in out Logical_Device;
@@ -11,18 +13,31 @@ separate (Terminal.App.Vulkan_Device)
       Memory_Type : Interfaces.Unsigned_32 := 0;
       Result : Vk.Result_T;
       Byte_Count : Natural := 0;
+      Local_Cleanup_Ok : Boolean := True;
+      Replaced_Cleanup_Ok : Boolean := True;
+
+      procedure Destroy_Buffer (Handle : Vk.Buffer_T) is
+      begin
+         Vk.Destroy_Buffer (Device.Device, Handle, System.Null_Address);
+      end Destroy_Buffer;
+
+      procedure Free_Memory (Handle : Vk.Device_Memory_T) is
+      begin
+         Vk.Free_Memory (Device.Device, Handle, System.Null_Address);
+      end Free_Memory;
+
+      procedure Destroy_Local_Chain is new Terminal.App.Vulkan_Destroy_Pair
+        (Vk.Buffer_T, System.Null_Address,
+         "destroy replacement Vulkan readback buffer", Destroy_Buffer,
+         Vk.Device_Memory_T, System.Null_Address,
+         "free replacement Vulkan readback memory", Free_Memory);
 
       procedure Release_Local is
       begin
-         if Memory_Handle /= System.Null_Address then
-            Vk.Free_Memory
-              (Device.Device, Memory_Handle, System.Null_Address);
-            Memory_Handle := System.Null_Address;
-         end if;
-         if Buffer_Handle /= System.Null_Address then
-            Vk.Destroy_Buffer
-              (Device.Device, Buffer_Handle, System.Null_Address);
-            Buffer_Handle := System.Null_Address;
+         Destroy_Local_Chain
+           (Buffer_Handle, Memory_Handle, Local_Cleanup_Ok);
+         if not Local_Cleanup_Ok then
+            Device.Cleanup_Quarantined := True;
          end if;
       end Release_Local;
    begin
@@ -77,7 +92,11 @@ separate (Terminal.App.Vulkan_Device)
               Buffer_Handle'Address);
       end;
       if Result /= Vk.SUCCESS or else Buffer_Handle = System.Null_Address then
-         Status := Readback_Create_Buffer_Failed;
+         Release_Local;
+         Status :=
+           (if Local_Cleanup_Ok
+            then Readback_Create_Buffer_Failed
+            else Readback_Cleanup_Failed);
          return;
       end if;
 
@@ -104,7 +123,10 @@ separate (Terminal.App.Vulkan_Device)
               Memory_Type)
          then
             Release_Local;
-            Status := Readback_Allocate_Memory_Failed;
+            Status :=
+              (if Local_Cleanup_Ok
+               then Readback_Allocate_Memory_Failed
+               else Readback_Cleanup_Failed);
             return;
          end if;
       end;
@@ -125,7 +147,10 @@ separate (Terminal.App.Vulkan_Device)
       end;
       if Result /= Vk.SUCCESS or else Memory_Handle = System.Null_Address then
          Release_Local;
-         Status := Readback_Allocate_Memory_Failed;
+         Status :=
+           (if Local_Cleanup_Ok
+            then Readback_Allocate_Memory_Failed
+            else Readback_Cleanup_Failed);
          return;
       end if;
 
@@ -134,10 +159,19 @@ separate (Terminal.App.Vulkan_Device)
           (Device.Device, Buffer_Handle, Memory_Handle, 0);
       if Result /= Vk.SUCCESS then
          Release_Local;
-         Status := Readback_Bind_Memory_Failed;
+         Status :=
+           (if Local_Cleanup_Ok
+            then Readback_Bind_Memory_Failed
+            else Readback_Cleanup_Failed);
          return;
       end if;
 
+      Destroy_Readback_Buffer (Device, Replaced_Cleanup_Ok);
+      if not Replaced_Cleanup_Ok then
+         Release_Local;
+         Status := Readback_Cleanup_Failed;
+         return;
+      end if;
       Device.Readback_Buffer := Buffer_Handle;
       Device.Readback_Memory := Memory_Handle;
       Device.Readback_Bytes := Byte_Count;
@@ -150,6 +184,9 @@ separate (Terminal.App.Vulkan_Device)
    exception
       when others =>
          Release_Local;
-         Status := Readback_Allocate_Memory_Failed;
+         Status :=
+           (if Local_Cleanup_Ok
+            then Readback_Allocate_Memory_Failed
+            else Readback_Cleanup_Failed);
    end Enable_Framebuffer_Readback;
 

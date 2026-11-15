@@ -10,6 +10,15 @@ package Terminal.App.Image_Upload_Layout is
       Vulkan_Buffer_Row_Pixels : Natural := 0;
    end record;
 
+   function Required_Source_Bytes
+     (Width                  : Natural;
+      Height                 : Natural;
+      Source_Bytes_Per_Pixel : Natural;
+      Row_Stride_Bytes       : Natural;
+      Maximum_Bytes          : Positive) return Natural;
+   --  Returns the smallest buffer extent containing the final source row.
+   --  Padding after that row is not part of the image layout.
+
    procedure Calculate
      (Width                  : Natural;
       Height                 : Natural;

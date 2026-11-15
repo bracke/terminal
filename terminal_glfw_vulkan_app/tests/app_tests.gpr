@@ -2,75 +2,107 @@ with "../terminal_glfw_vulkan_app.gpr";
 with "aunit";
 
 project App_Tests is
-   for Source_Dirs use (".");
-   for Object_Dir use "obj";
-   for Exec_Dir use "bin";
+   type Link_OS_Kind is ("posix", "windows");
+   Link_Host : Link_OS_Kind := external ("TERMINAL_PTY_OS", "posix");
+
+   for Source_Dirs use (".", "../../test_support");
+   case Link_Host is
+      when "windows" =>
+         for Object_Dir use "obj/windows";
+         for Exec_Dir use "bin/windows";
+      when "posix" =>
+         for Object_Dir use "obj/posix";
+         for Exec_Dir use "bin";
+   end case;
    for Main use
-     ("colour_glyph_submit_smoke.adb",
-      "frame_image_storage_smoke.adb",
-      "vulkan_submit_smoke.adb",
+     ("accessibility_smoke.adb",
       "app_profile_smoke.adb",
+      "clipboard_osc52_smoke.adb",
+      "command_palette_smoke.adb",
+      "colour_glyph_submit_smoke.adb",
+      "config_file_smoke.adb",
+      "copy_mode_smoke.adb",
+      "cursor_blink_smoke.adb",
+      "diagnostics_smoke.adb",
+      "font_discovery_smoke.adb",
+      "frame_image_storage_smoke.adb",
+      "glfw_runtime_state_smoke.adb",
+      "graphics_capabilities_smoke.adb",
+      "graphics_replacement_benchmark_smoke.adb",
+      "graphics_transport_smoke.adb",
+      "gui_present_smoke.adb",
+      "hyperlink_smoke.adb",
+      "image_media_smoke.adb",
+      "image_placements_smoke.adb",
+      "input_map_smoke.adb",
+      "input_registry_smoke.adb",
+      "iterm2_file_smoke.adb",
+      "iterm2_media_smoke.adb",
+      "kitty_control_matrix_smoke.adb",
+      "pict_renderer_smoke.adb",
+      "queue_smoke.adb",
+      "render_policy_smoke.adb",
+      "renderer_animation_smoke.adb",
+      "renderer_graphics_cells_smoke.adb",
+      "renderer_kitty_object_smoke.adb",
+      "renderer_large_payload_smoke.adb",
+      "renderer_local_media_smoke.adb",
+      "renderer_metrics_smoke.adb",
+      "renderer_relative_placement_smoke.adb",
+      "renderer_status_smoke.adb",
+      "renderer_transaction_smoke.adb",
+      "resize_smoke.adb",
+      "scrollback_view_smoke.adb",
+      "selection_smoke.adb",
+      "shell_interaction_smoke.adb",
+      "session_cleanup_shutdown_smoke.adb",
+      "session_hardening_smoke.adb",
+      "session_runtime_smoke.adb",
+      "session_recording_smoke.adb",
+      "session_shutdown_smoke.adb",
+      "session_table_smoke.adb",
+      "sessions_smoke.adb",
+      "settings_smoke.adb",
+      "shader_loader_smoke.adb",
+      "splits_smoke.adb",
+      "tabs_smoke.adb",
+      "terminal-app-click_debounce_smoke.adb",
+      "terminal-app-image_pipeline_units_smoke.adb",
+      "terminal-app-image_store_smoke.adb",
+      "text_blink_smoke.adb",
+      "text_shaper_smoke.adb",
+      "theme_config_smoke.adb",
+      "vulkan_device_smoke.adb",
+      "vulkan_discovery_policy_smoke.adb",
       "vulkan_presenter_smoke.adb",
       "vulkan_recovery_smoke.adb",
-      "vulkan_device_smoke.adb",
-      "gui_present_smoke.adb",
-      "shader_loader_smoke.adb",
-      "font_discovery_smoke.adb",
-      "text_shaper_smoke.adb",
-      "renderer_metrics_smoke.adb",
-      "renderer_graphics_cells_smoke.adb",
-      "renderer_status_smoke.adb",
-      "renderer_animation_smoke.adb",
-      "renderer_local_media_smoke.adb",
-      "renderer_transaction_smoke.adb",
-      "renderer_relative_placement_smoke.adb",
-      "renderer_large_payload_smoke.adb",
-      "renderer_kitty_object_smoke.adb",
-      "kitty_control_matrix_smoke.adb",
-      "graphics_replacement_benchmark_smoke.adb",
-      "image_media_smoke.adb",
-      "pict_renderer_smoke.adb",
-      "iterm2_media_smoke.adb",
+      "vulkan_submit_smoke.adb",
+      "workspace_smoke.adb",
       "external_graphics_stream_probe.adb",
       "pty_core_integration_smoke.adb",
       "pty_m1_commands_smoke.adb",
-      "pty_program_progression_smoke.adb",
-      "input_map_smoke.adb",
-      "selection_smoke.adb",
-      "hyperlink_smoke.adb",
-      "clipboard_osc52_smoke.adb",
-      "diagnostics_smoke.adb",
-      "scrollback_view_smoke.adb",
-      "render_policy_smoke.adb",
-      "theme_config_smoke.adb",
-      "config_file_smoke.adb",
-      "graphics_capabilities_smoke.adb",
-      "image_pipeline_units_smoke.adb",
-      "image_store_smoke.adb",
-      "image_placements_smoke.adb",
-      "graphics_transport_smoke.adb",
-      "iterm2_file_smoke.adb",
-      "tabs_smoke.adb",
-      "splits_smoke.adb",
-      "sessions_smoke.adb",
-      "session_runtime_smoke.adb",
-      "session_table_smoke.adb",
-      "session_hardening_smoke.adb",
-      "cursor_blink_smoke.adb",
-      "text_blink_smoke.adb",
-      "queue_smoke.adb",
-      "resize_smoke.adb");
+      "pty_program_progression_smoke.adb");
+
+   package Builder is
+      for Executable ("terminal-app-click_debounce_smoke.adb") use
+        "click_debounce_smoke";
+      for Executable ("terminal-app-image_pipeline_units_smoke.adb") use
+        "image_pipeline_units_smoke";
+      for Executable ("terminal-app-image_store_smoke.adb") use
+        "image_store_smoke";
+   end Builder;
 
    package Compiler is
       for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwe");
    end Compiler;
 
+   package Binder is
+      for Default_Switches ("Ada") use ("-E");
+   end Binder;
+
    --  MSYS2 names these libraries differently from every Unix: libglfw3.dll.a
    --  and libvulkan-1.dll.a, so -lglfw and -lvulkan find nothing there. Same
    --  scenario variable the PTY backend uses, so one setting picks the host.
-   type Link_OS_Kind is ("posix", "windows");
-   Link_Host : Link_OS_Kind := external ("TERMINAL_PTY_OS", "posix");
-
    package Linker is
       case Link_Host is
          when "windows" =>

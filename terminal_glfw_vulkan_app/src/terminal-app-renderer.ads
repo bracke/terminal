@@ -1,26 +1,28 @@
 with Ada.Finalization;
+private with Ada.Real_Time;
 with Terminal.Common.Bytes;
+with Terminal.Common.Graphics_Limits;
 with Interfaces;
 with Terminal.Core;
-with Terminal.App.Graphics;
-with Terminal.App.Graphics_Transport;
-with Terminal.App.Frame_Image_Storage;
-with Terminal.App.ITerm2_Files;
+private with Terminal.App.Graphics;
+private with Terminal.App.Graphics_Transport;
+private with Terminal.App.Frame_Image_Storage;
+private with Terminal.App.ITerm2_Files;
 with Terminal.App.Image_Decode;
 with Terminal.App.Image_Media;
-with Terminal.App.Image_Ingestion;
-with Terminal.App.Image_Placements;
-with Terminal.App.Placeholder_Index;
-with Terminal.App.Image_Store;
+private with Terminal.App.Image_Placements;
+private with Terminal.App.Placeholder_Index;
+private with Terminal.App.Image_Store;
+private with Terminal.App.Owned_Image_Data;
 with Terminal.App.Image_Rendering;
 with Terminal.App.Render_Model;
-with Terminal.App.Splits;
-with Terminal.App.Tabs;
+private with Terminal.App.Splits;
+private with Terminal.App.Tabs;
 with Terminal.App.Theme;
 with Terminal.App.Vulkan_Context;
-with Terminal.App.Vulkan_Presenter;
-with Terminal.App.Vulkan_Submit;
-with Textrender;
+with Terminal.App.Vulkan_Limits;
+private with Terminal.App.Vulkan_Submit;
+private with Terminal.App.Renderer_State;
 
 package Terminal.App.Renderer is
    Content_Margin : constant Natural := 6;
@@ -28,38 +30,42 @@ package Terminal.App.Renderer is
      Terminal.App.Image_Rendering.Max_Status_Label_Length;
    Max_Kitty_Image_Objects : constant :=
      Terminal.App.Max_Graphics_Image_Objects;
-   Max_Kitty_Image_Bytes   : constant := 64 * 1024 * 1024;
-   Max_Kitty_Placements    : constant := 16 * 1024;
-   Max_Kitty_Animation_Frames : constant := 4_096;
+   Max_Kitty_Image_Bytes   : constant :=
+     Terminal.Common.Graphics_Limits.Max_Image_Bytes;
+   Max_Kitty_Placements    : constant :=
+     Terminal.Common.Graphics_Limits.Max_Placements;
+   Max_Kitty_Animation_Frames : constant :=
+     Terminal.Common.Graphics_Limits.Max_Animation_Frames;
    --  One complete backup plus replay's two canvases and one published frame.
-   Max_Theme_Transaction_Bytes : constant := Max_Kitty_Image_Bytes * 4;
+   Max_Theme_Transaction_Bytes : constant :=
+     Max_Kitty_Image_Bytes * 4;
    Max_Relative_Placement_Depth : constant := 32;
-   Max_Graphics_Pixel_Dimension : constant := 16_384;
+   Max_Graphics_Pixel_Dimension : constant :=
+     Terminal.Common.Graphics_Limits.Max_Pixel_Dimension;
 
    type Graphics_Resource_Limits is record
       Image_Objects : Positive range 1 .. Max_Kitty_Image_Objects :=
         Max_Kitty_Image_Objects;
-      Image_Bytes   : Positive range 1 .. Max_Kitty_Image_Bytes :=
+      Image_Bytes : Positive range 1 .. Max_Kitty_Image_Bytes :=
         Max_Kitty_Image_Bytes;
-      Placements    : Positive range 1 .. Max_Kitty_Placements :=
+      Placements : Positive range 1 .. Max_Kitty_Placements :=
         Max_Kitty_Placements;
       Animation_Frames : Positive range 1 .. Max_Kitty_Animation_Frames :=
         Max_Kitty_Animation_Frames;
-      Per_Image_Bytes : Positive range
-        1 .. Terminal.App.Render_Model.Max_Image_Decoded_Data_Length :=
-          Terminal.App.Render_Model.Max_Image_Decoded_Data_Length;
+      Per_Image_Bytes : Positive range 1 .. Max_Kitty_Image_Bytes :=
+        Max_Kitty_Image_Bytes;
       Theme_Transaction_Bytes : Positive range
         1 .. Max_Theme_Transaction_Bytes := Max_Theme_Transaction_Bytes;
       Pixel_Dimension : Positive range 1 .. Max_Graphics_Pixel_Dimension :=
         Max_Graphics_Pixel_Dimension;
       GPU_Atlas_Bytes : Positive range
-        Terminal.App.Vulkan_Submit.Min_Image_Atlas_Bytes ..
-          Terminal.App.Vulkan_Submit.Max_Image_Atlas_Bytes :=
-          Terminal.App.Vulkan_Submit.Default_Image_Atlas_Bytes;
+        Terminal.App.Vulkan_Limits.Min_Atlas_Bytes ..
+          Terminal.App.Vulkan_Limits.Max_Atlas_Bytes :=
+            Terminal.App.Vulkan_Limits.Default_Atlas_Bytes;
       GPU_Atlas_Dimension : Positive range
-        Terminal.App.Vulkan_Submit.Min_Image_Atlas_Dimension ..
-          Terminal.App.Vulkan_Submit.Max_Image_Atlas_Dimension :=
-          Terminal.App.Vulkan_Submit.Default_Image_Atlas_Dimension;
+        Terminal.App.Vulkan_Limits.Min_Atlas_Dimension ..
+          Terminal.App.Vulkan_Limits.Max_Atlas_Dimension :=
+            Terminal.App.Vulkan_Limits.Default_Atlas_Dimension;
    end record;
 
    Default_Graphics_Resource_Limits : constant Graphics_Resource_Limits :=
@@ -82,14 +88,16 @@ package Terminal.App.Renderer is
       Theme_Closed,
       Theme_Allocation_Failed,
       Theme_Replay_Failed);
+   type Font_Update_Status is (Font_Ok, Font_Load_Failed);
+   Default_Font_Pixel_Size : constant Positive := 16;
 
-   type Renderer_Diagnostics is record
+   --  Declaring the diagnostic hierarchy in a nested package prevents its
+   --  tagged types from becoming additional controlling types of Renderer
+   --  operations.
+   package Diagnostic_Types is
+   type Operational is tagged record
       Initialized         : Boolean := False;
       Text_Loaded         : Boolean := False;
-      Last_Cell_Count     : Natural := 0;
-      Last_Dirty_Rows     : Natural := 0;
-      Last_Rectangle_Count : Natural := 0;
-      Last_Glyph_Count    : Natural := 0;
       Last_Image_Count    : Natural := 0;
       Rectangle_Command_Capacity : Natural := 0;
       Image_Command_Capacity : Natural := 0;
@@ -104,10 +112,6 @@ package Terminal.App.Renderer is
       Last_Image_Staging_Byte_Length : Natural := 0;
       Last_Image_Payload_Preview_Complete : Boolean := False;
       Last_Image_Encoded_Preview_Length : Natural := 0;
-      Last_Image_Decoded_Preview_Length : Natural := 0;
-      Last_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
-        (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
-          (others => 0);
       Last_Image_Preview_Decode_Complete : Boolean := False;
       Last_Image_Decode_Status :
         Terminal.App.Render_Model.Image_Decode_Status :=
@@ -130,6 +134,19 @@ package Terminal.App.Renderer is
       Kitty_Image_Object_Bytes : Natural := 0;
       Kitty_Placement_Count    : Natural := 0;
       Kitty_Animation_Frame_Count : Natural := 0;
+      Last_Render_Status  : Render_Status := Not_Initialized;
+   end record;
+
+   type Snapshot is new Operational with record
+      Last_Cell_Count     : Natural := 0;
+      Last_Dirty_Rows     : Natural := 0;
+      Last_Cached_Rows    : Natural := 0;
+      Last_Rectangle_Count : Natural := 0;
+      Last_Glyph_Count    : Natural := 0;
+      Last_Image_Decoded_Preview_Length : Natural := 0;
+      Last_Image_Decoded_Preview_Bytes : Terminal.Common.Bytes.Byte_Array
+        (1 .. Terminal.App.Render_Model.Max_Image_Decoded_Preview_Length) :=
+          (others => 0);
       Graphics_Event_Count : Interfaces.Unsigned_64 := 0;
       Kitty_Command_Count : Interfaces.Unsigned_64 := 0;
       Kitty_Success_Count : Interfaces.Unsigned_64 := 0;
@@ -154,16 +171,28 @@ package Terminal.App.Renderer is
       Last_Vertex_Count   : Natural := 0;
       Missing_Glyph_Count : Natural := 0;
       Atlas_Dirty         : Boolean := False;
-      Last_Render_Status  : Render_Status := Not_Initialized;
    end record;
+   end Diagnostic_Types;
+
+   subtype Renderer_Operational_Diagnostics is Diagnostic_Types.Operational;
+   subtype Renderer_Diagnostics is Diagnostic_Types.Snapshot;
 
    procedure Initialize
      (R       : out Renderer;
       Context : Terminal.App.Vulkan_Context.Context;
-      Status  : out Init_Status);
+      Status  : out Init_Status;
+      Font_Path : String := "";
+      Font_Pixel_Size : Positive := Default_Font_Pixel_Size);
    procedure Initialize_Headless
      (R      : out Renderer;
-      Status : out Init_Status);
+      Status : out Init_Status;
+      Font_Path : String := "";
+      Font_Pixel_Size : Positive := Default_Font_Pixel_Size);
+   procedure Set_Font
+     (R               : in out Renderer;
+      Font_Path       : String;
+      Font_Pixel_Size : Positive;
+      Status          : out Font_Update_Status);
    procedure Render
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
@@ -179,11 +208,18 @@ package Terminal.App.Renderer is
    procedure Set_Hovered_Link
      (R    : in out Renderer;
       Link : Terminal.Core.Hyperlink);
+   procedure Set_Status_Overlay
+     (R    : in out Renderer;
+      Text : String);
    overriding procedure Finalize (R : in out Renderer);
 
    function Cell_Width (R : Renderer) return Positive;
    function Cell_Height (R : Renderer) return Positive;
-   function Diagnostics (R : Renderer) return Renderer_Diagnostics;
+   function Diagnostics
+     (R                     : Renderer;
+      Include_Image_Preview : Boolean := True) return Renderer_Diagnostics;
+   function Operationally_Equivalent
+     (Left, Right : Renderer_Diagnostics) return Boolean;
    function Color_Emoji_Status_Label
      (Diagnostics : Renderer_Diagnostics) return String;
    function Paragraph_Bidi_Status_Label
@@ -193,58 +229,31 @@ package Terminal.App.Renderer is
    function Media_Status_Label
      (Diagnostics : Renderer_Diagnostics) return String;
 private
+
    --  Domain child packages expose these implementation primitives through
    --  focused public interfaces.  Keeping them private prevents production
    --  callers from bypassing the graphics/layout/presentation boundaries.
-   procedure Set_Graphics_Resource_Limits
-     (R      : in out Renderer;
-      Limits : Graphics_Resource_Limits);
-   function Graphics_Resource_Limit
-     (R : Renderer) return Graphics_Resource_Limits;
-   procedure Set_Graphics_Access_Policy
-     (R      : in out Renderer;
-      Policy : Terminal.App.Graphics_Transport.Access_Policy);
-   function Graphics_Access_Policy
-     (R : Renderer) return Terminal.App.Graphics_Transport.Access_Policy;
-   procedure Set_ITerm2_Download_Policy
-     (R      : in out Renderer;
-      Policy : Terminal.App.ITerm2_Files.Download_Policy);
-   function ITerm2_Download_Policy
-     (R : Renderer) return Terminal.App.ITerm2_Files.Download_Policy;
-   procedure Stage_Graphics_Event
-     (R       : in out Renderer;
-      Event   : Terminal.Core.Graphics_Event;
-      Payload : String);
-   procedure Render_App
+   procedure Commit_Graphics_Events (R : in out Renderer);
+   procedure Commit_Offscreen_Graphics_Event
+     (R     : in out Renderer;
+      Event : Terminal.Core.Graphics_Event);
+   procedure Build_App_Frame
      (R              : in out Renderer;
       Snapshots      : Snapshot_Array;
       Active_Index   : Positive;
       Tabs           : Terminal.App.Tabs.Tab_Snapshot;
       Splits         : Terminal.App.Splits.Split_Snapshot;
       Status         : out Render_Status);
-   procedure Present
-     (R         : Renderer;
-      Context   : Terminal.App.Vulkan_Context.Context;
-      Presenter : in out Terminal.App.Vulkan_Presenter.Presenter;
-      Status    : out Terminal.App.Vulkan_Presenter.Present_Status);
-   procedure Present_Retained
-     (R         : Renderer;
-      Context   : Terminal.App.Vulkan_Context.Context;
-      Presenter : in out Terminal.App.Vulkan_Presenter.Presenter;
-      Status    : out Terminal.App.Vulkan_Presenter.Present_Status);
-   procedure Commit_Graphics_Events (R : in out Renderer);
-   procedure Commit_Offscreen_Graphics_Events (R : in out Renderer);
+   procedure Set_Render_Status
+     (R      : in out Renderer;
+      Status : out Render_Status;
+      Value  : Render_Status);
+   function Submission_Render_Status
+     (Status : Terminal.App.Vulkan_Submit.Build_Status) return Render_Status;
    procedure Release_Graphics_Stream
      (R         : in out Renderer;
       Stream_ID : Terminal.Core.Graphics_Stream_ID);
-   function Graphics_Result
-     (R     : Renderer;
-      Event : Terminal.Core.Graphics_Event)
-      return Terminal.Core.Kitty_Graphics_Result;
-   function Graphics_Event_Processed
-     (R     : Renderer;
-      Event : Terminal.Core.Graphics_Event) return Boolean;
-   function Animation_Frame_Due (R : Renderer) return Boolean;
+   function Animation_Frame_Due (R : in out Renderer) return Boolean;
 
    --  Borrowed frame storage is intentionally private.  The Testing child
    --  exposes it to white-box tests, while production callers receive frame
@@ -270,26 +279,54 @@ private
    Animation_Running : constant Animation_Playback_State :=
      Terminal.App.Image_Store.Animation_Running;
 
+   procedure Take_Image_Object
+     (R              : in out Renderer;
+      Stream_ID      : Terminal.Core.Graphics_Stream_ID;
+      ID             : Terminal.Core.Graphics_ID;
+      Image_Number   : Terminal.Core.Graphics_ID;
+      Usage_Hint     : Natural;
+      Protocol       : Terminal.App.Render_Model.Image_Protocol;
+      Raw_Format     : Natural;
+      Pixel_Width    : Natural;
+      Pixel_Height   : Natural;
+      Decoded_Length : Natural;
+      Decoded_Row_Stride_Bytes : Natural;
+      Bytes          : in out Terminal.App.Owned_Image_Data.Owner;
+      Stored_Object  : out Image_Object_Access;
+      Additional_Bytes : Natural := 0;
+      Index_Control  : access Terminal.App.Image_Store.Allocation_Control :=
+        null);
+
    subtype Virtual_Placement is
      Terminal.App.Image_Placements.Virtual_Placement;
+   subtype Virtual_Placement_State is
+     Terminal.App.Image_Placements.Virtual_Placement_State;
    subtype Virtual_Placement_Access is
      Terminal.App.Image_Placements.Virtual_Placement_Access;
    subtype Conventional_Placement is
      Terminal.App.Image_Placements.Conventional_Placement;
+   subtype Conventional_Placement_State is
+     Terminal.App.Image_Placements.Conventional_Placement_State;
    subtype Conventional_Placement_Access is
      Terminal.App.Image_Placements.Conventional_Placement_Access;
 
-   --  A frame can consume at most one pending event from each pane.  Results
-   --  are committed before the next application frame, so reserving the pane
-   --  limit avoids both a late allocation and a large per-renderer object.
-   Max_Processed_Graphics_Events : constant := Terminal.App.Splits.Max_Panes;
+   --  A frame can consume at most one pending event from each pane.  One
+   --  additional slot lets the offscreen consumer complete a hidden event
+   --  while a visible presentation-retry transaction remains retained.
+   Max_Processed_Graphics_Events : constant :=
+     Terminal.App.Splits.Max_Panes + 1;
+   Max_Staged_Graphics_Events : constant :=
+     Max_Processed_Graphics_Events;
+   Max_Staged_Graphics_Bytes : constant :=
+     Terminal.Common.Graphics_Limits.Max_Transaction_Bytes
+       * Max_Staged_Graphics_Events;
    type Processed_Graphics_Event is record
       Stream_ID : Terminal.Core.Graphics_Stream_ID := 0;
       Sequence  : Terminal.Core.Graphics_Event_Sequence := 0;
-      Result    : Terminal.Core.Kitty_Graphics_Result := (others => <>);
+      Result    : Terminal.Core.Graphics_Completion := (others => <>);
    end record;
-   type Processed_Graphics_Event_Array is
-     array (Positive range 1 .. Max_Processed_Graphics_Events) of
+   type Processed_Graphics_Event_Array is array
+     (Positive range 1 .. Max_Processed_Graphics_Events) of
        Processed_Graphics_Event;
 
    type Staged_Graphics_Event;
@@ -310,74 +347,43 @@ private
       Next      : Sixel_Palette_Entry_Access := null;
    end record;
 
-   type Shaped_Run_Map_Entry is record
-      Run_Index   : Natural := 0;
-      Starts_Here : Boolean := False;
-   end record;
-   type Shaped_Run_Map_Array is
-     array (Positive range <>) of Shaped_Run_Map_Entry;
-   type Shaped_Run_Map_Array_Access is access Shaped_Run_Map_Array;
-
-   type Renderer is new Ada.Finalization.Limited_Controlled with record
-      Needs_Finalization : Boolean := False;
-      Closed      : Boolean := False;
-      Initialized : Boolean := False;
-      Has_Context : Boolean := False;
-      Text        : Textrender.Renderer;
-      Text_Loaded : Boolean := False;
-      CW          : Positive := 10;
-      CH          : Positive := 20;
-      Rectangles  : Terminal.App.Render_Model.Rectangle_Array_Access := null;
-      Glyphs      : Terminal.App.Render_Model.Glyph_Array_Access := null;
-      Colour_Glyphs : Terminal.App.Render_Model.Colour_Glyph_Array_Access := null;
-      Frame_Images : Terminal.App.Frame_Image_Storage.Storage;
-      Text_Runs   : Terminal.App.Render_Model.Text_Run_Array_Access := null;
-      Shaped_Run_Map : Shaped_Run_Map_Array_Access := null;
-      Placement_Index : Terminal.App.Placeholder_Index.Index;
-      Placement_Index_Dirty : Boolean := True;
-      Frame_Command_Overflowed : Boolean := False;
-      Batch       : Terminal.App.Vulkan_Submit.Submission_Batch;
-      Rectangle_Count : Natural := 0;
-      Glyph_Count : Natural := 0;
-      Colour_Glyph_Count : Natural := 0;
-      Text_Run_Count : Natural := 0;
-      Shaped_Glyph_Count : Natural := 0;
-      Shaping_Fallback_Count : Natural := 0;
-      Text_Fallback_Run_Count : Natural := 0;
-      Color_Glyph_Count : Natural := 0;
-      Color_Emoji_Fallback_Count : Natural := 0;
-      Paragraph_Bidi_Fallback_Count : Natural := 0;
-      Vertex_Count : Natural := 0;
-      Missing_Glyph_Count : Natural := 0;
-      Last_Cell_Count : Natural := 0;
-      Last_Dirty_Rows : Natural := 0;
-      Last_Frame_Width : Natural := 0;
-      Last_Frame_Height : Natural := 0;
-      Target_Frame_Width : Natural := 0;
-      Target_Frame_Height : Natural := 0;
-      Color_Theme : Terminal.App.Theme.Theme :=
-        Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark);
-      Hovered_Link : Terminal.Core.Hyperlink;
-      Draw_Offset_X : Natural := 0;
-      Draw_Offset_Y : Natural := 0;
-      Atlas_Dirty : Boolean := False;
-      Colour_Sheet_Dirty : Boolean := False;
+   type Graphics_Resource_State is limited record
       Image_Objects : aliased Terminal.App.Image_Store.Store;
-      Next_Automatic_Image_ID : Terminal.Core.Graphics_ID := 1;
-      Graphics_Limits : Graphics_Resource_Limits :=
-        Default_Graphics_Resource_Limits;
-      Graphics_Access : Terminal.App.Graphics_Transport.Access_Policy :=
+      Allocation_Control : Terminal.App.Image_Store.Allocation_Control;
+      Placements : Terminal.App.Image_Placements.Store;
+      Sixel_Palettes : Sixel_Palette_Entry_Access := null;
+   end record;
+
+   type Graphics_Policy_State is record
+      Limits : Graphics_Resource_Limits := Default_Graphics_Resource_Limits;
+      Access_Policy : Terminal.App.Graphics_Transport.Access_Policy :=
         Terminal.App.Graphics_Transport.Default_Access_Policy;
       ITerm2_Downloads : Terminal.App.ITerm2_Files.Download_Policy :=
         Terminal.App.ITerm2_Files.Disabled_Policy;
+   end record;
+
+   type Graphics_Transaction_State is record
+      Next_Automatic_Image_ID : Terminal.Core.Graphics_ID := 1;
       Last_Stored_Image_Order : Interfaces.Unsigned_64 := 0;
       Last_Stored_Image_Content_Serial : Interfaces.Unsigned_64 := 0;
       Transactional_Image_Install : Boolean := False;
       Replaced_Image_Order : Interfaces.Unsigned_64 := 0;
       Image_Store_Allocation_Failed : Boolean := False;
       Image_Transport_Failed : Boolean := False;
-      Last_Animation_Result : Terminal.Core.Kitty_Graphics_Result_Code :=
-        Terminal.Core.Kitty_No_Response;
+      Last_Animation_Result : Terminal.Core.Graphics_Completion_Code :=
+        Terminal.Core.Graphics_No_Response;
+      Processed_Events : Processed_Graphics_Event_Array :=
+        (others => (others => <>));
+      Processed_Event_Count :
+        Natural range 0 .. Max_Processed_Graphics_Events := 0;
+      Event_Tracking_Failed : Boolean := False;
+      Staged_Events : Staged_Graphics_Event_Access := null;
+      Staged_Event_Count : Natural range 0 .. Max_Staged_Graphics_Events := 0;
+      Staged_Byte_Count : Natural range 0 .. Max_Staged_Graphics_Bytes := 0;
+      Staged_Payload_Borrows : Natural := 0;
+   end record;
+
+   type Graphics_Telemetry_State is record
       Graphics_Event_Count : Interfaces.Unsigned_64 := 0;
       Kitty_Command_Count : Interfaces.Unsigned_64 := 0;
       Kitty_Success_Count : Interfaces.Unsigned_64 := 0;
@@ -393,18 +399,66 @@ private
       Animation_Advance_Count : Interfaces.Unsigned_64 := 0;
       Chunk_Cancel_Count : Interfaces.Unsigned_64 := 0;
       Last_Media : Terminal.App.Image_Rendering.Media_Diagnostics;
-      Image_Allocation_Control :
-        Terminal.App.Image_Store.Allocation_Control;
-      Virtual_Placements : Virtual_Placement_Access := null;
-      Conventional_Placements : Conventional_Placement_Access := null;
-      Kitty_Placement_Count : Natural range 0 .. Max_Kitty_Placements := 0;
-      Processed_Graphics_Events : Processed_Graphics_Event_Array :=
-        (others => (others => <>));
-      Processed_Graphics_Event_Count : Natural range
-        0 .. Max_Processed_Graphics_Events := 0;
-      Graphics_Event_Tracking_Failed : Boolean := False;
-      Staged_Graphics_Events : Staged_Graphics_Event_Access := null;
-      Sixel_Palettes : Sixel_Palette_Entry_Access := null;
+   end record;
+
+   type Graphics_View_Identity is record
+      Stream_ID : Terminal.Core.Graphics_Stream_ID := 0;
+      Alternate_Screen : Boolean := False;
+      Screen_Generation : Terminal.Core.Graphics_Screen_Generation := 0;
+   end record;
+   type Graphics_View_Identity_Array is
+     array (Terminal.App.Splits.Pane_Index) of Graphics_View_Identity;
+
+   type Renderer_Graphics_State is
+     new Ada.Finalization.Limited_Controlled with record
+      Resources   : Graphics_Resource_State;
+      Policy      : Graphics_Policy_State;
+      Transaction : Graphics_Transaction_State;
+      Telemetry   : Graphics_Telemetry_State;
+      Animation_Schedule_Valid : Boolean := False;
+      Animation_Schedule_Immediate : Boolean := False;
+      Animation_Schedule_Has_Deadline : Boolean := False;
+      Animation_Schedule_Deadline : Ada.Real_Time.Time :=
+        Ada.Real_Time.Time_First;
+      Visible_Views : Graphics_View_Identity_Array := (others => <>);
+      Visible_View_Count : Terminal.App.Splits.Pane_Count := 0;
+      Cleanup_Complete : Boolean := False;
+   end record;
+   overriding procedure Finalize (Object : in out Renderer_Graphics_State);
+
+   subtype Shaped_Run_Map_Entry is
+     Terminal.App.Renderer_State.Shaped_Run_Map_Entry;
+   subtype Shaped_Run_Map_Array is
+     Terminal.App.Renderer_State.Shaped_Run_Map_Array;
+   subtype Shaped_Run_Map_Array_Access is
+     Terminal.App.Renderer_State.Shaped_Run_Map_Array_Access;
+
+   type Renderer_Lifecycle_State is record
+      Needs_Finalization : Boolean := False;
+      Closed      : Boolean := False;
+      Initialized : Boolean := False;
+      Has_Context : Boolean := False;
       Last_Render_Status : Render_Status := Not_Initialized;
    end record;
+
+   subtype Renderer_Text_State is Terminal.App.Renderer_State.Text_State;
+   subtype Renderer_Frame_State is Terminal.App.Renderer_State.Frame_State;
+   subtype Renderer_View_State is Terminal.App.Renderer_State.View_State;
+
+   type Renderer is new Ada.Finalization.Limited_Controlled with record
+      Lifecycle    : Renderer_Lifecycle_State;
+      Text_State   : Renderer_Text_State;
+      Frame_State  : Renderer_Frame_State;
+      View_State   : Renderer_View_State;
+      Graphics_State : Renderer_Graphics_State;
+   end record;
+
+   --  Shared mechanics used by the graphics domain child and the ordinary
+   --  render lifecycle; policy and public orchestration remain in the child.
+   procedure Set_Visible_Graphics_Views
+     (R         : in out Renderer;
+      Snapshots : Snapshot_Array);
+   procedure Set_Visible_Graphics_View
+     (R        : in out Renderer;
+      Snapshot : Terminal.Core.Render_Snapshot);
 end Terminal.App.Renderer;

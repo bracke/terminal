@@ -6,7 +6,7 @@ procedure Core_Large_Graphics_Smoke is
    use AUnit.Assertions;
    use Terminal.Common.Bytes;
    use type Terminal.Core.Feed_Status;
-   use type Terminal.Core.Ignored_Graphics_Protocol;
+   use type Terminal.Core.Graphics_Protocol_Kind;
    use type Terminal.Core.Initialize_Status;
 
    T      : Terminal.Core.Terminal;
@@ -44,7 +44,7 @@ procedure Core_Large_Graphics_Smoke is
    end Feed_Repeated;
 
    procedure Drain_And_Check
-     (Protocol : Terminal.Core.Ignored_Graphics_Protocol;
+     (Protocol : Terminal.Core.Graphics_Protocol_Kind;
       Prefix   : String;
       Fill     : Character;
       Length   : Natural;
@@ -78,6 +78,10 @@ procedure Core_Large_Graphics_Smoke is
          end loop;
       end loop;
       Assert (Offset = Length, Label_Text & " drained");
+      Assert
+        (Terminal.Core.Pending_Graphics_Event_Count (T) = 1,
+         Label_Text & " remains pending until explicit acknowledgement");
+      Terminal.Core.Discard_Graphics_Event (T);
    end Drain_And_Check;
 begin
    Terminal.Core.Initialize (T, 2, 10, 100, Init);

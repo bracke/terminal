@@ -19,11 +19,10 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
          Result :=
            Vk.Create_Command_Pool
              (Handle, Pool_Info'Address, System.Null_Address, Pool'Address);
+         Device.Command_Pool := Pool;
          if Result /= Vk.SUCCESS or else Pool = System.Null_Address then
             return Create_Command_Pool_Failed;
          end if;
-
-         Device.Command_Pool := Pool;
 
          declare
             Allocate_Info : aliased Vk.Command_Buffer_Allocate_Info_T :=
@@ -38,7 +37,6 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
               Vk.Allocate_Command_Buffers
                 (Handle, Allocate_Info'Address, Device.Command_Buffers'Address);
             if Result /= Vk.SUCCESS then
-               Destroy_Command_Resources (Handle);
                return Allocate_Command_Buffers_Failed;
             end if;
 
@@ -62,7 +60,6 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
             if Result /= Vk.SUCCESS
               or else Device.Upload_Command_Buffer = System.Null_Address
             then
-               Destroy_Command_Resources (Handle);
                return Allocate_Command_Buffers_Failed;
             end if;
          end;
@@ -89,9 +86,8 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
                        Semaphore_Info'Address,
                        System.Null_Address,
                        Image_Sem'Address);
+                  Device.Image_Available (I) := Image_Sem;
                   if Result /= Vk.SUCCESS or else Image_Sem = System.Null_Address then
-                     Destroy_Sync (Handle);
-                     Destroy_Command_Resources (Handle);
                      return Create_Sync_Failed;
                   end if;
 
@@ -101,10 +97,8 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
                        Semaphore_Info'Address,
                        System.Null_Address,
                        Render_Sem'Address);
+                  Device.Render_Finished (I) := Render_Sem;
                   if Result /= Vk.SUCCESS or else Render_Sem = System.Null_Address then
-                     Vk.Destroy_Semaphore (Handle, Image_Sem, System.Null_Address);
-                     Destroy_Sync (Handle);
-                     Destroy_Command_Resources (Handle);
                      return Create_Sync_Failed;
                   end if;
 
@@ -114,17 +108,11 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
                        Fence_Info'Address,
                        System.Null_Address,
                        Fence'Address);
+                  Device.In_Flight (I) := Fence;
                   if Result /= Vk.SUCCESS or else Fence = System.Null_Address then
-                     Vk.Destroy_Semaphore (Handle, Render_Sem, System.Null_Address);
-                     Vk.Destroy_Semaphore (Handle, Image_Sem, System.Null_Address);
-                     Destroy_Sync (Handle);
-                     Destroy_Command_Resources (Handle);
                      return Create_Sync_Failed;
                   end if;
 
-                  Device.Image_Available (I) := Image_Sem;
-                  Device.Render_Finished (I) := Render_Sem;
-                  Device.In_Flight (I) := Fence;
                   Device.Sync_Frame_Count := I;
                end;
             end loop;
@@ -138,8 +126,6 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
             if Result /= Vk.SUCCESS
               or else Device.Upload_Fence = System.Null_Address
             then
-               Destroy_Sync (Handle);
-               Destroy_Command_Resources (Handle);
                return Create_Sync_Failed;
             end if;
          end;

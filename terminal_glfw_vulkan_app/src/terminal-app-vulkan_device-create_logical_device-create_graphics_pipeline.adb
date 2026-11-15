@@ -125,6 +125,39 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
          Pipeline_Info : aliased Vk.Graphics_Pipeline_Create_Info_T;
          Pipeline : aliased Vk.Pipeline_T := System.Null_Address;
          Result : Vk.Result_T;
+
+         procedure Destroy_Shader_Module_Call
+           (Module : Vk.Shader_Module_T) is
+         begin
+            Vk.Destroy_Shader_Module
+              (Handle, Module, System.Null_Address);
+         end Destroy_Shader_Module_Call;
+
+         procedure Report_Shader_Module_Failure
+           (Occurrence : Ada.Exceptions.Exception_Occurrence) is
+         begin
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+               Occurrence,
+               "destroy Vulkan shader module during pipeline creation");
+         end Report_Shader_Module_Failure;
+
+         procedure Destroy_Shader_Module_Once is new
+           Terminal.App.Vulkan_Destroy_Once
+             (Vk.Shader_Module_T, System.Null_Address,
+              Destroy_Shader_Module_Call, Report_Shader_Module_Failure);
+
+         procedure Release_Shader_Modules (Success : out Boolean) is
+            Vertex_Ok : Boolean;
+            Fragment_Ok : Boolean;
+         begin
+            Destroy_Shader_Module_Once (Fragment_Module, Fragment_Ok);
+            Destroy_Shader_Module_Once (Vertex_Module, Vertex_Ok);
+            Success := Fragment_Ok and Vertex_Ok;
+            if not Success then
+               Device.Cleanup_Quarantined := True;
+            end if;
+         end Release_Shader_Modules;
       begin
          Shaders.Load ("terminal.vert.spv", Vertex_Code, Load_Status);
          if Load_Status /= Shaders.Ok then
@@ -141,13 +174,22 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
          Shaders.Release (Vertex_Code);
          if Module_Status /= Ok then
             Shaders.Release (Fragment_Code);
+            declare
+               Cleanup_Ok : Boolean;
+            begin
+               Release_Shader_Modules (Cleanup_Ok);
+            end;
             return Module_Status;
          end if;
 
          Module_Status := Create_Shader_Module (Handle, Fragment_Code, Fragment_Module);
          Shaders.Release (Fragment_Code);
          if Module_Status /= Ok then
-            Vk.Destroy_Shader_Module (Handle, Vertex_Module, System.Null_Address);
+            declare
+               Cleanup_Ok : Boolean;
+            begin
+               Release_Shader_Modules (Cleanup_Ok);
+            end;
             return Module_Status;
          end if;
 
@@ -183,24 +225,34 @@ separate (Terminal.App.Vulkan_Device.Create_Logical_Device)
               System.Null_Address,
               Pipeline'Address);
 
-         Vk.Destroy_Shader_Module (Handle, Fragment_Module, System.Null_Address);
-         Vk.Destroy_Shader_Module (Handle, Vertex_Module, System.Null_Address);
+         --  Vulkan may return a partial pipeline on failure.  Publish it to
+         --  the controlled device before any later operation can fail so the
+         --  single finalizer owns every acquired persistent handle.
+         Device.Graphics_Pipeline := Pipeline;
+
+         declare
+            Cleanup_Ok : Boolean;
+         begin
+            Release_Shader_Modules (Cleanup_Ok);
+            if not Cleanup_Ok then
+               return Create_Graphics_Pipeline_Failed;
+            end if;
+         end;
 
          if Result /= Vk.SUCCESS then
-            --  Vulkan permits a failed batch creation to return handles for
-            --  entries completed before the failure.  This call creates one
-            --  pipeline, so destroy that partial result before reporting it.
-            if Pipeline /= System.Null_Address then
-               Vk.Destroy_Pipeline
-                 (Handle, Pipeline, System.Null_Address);
-               Pipeline := System.Null_Address;
-            end if;
             return Create_Graphics_Pipeline_Failed;
          elsif Pipeline = System.Null_Address then
             return Create_Graphics_Pipeline_Failed;
          end if;
 
-         Device.Graphics_Pipeline := Pipeline;
          return Ok;
+      exception
+         when others =>
+            declare
+               Cleanup_Ok : Boolean;
+            begin
+               Release_Shader_Modules (Cleanup_Ok);
+            end;
+            raise;
       end Create_Graphics_Pipeline;
 

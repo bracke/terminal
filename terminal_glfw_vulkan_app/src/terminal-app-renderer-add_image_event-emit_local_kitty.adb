@@ -17,7 +17,7 @@ begin
      or else not Header.Kitty_Data_Offset_Valid
      or else Header.Kitty_More_Specified
    then
-      R.Image_Transport_Failed := True;
+      R.Graphics_State.Transaction.Image_Transport_Failed := True;
       return False;
    end if;
 
@@ -27,18 +27,18 @@ begin
       Offset           => Header.Kitty_Data_Offset,
       Size             => Header.Kitty_Data_Size,
       Size_Specified   => Header.Kitty_Data_Size_Specified,
-      Policy           => R.Graphics_Access,
-      Maximum_Bytes    => R.Graphics_Limits.Per_Image_Bytes,
+      Policy           => R.Graphics_State.Policy.Access_Policy,
+      Maximum_Bytes    => R.Graphics_State.Policy.Limits.Per_Image_Bytes,
       Bytes            => Loaded,
       Length           => Loaded_Length,
       Status           => Load_Status);
    if Load_Status /= Terminal.App.Graphics_Transport.Load_Ok then
-      R.Image_Transport_Failed := True;
+      R.Graphics_State.Transaction.Image_Transport_Failed := True;
       if Load_Status in
         Terminal.App.Graphics_Transport.Load_Too_Large
         | Terminal.App.Graphics_Transport.Load_Allocation_Failed
       then
-         R.Image_Store_Allocation_Failed := True;
+         R.Graphics_State.Transaction.Image_Store_Allocation_Failed := True;
       end if;
       return False;
    end if;
@@ -72,7 +72,7 @@ begin
             Synthetic_Header,
             Synthetic,
             Allow_Unknown_Compressed_PNG_Size => True);
-         Emitted := R.Last_Animation_Result = Terminal.Core.Kitty_OK;
+         Emitted := R.Graphics_State.Transaction.Last_Animation_Result = Terminal.Core.Graphics_OK;
       elsif Synthetic_Header.Kitty_Format in 8 | 16 | 24 | 32 then
          Emitted :=
            Emit_Raw_Kitty (Synthetic_Event, Synthetic_Header, Synthetic);
@@ -89,7 +89,7 @@ begin
 exception
    when Storage_Error =>
       Terminal.App.Graphics_Transport.Release (Loaded);
-      R.Image_Store_Allocation_Failed := True;
+      R.Graphics_State.Transaction.Image_Store_Allocation_Failed := True;
       return False;
    when others =>
       Terminal.App.Graphics_Transport.Release (Loaded);

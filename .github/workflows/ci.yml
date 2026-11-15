@@ -8,9 +8,9 @@ on:
 # terminal is a GLFW/Vulkan terminal emulator. Its external source dependencies
 # include the sibling textrender, zlib, jpeglib, and giflib crates (the
 # terminal_common/core/pty/glfw_vulkan crates are nested in this repo; aunit and
-# df_vulkan come from the Alire community index). Each nested crate's smoke suite
-# is a gpr that "with"s aunit and is built from that crate's directory via
-# `alr exec -- gprbuild` (per README).
+# df_vulkan come from the Alire community index). CI jobs may enter a nested
+# crate after setup-alire has selected the exact compiler; local commands in the
+# README stay at the repository root so the manifest pin selects that compiler.
 #
 # `terminal_pty` selects POSIX on Linux/macOS and ConPTY on Windows. The Windows
 # job is blocking and exercises real shell spawn, I/O, resize, and close rather
@@ -19,13 +19,16 @@ on:
 jobs:
   linux:
     name: Linux build + tests
-    runs-on: ubuntu-latest
+    # Noble carries the Unicode 15.1 dataset used by the generated tables.
+    # Keep both the runner and package revision fixed so regeneration is
+    # independent of ubuntu-latest transitions.
+    runs-on: ubuntu-24.04
     steps:
       - name: Check out terminal
         uses: actions/checkout@v7
         with: { path: terminal }
       - name: Check out sibling crates (transitive pin closure)
-        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@main
+        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@5ed5f4dcfa10301345933d45e5f78ac0573d8cff
         with:
           root: terminal
       - name: Set up Alire
@@ -56,9 +59,11 @@ jobs:
             xauth \
             chafa \
             libsixel-bin \
+            glslang-tools=15.1.0-2~ubuntu0.24.04.2 \
             tmux \
             util-linux \
             fonts-dejavu-core \
+            unicode-data=15.1.0-1 \
             libxcursor-dev \
             libxxf86vm-dev \
             libxrandr-dev \
@@ -70,12 +75,50 @@ jobs:
       - name: Build Ada graphics probe tools
         working-directory: terminal
         run: alr --non-interactive exec -- gprbuild -p -P tools/graphics_tools.gpr
+      - name: Verify committed SPIR-V shaders
+        working-directory: terminal
+        run: |
+          shader_check="$(mktemp -d)"
+          glslangValidator -V terminal_glfw_vulkan_app/assets/shaders/terminal.vert \
+            -o "$shader_check/terminal.vert.spv"
+          glslangValidator -V terminal_glfw_vulkan_app/assets/shaders/terminal.frag \
+            -o "$shader_check/terminal.frag.spv"
+          cmp "$shader_check/terminal.vert.spv" \
+            terminal_glfw_vulkan_app/assets/shaders/terminal.vert.spv
+          cmp "$shader_check/terminal.frag.spv" \
+            terminal_glfw_vulkan_app/assets/shaders/terminal.frag.spv
+      - name: Verify generated Unicode 15.1 tables
+        working-directory: terminal
+        run: |
+          tools/bin/generate_unicode_character_properties \
+            /usr/share/unicode/UnicodeData.txt \
+            /usr/share/unicode/EastAsianWidth.txt \
+            /usr/share/unicode/emoji/emoji-variation-sequences.txt \
+            terminal_core/src/terminal-core-character_properties_data.ads \
+            --check
+          tools/bin/generate_text_properties \
+            /usr/share/unicode/Scripts.txt \
+            /usr/share/unicode/extracted/DerivedBidiClass.txt \
+            /usr/share/unicode/emoji/emoji-data.txt \
+            terminal_glfw_vulkan_app/src/terminal-app-text_properties_data.ads \
+            --check
+          tools/bin/unicode_generator_support_smoke
 
+      - name: C string ownership smoke
+        working-directory: terminal/c_string_ownership
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P tests/c_string_ownership_tests.gpr
+          alr --non-interactive exec -- gprbuild -p -P tests/c_string_ownership_failure_tests.gpr
+          tests/bin/c_string_ownership_smoke
+          tests/bin/c_string_ownership_failure_smoke
       - name: Core smoke suite
         working-directory: terminal/terminal_core
         run: |
           alr --non-interactive exec -- gprbuild -p -P tests/core_tests.gpr
-          for t in tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
+          for test in tests/bin/*_smoke; do
+            echo "== $test =="
+            "$test" || exit 1
+          done
       - name: PTY smoke suite
         working-directory: terminal/terminal_pty
         run: |
@@ -88,7 +131,11 @@ jobs:
           TERMINAL_REQUIRE_GUI_PRESENT: "1"
         run: |
           alr --non-interactive exec -- gprbuild -p -P tests/app_tests.gpr
-          xvfb-run -a bash -c 'for t in tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done'
+          xvfb-run -a bash -c '
+            for test in tests/bin/*_smoke; do
+              echo "== $test =="
+              "$test" || exit 1
+            done'
       - name: Graphics pipeline corpus and instrumentation smoke
         working-directory: terminal/terminal_glfw_vulkan_app
         run: |
@@ -117,7 +164,7 @@ jobs:
       - uses: actions/checkout@v7
         with: { path: terminal }
       - name: Check out sibling crates (transitive pin closure)
-        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@main
+        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@5ed5f4dcfa10301345933d45e5f78ac0573d8cff
         with:
           root: terminal
       - name: Set up Alire
@@ -149,6 +196,8 @@ jobs:
       - name: Build the smoke suites (link check)
         working-directory: terminal
         run: |
+          ( cd c_string_ownership && alr --non-interactive exec -- gprbuild -p -P tests/c_string_ownership_tests.gpr )
+          ( cd c_string_ownership && alr --non-interactive exec -- gprbuild -p -P tests/c_string_ownership_failure_tests.gpr )
           ( cd terminal_core && alr --non-interactive exec -- gprbuild -p -P tests/core_tests.gpr )
           ( cd terminal_pty && alr --non-interactive exec -- gprbuild -p -P tests/pty_tests.gpr )
           ( cd terminal_glfw_vulkan_app && alr --non-interactive exec -- gprbuild -p -P tests/app_tests.gpr )
@@ -157,6 +206,8 @@ jobs:
         # The Vulkan render smokes need a GPU the runner lacks; core (pure terminal
         # logic) and PTY (POSIX, works on Darwin) run headless.
         run: |
+          c_string_ownership/tests/bin/c_string_ownership_smoke
+          c_string_ownership/tests/bin/c_string_ownership_failure_smoke
           for t in terminal_core/tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
           for t in terminal_pty/tests/bin/*_smoke; do echo "== $t =="; "$t" || exit 1; done
 
@@ -165,7 +216,7 @@ jobs:
     runs-on: windows-latest
     # Blocking, as of the run where the shell finally came up: the ConPTY
     # backend starts cmd, the banner and prompt come back through the console,
-    # a resize is observed by the child, and all four PTY smokes pass.
+    # a resize is observed by the child, and the PTY smokes pass.
     env:
       # Selects the ConPTY backend. The project language has no conditional
       # expressions, so the crate cannot work the host out for itself.
@@ -174,7 +225,7 @@ jobs:
       - uses: actions/checkout@v7
         with: { path: terminal }
       - name: Check out sibling crates (transitive pin closure)
-        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@main
+        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@5ed5f4dcfa10301345933d45e5f78ac0573d8cff
         with:
           root: terminal
       - name: Set up Alire
@@ -196,9 +247,9 @@ jobs:
           # Alire's gnat_native is mingw-w64, so its linker needs mingw import
           # libraries. Take vulkan and glfw from the runner's MSYS2.
           #
-          # Keep vulkan-headers alongside the loader for dependency builds and
-          # Vulkan tooling. Window-surface creation itself now uses a direct Ada
-          # import instead of compiling a GLFW C shim. macOS installs both too.
+          # Keep vulkan-headers alongside the loader for dependency builds,
+          # Vulkan tooling, and the small GLFW ownership-publication C shim.
+          # macOS installs both too.
           pacman() { /c/msys64/usr/bin/pacman "$@"; }
           pacman-key() { /c/msys64/usr/bin/pacman-key "$@"; }
           pacman-key --init || true
@@ -213,14 +264,6 @@ jobs:
             if sync; then synced=yes; break; fi
             echo "::warning::pacman sync attempt ${attempt} failed"; sleep 15
           done
-          if [ -z "$synced" ]; then
-            sed 's/^SigLevel.*/SigLevel = Never/' /c/msys64/etc/pacman.conf \
-              > /c/msys64/tmp/pacman-nosig.conf
-            for attempt in 1 2 3; do
-              if sync --config C:/msys64/tmp/pacman-nosig.conf; then synced=yes; break; fi
-              echo "::warning::unsigned pacman sync attempt ${attempt} failed"; sleep 15
-            done
-          fi
           [ -n "$synced" ] || { echo "::error::could not install the MSYS2 packages"; exit 1; }
           echo "CPATH=C:/msys64/mingw64/include" >> "$GITHUB_ENV"
           echo "LIBRARY_PATH=C:/msys64/mingw64/lib" >> "$GITHUB_ENV"
@@ -228,6 +271,14 @@ jobs:
       - name: Build terminal
         working-directory: terminal
         run: alr --non-interactive build
+      - name: C string ownership smoke
+        shell: bash
+        working-directory: terminal/c_string_ownership
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P tests/c_string_ownership_tests.gpr
+          alr --non-interactive exec -- gprbuild -p -P tests/c_string_ownership_failure_tests.gpr
+          tests/bin/c_string_ownership_smoke.exe
+          tests/bin/c_string_ownership_failure_smoke.exe
       - name: PTY smoke (ConPTY)
         # The point of the whole job. A backend that compiles says nothing about
         # whether it can start a shell, so this spawns one, writes to it, reads
@@ -236,8 +287,22 @@ jobs:
         working-directory: terminal/terminal_pty
         run: |
           alr --non-interactive exec -- gprbuild -p -P tests/pty_tests.gpr \
-            -XTERMINAL_PTY_OS=windows
-          for t in tests/bin/*_smoke.exe; do
+            -XTERMINAL_PTY_OS=windows -XTERMINAL_PTY_BUILD=testing
+          for t in tests/bin/windows/*_smoke.exe; do
             echo "== $t =="
             "$t" || exit 1
           done
+      - name: Windows URI launcher smoke
+        shell: bash
+        working-directory: terminal/terminal_glfw_vulkan_app
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P tests/app_tests.gpr \
+            -XTERMINAL_PTY_OS=windows hyperlink_smoke.adb
+          tests/bin/windows/hyperlink_smoke.exe
+      - name: Windows session shutdown smoke
+        shell: bash
+        working-directory: terminal/terminal_glfw_vulkan_app
+        run: |
+          alr --non-interactive exec -- gprbuild -p -P tests/app_tests.gpr \
+            -XTERMINAL_PTY_OS=windows session_shutdown_smoke.adb
+          tests/bin/windows/session_shutdown_smoke.exe

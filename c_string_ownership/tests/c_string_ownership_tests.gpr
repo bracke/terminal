@@ -1,0 +1,19 @@
+with "../c_string_ownership.gpr";
+
+project C_String_Ownership_Tests is
+   for Languages use ("Ada", "C");
+   for Source_Dirs use (".");
+   for Source_Files use
+     ("c_string_ownership_contract.c",
+      "c_string_ownership_smoke.adb");
+   for Object_Dir use "obj";
+   for Exec_Dir use "bin";
+   for Main use ("c_string_ownership_smoke.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-gnata", "-gnatwe");
+      for Default_Switches ("C") use
+        ("-Wall", "-Wextra", "-Wpedantic", "-Werror",
+         "-I" & C_String_Ownership_Tests'Project_Dir & "../src/internal");
+   end Compiler;
+end C_String_Ownership_Tests;

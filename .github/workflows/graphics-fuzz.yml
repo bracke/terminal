@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v7
         with: { path: terminal }
       - name: Check out sibling crates
-        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@main
+        uses: bracke/project_tools/.github/actions/checkout-ada-siblings@5ed5f4dcfa10301345933d45e5f78ac0573d8cff
         with:
           root: terminal
       - name: Set up Alire

@@ -1,3 +1,5 @@
+with Terminal.Common.Counters;
+
 separate (Terminal.App.Vulkan_Device)
 procedure Upload_Image_Texture_Staging_Source
   (Device        : in out Logical_Device;
@@ -37,41 +39,99 @@ is
    Upload_Fence_Reset : Boolean := False;
    Upload_Submitted : Boolean := False;
    Deferred_Ready : Boolean := False;
+   Fence_Restore_Status : Create_Status := Ok;
+   Cleanup_Failed : Boolean := False;
+
+   procedure Destroy_Buffer_Call (Handle : Vk.Buffer_T) is
+   begin
+      Vk.Destroy_Buffer (Device.Device, Handle, System.Null_Address);
+   end Destroy_Buffer_Call;
+
+   procedure Destroy_Image_View_Call (Handle : Vk.Image_View_T) is
+   begin
+      Vk.Destroy_Image_View
+        (Device.Device, Handle, System.Null_Address);
+   end Destroy_Image_View_Call;
+
+   procedure Destroy_Image_Call (Handle : Vk.Image_T) is
+   begin
+      Vk.Destroy_Image (Device.Device, Handle, System.Null_Address);
+   end Destroy_Image_Call;
+
+   procedure Free_Memory_Call (Handle : Vk.Device_Memory_T) is
+   begin
+      Vk.Free_Memory (Device.Device, Handle, System.Null_Address);
+   end Free_Memory_Call;
+
+   procedure Destroy_Staging_Chain is new Terminal.App.Vulkan_Destroy_Pair
+     (Vk.Buffer_T, System.Null_Address,
+      "destroy Vulkan staging buffer", Destroy_Buffer_Call,
+      Vk.Device_Memory_T, System.Null_Address,
+      "free Vulkan staging memory", Free_Memory_Call);
+
+   procedure Destroy_Image_Chain is new Terminal.App.Vulkan_Destroy_Triple
+     (Vk.Image_View_T, System.Null_Address,
+      "destroy Vulkan upload image view", Destroy_Image_View_Call,
+      Vk.Image_T, System.Null_Address,
+      "destroy Vulkan upload image", Destroy_Image_Call,
+      Vk.Device_Memory_T, System.Null_Address,
+      "free Vulkan upload image memory", Free_Memory_Call);
 
    procedure Destroy_Staging is
+      Cleanup_Ok : Boolean;
    begin
-      if Staging_Buffer /= System.Null_Address then
-         Vk.Destroy_Buffer
-           (Device.Device, Staging_Buffer, System.Null_Address);
-         Staging_Buffer := System.Null_Address;
-      end if;
-
-      if Staging_Memory /= System.Null_Address then
-         Vk.Free_Memory
-           (Device.Device, Staging_Memory, System.Null_Address);
-         Staging_Memory := System.Null_Address;
+      Destroy_Staging_Chain
+        (Staging_Buffer, Staging_Memory, Cleanup_Ok);
+      if not Cleanup_Ok then
+         Cleanup_Failed := True;
+         Device.Cleanup_Quarantined := True;
       end if;
    end Destroy_Staging;
 
    procedure Cleanup_New_Image is
+      Cleanup_Ok : Boolean;
    begin
-      if Image_View /= System.Null_Address then
-         Vk.Destroy_Image_View
-           (Device.Device, Image_View, System.Null_Address);
-         Image_View := System.Null_Address;
-      end if;
-
-      if Image /= System.Null_Address then
-         Vk.Destroy_Image (Device.Device, Image, System.Null_Address);
-         Image := System.Null_Address;
-      end if;
-
-      if Image_Memory /= System.Null_Address then
-         Vk.Free_Memory
-           (Device.Device, Image_Memory, System.Null_Address);
-         Image_Memory := System.Null_Address;
+      Destroy_Image_Chain
+        (Image_View, Image, Image_Memory, Cleanup_Ok);
+      if not Cleanup_Ok then
+         Cleanup_Failed := True;
+         Device.Cleanup_Quarantined := True;
       end if;
    end Cleanup_New_Image;
+
+   procedure Unmap_Staging is
+      Success : Boolean;
+
+      procedure Perform_Unmap is
+      begin
+         Vk.Unmap_Memory (Device.Device, Staging_Memory);
+      end Perform_Unmap;
+
+      procedure Handle_Failure
+        (E : Ada.Exceptions.Exception_Occurrence) is
+      begin
+         Cleanup_Failed := True;
+         Device.Cleanup_Quarantined := True;
+         Terminal.App.Cleanup_Diagnostics.Note_Failure
+           (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+            E,
+            "unmap Vulkan staging memory");
+         Staging_Buffer := System.Null_Address;
+         Staging_Memory := System.Null_Address;
+      end Handle_Failure;
+   begin
+      if Staging_Memory = System.Null_Address then
+         Staging_Mapped := False;
+         Data := System.Null_Address;
+         return;
+      end if;
+      Data := System.Null_Address;
+      Terminal.App.Vulkan_Unmap_Once.Run
+        (Staging_Mapped,
+         Perform_Unmap'Access,
+         Handle_Failure'Access,
+         Success);
+   end Unmap_Staging;
 
    procedure Submit_Copy is separate;
    procedure Commit_Image is separate;
@@ -111,8 +171,8 @@ begin
      and then Device.Image_Texture_Height = Height
      and then Device.Image_Texture_Bytes = Upload_Bytes_Natural
    then
-      Device.Image_Texture_Cache_Hit_Count :=
-        Device.Image_Texture_Cache_Hit_Count + 1;
+      Terminal.Common.Counters.Increment_Saturating
+        (Device.Image_Texture_Cache_Hit_Count);
       Status := Ok;
       return;
    end if;
@@ -120,31 +180,44 @@ begin
    Status := Ok;
    Prepare_Staging;
    if Status /= Ok then
+      if Cleanup_Failed then
+         Status := Device_Lost;
+      end if;
       return;
    end if;
 
    Status := Ok;
    Create_Image_Resources;
    if Status /= Ok then
+      if Cleanup_Failed then
+         Status := Device_Lost;
+      end if;
       return;
    end if;
 
    Status := Ok;
    Submit_Copy;
    if Status /= Ok then
+      if Cleanup_Failed then
+         Status := Device_Lost;
+      end if;
       return;
    end if;
 
    Commit_Image;
+   if Cleanup_Failed then
+      Status := Device_Lost;
+   end if;
 exception
    when others =>
-      if Staging_Mapped and then Staging_Memory /= System.Null_Address then
-         Vk.Unmap_Memory (Device.Device, Staging_Memory);
-         Staging_Mapped := False;
-         Data := System.Null_Address;
-      end if;
+      Unmap_Staging;
       if Upload_Fence_Reset then
-         Restore_Upload_Fence (Device);
+         Restore_Upload_Fence (Device, Fence_Restore_Status);
+         if Fence_Restore_Status /= Ok then
+            Terminal.App.Cleanup_Diagnostics.Note_Failure
+              (Terminal.App.Cleanup_Diagnostics.Vulkan_Device,
+               "restore upload fence after upload exception");
+         end if;
          Upload_Fence_Reset := False;
       end if;
       if Upload_Submitted then

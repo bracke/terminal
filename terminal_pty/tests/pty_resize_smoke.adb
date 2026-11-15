@@ -212,6 +212,11 @@ begin
       Assert (Ready, "shell should execute readiness command");
    end;
 
+   Terminal.PTY.Backend.Resize (S, 65_536, Initial_Cols, Resize_Status);
+   Assert
+     (Resize_Status = Terminal.PTY.Backend.Invalid_Size,
+      "oversized resize should report invalid size");
+
    Terminal.PTY.Backend.Resize (S, Resized_Rows, Resized_Cols, Resize_Status);
    Assert (Resize_Status = Terminal.PTY.Backend.Ok, "pty resize failed");
 

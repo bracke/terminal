@@ -2,62 +2,53 @@ separate (Terminal.App.Main_Loop.Run.Run_Frame)
 procedure Complete_Frame_Graphics
   (Snaps               : Terminal.App.Renderer.Snapshot_Array;
    Active_Render_Index : Positive;
-   Render_Status       : Terminal.App.Renderer.Render_Status;
-   Present_Status      : Terminal.App.Vulkan_Presenter.Present_Status;
-   Runtime_Table       : Terminal.App.Session_Table.Runtime_Table;
-   Current_Runtime     : not null access
-     Terminal.App.Session_Runtime.Runtime;
+   Runtime_Table       : aliased in out
+     Terminal.App.Session_Table.Runtime_Table;
    Scrollback_Offset   : Natural;
    Renderer_State      : in out Terminal.App.Renderer.Renderer;
-   Recovery_Pending    : Boolean;
+   Decision            : Terminal.App.Frame_Completion.Decision;
    Result              : in out Frame_Completion_Result)
 is
-   Current_Core : constant not null access Terminal.Core.Terminal :=
-     Terminal.App.Session_Runtime.Core (Current_Runtime.all);
 begin
-   if Render_Status = Terminal.App.Renderer.Ok
-     and then
-       (Present_Status = Terminal.App.Vulkan_Presenter.Ok
-        or else Present_Status =
-          Terminal.App.Vulkan_Presenter.Validated_Not_Presented)
-   then
+   if Decision.Accept_Graphics then
       declare
          More_Graphics : Boolean := False;
       begin
          for I in Snaps'Range loop
             declare
-               Runtime : constant access Terminal.App.Session_Runtime.Runtime :=
+               Runtime_Borrow : constant
+                 Terminal.App.Session_Table.Runtime_Borrow :=
                  (if Snaps'Length = 1
-                  then Current_Runtime
+                  then Terminal.App.Session_Table.Active_Runtime (Runtime_Table)
                   else Terminal.App.Session_Table.Runtime_At
                     (Runtime_Table,
                      Terminal.App.Sessions.Session_Index (I)));
-               Core : constant access Terminal.Core.Terminal :=
-                 (if Runtime = null
-                  then Current_Core
-                  else Terminal.App.Session_Runtime.Core (Runtime.all));
-               Response_Runtime : constant access
-                 Terminal.App.Session_Runtime.Runtime :=
-                   (if Runtime = null then Current_Runtime else Runtime);
-               Chunk : Terminal.App.Queues.Byte_Chunk;
-               Write_Status : Terminal.App.PTY_Write.Write_All_Status;
-            begin
+               Core : constant Terminal.App.Session_Runtime.Core_Borrow :=
+                 Terminal.App.Session_Table.Core (Runtime_Borrow);
+               procedure Process_Runtime
+                 (Response_Runtime : in out
+                    Terminal.App.Session_Runtime.Runtime) is
+                  Chunk : Terminal.App.Queues.Byte_Chunk;
+                  Write_Status : Terminal.App.PTY_Write.Write_All_Status;
+                  procedure Process_Core
+                    (Item : in out Terminal.Core.Terminal) is
+                  begin
                if I /= Active_Render_Index or else Scrollback_Offset = 0 then
                   Terminal.Core.Complete_Graphics_Event
-                    (Core.all,
-                     Snaps (I).Graphics,
+                    (Item, Snaps (I).Graphics,
                      Terminal.App.Renderer.Graphics.Result
                        (Renderer_State, Snaps (I).Graphics));
                   while not Terminal.App.Session_Runtime.Has_Pending_Write
-                    (Response_Runtime.all)
-                    and then Terminal.Core.Pending_Response_Length (Core.all) > 0
+                    (Response_Runtime)
+                    and then Terminal.Core.Pending_Response_Length
+                      (Item) > 0
                   loop
                      Chunk := (others => <>);
                      Terminal.Core.Read_Response
-                       (Core.all, Chunk.Data, Chunk.Length);
+                       (Item, Chunk.Data, Chunk.Length);
                      exit when Chunk.Length = 0;
                      Terminal.App.Session_Runtime.Write
-                       (Response_Runtime.all, Chunk, Write_Status);
+                       (Response_Runtime, Chunk, Write_Status);
                      Result.Write_Attempted := True;
                      Result.Write_Status := Write_Status;
                      if Write_Status in
@@ -75,21 +66,24 @@ begin
                   end loop;
                   More_Graphics := More_Graphics
                     or else Terminal.Core.Pending_Graphics_Event_Count
-                      (Core.all) > 0;
+                      (Item) > 0;
                end if;
-               Terminal.Core.Clear_Damage (Core.all);
+               Terminal.Core.Clear_Damage (Item);
+                  end Process_Core;
+               begin
+                  Terminal.App.Session_Runtime.With_Core
+                    (Core, Process_Core'Access);
+               end Process_Runtime;
+            begin
+               Terminal.App.Session_Table.With_Runtime
+                 (Runtime_Borrow, Process_Runtime'Access);
             end;
          end loop;
          Terminal.App.Renderer.Graphics.Commit_Visible_Events (Renderer_State);
          Result.Redraw := More_Graphics;
       end;
-   elsif Present_Status not in
-     Terminal.App.Vulkan_Presenter.Swapchain_Out_Of_Date
-       | Terminal.App.Vulkan_Presenter.Device_Lost
-       | Terminal.App.Vulkan_Presenter.Resources_In_Flight
-   then
-      Result.Redraw := Recovery_Pending;
-   elsif Present_Status = Terminal.App.Vulkan_Presenter.Resources_In_Flight then
-      Result.Redraw := True;
+   else
+      Result.Redraw := Decision.Redraw;
+      Result.Close_Window := Result.Close_Window or Decision.Close_Window;
    end if;
 end Complete_Frame_Graphics;

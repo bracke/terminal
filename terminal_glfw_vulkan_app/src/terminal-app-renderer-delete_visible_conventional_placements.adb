@@ -4,14 +4,15 @@ procedure Delete_Visible_Conventional_Placements
    Snapshot    : Terminal.Core.Render_Snapshot;
    Delete_Data : Boolean)
 is
-   Previous : Conventional_Placement_Access := null;
-   Current  : Conventional_Placement_Access := R.Conventional_Placements;
+   Position : Placements_State.Conventional_Cursor :=
+     Placements_State.First_Conventional (R);
    Deleted_Orders : Image_Storage_Order_List := (others => 0);
    Deleted_Count : Natural := 0;
 begin
-   while Current /= null loop
+   while Placements_State.Has_Element (Position) loop
       declare
-         Next : constant Conventional_Placement_Access := Current.Next;
+         Current : constant Conventional_Placement_State :=
+           Placements_State.Element (Position);
          Origin_Row : Integer := 0;
          Origin_Col : Integer := 0;
          Resolved : constant Boolean :=
@@ -37,17 +38,10 @@ begin
                   Deleted_Count,
                   Current.Image_Storage_Order);
             end if;
-            if Previous = null then
-               R.Conventional_Placements := Next;
-            else
-               Previous.Next := Next;
-            end if;
-            Free_Conventional_Placement (Current);
-            R.Kitty_Placement_Count := R.Kitty_Placement_Count - 1;
+            Placements_State.Delete (R, Position);
          else
-            Previous := Current;
+            Placements_State.Advance (Position);
          end if;
-         Current := Next;
       end;
    end loop;
    if Delete_Data then

@@ -5,6 +5,11 @@ separate (Terminal.App.Main_Loop.Run.Run_Frame)
          procedure Handle_Mouse_Button_Event is separate;
          procedure Handle_Cursor_Position_Event is separate;
          procedure Handle_Scroll_Event is separate;
+         procedure Encode_Focus (Core : in out Terminal.Core.Terminal) is
+         begin
+            Terminal.App.Input_Map.Encode_Focus
+              (Event.Focus_Event, Terminal.Core.Modes (Core), Chunk);
+         end Encode_Focus;
       begin
          Stop := False;
          case Event.Kind is
@@ -12,8 +17,6 @@ separate (Terminal.App.Main_Loop.Run.Run_Frame)
                Handle_Key_Event;
             when Terminal.App.Queues.Character =>
                Handle_Character_Event;
-            when Terminal.App.Queues.Bytes =>
-               Chunk := Event.Bytes;
             when Terminal.App.Queues.Mouse_Button =>
                Handle_Mouse_Button_Event;
             when Terminal.App.Queues.Cursor_Position =>
@@ -21,10 +24,10 @@ separate (Terminal.App.Main_Loop.Run.Run_Frame)
             when Terminal.App.Queues.Scroll =>
                Handle_Scroll_Event;
             when Terminal.App.Queues.Focus =>
-               Terminal.App.Input_Map.Encode_Focus
-                 (Event.Focus_Event,
-                  Terminal.Core.Modes (Active_Core.all),
-                  Chunk);
+               Terminal.App.Accessibility.Set_Focused
+                 (Accessibility, Event.Focus_Event.Focused);
+               Terminal.App.Session_Runtime.With_Core
+                 (Active_Core, Encode_Focus'Access);
             when Terminal.App.Queues.Close_Request =>
                GLFW_Vulkan.Windows.Set_Should_Close (W, True);
                Chunk := (others => <>);
@@ -33,8 +36,29 @@ separate (Terminal.App.Main_Loop.Run.Run_Frame)
          end case;
 
          if Chunk.Length > 0 then
-            Terminal.App.Session_Runtime.Write
-              (Active_Runtime.all, Chunk, Write_Stat);
+            if Broadcast_Input
+              and then Event.Kind in
+                Terminal.App.Queues.Key | Terminal.App.Queues.Character
+              and then Terminal.App.Splits.Count (Splits) > 1
+            then
+               Write_Stat := Terminal.App.PTY_Write.Ok;
+               for I in 1 .. Terminal.App.Splits.Count (Splits) loop
+                  declare
+                     One_Status : Terminal.App.PTY_Write.Write_All_Status;
+                  begin
+                     Terminal.App.Session_Table.Write
+                       (Terminal.App.Session_Table.Runtime_At
+                          (Sessions, Terminal.App.Sessions.Session_Index (I)),
+                        Chunk, One_Status);
+                     if One_Status /= Terminal.App.PTY_Write.Ok then
+                        Write_Stat := One_Status;
+                     end if;
+                  end;
+               end loop;
+            else
+               Terminal.App.Session_Table.Write
+                 (Active_Runtime, Chunk, Write_Stat);
+            end if;
             Last_Write_Status := Write_Stat;
             if Fatal_Write (Write_Stat) then
                if Terminal.App.Session_Table.Count (Sessions) = 1 then
