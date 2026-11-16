@@ -26,6 +26,7 @@ private with Terminal.App.Renderer_State;
 
 package Terminal.App.Renderer is
    Content_Margin : constant Natural := 6;
+   Max_Content_Padding : constant Natural := 64;
    Max_Status_Label_Length : constant :=
      Terminal.App.Image_Rendering.Max_Status_Label_Length;
    Max_Kitty_Image_Objects : constant :=
@@ -89,6 +90,14 @@ package Terminal.App.Renderer is
       Theme_Allocation_Failed,
       Theme_Replay_Failed);
    type Font_Update_Status is (Font_Ok, Font_Load_Failed);
+   type Background_Update_Status is
+     (Background_Ok,
+      Background_Cleared,
+      Background_Invalid_Path,
+      Background_Too_Large,
+      Background_Decode_Failed,
+      Background_Allocation_Failed,
+      Background_Closed);
    Default_Font_Pixel_Size : constant Positive := 16;
 
    --  Declaring the diagnostic hierarchy in a nested package prevents its
@@ -182,17 +191,37 @@ package Terminal.App.Renderer is
       Context : Terminal.App.Vulkan_Context.Context;
       Status  : out Init_Status;
       Font_Path : String := "";
-      Font_Pixel_Size : Positive := Default_Font_Pixel_Size);
+      Font_Pixel_Size : Positive := Default_Font_Pixel_Size;
+      Bold_Font_Path : String := "";
+      Italic_Font_Path : String := "";
+      Bold_Italic_Font_Path : String := "";
+      Font_Features : String := "";
+      Font_Variations : String := "");
    procedure Initialize_Headless
      (R      : out Renderer;
       Status : out Init_Status;
       Font_Path : String := "";
-      Font_Pixel_Size : Positive := Default_Font_Pixel_Size);
+      Font_Pixel_Size : Positive := Default_Font_Pixel_Size;
+      Bold_Font_Path : String := "";
+      Italic_Font_Path : String := "";
+      Bold_Italic_Font_Path : String := "";
+      Font_Features : String := "";
+      Font_Variations : String := "");
    procedure Set_Font
      (R               : in out Renderer;
       Font_Path       : String;
       Font_Pixel_Size : Positive;
-      Status          : out Font_Update_Status);
+      Status          : out Font_Update_Status;
+      Bold_Font_Path : String := "";
+      Italic_Font_Path : String := "";
+      Bold_Italic_Font_Path : String := "";
+      Font_Features : String := "";
+      Font_Variations : String := "");
+   procedure Set_Background_Image
+     (R               : in out Renderer;
+      Path            : String;
+      Opacity_Percent : Natural;
+      Status          : out Background_Update_Status);
    procedure Render
      (R        : in out Renderer;
       Snapshot : Terminal.Core.Render_Snapshot;
@@ -201,6 +230,13 @@ package Terminal.App.Renderer is
      (R      : in out Renderer;
       Width  : Natural;
       Height : Natural);
+   procedure Set_Content_Padding
+     (R       : in out Renderer;
+      Padding : Natural);
+   procedure Set_Tab_Style
+     (R     : in out Renderer;
+      Mode  : Terminal.App.Theme.Tab_Bar_Mode;
+      Style : Terminal.App.Theme.Tab_Style);
    procedure Set_Theme
      (R : in out Renderer;
       T : Terminal.App.Theme.Theme;
@@ -215,6 +251,8 @@ package Terminal.App.Renderer is
 
    function Cell_Width (R : Renderer) return Positive;
    function Cell_Height (R : Renderer) return Positive;
+   function Content_Padding (R : Renderer) return Natural;
+   function Tab_Bar_Visible (R : Renderer; Tab_Count : Natural) return Boolean;
    function Diagnostics
      (R                     : Renderer;
       Include_Image_Preview : Boolean := True) return Renderer_Diagnostics;
@@ -242,7 +280,7 @@ private
       Snapshots      : Snapshot_Array;
       Active_Index   : Positive;
       Tabs           : Terminal.App.Tabs.Tab_Snapshot;
-      Splits         : Terminal.App.Splits.Split_Snapshot;
+      Layout         : Terminal.App.Splits.Pane_Layout;
       Status         : out Render_Status);
    procedure Set_Render_Status
      (R      : in out Renderer;

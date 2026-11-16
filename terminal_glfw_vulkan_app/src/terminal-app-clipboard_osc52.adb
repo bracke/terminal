@@ -1,5 +1,6 @@
 with Ada.Characters.Latin_1;
 with Terminal.Common.Bytes;
+with Terminal.App.Platform_Clipboard;
 
 package body Terminal.App.Clipboard_OSC52 is
    use Terminal.Common.Bytes;
@@ -12,7 +13,9 @@ package body Terminal.App.Clipboard_OSC52 is
      (Target : Terminal.Core.Clipboard_Target) return Target_Capability
    is
    begin
-      if Target = Terminal.Core.Clipboard_Clipboard then
+      if Target = Terminal.Core.Clipboard_Clipboard
+        or else Terminal.App.Platform_Clipboard.Primary_Available
+      then
          return (Native_Backing => True, App_Local_Backing => True);
       else
          return (Native_Backing => False, App_Local_Backing => True);
@@ -26,9 +29,15 @@ package body Terminal.App.Clipboard_OSC52 is
          when Terminal.Core.Clipboard_Clipboard =>
             return "Clipboard target uses native clipboard with app mirror";
          when Terminal.Core.Clipboard_Primary =>
-            return "Primary target uses app-local selection";
+            return
+              (if Terminal.App.Platform_Clipboard.Primary_Available
+               then "Primary target uses native selection with app mirror"
+               else "Primary target uses app-local selection");
          when Terminal.Core.Clipboard_Selection =>
-            return "Selection target uses app-local selection";
+            return
+              (if Terminal.App.Platform_Clipboard.Primary_Available
+               then "Selection target uses native selection with app mirror"
+               else "Selection target uses app-local selection");
       end case;
    end Status_Label;
 

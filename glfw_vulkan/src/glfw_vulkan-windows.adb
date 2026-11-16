@@ -262,6 +262,81 @@ package body GLFW_Vulkan.Windows is
       end if;
    end Set_Title;
 
+   procedure Set_Opacity
+     (W       : Window;
+      Opacity : Float;
+      Status  : out Property_Status) is
+   begin
+      if W.Handle = Raw.Null_Window then
+         Status := Window_Invalid;
+      elsif Opacity < 0.0 or else Opacity > 1.0 then
+         Status := Invalid_Value;
+      else
+         Raw.Set_Window_Opacity (W.Handle, Interfaces.C.C_float (Opacity));
+         Status := Ok;
+      end if;
+   end Set_Opacity;
+
+   procedure Set_Floating
+     (W       : Window;
+      Enabled : Boolean;
+      Status  : out Property_Status) is
+   begin
+      if W.Handle = Raw.Null_Window then
+         Status := Window_Invalid;
+      else
+         Raw.Set_Window_Attrib
+           (W.Handle, Raw.GLFW_FLOATING, (if Enabled then 1 else 0));
+         Status := Ok;
+      end if;
+   end Set_Floating;
+
+   procedure Set_Decorated
+     (W       : Window;
+      Enabled : Boolean;
+      Status  : out Property_Status) is
+   begin
+      if W.Handle = Raw.Null_Window then
+         Status := Window_Invalid;
+      else
+         Raw.Set_Window_Attrib
+           (W.Handle, Raw.GLFW_DECORATED, (if Enabled then 1 else 0));
+         Status := Ok;
+      end if;
+   end Set_Decorated;
+
+   procedure Show (W : Window; Status : out Property_Status) is
+   begin
+      if W.Handle = Raw.Null_Window then
+         Status := Window_Invalid;
+      else
+         Raw.Show_Window (W.Handle);
+         Raw.Focus_Window (W.Handle);
+         Status := Ok;
+      end if;
+   end Show;
+
+   procedure Hide (W : Window; Status : out Property_Status) is
+   begin
+      if W.Handle = Raw.Null_Window then
+         Status := Window_Invalid;
+      else
+         Raw.Hide_Window (W.Handle);
+         Status := Ok;
+      end if;
+   end Hide;
+
+   procedure Toggle_Visibility (W : Window; Status : out Property_Status) is
+   begin
+      if W.Handle = Raw.Null_Window then
+         Status := Window_Invalid;
+      elsif Raw.Get_Window_Attrib (W.Handle, Raw.GLFW_VISIBLE) = 0 then
+         Show (W, Status);
+      else
+         Hide (W, Status);
+      end if;
+   end Toggle_Visibility;
+
    function Raw_Cursor_Shape
      (Cursor : Standard_Cursor) return Interfaces.C.int
    is

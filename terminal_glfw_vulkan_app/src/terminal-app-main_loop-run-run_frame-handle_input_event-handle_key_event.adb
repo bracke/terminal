@@ -129,9 +129,9 @@ procedure Handle_Key_Event is
    begin
       Terminal.App.Text_Composition.Commit
         (Text_Composition, Code_Point, Valid);
-      if Valid and then not Modes.Keyboard_Locked then
+      if Valid and then not Modes.Keyboard_Locked and then not Read_Only then
          Terminal.App.Input_Map.Encode_Character
-           ((Code_Point => Code_Point), Chunk);
+           ((Code_Point => Code_Point), Modes, Chunk);
       else
          Chunk := (others => <>);
       end if;
@@ -166,7 +166,13 @@ begin
               when others => Terminal.App.Splits.No_Command);
    begin
       if Event.Key_Event.Action = GLFW_Vulkan.Input.Release then
-         Chunk := (others => <>);
+         if Modes.Keyboard_Locked or else Read_Only then
+            Chunk := (others => <>);
+         else
+            Terminal.App.Input_Map.Encode_Key
+              (Event.Key_Event, Modes, Chunk);
+         end if;
+         Suppress_Character := Wide_Wide_Character'Val (0);
       elsif App_Action in Terminal.App.Key_Bindings.New_Window
         | Terminal.App.Key_Bindings.Detach_Tab
       then
@@ -602,6 +608,13 @@ begin
                GLFW_Vulkan.Clipboard.Set_Text (W, Unbounded.To_String (Text));
                Terminal.App.Clipboard_OSC52.Store_Local_Selection
                  (Clipboard_Targets, Unbounded.To_String (Text));
+               declare
+                  Native_Status :
+                    Terminal.App.Platform_Clipboard.Operation_Status;
+               begin
+                  Terminal.App.Platform_Clipboard.Set_Primary
+                    (Unbounded.To_String (Text), Native_Status);
+               end;
             elsif App_Action = Terminal.App.Key_Bindings.Rerun_Command_Block
               and then Unbounded.Length (Text) > 0
             then
@@ -652,8 +665,9 @@ begin
          Need_Redraw := True;
          Local_Redraw := True;
       elsif App_Action = Terminal.App.Key_Bindings.Broadcast_Input then
-         Broadcast_Input :=
-           Terminal.App.Splits.Count (Splits) > 1 and then not Broadcast_Input;
+         Broadcast_Input := not Protected_Input
+           and then Terminal.App.Splits.Count (Splits) > 1
+           and then not Broadcast_Input;
          Chunk := (others => <>);
          Dirty := True;
          Need_Redraw := True;
@@ -769,6 +783,7 @@ begin
                   Apply_Hovered_Link ((others => <>));
                end if;
             when Terminal.App.Tabs.Close_Tab =>
+               if Close_Confirmed then
                declare
                   Closed_Index : constant Terminal.App.Sessions.Session_Index :=
                     Terminal.App.Session_Table.Active (Sessions);
@@ -796,6 +811,7 @@ begin
                      Apply_Hovered_Link ((others => <>));
                   end if;
                end;
+               end if;
             when Terminal.App.Tabs.Next_Tab
                | Terminal.App.Tabs.Previous_Tab =>
                Terminal.App.Session_Table.Apply_Tab_Navigation
@@ -837,6 +853,7 @@ begin
                   Apply_Hovered_Link ((others => <>));
                end if;
             when Terminal.App.Splits.Close_Pane =>
+               if Close_Confirmed then
                declare
                   Closed_Index : constant Terminal.App.Sessions.Session_Index :=
                     Terminal.App.Session_Table.Active (Sessions);
@@ -861,6 +878,7 @@ begin
                      Apply_Hovered_Link ((others => <>));
                   end if;
                end;
+               end if;
             when Terminal.App.Splits.Next_Pane =>
                Terminal.App.Session_Table.Apply_Pane_Navigation
                  (Sessions, Split_Command, Session_Table_Status);
@@ -896,7 +914,7 @@ begin
       elsif App_Action = Terminal.App.Key_Bindings.Paste
       then
          Scroll_Offset := 0;
-         if Modes.Keyboard_Locked then
+         if Modes.Keyboard_Locked or else Read_Only then
             Chunk := (others => <>);
          else
             if Terminal.App.Selection.Has_Selection (Selection) then
@@ -904,7 +922,7 @@ begin
                Dirty := True;
                Local_Redraw := True;
             end if;
-            if Broadcast_Input
+            if Broadcast_Input and then not Protected_Input
               and then Terminal.App.Splits.Count (Splits) > 1
             then
                Write_Stat := Terminal.App.PTY_Write.Ok;
@@ -946,7 +964,7 @@ begin
          Chunk := (others => <>);
       else
          Scroll_Offset := 0;
-         if Modes.Keyboard_Locked then
+         if Modes.Keyboard_Locked or else Read_Only then
             Chunk := (others => <>);
             Suppress_Character := Wide_Wide_Character'Val (0);
          else

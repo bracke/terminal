@@ -183,7 +183,7 @@ begin
             end;
          end loop;
 
-         if Row_Has_LTR and then Row_Has_RTL then
+         if Row_Has_RTL then
             Reorder_Mixed_Bidi_Row
               (R,
                First => Row_Run_First,

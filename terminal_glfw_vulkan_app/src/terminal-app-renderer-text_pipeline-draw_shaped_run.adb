@@ -38,7 +38,8 @@ begin
               M           => Metric,
               Font_Index  => Glyph.Font_Index,
               Style       =>
-                (if Run.Italic then Textrender.Italic else Textrender.Regular));
+                (if Run.Italic and then Glyph.Font_Index not in 2 | 3
+                 then Textrender.Italic else Textrender.Regular));
       begin
          case Glyph_Status is
             when Textrender.Success | Textrender.Glyph_Missing =>
@@ -63,7 +64,7 @@ begin
                         Metric    => Metric,
                         Color     => Run.Color,
                         Codepoint => Glyph.Codepoint);
-                     if Run.Bold then
+                     if Run.Bold and then Glyph.Font_Index not in 1 | 3 then
                         Placement.X := Placement.X + 1.0;
                         Drawing_Commands.Add_Glyph
                           (R,

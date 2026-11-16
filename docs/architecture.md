@@ -60,9 +60,11 @@ Pass `--check` as the final argument to compare regenerated output without
 modifying the checked-in table; Linux CI installs the Unicode 15.1 data package
 and performs this check on every change.
 
-App-layer script, bidi-direction, and emoji classification likewise comes from
-checked-in Unicode 15.1 tables rather than hand-maintained block ranges. Build
-the same Ada tool project, then regenerate or check that table with:
+App-layer script, initial bidi-direction, and emoji classification likewise
+comes from checked-in Unicode 15.1 tables rather than hand-maintained block
+ranges. Full paragraph resolution is delegated to the system FriBidi library;
+the checked-in table remains the shaping/segmentation classifier. Build the same
+Ada tool project, then regenerate or check that table with:
 
 ```sh
 tools/bin/generate_text_properties \
@@ -319,11 +321,13 @@ A test child injects the final executor after exercising the same selection and
 status mapping and exposes the real spawn/poll path to the platform smoke test.
 Hyperlink policy and labels remain platform neutral and never construct a shell
 command.
-The same launcher owner provides bounded desktop notification delivery on
-POSIX by locating `notify-send`; notification children share the existing PID
-tracking, admission limit, and nonblocking reaping path. The core only records
-bounded BEL, OSC 9/99, and OSC 133 completion requests, leaving delivery policy
-and platform behavior in the application layer.
+The same launcher owner provides bounded desktop notification delivery.
+Linux locates `notify-send`, macOS falls back to a directly argument-vectorized
+`osascript` Notification Center request, and Windows starts an encoded-command
+PowerShell bridge to the WinRT toast API. POSIX notification children share the
+existing PID tracking, admission limit, and nonblocking reaping path. The core
+only records bounded BEL, OSC 9/99, and OSC 133 completion requests, leaving
+delivery policy and platform behavior in the application layer.
 
 `Terminal.App.Workspace` is a versioned bounded text-state boundary. The main
 loop reconstructs the runtime table from it before first presentation and
@@ -353,9 +357,12 @@ uses the same deterministic pane geometry. Scrollbar dragging only changes the
 app-owned scroll offset.
 
 Text composition is a small app-owned state machine: its pre-edit buffer is six
-hex digits and is rendered through the existing interaction overlay. Committed
-platform IME scalars and committed built-in composition scalars converge on the
-same UTF-8 input mapper. Command blocks remain core-owned alongside OSC 133
+hex digits and is rendered through the existing interaction overlay. A separate
+bounded native IME owner adapts XIM callbacks and Windows IMM composition
+messages, tracks pre-edit text, positions candidate UI from active-pane cursor
+geometry, and queues committed Unicode scalars. Native IME scalars and committed
+built-in composition scalars converge on the same UTF-8 input mapper. Command
+blocks remain core-owned alongside OSC 133
 state because their absolute history coordinates must advance atomically with
 scroll production; app helpers map retained blocks to visible selections and
 extract bounded command text for copy/rerun.
@@ -1362,7 +1369,10 @@ the main loop converts event coordinates to visible grid cells, and
 `Terminal.App.Selection` extracts UTF-8 text from render snapshots and marks
 selected cells with inverse style before rendering. OSC 52 target policy is
 app-owned as well: `c` uses the GLFW system clipboard with a bounded app
-mirror, while `p` and `s` use bounded app-owned target slots. The diagnostics line reports bounded input-mode
+mirror, while `p` and `s` use the POSIX native primary-selection adapter when
+available and bounded app-owned fallback slots otherwise. The native adapter
+executes `wl-clipboard` or `xsel` directly (never through a shell), bounds reads
+and child lifetime, and preserves the mirror on failure. The diagnostics line reports bounded input-mode
 and mouse-routing labels from the same mapper used to encode keyboard, paste,
 focus, and mouse events. The core does not know about selection or platform
 clipboard ownership.

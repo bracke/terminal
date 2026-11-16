@@ -1,5 +1,5 @@
 with "../terminal_common/terminal_common.gpr";
-with "config/terminal_pty_build_config.gpr";
+with "terminal_pty_build_config.gpr";
 
 library project Terminal_PTY is
    --  One backend per host, chosen here rather than by the caller: the app names

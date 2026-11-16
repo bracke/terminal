@@ -1,6 +1,7 @@
 with Ada.Unchecked_Deallocation;
 with Textrender;
 
+with Terminal.App.Bidi;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Renderer.Drawing_Commands;
 with Terminal.App.Renderer.Frame_Lifecycle;

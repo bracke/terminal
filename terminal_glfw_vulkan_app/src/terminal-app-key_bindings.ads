@@ -46,6 +46,7 @@ package Terminal.App.Key_Bindings is
 
    function Defaults return Binding_Set;
    function Parse (Text : String; Result : out Binding) return Boolean;
+   function Image (Value : Binding) return String;
    function Action_For
      (Bindings : Binding_Set;
       Event    : GLFW_Vulkan.Input.Key_Event) return Action;

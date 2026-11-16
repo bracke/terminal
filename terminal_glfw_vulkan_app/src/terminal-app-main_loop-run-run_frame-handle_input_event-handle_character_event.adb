@@ -1,9 +1,9 @@
 separate (Terminal.App.Main_Loop.Run.Run_Frame.Handle_Input_Event)
 procedure Handle_Character_Event is
-   Keyboard_Locked : Boolean := False;
+   Modes : Terminal.Core.Mode_Snapshot;
    procedure Read_Mode (Core : in out Terminal.Core.Terminal) is
    begin
-      Keyboard_Locked := Terminal.Core.Modes (Core).Keyboard_Locked;
+      Modes := Terminal.Core.Modes (Core);
    end Read_Mode;
 begin
    Terminal.App.Session_Runtime.With_Core (Active_Core, Read_Mode'Access);
@@ -91,7 +91,7 @@ begin
    then
       Chunk := (others => <>);
       Suppress_Character := Wide_Wide_Character'Val (0);
-   elsif Keyboard_Locked then
+   elsif Modes.Keyboard_Locked or else Read_Only then
       Chunk := (others => <>);
       Suppress_Character := Wide_Wide_Character'Val (0);
    else
@@ -102,7 +102,7 @@ begin
          Local_Redraw := True;
       end if;
       Terminal.App.Input_Map.Encode_Character
-        (Event.Character_Event, Chunk);
+        (Event.Character_Event, Modes, Chunk);
    end if;
    end if;
 end Handle_Character_Event;

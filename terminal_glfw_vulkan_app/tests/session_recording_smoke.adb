@@ -66,6 +66,20 @@ begin
      (Status = Terminal.App.Session_Recording.Invalid_Format,
       "recording rejects malformed event metadata");
 
+   declare
+      File : Ada.Text_IO.File_Type;
+   begin
+      Ada.Text_IO.Create (File, Ada.Text_IO.Out_File, Recording_Path);
+      Ada.Text_IO.Put_Line (File, "ADA_TERMINAL_RECORDING 1 2 8");
+      Ada.Text_IO.Put_Line (File, String'(1 .. 10_000 => '0'));
+      Ada.Text_IO.Close (File);
+   end;
+   Terminal.App.Session_Recording.Replay
+     (Recording_Path, Receive'Access, Status);
+   Assert
+     (Status = Terminal.App.Session_Recording.Invalid_Format,
+      "recording rejects an overlong event without allocating it");
+
    Terminal.Core.Initialize (Core, 2, 8, 10, Init);
    Assert (Init = Terminal.Core.Ok, "transcript core initializes");
    Terminal.Core.Feed

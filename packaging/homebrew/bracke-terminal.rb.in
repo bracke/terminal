@@ -1,0 +1,13 @@
+class BrackeTerminal < Formula
+  desc "GPU-accelerated terminal emulator written in Ada"
+  homepage "https://github.com/bracke/terminal"
+  url "@URL@"
+  version "@VERSION@"
+  sha256 "@SHA256@"
+  license "MIT"
+
+  def install
+    bin.install "usr/bin/bracke-terminal"
+    share.install Dir["usr/share/*"]
+  end
+end

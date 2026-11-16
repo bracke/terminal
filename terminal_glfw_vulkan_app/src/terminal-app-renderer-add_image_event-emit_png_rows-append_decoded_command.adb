@@ -42,11 +42,11 @@ function Append_Decoded_Command return Boolean is
         Positive (Data.Pixel_Height),
         R.Text_State.CW,
         R.Text_State.CH,
-        (if R.Frame_State.Last_Frame_Width > Content_Margin * 2
-         then R.Frame_State.Last_Frame_Width - Content_Margin * 2
+        (if R.Frame_State.Last_Frame_Width > R.View_State.Content_Padding * 2
+         then R.Frame_State.Last_Frame_Width - R.View_State.Content_Padding * 2
          else R.Text_State.CW),
-        (if R.Frame_State.Last_Frame_Height > Content_Margin * 2
-         then R.Frame_State.Last_Frame_Height - Content_Margin * 2
+        (if R.Frame_State.Last_Frame_Height > R.View_State.Content_Padding * 2
+         then R.Frame_State.Last_Frame_Height - R.View_State.Content_Padding * 2
          else R.Text_State.CH));
    ITerm2_Draw_Width  : constant Float := ITerm2_Size.Width;
    ITerm2_Draw_Height : constant Float := ITerm2_Size.Height;

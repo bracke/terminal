@@ -30,6 +30,17 @@ package Terminal.App.Session_Profiles is
    function Shell (Value : Profile) return String;
    function Environment (Value : Profile) return String;
    function SSH_Host (Value : Profile) return String;
+   function SSH_Identity (Value : Profile) return String;
+   function SSH_Port (Value : Profile) return String;
+   function SSH_Jump_Host (Value : Profile) return String;
+   function SSH_Remote_Setup (Value : Profile) return Boolean;
+   function Persistent (Value : Profile) return Boolean;
+   function Serial_Device (Value : Profile) return String;
+   function Serial_Baud (Value : Profile) return String;
+   function Socket_Path (Value : Profile) return String;
+   function Container_Name (Value : Profile) return String;
+   function WSL_Distribution (Value : Profile) return String;
+   function TLS_Host (Value : Profile) return String;
    function Theme_Name (Value : Profile) return String;
    function Launch_Command (Value : Profile) return String;
 
@@ -45,6 +56,17 @@ private
       Shell_Path   : Text_Value;
       Env          : Text_Value;
       Host         : Text_Value;
+      Identity     : Text_Value;
+      Port         : Text_Value;
+      Jump_Host    : Text_Value;
+      Remote_Setup : Boolean := False;
+      Keep_Alive   : Boolean := False;
+      Serial       : Text_Value;
+      Baud         : Text_Value;
+      Socket       : Text_Value;
+      Container    : Text_Value;
+      WSL          : Text_Value;
+      TLS          : Text_Value;
       Theme        : Text_Value;
    end record;
    type Profile_Array is array (Positive range 1 .. Max_Profiles) of Profile;

@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Bracke Terminal
+Comment=GPU-accelerated terminal emulator
+Exec=bracke-terminal
+TryExec=bracke-terminal
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;prompt;command;terminal;
+StartupNotify=true
+Actions=Quick;
+
+[Desktop Action Quick]
+Name=Quick Terminal
+Exec=bracke-terminal --quick

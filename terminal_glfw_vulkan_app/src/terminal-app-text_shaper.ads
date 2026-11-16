@@ -27,6 +27,18 @@ package Terminal.App.Text_Shaper is
       Path   : String;
       Status : out Backend_Status);
 
+   procedure Configure_Style_Fonts
+     (Item        : in out Shaper;
+      Bold        : String;
+      Italic      : String;
+      Bold_Italic : String;
+      Bold_Enabled : Boolean;
+      Italic_Enabled : Boolean;
+      Bold_Italic_Enabled : Boolean;
+      Features    : String;
+      Variations  : String;
+      Status      : out Backend_Status);
+
    function Backend_Available (Item : Shaper) return Boolean;
 
    function Backend_Status_Label (Status : Backend_Status) return String;

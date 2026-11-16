@@ -1,6 +1,7 @@
 with AUnit.Assertions;
 
 with Terminal.App.Clipboard_OSC52;
+with Terminal.App.Platform_Clipboard;
 with Terminal.App.Queues;
 with Terminal.Common.Bytes;
 with Terminal.Core;
@@ -43,13 +44,15 @@ begin
          and then Clipboard_Cap.App_Local_Backing,
          "clipboard target should use native GLFW clipboard with app mirror");
       Assert
-        (not Primary_Cap.Native_Backing
+        (Primary_Cap.Native_Backing =
+           Terminal.App.Platform_Clipboard.Primary_Available
          and then Primary_Cap.App_Local_Backing,
-         "primary target should be app-local without a native backend");
+         "primary target capability should match the platform backend");
       Assert
-        (not Selection_Cap.Native_Backing
+        (Selection_Cap.Native_Backing =
+           Terminal.App.Platform_Clipboard.Primary_Available
          and then Selection_Cap.App_Local_Backing,
-         "selection target should be app-local without a native backend");
+         "selection target capability should match the platform backend");
       Assert
         (Terminal.App.Clipboard_OSC52.Status_Label
          (Terminal.Core.Clipboard_Clipboard) =
@@ -58,12 +61,16 @@ begin
       Assert
         (Terminal.App.Clipboard_OSC52.Status_Label
            (Terminal.Core.Clipboard_Primary) =
-         "Primary target uses app-local selection",
+         (if Terminal.App.Platform_Clipboard.Primary_Available
+          then "Primary target uses native selection with app mirror"
+          else "Primary target uses app-local selection"),
          "primary status label");
       Assert
         (Terminal.App.Clipboard_OSC52.Status_Label
            (Terminal.Core.Clipboard_Selection) =
-         "Selection target uses app-local selection",
+         (if Terminal.App.Platform_Clipboard.Primary_Available
+          then "Selection target uses native selection with app mirror"
+          else "Selection target uses app-local selection"),
          "selection status label");
       Assert
         (Terminal.App.Clipboard_OSC52.Status_Label

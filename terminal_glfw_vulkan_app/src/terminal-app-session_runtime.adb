@@ -977,6 +977,13 @@ package body Terminal.App.Session_Runtime is
       end if;
    end Is_Alive;
 
+   function Has_Foreground_Process (R : in out Runtime) return Boolean is
+   begin
+      return R.S /= null
+        and then R.Current_State = Active
+        and then Terminal.PTY.Backend.Has_Foreground_Process (R.S.all);
+   end Has_Foreground_Process;
+
    function Status_Label (R : Runtime) return String is
    begin
       case R.Current_State is

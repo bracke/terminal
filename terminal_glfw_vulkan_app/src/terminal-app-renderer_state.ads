@@ -1,4 +1,5 @@
 with Terminal.App.Frame_Image_Storage;
+with Terminal.App.Image_Store;
 with Terminal.App.Placeholder_Index;
 with Terminal.App.Render_Model;
 with Terminal.App.Splits;
@@ -97,6 +98,11 @@ private package Terminal.App.Renderer_State is
    type View_State is record
       Color_Theme : Terminal.App.Theme.Theme :=
         Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark);
+      Content_Padding : Natural range 0 .. 64 := 6;
+      Tab_Bar : Terminal.App.Theme.Tab_Bar_Mode := Terminal.App.Theme.Tab_Auto;
+      Tabs : Terminal.App.Theme.Tab_Style := Terminal.App.Theme.Default_Tab_Style;
+      Background_Object : Terminal.App.Image_Store.Image_Object_Access := null;
+      Background_Opacity : Float range 0.0 .. 1.0 := 1.0;
       Hovered_Link : Terminal.Core.Hyperlink;
       Overlay_Length : Natural range 0 .. 160 := 0;
       Overlay_Text : String (1 .. 160) := (others => ' ');

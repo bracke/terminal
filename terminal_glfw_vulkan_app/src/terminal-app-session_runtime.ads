@@ -90,6 +90,7 @@ package Terminal.App.Session_Runtime is
       Process : not null access procedure
         (Item : in out Terminal.App.Queues.PTY_Output_Queue));
    function Is_Alive (R : in out Runtime) return Boolean;
+   function Has_Foreground_Process (R : in out Runtime) return Boolean;
    function Status_Label (R : Runtime) return String;
 
 private

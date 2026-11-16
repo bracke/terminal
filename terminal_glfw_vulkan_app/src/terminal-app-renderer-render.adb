@@ -8,6 +8,7 @@ is
    Rect_Max            : Natural;
    Glyph_Max           : Natural;
    Image_Max           : Natural;
+   Background_Image_Max : Natural;
    Content_Width       : Natural;
    Content_Height      : Natural;
    Intermediate        : Natural;
@@ -44,14 +45,18 @@ begin
        (Image_Intermediate,
         Additional_Frame_Image_Commands (R, Snapshot.Graphics),
         Image_Max)
+     or else not Terminal.App.Size_Arithmetic.Try_Add
+       (Image_Max,
+        (if R.View_State.Background_Object = null then 0 else 1),
+        Background_Image_Max)
      or else not Terminal.App.Size_Arithmetic.Try_Multiply
        (Snapshot.Cols, R.Text_State.CW, Intermediate)
      or else not Terminal.App.Size_Arithmetic.Try_Add
-       (Intermediate, Content_Margin * 2, Content_Width)
+       (Intermediate, R.View_State.Content_Padding * 2, Content_Width)
      or else not Terminal.App.Size_Arithmetic.Try_Multiply
        (Snapshot.Rows, R.Text_State.CH, Intermediate)
      or else not Terminal.App.Size_Arithmetic.Try_Add
-       (Intermediate, Content_Margin * 2, Content_Height)
+       (Intermediate, R.View_State.Content_Padding * 2, Content_Height)
    then
       Set_Render_Status (R, Status, Invalid_Snapshot);
       return;
@@ -71,7 +76,7 @@ begin
       --  One tile per cell is the most a frame can ask for, and emoji are
       --  rare enough that a smaller cap would be a cliff rather than a saving.
       Colour_Count => Positive (Natural'Max (1, Natural'Min (Cell_Count, 64))),
-      Image_Count => Positive (Natural'Max (1, Image_Max)),
+      Image_Count => Positive (Natural'Max (1, Background_Image_Max)),
       Text_Run_Count => Positive (Natural'Max (1, Text_Run_Initial)),
       Map_Cell_Count => Positive (Cell_Count),
       Status => Status);
@@ -88,6 +93,8 @@ begin
       Height => Float (R.Frame_State.Last_Frame_Height),
       Color  => R.View_State.Color_Theme.Default_BG,
       Layer  => RM.Rectangle_Base_Background);
+
+   Add_Background_Image (R);
 
    Draw_Snapshot_Into
      (R,

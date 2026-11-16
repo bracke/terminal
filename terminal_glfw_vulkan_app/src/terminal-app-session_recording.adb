@@ -2,7 +2,6 @@ with Ada.Characters.Handling;
 with Ada.Strings;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
-with Ada.Strings.Unbounded.Text_IO;
 with Terminal.Common;
 with Terminal.Common.Bytes;
 
@@ -13,6 +12,8 @@ package body Terminal.App.Session_Recording is
    Hex : constant String := "0123456789ABCDEF";
    Header : constant String := "ADA_TERMINAL_RECORDING";
    Header_Prefix : constant String := Header & " 1 ";
+   Max_Recording_Line_Length : constant :=
+     Terminal.App.Queues.Max_Chunk_Length * 2 + 128;
 
    function Trim (Value : Natural) return String is
      (Ada.Strings.Fixed.Trim (Natural'Image (Value), Ada.Strings.Both));
@@ -144,7 +145,29 @@ package body Terminal.App.Session_Recording is
       Status : out IO_Status)
    is
       File : Ada.Text_IO.File_Type;
-      Line : Ada.Strings.Unbounded.Unbounded_String;
+      Line : String (1 .. Max_Recording_Line_Length);
+      Line_Length : Natural;
+      Line_Overflow : Boolean;
+
+      procedure Read_Line is
+         Ch : Character;
+      begin
+         Line_Length := 0;
+         Line_Overflow := False;
+         while not Ada.Text_IO.End_Of_Line (File) loop
+            Ada.Text_IO.Get (File, Ch);
+            if Line_Length < Line'Length then
+               Line_Length := Line_Length + 1;
+               Line (Line_Length) := Ch;
+            else
+               Line_Overflow := True;
+            end if;
+         end loop;
+         if not Ada.Text_IO.End_Of_File (File) then
+            Ada.Text_IO.Skip_Line (File);
+         end if;
+      end Read_Line;
+
       function Next_Bar (Text : String; After : Natural) return Natural is
       begin
          for I in Natural'Max (Text'First, After + 1) .. Text'Last loop
@@ -160,16 +183,23 @@ package body Terminal.App.Session_Recording is
          Status := Invalid_Format;
          return;
       end if;
-      Line := Ada.Strings.Unbounded.Text_IO.Get_Line (File);
-      if not Valid_Header (Ada.Strings.Unbounded.To_String (Line)) then
+      Read_Line;
+      if Line_Overflow
+        or else not Valid_Header (Line (1 .. Line_Length))
+      then
          Ada.Text_IO.Close (File);
          Status := Invalid_Format;
          return;
       end if;
       while not Ada.Text_IO.End_Of_File (File) loop
-         Line := Ada.Strings.Unbounded.Text_IO.Get_Line (File);
+         Read_Line;
+         if Line_Overflow then
+            Ada.Text_IO.Close (File);
+            Status := Invalid_Format;
+            return;
+         end if;
          declare
-            Text : constant String := Ada.Strings.Unbounded.To_String (Line);
+            Text : constant String := Line (1 .. Line_Length);
             First_Bar : constant Natural := Ada.Strings.Fixed.Index (Text, "|");
             Second_Bar : constant Natural :=
               Next_Bar (Text, First_Bar);

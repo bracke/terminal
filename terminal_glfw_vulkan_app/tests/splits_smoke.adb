@@ -9,6 +9,7 @@ procedure Splits_Smoke is
    use type Terminal.App.Splits.Split_Command;
    use type Terminal.App.Splits.Pane_Count;
    use type Terminal.App.Splits.Pane_Rect;
+   use type Terminal.App.Splits.Pane_Layout;
    use type Terminal.App.Splits.Pane_Index;
    use type Terminal.App.Splits.Split_Orientation;
    use type Terminal.App.Splits.Split_Status;
@@ -193,18 +194,18 @@ begin
       Assert (Layout.Count = 3, "vertical layout count");
       Assert
         (Layout.Rects (1) =
-         (Row => 1, Col => 1, Rows => 8, Cols => 4, Active => False),
-         "vertical first pane rect");
+         (Row => 1, Col => 1, Rows => 8, Cols => 5, Active => False),
+         "nested vertical root pane rect");
       Assert
         (Layout.Rects (2) =
-         (Row => 1, Col => 5, Rows => 8, Cols => 3, Active => False),
-         "vertical second pane rect");
+         (Row => 1, Col => 6, Rows => 8, Cols => 3, Active => False),
+         "nested vertical second pane rect");
       Assert
         (Layout.Rects (3) =
-         (Row => 1, Col => 8, Rows => 8, Cols => 3, Active => True),
-         "vertical third pane rect");
+         (Row => 1, Col => 9, Rows => 8, Cols => 2, Active => True),
+         "nested vertical third pane rect");
       Assert (Splits.Pane_At (Layout, 8, 4) = 1, "vertical pane hit first");
-      Assert (Splits.Pane_At (Layout, 1, 5) = 2, "vertical pane hit second");
+      Assert (Splits.Pane_At (Layout, 1, 6) = 2, "vertical pane hit second");
       Assert (Splits.Pane_At (Layout, 3, 10) = 3, "vertical pane hit third");
       Assert (Splits.Pane_At (Layout, 1, 11) = 0, "vertical pane miss");
       Splits.Move_Divider (State, Layout, 1, 1, 2, Status);
@@ -219,10 +220,40 @@ begin
       Splits.Activate_At (State, Layout, 3, 10, Status);
       Assert (Status = Splits.Ok, "activate vertical pane by cell status");
       Assert (Splits.Active (State) = 3, "activate vertical pane by cell");
-      Splits.Close_At (State, Layout, 1, 5, Status);
+      Splits.Close_At (State, Layout, 1, 6, Status);
       Assert (Status = Splits.Ok, "close vertical pane by cell status");
       Assert (Splits.Count (State) = 2, "close vertical pane by cell count");
       Assert (Splits.Active (State) = 2, "close vertical pane by cell active");
+   end;
+
+   Splits.Initialize (State);
+   Splits.Apply (State, Splits.Split_Vertical, Status);
+   Splits.Apply (State, Splits.Split_Horizontal, Status);
+   declare
+      Layout : constant Splits.Pane_Layout := Splits.Layout (State, 10, 12);
+      Saved : constant Splits.Split_Tree := Splits.Tree (State);
+      Restored : Splits.Split_State;
+   begin
+      Assert
+        (Layout.Rects (1).Cols = 6 and then Layout.Rects (1).Rows = 10
+         and then Layout.Rects (2).Col = 7 and then Layout.Rects (2).Rows = 5
+         and then Layout.Rects (3).Col = 7 and then Layout.Rects (3).Row = 6,
+         "mixed-orientation splits form a nested pane tree");
+      Assert (Layout.Divider_Count = 2, "nested layout exposes both dividers");
+      Splits.Restore (Restored, Saved, Status);
+      Assert (Status = Splits.Ok, "nested split tree restore status");
+      Assert
+        (Splits.Layout (Restored, 10, 12) = Layout,
+         "nested split tree preserves topology, active pane, and weights");
+      declare
+         Broken : Splits.Split_Tree := Saved;
+      begin
+         Broken.Nodes (Broken.Root).First := Broken.Root;
+         Splits.Restore (Restored, Broken, Status);
+         Assert
+           (Status = Splits.Invalid_Index,
+            "split tree restore rejects cycles");
+      end;
    end;
 
    Splits.Initialize (State);

@@ -25,6 +25,12 @@ package Terminal.App.HarfBuzz is
 
    procedure Reset (Face : in out Font_Face);
 
+   procedure Configure
+     (Face       : in out Font_Face;
+      Features   : String;
+      Variations : String;
+      Accepted   : out Boolean);
+
    function Is_Loaded (Face : Font_Face) return Boolean;
 
    procedure Shape
@@ -34,10 +40,14 @@ package Terminal.App.HarfBuzz is
       Status : out Shape_Status);
 
 private
+   Max_Configuration_Length : constant := 512;
    type Font_Face is new Ada.Finalization.Limited_Controlled with record
       Blob : System.Address := System.Null_Address;
       Face : System.Address := System.Null_Address;
       Font : System.Address := System.Null_Address;
+      Feature_Length : Natural range 0 .. Max_Configuration_Length := 0;
+      Feature_Text : String (1 .. Max_Configuration_Length) :=
+        (others => ASCII.NUL);
    end record;
    overriding procedure Finalize (Face : in out Font_Face);
 end Terminal.App.HarfBuzz;

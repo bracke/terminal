@@ -29,6 +29,8 @@ private package Terminal.PTY.POSIX_Native is
    function c_write
      (FD : int; Buf : System.Address; Count : size_t) return ssize_t
      with Import, Convention => C, External_Name => "write";
+   function tcgetpgrp (FD : int) return int
+     with Import, Convention => C, External_Name => "tcgetpgrp";
    function C_Set_Winsize
      (FD : int; Rows : unsigned_short; Cols : unsigned_short) return int
      with Import, Convention => C,

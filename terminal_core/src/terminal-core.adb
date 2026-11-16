@@ -1221,6 +1221,12 @@ package body Terminal.Core is
       T.Notification_Data.Message := (others => <>);
    end Clear_Notification;
 
+   function Progress (T : Terminal) return Progress_Info is
+     (T.Progress_Data);
+
+   function Badge (T : Terminal) return Notification_Text is
+     (T.Badge_Data);
+
    function Clipboard (T : Terminal) return Clipboard_Request
      renames State_Access.Clipboard;
 

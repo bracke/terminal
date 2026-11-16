@@ -3,6 +3,12 @@ procedure Shutdown is
    Cleanup_Result : Terminal.App.PTY_Cleanup_Lifecycle.Shutdown_Result;
    Recording_Status : Terminal.App.Session_Recording.IO_Status;
 begin
+   Terminal.App.Control_Server.Stop (Control);
+   Terminal.App.Global_Hotkey.Unregister;
+   Terminal.App.Platform_IME.Finalize;
+   if Window_Ready then
+      Terminal.App.File_Drop.Finalize (GLFW_Vulkan.Windows.Native_Handle (W));
+   end if;
    Terminal.App.Accessibility.Finalize (Accessibility);
    if Terminal.App.Session_Recording.Active (Recording) then
       Terminal.App.Session_Recording.Stop (Recording, Recording_Status);

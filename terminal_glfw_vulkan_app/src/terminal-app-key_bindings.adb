@@ -131,6 +131,56 @@ package body Terminal.App.Key_Bindings is
       return Saw_Key;
    end Parse;
 
+   function Image (Value : Binding) return String is
+      function Key_Name return String is
+      begin
+         case Value.Key is
+            when GLFW_Vulkan.Input.A .. GLFW_Vulkan.Input.Z =>
+               return Ada.Characters.Handling.To_Lower
+                 (GLFW_Vulkan.Input.Key'Image (Value.Key));
+            when GLFW_Vulkan.Input.Num_0 .. GLFW_Vulkan.Input.Num_9 =>
+               declare
+                  Full : constant String :=
+                    GLFW_Vulkan.Input.Key'Image (Value.Key);
+               begin
+                  return Full (Full'Last .. Full'Last);
+               end;
+            when GLFW_Vulkan.Input.Space => return "space";
+            when GLFW_Vulkan.Input.Enter => return "enter";
+            when GLFW_Vulkan.Input.Tab => return "tab";
+            when GLFW_Vulkan.Input.Escape => return "escape";
+            when GLFW_Vulkan.Input.Backspace => return "backspace";
+            when GLFW_Vulkan.Input.Insert => return "insert";
+            when GLFW_Vulkan.Input.Delete => return "delete";
+            when GLFW_Vulkan.Input.Home => return "home";
+            when GLFW_Vulkan.Input.End_Key => return "end";
+            when GLFW_Vulkan.Input.Page_Up => return "pageup";
+            when GLFW_Vulkan.Input.Page_Down => return "pagedown";
+            when GLFW_Vulkan.Input.Up => return "up";
+            when GLFW_Vulkan.Input.Down => return "down";
+            when GLFW_Vulkan.Input.Left => return "left";
+            when GLFW_Vulkan.Input.Right => return "right";
+            when GLFW_Vulkan.Input.Minus => return "minus";
+            when GLFW_Vulkan.Input.Comma => return "comma";
+            when GLFW_Vulkan.Input.Equal => return "equal";
+            when GLFW_Vulkan.Input.F1 .. GLFW_Vulkan.Input.F12 =>
+               return Ada.Characters.Handling.To_Lower
+                 (GLFW_Vulkan.Input.Key'Image (Value.Key));
+            when others => return "none";
+         end case;
+      end Key_Name;
+   begin
+      if not Value.Enabled then
+         return "none";
+      end if;
+      return
+        (if Value.Modifiers.Control then "ctrl+" else "")
+        & (if Value.Modifiers.Shift then "shift+" else "")
+        & (if Value.Modifiers.Alt then "alt+" else "")
+        & (if Value.Modifiers.Super then "super+" else "")
+        & Key_Name;
+   end Image;
+
    function Action_For
      (Bindings : Binding_Set;
       Event    : GLFW_Vulkan.Input.Key_Event) return Action is

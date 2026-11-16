@@ -1,0 +1,13 @@
+PackageIdentifier: Bracke.Terminal
+PackageVersion: @VERSION@
+InstallerType: zip
+Installers:
+  - Architecture: x64
+    InstallerUrl: @URL@
+    InstallerSha256: @SHA256@
+    NestedInstallerType: portable
+    NestedInstallerFiles:
+      - RelativeFilePath: bracke-terminal.exe
+        PortableCommandAlias: bracke-terminal
+ManifestType: installer
+ManifestVersion: 1.6.0

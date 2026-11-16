@@ -1,7 +1,9 @@
 with GLFW_Vulkan.Input.Scoped_Binding;
 
 separate (Terminal.App.Main_Loop)
-procedure Run (Workspace_Override : String := "") is
+procedure Run
+  (Workspace_Override : String := "";
+   Quick              : Boolean := False) is
    use type Terminal.App.Renderer.Graphics.Resource_Limit_Update_Status;
    subtype Runtime_Snapshot_Array is Terminal.App.Renderer.Snapshot_Array
      (1 .. Terminal.App.Sessions.Max_Sessions);
@@ -41,6 +43,10 @@ procedure Run (Workspace_Override : String := "") is
    Renderer_Status : Terminal.App.Renderer.Init_Status;
    Theme_Status : Terminal.App.Renderer.Theme_Update_Status;
    App_Config : Terminal.App.Config.Config;
+   System_Preference : Terminal.App.System_Theme.Preference :=
+     Terminal.App.System_Theme.Unknown;
+   Last_System_Theme_Check : Ada.Real_Time.Time := Ada.Real_Time.Time_First;
+   System_Theme_Check_Interval : constant Duration := 1.0;
    Active_Font_Path : Unbounded.Unbounded_String;
    Active_Font_Size : Positive := Terminal.App.Config.Default_Font_Pixel_Size;
    Runtime_Graphics : Terminal.App.Graphics_Profile.Runtime_Profile :=
@@ -63,7 +69,17 @@ procedure Run (Workspace_Override : String := "") is
    Accessibility : Terminal.App.Accessibility.State;
    Pane_Zoomed : Boolean := False;
    Broadcast_Input : Boolean := False;
+   Protected_Input : Boolean := False;
+   Read_Only : Boolean := False;
+   Output_Trigger_Detector : Terminal.App.Output_Triggers.Detector;
+   Control : Terminal.App.Control_Server.Server;
    Recording : Terminal.App.Session_Recording.State;
+   Close_Confirmation_Index : Natural := 0;
+   Close_Confirmation_Deadline : Ada.Real_Time.Time :=
+     Ada.Real_Time.Time_First;
+   Close_Confirmation_Message : Unbounded.Unbounded_String;
+   Active_Progress : Terminal.Core.Progress_Info;
+   Active_Badge : Unbounded.Unbounded_String;
    Forced_Action : Terminal.App.Key_Bindings.Action :=
      Terminal.App.Key_Bindings.No_Action;
    type Workspace_Command_Array is
@@ -98,13 +114,37 @@ procedure Run (Workspace_Override : String := "") is
      Terminal.App.PTY_Write.Ok;
    Last_Clipboard_Target : Terminal.Core.Clipboard_Target :=
      Terminal.Core.Clipboard_Clipboard;
+   function Resolved_Theme
+     (Value      : Terminal.App.Config.Config;
+      Preference : Terminal.App.System_Theme.Preference)
+      return Terminal.App.Theme.Theme is
+   begin
+      if not Value.Follow_System_Theme
+        or else Preference = Terminal.App.System_Theme.Unknown
+      then
+         return Terminal.App.Config.Active_Theme (Value);
+      elsif Preference = Terminal.App.System_Theme.Prefer_Light then
+         return Terminal.App.Theme.Built_In (Terminal.App.Theme.Light);
+      elsif Value.Use_Custom_Theme then
+         return Value.Custom_Theme;
+      elsif Value.Color_Theme = Terminal.App.Theme.Light then
+         return Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark);
+      else
+         return Terminal.App.Config.Active_Theme (Value);
+      end if;
+   end Resolved_Theme;
    function Runtime_Font_Status return String is
      (Terminal.App.Fonts.Status_Label
         (Unbounded.To_String (Active_Font_Path),
          Terminal.App.Fonts.Fallback_Font_Paths'Length));
    function Interaction_Status return String is
-     (if Terminal.App.Text_Composition.Active (Text_Composition)
+     (if Unbounded.Length (Close_Confirmation_Message) > 0
+        and then Ada.Real_Time.Clock <= Close_Confirmation_Deadline
+      then Unbounded.To_String (Close_Confirmation_Message)
+      elsif Terminal.App.Text_Composition.Active (Text_Composition)
       then Terminal.App.Text_Composition.Status_Label (Text_Composition)
+      elsif Terminal.App.Platform_IME.Preedit_Active
+      then Terminal.App.Platform_IME.Status_Label
       elsif Terminal.App.Command_Palette.Active (Command_Palette)
       then Terminal.App.Command_Palette.Status_Label (Command_Palette)
       elsif Terminal.App.Settings.Active (Settings)
@@ -115,7 +155,23 @@ procedure Run (Workspace_Override : String := "") is
       then Terminal.App.Copy_Mode.Status_Label (Copy_State)
       elsif Terminal.App.Session_Recording.Active (Recording)
       then Terminal.App.Session_Recording.Status_Label (Recording)
+      elsif Active_Progress.Kind /= Terminal.Core.No_Progress
+      then
+        (case Active_Progress.Kind is
+            when Terminal.Core.Normal_Progress => "PROGRESS ",
+            when Terminal.Core.Error_Progress => "PROGRESS ERROR ",
+            when Terminal.Core.Indeterminate_Progress => "PROGRESS ",
+            when Terminal.Core.Paused_Progress => "PROGRESS PAUSED ",
+            when Terminal.Core.No_Progress => "")
+        & (if Active_Progress.Kind = Terminal.Core.Indeterminate_Progress
+           then "INDETERMINATE"
+           else Ada.Strings.Fixed.Trim
+             (Natural'Image (Active_Progress.Percent), Ada.Strings.Both) & "%")
+      elsif Unbounded.Length (Active_Badge) > 0
+      then "BADGE " & Unbounded.To_String (Active_Badge)
+      elsif Protected_Input then "PROTECTED INPUT"
       elsif Broadcast_Input then "BROADCAST INPUT"
+      elsif Read_Only then "READ ONLY"
       elsif Pane_Zoomed then "PANE ZOOM"
       else "");
 
@@ -157,9 +213,28 @@ procedure Run (Workspace_Override : String := "") is
    Runtime_Multiplexer_Status : constant String :=
      Terminal.App.Multiplexer_Status_Label (Terminal.App.Profile);
    Last_Click_Time : Ada.Real_Time.Time := Blink_Origin;
+   Last_Workspace_Save : Ada.Real_Time.Time := Blink_Origin;
+   Workspace_Save_Interval : constant Duration := 5.0;
    Last_Click_Pos  : Terminal.App.Selection.Cell_Position;
    Have_Last_Click : Boolean := False;
    Click_Count     : Natural := 0;
+
+   function With_Session_Bootstrap (Command : String) return String is
+      Bootstrap : constant String :=
+        (if PTY_Capabilities.POSIX_PTY
+         then Terminal.App.Shell_Integration.Bootstrap
+           (App_Config.Shell_Integration,
+            Terminal.App.Control_Server.Path (Control))
+         else "");
+   begin
+      if Bootstrap = "" then
+         return Command;
+      elsif Command = "" then
+         return Bootstrap;
+      else
+         return Bootstrap & "; " & Command;
+      end if;
+   end With_Session_Bootstrap;
 
    procedure Send_Shell_Command
      (Index   : Terminal.App.Sessions.Session_Index;
@@ -237,10 +312,11 @@ procedure Run (Workspace_Override : String := "") is
            (R, Terminal.App.Theme.Built_In (Name), Theme_Status);
          if Theme_Status = Terminal.App.Renderer.Theme_Ok then
             App_Config.Color_Theme := Name;
+            App_Config.Follow_System_Theme := False;
          end if;
       end if;
       Terminal.App.Workspace.Set_Command (Workspace_Commands (Index), Launch);
-      Send_Shell_Command (Index, Combined);
+      Send_Shell_Command (Index, With_Session_Bootstrap (Combined));
    end Apply_Profile;
 
    procedure Start_Configured_Command
@@ -251,7 +327,7 @@ procedure Run (Workspace_Override : String := "") is
    begin
       Terminal.App.Workspace.Set_Command
         (Workspace_Commands (Index), Configured);
-      Send_Shell_Command (Index, Configured);
+      Send_Shell_Command (Index, With_Session_Bootstrap (Configured));
    end Start_Configured_Command;
 
    procedure Start_Default_Or_Configured
@@ -305,7 +381,8 @@ procedure Run (Workspace_Override : String := "") is
    procedure Restore_Workspace is
       Saved : Terminal.App.Workspace.State;
       IO : Terminal.App.Workspace.IO_Status;
-      Status : Terminal.App.Session_Table.Table_Status;
+      Status : Terminal.App.Session_Table.Table_Status :=
+        Terminal.App.Session_Table.Ok;
       Loaded : Boolean := False;
       Default_Profile : constant Natural :=
         Terminal.App.Session_Profiles.Default_Index
@@ -334,6 +411,13 @@ procedure Run (Workspace_Override : String := "") is
             end if;
             exit when Status /= Terminal.App.Session_Table.Ok;
          end loop;
+         if Saved.Layout = Terminal.App.Workspace.Panes
+           and then Saved.Pane_Tree.Count > 0
+           and then Status = Terminal.App.Session_Table.Ok
+         then
+            Terminal.App.Session_Table.Restore_Pane_Tree
+              (Sessions, Saved.Pane_Tree, Status);
+         end if;
       end if;
       for I in 1 .. Terminal.App.Session_Table.Count (Sessions) loop
          Terminal.App.Session_Table.Activate (Sessions, I, Status);
@@ -372,9 +456,10 @@ procedure Run (Workspace_Override : String := "") is
             begin
                Send_Shell_Command
                  (I,
-                  (if Directory = "" then Startup
-                   elsif Startup = "" then Directory
-                   else Directory & " && " & Startup));
+                  With_Session_Bootstrap
+                    ((if Directory = "" then Startup
+                      elsif Startup = "" then Directory
+                      else Directory & " && " & Startup)));
             end;
          end if;
       end loop;
@@ -400,6 +485,7 @@ procedure Run (Workspace_Override : String := "") is
          Saved.Layout := Terminal.App.Workspace.Tabs;
       elsif Terminal.App.Splits.Count (Split_State) > 1 then
          Saved.Layout := Terminal.App.Workspace.Panes;
+         Saved.Pane_Tree := Terminal.App.Splits.Tree (Split_State);
          Saved.Orientation :=
            (if Terminal.App.Splits.Snapshot (Split_State).Orientation =
                  Terminal.App.Splits.Horizontal
@@ -435,6 +521,7 @@ procedure Run (Workspace_Override : String := "") is
       end loop;
       Terminal.App.Workspace.Save
         (Terminal.App.Config.Workspace_Path_String (App_Config), Saved, IO);
+      Last_Workspace_Save := Ada.Real_Time.Clock;
    end Save_Workspace;
 
    function Active_Runtime
@@ -555,17 +642,23 @@ procedure Run (Workspace_Override : String := "") is
    procedure On_Key (Event : GLFW_Vulkan.Input.Key_Event) is
    begin
       Input_Grace := Present_Grace_Frames;
-      In_Q.Push
-        ((Kind => Terminal.App.Queues.Key,
-          Key_Event => Event));
+      if Terminal.App.Platform_IME.Process_Key (Event) then
+         Need_Redraw := True;
+      else
+         In_Q.Push
+           ((Kind => Terminal.App.Queues.Key,
+             Key_Event => Event));
+      end if;
    end On_Key;
 
    procedure On_Character (Event : GLFW_Vulkan.Input.Character_Event) is
    begin
       Input_Grace := Present_Grace_Frames;
-      In_Q.Push
-        ((Kind => Terminal.App.Queues.Character,
-          Character_Event => Event));
+      if not Terminal.App.Platform_IME.Suppress_Next_GLFW_Character then
+         In_Q.Push
+           ((Kind => Terminal.App.Queues.Character,
+             Character_Event => Event));
+      end if;
    end On_Character;
 
    procedure On_Mouse_Button
@@ -608,6 +701,7 @@ procedure Run (Workspace_Override : String := "") is
 
    procedure On_Focus (Event : GLFW_Vulkan.Input.Focus_Event) is
    begin
+      Terminal.App.Platform_IME.Set_Focused (Event.Focused);
       In_Q.Push
         ((Kind => Terminal.App.Queues.Focus,
           Focus_Event => Event));
@@ -644,6 +738,70 @@ procedure Run (Workspace_Override : String := "") is
    begin
       return Terminal.App.Session_Table.Active_Runtime (Owners.Sessions);
    end Active_Runtime;
+
+   procedure Clear_Close_Confirmation is
+   begin
+      Close_Confirmation_Index := 0;
+      Close_Confirmation_Deadline := Ada.Real_Time.Time_First;
+      Unbounded.Set_Unbounded_String (Close_Confirmation_Message, "");
+   end Clear_Close_Confirmation;
+
+   function Close_Confirmed return Boolean is
+      Index : constant Terminal.App.Sessions.Session_Index :=
+        Terminal.App.Session_Table.Active (Sessions);
+      Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+   begin
+      if not Terminal.App.Session_Table.Has_Foreground_Process
+        (Active_Runtime)
+      then
+         Clear_Close_Confirmation;
+         return True;
+      elsif Close_Confirmation_Index = Natural (Index)
+        and then Now <= Close_Confirmation_Deadline
+      then
+         Clear_Close_Confirmation;
+         return True;
+      end if;
+      Close_Confirmation_Index := Natural (Index);
+      Close_Confirmation_Deadline := Now + Ada.Real_Time.To_Time_Span (3.0);
+      Unbounded.Set_Unbounded_String
+        (Close_Confirmation_Message,
+         "PROCESS RUNNING - repeat close within 3 seconds to confirm");
+      Need_Redraw := True;
+      return False;
+   end Close_Confirmed;
+
+   function Window_Close_Confirmed return Boolean is
+      Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+      Has_Foreground : Boolean := False;
+      Window_Token : constant Natural :=
+        Terminal.App.Sessions.Max_Sessions + 1;
+   begin
+      for I in 1 .. Terminal.App.Session_Table.Count (Sessions) loop
+         if Terminal.App.Session_Table.Has_Foreground_Process
+           (Terminal.App.Session_Table.Runtime_At (Sessions, I))
+         then
+            Has_Foreground := True;
+            exit;
+         end if;
+      end loop;
+      if not Has_Foreground then
+         Clear_Close_Confirmation;
+         return True;
+      elsif Close_Confirmation_Index = Window_Token
+        and then Now <= Close_Confirmation_Deadline
+      then
+         Clear_Close_Confirmation;
+         return True;
+      end if;
+      Close_Confirmation_Index := Window_Token;
+      Close_Confirmation_Deadline := Now + Ada.Real_Time.To_Time_Span (3.0);
+      Unbounded.Set_Unbounded_String
+        (Close_Confirmation_Message,
+         "PROCESSES RUNNING - repeat window close within 3 seconds");
+      Need_Redraw := True;
+      return False;
+   end Window_Close_Confirmed;
 
    function Tabs return Terminal.App.Tabs.Tab_State is
      (Terminal.App.Session_Table.Tabs (Sessions));
@@ -729,10 +887,15 @@ procedure Run (Workspace_Override : String := "") is
       Applied   : out Boolean)
    is
       Font_Status : Terminal.App.Renderer.Font_Update_Status;
+      Background_Status : Terminal.App.Renderer.Background_Update_Status;
       New_Font_Path : constant String :=
         (if Terminal.App.Config.Font_Path_String (Candidate)'Length = 0
          then Terminal.App.Fonts.Default_Font_Path
          else Terminal.App.Config.Font_Path_String (Candidate));
+      Candidate_Preference : constant Terminal.App.System_Theme.Preference :=
+        (if Candidate.Follow_System_Theme
+         then Terminal.App.System_Theme.Current
+         else Terminal.App.System_Theme.Unknown);
       Old_Font_Path : constant String := Unbounded.To_String (Active_Font_Path);
       Limit_Status :
         Terminal.App.Renderer.Graphics.Resource_Limit_Update_Status;
@@ -759,9 +922,18 @@ procedure Run (Workspace_Override : String := "") is
       begin
          Set_Limits (App_Config, Ignored);
          Terminal.App.Renderer.Set_Theme
-           (R, Terminal.App.Config.Active_Theme (App_Config), Theme_Status);
+           (R, Resolved_Theme (App_Config, System_Preference), Theme_Status);
          Terminal.App.Renderer.Set_Font
-           (R, Old_Font_Path, Active_Font_Size, Font_Status);
+           (R, Old_Font_Path, Active_Font_Size, Font_Status,
+            Terminal.App.Config.Font_Bold_Path_String (App_Config),
+            Terminal.App.Config.Font_Italic_Path_String (App_Config),
+            Terminal.App.Config.Font_Bold_Italic_Path_String (App_Config),
+            Terminal.App.Config.Font_Features_String (App_Config),
+            Terminal.App.Config.Font_Variations_String (App_Config));
+         Terminal.App.Renderer.Set_Content_Padding
+           (R, App_Config.Content_Padding);
+         Terminal.App.Renderer.Set_Tab_Style
+           (R, App_Config.Tab_Bar, App_Config.Tabs);
       end Restore;
    begin
       Applied := False;
@@ -770,19 +942,66 @@ procedure Run (Workspace_Override : String := "") is
          return;
       end if;
       Terminal.App.Renderer.Set_Theme
-        (R, Terminal.App.Config.Active_Theme (Candidate), Theme_Status);
+        (R, Resolved_Theme (Candidate, Candidate_Preference), Theme_Status);
       if Theme_Status /= Terminal.App.Renderer.Theme_Ok then
          Restore;
          return;
       end if;
       Terminal.App.Renderer.Set_Font
-        (R, New_Font_Path, Candidate.Font_Pixel_Size, Font_Status);
+        (R, New_Font_Path, Candidate.Font_Pixel_Size, Font_Status,
+         Terminal.App.Config.Font_Bold_Path_String (Candidate),
+         Terminal.App.Config.Font_Italic_Path_String (Candidate),
+         Terminal.App.Config.Font_Bold_Italic_Path_String (Candidate),
+         Terminal.App.Config.Font_Features_String (Candidate),
+         Terminal.App.Config.Font_Variations_String (Candidate));
       if Font_Status /= Terminal.App.Renderer.Font_Ok then
          Restore;
          return;
       end if;
+      Terminal.App.Renderer.Set_Background_Image
+        (R,
+         Terminal.App.Config.Background_Image_Path_String (Candidate),
+         Candidate.Background_Image_Opacity_Percent,
+         Background_Status);
+      if Background_Status not in Terminal.App.Renderer.Background_Ok
+        | Terminal.App.Renderer.Background_Cleared
+      then
+         Restore;
+         return;
+      end if;
+      Terminal.App.Renderer.Set_Content_Padding
+        (R, Candidate.Content_Padding);
+      Terminal.App.Renderer.Set_Tab_Style
+        (R, Candidate.Tab_Bar, Candidate.Tabs);
+
+      declare
+         Status : GLFW_Vulkan.Windows.Property_Status;
+         Blur_Status : Terminal.App.Platform_Appearance.Blur_Status;
+      begin
+         GLFW_Vulkan.Windows.Set_Opacity
+           (W, Float (Candidate.Window_Opacity_Percent) / 100.0, Status);
+         GLFW_Vulkan.Windows.Set_Floating
+           (W, Candidate.Always_On_Top or else Quick, Status);
+         GLFW_Vulkan.Windows.Set_Decorated
+           (W, Candidate.Window_Decorations and then not Candidate.Focus_Mode
+            and then not Quick, Status);
+         Terminal.App.Platform_Appearance.Set_Background_Blur
+           (GLFW_Vulkan.Windows.Native_Handle (W),
+            Candidate.Background_Blur,
+            Blur_Status);
+      end;
 
       App_Config := Candidate;
+      declare
+         Hotkey_Status : Terminal.App.Global_Hotkey.Register_Status;
+      begin
+         Terminal.App.Global_Hotkey.Register
+           (Terminal.App.Config.Global_Hotkey_String (Candidate), Hotkey_Status);
+      end;
+      Protected_Input := Candidate.Protected_Input;
+      if Protected_Input then Broadcast_Input := False; end if;
+      System_Preference := Candidate_Preference;
+      Last_System_Theme_Check := Ada.Real_Time.Clock;
       Unbounded.Set_Unbounded_String (Active_Font_Path, New_Font_Path);
       Active_Font_Size := Candidate.Font_Pixel_Size;
       Runtime_Graphics := Terminal.App.Graphics_Profile.Create
@@ -884,7 +1103,8 @@ procedure Run (Workspace_Override : String := "") is
    end Resize_Visible_Runtimes;
 
    function Tab_Bar_Height return Natural is
-     (if Terminal.App.Tabs.Count (Tabs) > 1
+     (if Terminal.App.Renderer.Tab_Bar_Visible
+        (R, Natural (Terminal.App.Tabs.Count (Tabs)))
       then Terminal.App.Renderer.Cell_Height (R) + 2
       else 0);
 
@@ -892,24 +1112,15 @@ procedure Run (Workspace_Override : String := "") is
    begin
       if Pane_Zoomed
         or else Terminal.App.Splits.Count (Splits) <= 1
-        or else Terminal.App.Splits.Snapshot (Splits).Orientation =
-          Terminal.App.Splits.Horizontal
       then
          return 0;
       else
          declare
             Layout : constant Terminal.App.Splits.Pane_Layout :=
               Terminal.App.Splits.Layout (Splits, Last_Rows, Last_Cols);
-            Result : Natural := 0;
          begin
-            for I in 1 .. Terminal.App.Splits.Active (Splits) - 1 loop
-               Result :=
-                 Result
-                 + Layout.Rects (I).Cols
-                   * Terminal.App.Renderer.Cell_Width (R)
-                 + Terminal.App.Renderer.Content_Margin * 2;
-            end loop;
-            return Result;
+            return (Layout.Rects (Terminal.App.Splits.Active (Splits)).Col - 1)
+              * Terminal.App.Renderer.Cell_Width (R);
          end;
       end if;
    end Active_Pane_Origin_X;
@@ -918,24 +1129,16 @@ procedure Run (Workspace_Override : String := "") is
    begin
       if Pane_Zoomed
         or else Terminal.App.Splits.Count (Splits) <= 1
-        or else Terminal.App.Splits.Snapshot (Splits).Orientation =
-          Terminal.App.Splits.Vertical
       then
          return Tab_Bar_Height;
       else
          declare
             Layout : constant Terminal.App.Splits.Pane_Layout :=
               Terminal.App.Splits.Layout (Splits, Last_Rows, Last_Cols);
-            Result : Natural := Tab_Bar_Height;
          begin
-            for I in 1 .. Terminal.App.Splits.Active (Splits) - 1 loop
-               Result :=
-                 Result
-                 + Layout.Rects (I).Rows
-                   * Terminal.App.Renderer.Cell_Height (R)
-                 + Terminal.App.Renderer.Content_Margin * 2;
-            end loop;
-            return Result;
+            return Tab_Bar_Height
+              + (Layout.Rects (Terminal.App.Splits.Active (Splits)).Row - 1)
+                * Terminal.App.Renderer.Cell_Height (R);
          end;
       end if;
    end Active_Pane_Origin_Y;
@@ -968,6 +1171,18 @@ procedure Run (Workspace_Override : String := "") is
       end if;
    end Active_Pane_Cols;
 
+   procedure Update_IME_Cursor (Cursor : Terminal.Core.Cursor_State) is
+      Cell_Width : constant Positive := Terminal.App.Renderer.Cell_Width (R);
+      Cell_Height : constant Positive := Terminal.App.Renderer.Cell_Height (R);
+      Padding : constant Natural := Terminal.App.Renderer.Content_Padding (R);
+   begin
+      Terminal.App.Platform_IME.Set_Cursor_Rectangle
+        (Active_Pane_Origin_X + Padding + (Cursor.Col - 1) * Cell_Width,
+         Active_Pane_Origin_Y + Padding + (Cursor.Row - 1) * Cell_Height,
+         Cell_Width,
+         Cell_Height);
+   end Update_IME_Cursor;
+
    function Active_Cell_From_Pixels
      (X : Float;
       Y : Float) return Terminal.App.Selection.Cell_Position is
@@ -977,7 +1192,7 @@ procedure Run (Workspace_Override : String := "") is
          Y - Float (Active_Pane_Origin_Y),
          Terminal.App.Renderer.Cell_Width (R),
          Terminal.App.Renderer.Cell_Height (R),
-         Terminal.App.Renderer.Content_Margin,
+         Terminal.App.Renderer.Content_Padding (R),
          Active_Pane_Rows,
          Active_Pane_Cols);
    end Active_Cell_From_Pixels;
@@ -1031,8 +1246,6 @@ procedure Run (Workspace_Override : String := "") is
       State : constant Terminal.App.Splits.Split_State := Splits;
       Layout : constant Terminal.App.Splits.Pane_Layout :=
         Terminal.App.Splits.Layout (State, Last_Rows, Last_Cols);
-      Cursor_X : Natural := 0;
-      Cursor_Y : Natural := Tab_Bar_Height;
    begin
       if X < 0.0 or else Y < Float (Tab_Bar_Height) then
          return 0;
@@ -1042,24 +1255,21 @@ procedure Run (Workspace_Override : String := "") is
       end if;
       for I in 1 .. Layout.Count loop
          declare
+            Origin_X : constant Natural :=
+              (Layout.Rects (I).Col - 1) * Terminal.App.Renderer.Cell_Width (R);
+            Origin_Y : constant Natural := Tab_Bar_Height
+              + (Layout.Rects (I).Row - 1) * Terminal.App.Renderer.Cell_Height (R);
             Width : constant Natural :=
               Layout.Rects (I).Cols * Terminal.App.Renderer.Cell_Width (R)
-                + Terminal.App.Renderer.Content_Margin * 2;
+                + Terminal.App.Renderer.Content_Padding (R) * 2;
             Height : constant Natural :=
               Layout.Rects (I).Rows * Terminal.App.Renderer.Cell_Height (R)
-                + Terminal.App.Renderer.Content_Margin * 2;
+                + Terminal.App.Renderer.Content_Padding (R) * 2;
          begin
-            if X >= Float (Cursor_X) and then X < Float (Cursor_X + Width)
-              and then Y >= Float (Cursor_Y) and then Y < Float (Cursor_Y + Height)
+            if X >= Float (Origin_X) and then X < Float (Origin_X + Width)
+              and then Y >= Float (Origin_Y) and then Y < Float (Origin_Y + Height)
             then
                return I;
-            end if;
-            if Terminal.App.Splits.Snapshot (State).Orientation =
-              Terminal.App.Splits.Vertical
-            then
-               Cursor_X := Cursor_X + Width;
-            else
-               Cursor_Y := Cursor_Y + Height;
             end if;
          end;
       end loop;
@@ -1070,31 +1280,37 @@ procedure Run (Workspace_Override : String := "") is
       State : constant Terminal.App.Splits.Split_State := Splits;
       Layout : constant Terminal.App.Splits.Pane_Layout :=
         Terminal.App.Splits.Layout (State, Last_Rows, Last_Cols);
-      Boundary : Natural :=
-        (if Terminal.App.Splits.Snapshot (State).Orientation =
-             Terminal.App.Splits.Horizontal
-         then Tab_Bar_Height else 0);
       Tolerance : constant Float := 4.0;
    begin
       if Pane_Zoomed or else Layout.Count <= 1 then return 0; end if;
-      for I in 1 .. Layout.Count - 1 loop
-         Boundary := Boundary
-           + (if Terminal.App.Splits.Snapshot (State).Orientation =
-                   Terminal.App.Splits.Horizontal
-              then Layout.Rects (I).Rows * Terminal.App.Renderer.Cell_Height (R)
-                   + Terminal.App.Renderer.Content_Margin * 2
-              else Layout.Rects (I).Cols * Terminal.App.Renderer.Cell_Width (R)
-                   + Terminal.App.Renderer.Content_Margin * 2);
-         if (Terminal.App.Splits.Snapshot (State).Orientation =
-               Terminal.App.Splits.Horizontal
-             and then abs (Y - Float (Boundary)) <= Tolerance)
-           or else
-             (Terminal.App.Splits.Snapshot (State).Orientation =
-                Terminal.App.Splits.Vertical
-              and then abs (X - Float (Boundary)) <= Tolerance)
+      for I in 1 .. Layout.Divider_Count loop
+         declare
+            D : constant Terminal.App.Splits.Divider_Rect := Layout.Dividers (I);
+            Boundary_X : constant Float :=
+              Float ((D.Col - 1) * Terminal.App.Renderer.Cell_Width (R));
+            Boundary_Y : constant Float := Float
+              (Tab_Bar_Height
+               + (D.Row - 1) * Terminal.App.Renderer.Cell_Height (R));
+            First_X : constant Float := Float
+              ((D.Region_Col - 1) * Terminal.App.Renderer.Cell_Width (R));
+            Last_X : constant Float := First_X
+              + Float (D.Region_Cols * Terminal.App.Renderer.Cell_Width (R));
+            First_Y : constant Float := Float
+              (Tab_Bar_Height
+               + (D.Region_Row - 1) * Terminal.App.Renderer.Cell_Height (R));
+            Last_Y : constant Float := First_Y
+              + Float (D.Region_Rows * Terminal.App.Renderer.Cell_Height (R));
+         begin
+         if (D.Orientation = Terminal.App.Splits.Horizontal
+             and then abs (Y - Boundary_Y) <= Tolerance
+             and then X >= First_X and then X <= Last_X)
+           or else (D.Orientation = Terminal.App.Splits.Vertical
+              and then abs (X - Boundary_X) <= Tolerance
+              and then Y >= First_Y and then Y <= Last_Y)
          then
             return Natural (I);
          end if;
+         end;
       end loop;
       return 0;
    end Divider_At_Pixels;
@@ -1102,10 +1318,10 @@ procedure Run (Workspace_Override : String := "") is
    function Scrollbar_At_Pixels (X, Y : Float) return Boolean is
       Left : constant Float :=
         Float
-          (Active_Pane_Origin_X + Terminal.App.Renderer.Content_Margin
+          (Active_Pane_Origin_X + Terminal.App.Renderer.Content_Padding (R)
            + Active_Pane_Cols * Terminal.App.Renderer.Cell_Width (R) - 8);
       Top : constant Float :=
-        Float (Active_Pane_Origin_Y + Terminal.App.Renderer.Content_Margin);
+        Float (Active_Pane_Origin_Y + Terminal.App.Renderer.Content_Padding (R));
       Bottom : constant Float :=
         Top + Float (Active_Pane_Rows * Terminal.App.Renderer.Cell_Height (R));
    begin
@@ -1126,6 +1342,13 @@ procedure Run (Workspace_Override : String := "") is
                GLFW_Vulkan.Clipboard.Set_Text (W, Text);
                Terminal.App.Clipboard_OSC52.Store_Local_Selection
                  (Clipboard_Targets, Text);
+               declare
+                  Native_Status :
+                    Terminal.App.Platform_Clipboard.Operation_Status;
+               begin
+                  Terminal.App.Platform_Clipboard.Set_Primary
+                    (Text, Native_Status);
+               end;
             end if;
          end;
          Terminal.Core.Release (Copy_Snap);
@@ -1153,8 +1376,326 @@ procedure Run (Workspace_Override : String := "") is
       end loop;
    end Release_Snapshot_Cache;
 
+   procedure Poll_Control is
+      Buffer : String (1 .. Terminal.App.Control_Server.Max_Request_Length);
+      Length : Natural;
+      Poll_Status : Terminal.App.Control_Server.Poll_Status;
+      Reply_Status : Terminal.App.Control_Server.Reply_Status;
+      Parsed : Terminal.App.Control_Protocol.Request;
+      Parse_Status : Terminal.App.Control_Protocol.Parse_Status;
+      Reply_Text : Unbounded.Unbounded_String;
+
+      function Image (Value : Natural) return String is
+        (Ada.Strings.Fixed.Trim (Natural'Image (Value), Ada.Strings.Both));
+
+      procedure Set_Reply (Text : String) is
+      begin
+         Unbounded.Set_Unbounded_String (Reply_Text, Text);
+      end Set_Reply;
+
+      procedure Reset_View is
+      begin
+         Configure_Visible_Cores;
+         Scroll_Offset := 0;
+         Terminal.App.Selection.Clear (Selection);
+         Apply_Hovered_Link ((others => <>));
+         Need_Redraw := True;
+      end Reset_View;
+
+      procedure Close_Active is
+         Closed_Index : constant Terminal.App.Sessions.Session_Index :=
+           Terminal.App.Session_Table.Active (Sessions);
+         Closed_Stream : constant Terminal.Core.Graphics_Stream_ID :=
+           Terminal.App.Session_Table.Graphics_Stream_ID (Active_Runtime);
+      begin
+         if not Close_Confirmed then
+            Set_Reply ("error confirmation_required");
+            return;
+         end if;
+         if Terminal.App.Tabs.Count (Tabs) > 1 then
+            Terminal.App.Session_Table.Close_Tab
+              (Sessions, Session_Table_Status);
+         elsif Terminal.App.Splits.Count (Splits) > 1 then
+            Terminal.App.Session_Table.Close_Pane
+              (Sessions, Session_Table_Status);
+         else
+            Session_Table_Status := Terminal.App.Session_Table.Last_Session;
+         end if;
+         if Session_Table_Status = Terminal.App.Session_Table.Ok then
+            Forget_Session_Command (Closed_Index);
+            Terminal.App.Renderer.Graphics.Release_Stream (R, Closed_Stream);
+            if Terminal.App.Splits.Count (Splits) <= 1 then
+               Pane_Zoomed := False;
+               Broadcast_Input := False;
+            end if;
+            Reset_View;
+            Set_Reply ("ok");
+         else
+            Set_Reply
+              ("error " & Terminal.App.Session_Table.Table_Status'Image
+                 (Session_Table_Status));
+         end if;
+      end Close_Active;
+
+      function Escaped (Text : String) return String is
+         Result : Unbounded.Unbounded_String;
+         Limit : constant Natural :=
+           Terminal.App.Control_Server.Max_Response_Length - 3;
+      begin
+         for Ch of Text loop
+            declare
+               Value : constant String :=
+                 (if Ch = ASCII.LF then "\n"
+                  elsif Ch = ASCII.CR then "\r"
+                  elsif Ch = ASCII.HT then "\t"
+                  elsif Ch = '\' then "\\"
+                  else [Ch]);
+            begin
+               exit when Unbounded.Length (Result) + Value'Length > Limit;
+               Unbounded.Append (Result, Value);
+            end;
+         end loop;
+         return Unbounded.To_String (Result);
+      end Escaped;
+   begin
+      Terminal.App.Control_Server.Poll
+        (Control, Buffer, Length, Poll_Status);
+      if Poll_Status = Terminal.App.Control_Server.No_Request
+        or else Poll_Status = Terminal.App.Control_Server.Client_Failed
+      then
+         return;
+      elsif Poll_Status = Terminal.App.Control_Server.Request_Too_Long then
+         Terminal.App.Control_Server.Reply
+           (Control, "error request too long", Reply_Status);
+         return;
+      end if;
+
+      Terminal.App.Control_Protocol.Parse
+        (Buffer (1 .. Length), Parsed, Parse_Status);
+      if Parse_Status /= Terminal.App.Control_Protocol.Parsed then
+         Set_Reply
+           ("error " & Terminal.App.Control_Protocol.Status_Label (Parse_Status));
+      else
+         case Terminal.App.Control_Protocol.Kind (Parsed) is
+            when Terminal.App.Control_Protocol.Ping =>
+               Set_Reply ("ok pong");
+            when Terminal.App.Control_Protocol.List_Sessions =>
+               Set_Reply
+                 ("ok count=" & Image (Terminal.App.Session_Table.Count (Sessions))
+                  & " active=" & Image (Terminal.App.Session_Table.Active (Sessions))
+                  & " tabs=" & Image (Terminal.App.Tabs.Count (Tabs))
+                  & " panes=" & Image (Terminal.App.Splits.Count (Splits))
+                  & " read-only=" & (if Read_Only then "on" else "off")
+                  & " protected-input="
+                  & (if Protected_Input then "on" else "off"));
+            when Terminal.App.Control_Protocol.Activate_Session =>
+               if Terminal.App.Control_Protocol.Index (Parsed) >
+                 Terminal.App.Session_Table.Count (Sessions)
+               then
+                  Set_Reply ("error invalid session");
+               else
+                  Terminal.App.Session_Table.Activate
+                    (Sessions,
+                     Terminal.App.Sessions.Session_Index
+                       (Terminal.App.Control_Protocol.Index (Parsed)),
+                     Session_Table_Status);
+                  if Session_Table_Status = Terminal.App.Session_Table.Ok then
+                     Reset_View;
+                     Set_Reply ("ok");
+                  else
+                     Set_Reply ("error activate failed");
+                  end if;
+               end if;
+            when Terminal.App.Control_Protocol.New_Tab =>
+               Terminal.App.Session_Table.New_Tab
+                 (Sessions, Last_Rows, Last_Cols, App_Config.Scrollback_Limit,
+                  Session_Table_Status);
+               if Session_Table_Status = Terminal.App.Session_Table.Ok then
+                  Start_Default_Or_Configured
+                    (Terminal.App.Session_Table.Active (Sessions));
+                  Reset_View;
+                  Set_Reply ("ok");
+               else
+                  Set_Reply ("error new tab failed");
+               end if;
+            when Terminal.App.Control_Protocol.Close_Session =>
+               Close_Active;
+            when Terminal.App.Control_Protocol.Split_Horizontal
+               | Terminal.App.Control_Protocol.Split_Vertical =>
+               Terminal.App.Session_Table.Split_Pane
+                 (Sessions,
+                  (if Terminal.App.Control_Protocol.Kind (Parsed) =
+                        Terminal.App.Control_Protocol.Split_Horizontal
+                   then Terminal.App.Splits.Split_Horizontal
+                   else Terminal.App.Splits.Split_Vertical),
+                  Last_Rows, Last_Cols, App_Config.Scrollback_Limit,
+                  Session_Table_Status);
+               if Session_Table_Status = Terminal.App.Session_Table.Ok then
+                  Start_Default_Or_Configured
+                    (Terminal.App.Session_Table.Active (Sessions));
+                  Reset_View;
+                  Set_Reply ("ok");
+               else
+                  Set_Reply ("error split failed");
+               end if;
+            when Terminal.App.Control_Protocol.Send_Text =>
+               if Read_Only then
+                  Set_Reply ("error read-only");
+               elsif Protected_Input then
+                  Set_Reply ("error protected-input");
+               else
+                  Terminal.App.Session_Table.Write_Paste
+                    (Active_Runtime,
+                     Terminal.App.Control_Protocol.Payload (Parsed),
+                     False,
+                     Last_Write_Status);
+                  Set_Reply
+                    (if Last_Write_Status = Terminal.App.PTY_Write.Ok
+                     then "ok" else "error write failed");
+               end if;
+            when Terminal.App.Control_Protocol.Set_Title =>
+               Terminal.App.Session_Table.Set_Active_Tab_Label
+                 (Sessions, Terminal.App.Control_Protocol.Payload (Parsed),
+                  Session_Table_Status);
+               Set_Reply
+                 (if Session_Table_Status = Terminal.App.Session_Table.Ok
+                  then "ok" else "error title rejected");
+               Need_Redraw := True;
+            when Terminal.App.Control_Protocol.Set_Theme =>
+               declare
+                  Name : Terminal.App.Theme.Theme_Name;
+               begin
+                  if Terminal.App.Theme.Parse_Name
+                    (Terminal.App.Control_Protocol.Payload (Parsed), Name)
+                  then
+                     Terminal.App.Renderer.Set_Theme
+                       (R, Terminal.App.Theme.Built_In (Name), Theme_Status);
+                     if Theme_Status = Terminal.App.Renderer.Theme_Ok then
+                        App_Config.Color_Theme := Name;
+                        App_Config.Follow_System_Theme := False;
+                        Need_Redraw := True;
+                        Set_Reply ("ok");
+                     else
+                        Set_Reply ("error theme rejected");
+                     end if;
+                  else
+                     Set_Reply ("error invalid theme");
+                  end if;
+               end;
+            when Terminal.App.Control_Protocol.Reload_Config =>
+               declare
+                  Candidate : Terminal.App.Config.Config;
+                  Applied : Boolean := False;
+                  Override_Accepted : Boolean := True;
+               begin
+                  Terminal.App.Config.Load (Candidate);
+                  if Workspace_Override /= "" then
+                     Terminal.App.Config.Set_Workspace_Path
+                       (Candidate, Workspace_Override, Override_Accepted);
+                  end if;
+                  if Candidate.Load_Status = Terminal.App.Config.Config_Loaded
+                    and then Override_Accepted
+                  then
+                     Apply_Runtime_Config (Candidate, Applied);
+                  end if;
+                  Set_Reply (if Applied then "ok" else "error reload rejected");
+                  Need_Redraw := True;
+               end;
+            when Terminal.App.Control_Protocol.Get_Text =>
+               declare
+                  Text : Unbounded.Unbounded_String;
+                  procedure Capture (Core : in out Terminal.Core.Terminal) is
+                     Snapshot : Terminal.Core.Render_Snapshot :=
+                       Terminal.App.Scrollback_View.Snapshot (Core, Scroll_Offset);
+                  begin
+                     Unbounded.Set_Unbounded_String
+                       (Text,
+                        Terminal.App.Screen_Text.Visible
+                          (Snapshot,
+                           Terminal.App.Control_Server.Max_Response_Length / 2));
+                     Terminal.Core.Release (Snapshot);
+                  exception
+                     when others =>
+                        Terminal.Core.Release (Snapshot);
+                        raise;
+                  end Capture;
+               begin
+                  Terminal.App.Session_Runtime.With_Core
+                    (Active_Core, Capture'Access);
+                  Set_Reply ("ok " & Escaped (Unbounded.To_String (Text)));
+               end;
+            when Terminal.App.Control_Protocol.Set_Read_Only =>
+               Read_Only := Terminal.App.Control_Protocol.Enabled (Parsed);
+               Need_Redraw := True;
+               Set_Reply ("ok");
+            when Terminal.App.Control_Protocol.Set_Protected_Input =>
+               Protected_Input := Terminal.App.Control_Protocol.Enabled (Parsed);
+               if Protected_Input then Broadcast_Input := False; end if;
+               Need_Redraw := True;
+               Set_Reply ("ok");
+            when Terminal.App.Control_Protocol.Show_Window
+               | Terminal.App.Control_Protocol.Hide_Window
+               | Terminal.App.Control_Protocol.Toggle_Window =>
+               declare
+                  Status : GLFW_Vulkan.Windows.Property_Status;
+               begin
+                  if Terminal.App.Control_Protocol.Kind (Parsed) =
+                    Terminal.App.Control_Protocol.Show_Window
+                  then
+                     GLFW_Vulkan.Windows.Show (W, Status);
+                  elsif Terminal.App.Control_Protocol.Kind (Parsed) =
+                    Terminal.App.Control_Protocol.Hide_Window
+                  then
+                     GLFW_Vulkan.Windows.Hide (W, Status);
+                  else
+                     GLFW_Vulkan.Windows.Toggle_Visibility (W, Status);
+                  end if;
+                  Set_Reply
+                    (if Status = GLFW_Vulkan.Windows.Ok
+                     then "ok" else "error window unavailable");
+               end;
+            when Terminal.App.Control_Protocol.Quit =>
+               GLFW_Vulkan.Windows.Set_Should_Close (W, True);
+               Set_Reply ("ok");
+            when Terminal.App.Control_Protocol.Invalid_Command =>
+               Set_Reply ("error invalid command");
+         end case;
+      end if;
+      Terminal.App.Control_Server.Reply
+        (Control, Unbounded.To_String (Reply_Text), Reply_Status);
+   exception
+      when others =>
+         Terminal.App.Control_Server.Reply
+           (Control, "error internal failure", Reply_Status);
+   end Poll_Control;
+
    procedure Shutdown is separate;
    function Start return Boolean is separate;
+
+   procedure Poll_System_Theme is
+      Now : constant Ada.Real_Time.Time := Ada.Real_Time.Clock;
+      Preference : Terminal.App.System_Theme.Preference;
+   begin
+      if not App_Config.Follow_System_Theme
+        or else (Last_System_Theme_Check /= Ada.Real_Time.Time_First
+          and then Ada.Real_Time.To_Duration
+            (Now - Last_System_Theme_Check) < System_Theme_Check_Interval)
+      then
+         return;
+      end if;
+      Last_System_Theme_Check := Now;
+      Preference := Terminal.App.System_Theme.Current;
+      if Preference /= Terminal.App.System_Theme.Unknown
+        and then Preference /= System_Preference
+      then
+         Terminal.App.Renderer.Set_Theme
+           (R, Resolved_Theme (App_Config, Preference), Theme_Status);
+         if Theme_Status = Terminal.App.Renderer.Theme_Ok then
+            System_Preference := Preference;
+            Need_Redraw := True;
+         end if;
+      end if;
+   end Poll_System_Theme;
 
    procedure Run_Frame is separate;
 begin
@@ -1164,8 +1705,13 @@ begin
 
    Scoped_Input.Attach (Input_Binding);
 
-   while not GLFW_Vulkan.Windows.Should_Close (W) loop
+   loop
+      Poll_System_Theme;
       Run_Frame;
+      if GLFW_Vulkan.Windows.Should_Close (W) then
+         exit when Window_Close_Confirmed;
+         GLFW_Vulkan.Windows.Set_Should_Close (W, False);
+      end if;
    end loop;
 
    Shutdown;

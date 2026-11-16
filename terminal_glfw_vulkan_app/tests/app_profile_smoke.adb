@@ -5,6 +5,7 @@ with Terminal.App;
 with Terminal.App.Graphics_Profile;
 with Terminal.App.Graphics_Transport;
 with Terminal.App.Clipboard_OSC52;
+with Terminal.App.Platform_Clipboard;
 with Terminal.App.Input_Map;
 with Terminal.App.Platform_Media;
 with Terminal.App.Queues;
@@ -304,13 +305,15 @@ begin
                  (Clipboard_Cap.App_Local_Backing,
                   "profile OSC 52 clipboard app mirror capability");
                Assert
-                 (not Primary_Cap.Native_Backing
+                 (Primary_Cap.Native_Backing =
+                    Terminal.App.Platform_Clipboard.Primary_Available
                   and then Primary_Cap.App_Local_Backing,
-                  "profile OSC 52 primary app-local capability");
+                  "profile OSC 52 primary platform capability");
                Assert
-                 (not Selection_Cap.Native_Backing
+                 (Selection_Cap.Native_Backing =
+                    Terminal.App.Platform_Clipboard.Primary_Available
                   and then Selection_Cap.App_Local_Backing,
-                  "profile OSC 52 selection app-local capability");
+                  "profile OSC 52 selection platform capability");
             end;
 
             Terminal.Core.Feed

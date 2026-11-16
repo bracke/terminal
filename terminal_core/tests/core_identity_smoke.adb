@@ -109,9 +109,17 @@ begin
    Assert (Terminal.Core.Modes (T).Keyboard_Flags = 1, "push disambiguate");
    Expect (CSI & "?u", CSI & "?1u", "query pushed flags");
    Send (CSI & ">31u");
-   Expect (CSI & "?u", CSI & "?1u", "flags the terminal lacks are not taken");
+   Expect (CSI & "?u", CSI & "?31u", "all standard keyboard flags are taken");
    Send (CSI & "<u");
    Assert (Terminal.Core.Modes (T).Keyboard_Flags = 1, "pop back to the earlier entry");
+
+   Send (CSI & "=10;1u");
+   Assert (Terminal.Core.Modes (T).Keyboard_Flags = 10, "set event and all-key flags");
+   Send (CSI & "=17;2u");
+   Assert (Terminal.Core.Modes (T).Keyboard_Flags = 27, "add disambiguate and text flags");
+   Send (CSI & "=10;3u");
+   Assert (Terminal.Core.Modes (T).Keyboard_Flags = 17, "remove selected flags");
+   Send (CSI & "=1;1u");
 
    Send (CSI & "?1049h");
    Assert (Terminal.Core.Modes (T).Keyboard_Flags = 0, "the alternate screen has a stack of its own");

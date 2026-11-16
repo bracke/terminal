@@ -95,6 +95,8 @@ begin
    T.Saved_Window_Title := (others => <>);
    T.Saved_Window_Title_Valid := False;
    T.Clipboard_Data := (others => <>);
+   T.Progress_Data := (others => <>);
+   T.Badge_Data := (others => <>);
    T.Hyperlinks.Current := null;
    T.Hyperlinks.Head := null;
    T.Hyperlinks.Index.Clear;

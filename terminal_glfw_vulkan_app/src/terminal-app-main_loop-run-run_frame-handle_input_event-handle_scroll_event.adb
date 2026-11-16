@@ -5,7 +5,9 @@ procedure Handle_Scroll_Event is
         Active_Cell_From_Pixels (Event.Scroll_Event.X, Event.Scroll_Event.Y);
       Modes : constant Terminal.Core.Mode_Snapshot := Terminal.Core.Modes (Core);
    begin
-      if Terminal.App.Input_Map.Mouse_Reporting_Enabled (Modes) then
+      if Terminal.App.Input_Map.Mouse_Reporting_Enabled (Modes)
+        and then not Read_Only
+      then
          Terminal.App.Input_Map.Encode_Mouse_Wheel
            (Event.Scroll_Event, Modes, Pos.Row, Pos.Col, Chunk);
       elsif Event.Scroll_Event.Y_Offset > 0.0 then

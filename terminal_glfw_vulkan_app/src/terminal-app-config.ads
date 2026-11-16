@@ -1,6 +1,7 @@
 with Terminal.App.Theme;
 with Terminal.App.Key_Bindings;
 with Terminal.App.Session_Profiles;
+with Terminal.App.Output_Triggers;
 with Terminal.Common.Graphics_Limits;
 with Terminal.App.Vulkan_Limits;
 
@@ -13,6 +14,9 @@ package Terminal.App.Config is
    Default_Window_Width : constant Positive := 960;
    Default_Window_Height : constant Positive := 600;
    Max_Window_Dimension : constant Positive := 16_384;
+   Min_Window_Opacity_Percent : constant Positive := 20;
+   Default_Content_Padding : constant Natural := 6;
+   Max_Content_Padding : constant Natural := 64;
    Default_Startup_Rows : constant Positive := 24;
    Default_Startup_Cols : constant Positive := 80;
    Max_Startup_Dimension : constant Positive := 1_000;
@@ -74,27 +78,55 @@ package Terminal.App.Config is
       Config_Invalid,
       Config_IO_Error);
 
+   type Config_Export_Status is
+     (Config_Exported, Config_Export_Invalid_Path, Config_Export_IO_Error);
+
    type Config is record
       Color_Theme : Terminal.App.Theme.Theme_Name :=
         Terminal.App.Theme.Default_Dark;
+      Follow_System_Theme : Boolean := False;
+      Use_Custom_Theme : Boolean := False;
+      Custom_Theme : Terminal.App.Theme.Theme :=
+        Terminal.App.Theme.Built_In (Terminal.App.Theme.Default_Dark);
       Scrollback_Limit : Natural := Default_Scrollback_Limit;
       Wheel_Scroll_Lines : Positive := Default_Wheel_Scroll_Lines;
       Window_Width : Positive := Default_Window_Width;
       Window_Height : Positive := Default_Window_Height;
+      Window_Opacity_Percent : Positive := 100;
+      Background_Blur : Boolean := False;
+      Background_Image : Font_Path_Value := (others => <>);
+      Background_Image_Opacity_Percent : Natural range 0 .. 100 := 100;
+      Always_On_Top : Boolean := False;
+      Window_Decorations : Boolean := True;
+      Focus_Mode : Boolean := False;
+      Global_Hotkey : Font_Path_Value := (others => <>);
+      Content_Padding : Natural range 0 .. Max_Content_Padding :=
+        Default_Content_Padding;
+      Tab_Bar : Terminal.App.Theme.Tab_Bar_Mode := Terminal.App.Theme.Tab_Auto;
+      Tabs : Terminal.App.Theme.Tab_Style := Terminal.App.Theme.Default_Tab_Style;
       Startup_Rows : Positive := Default_Startup_Rows;
       Startup_Cols : Positive := Default_Startup_Cols;
       Font_Path : Font_Path_Value := (others => <>);
+      Font_Bold_Path : Font_Path_Value := (others => <>);
+      Font_Italic_Path : Font_Path_Value := (others => <>);
+      Font_Bold_Italic_Path : Font_Path_Value := (others => <>);
+      Font_Features : Font_Path_Value := (others => <>);
+      Font_Variations : Font_Path_Value := (others => <>);
       Font_Pixel_Size : Positive := Default_Font_Pixel_Size;
       Bindings : Terminal.App.Key_Bindings.Binding_Set :=
         Terminal.App.Key_Bindings.Defaults;
       Desktop_Notifications : Boolean := True;
       Bell_Notifications : Boolean := False;
       Command_Completion_Notifications : Boolean := False;
+      Protected_Input : Boolean := False;
+      Output_Trigger_Rules : Terminal.App.Output_Triggers.Registry;
+      Shell_Integration : Boolean := True;
       Workspace_Path : Font_Path_Value := (others => <>);
       Restore_Workspace : Boolean := True;
       Save_Workspace : Boolean := True;
       Startup_Command : Startup_Command_Value := (others => <>);
       Session_Profiles : Terminal.App.Session_Profiles.Registry;
+      Discover_SSH_Profiles : Boolean := True;
       Kitty_File_Transfer : Boolean := False;
       Kitty_Temporary_Transfer : Boolean := True;
       Kitty_Shared_Memory : Boolean := True;
@@ -133,11 +165,27 @@ package Terminal.App.Config is
      (C                : in out Config;
       Path             : String;
       Missing_Is_Error : Boolean := True);
+   procedure Import_File
+     (C      : in out Config;
+      Path   : String;
+      Status : out Config_Load_Status);
+   procedure Export_File
+     (C      : Config;
+      Path   : String;
+      Status : out Config_Export_Status);
    procedure Load (C : out Config);
+   function Default_Path return String;
    procedure Set_Workspace_Path
      (C : in out Config; Path : String; Accepted : out Boolean);
    function Active_Theme (C : Config) return Terminal.App.Theme.Theme;
    function Font_Path_String (C : Config) return String;
+   function Font_Bold_Path_String (C : Config) return String;
+   function Font_Italic_Path_String (C : Config) return String;
+   function Font_Bold_Italic_Path_String (C : Config) return String;
+   function Font_Features_String (C : Config) return String;
+   function Font_Variations_String (C : Config) return String;
+   function Background_Image_Path_String (C : Config) return String;
+   function Global_Hotkey_String (C : Config) return String;
    function Workspace_Path_String (C : Config) return String;
    function Startup_Command_String (C : Config) return String;
    function Image (C : Config) return String;

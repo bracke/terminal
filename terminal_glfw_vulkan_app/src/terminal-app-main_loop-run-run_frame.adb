@@ -10,6 +10,47 @@ separate (Terminal.App.Main_Loop.Run)
       Local_Redraw : Boolean := False;
       Current_Blink_Tick : Natural := Last_Blink_Tick;
 
+      function Shell_Quote (Value : String) return String is
+         Result : String (1 .. Value'Length * 5 + 2);
+         Last : Natural := 1;
+      begin
+         Result (1) := ''';
+         for Ch of Value loop
+            if Ch = ''' then
+               Result (Last + 1 .. Last + 5) := "'""'""'";
+               Last := Last + 5;
+            else
+               Last := Last + 1;
+               Result (Last) := Ch;
+            end if;
+         end loop;
+         Last := Last + 1;
+         Result (Last) := ''';
+         return Result (1 .. Last);
+      end Shell_Quote;
+
+      procedure Handle_Dropped_Files is
+         Value : Terminal.App.File_Drop.Path_Value;
+         Available : Boolean;
+         Status : Terminal.App.PTY_Write.Write_All_Status;
+         Modes : constant Terminal.Core.Mode_Snapshot :=
+           Terminal.App.Session_Runtime.Modes (Active_Core);
+      begin
+         loop
+            Terminal.App.File_Drop.Poll (Value, Available);
+            exit when not Available;
+            if not Read_Only and then Terminal.App.File_Drop.Text (Value) /= "" then
+               Terminal.App.Session_Table.Write_Paste
+                 (Active_Runtime,
+                  Shell_Quote (Terminal.App.File_Drop.Text (Value)) & " ",
+                  Modes.Bracketed_Paste,
+                  Status);
+               Last_Write_Status := Status;
+               exit when Status /= Terminal.App.PTY_Write.Ok;
+            end if;
+         end loop;
+      end Handle_Dropped_Files;
+
       function Frame_Diagnostic_Statuses
         (Snaps                : Terminal.App.Renderer.Snapshot_Array;
          Active_Render_Index  : Positive;
@@ -40,7 +81,7 @@ separate (Terminal.App.Main_Loop.Run)
                FB_Height,
                Terminal.App.Renderer.Cell_Width (R),
                Terminal.App.Renderer.Cell_Height (R),
-               Terminal.App.Renderer.Content_Margin));
+               Terminal.App.Renderer.Content_Padding (R)));
          Set (Terminal.App.Diagnostics.Policy_Status, Render_Policy_Status);
          Terminal.App.Session_Runtime.With_Core
            (Active_Core, Set_Scrollback'Access);
@@ -145,9 +186,16 @@ separate (Terminal.App.Main_Loop.Run)
       is separate;
 
       procedure Refresh_Core_State (Core : in out Terminal.Core.Terminal) is
+         Badge : constant Terminal.Core.Notification_Text :=
+           Terminal.Core.Badge (Core);
       begin
          Scroll_Offset :=
            Terminal.App.Scrollback_View.Clamp_Offset (Core, Scroll_Offset);
+         Active_Progress := Terminal.Core.Progress (Core);
+         Unbounded.Set_Unbounded_String
+           (Active_Badge,
+            (if Badge.Length = 0 then ""
+             else Badge.Text (1 .. Badge.Length)));
          if Dirty then
             Terminal.App.Renderer.Set_Status_Overlay (R, Interaction_Status);
             Apply_Title
@@ -173,6 +221,7 @@ separate (Terminal.App.Main_Loop.Run)
                Runtime,
                Clipboard_Targets,
                Item,
+               Protected_Input,
                Clipboard_Ok,
                Last_Write_Status,
                Last_Clipboard_Target);
@@ -224,6 +273,29 @@ separate (Terminal.App.Main_Loop.Run)
       end Handle_Present_Status;
    begin
       Terminal.App.Platform_Launcher.Poll;
+      if Terminal.App.Global_Hotkey.Poll then
+         declare
+            Status : GLFW_Vulkan.Windows.Property_Status;
+         begin
+            GLFW_Vulkan.Windows.Toggle_Visibility (W, Status);
+         end;
+      end if;
+      Poll_Control;
+      if App_Config.Save_Workspace
+        and then Ada.Real_Time.To_Duration
+          (Ada.Real_Time.Clock - Last_Workspace_Save) >= Workspace_Save_Interval
+      then
+         begin
+            Save_Workspace;
+         exception
+            when E : others =>
+               Terminal.App.Cleanup_Diagnostics.Note_Failure
+                 (Terminal.App.Cleanup_Diagnostics.Session_Table,
+                  E,
+                  "autosave workspace");
+               Last_Workspace_Save := Ada.Real_Time.Clock;
+         end;
+      end if;
       if Recovery_Tick < Natural'Last then
          Recovery_Tick := Recovery_Tick + 1;
       end if;
@@ -272,6 +344,23 @@ separate (Terminal.App.Main_Loop.Run)
         (Active_Core, Refresh_Core_State'Access);
       Terminal.App.Session_Table.With_Runtime
         (Active_Runtime, Apply_Pending_Clipboard'Access);
+      Handle_Dropped_Files;
+
+      loop
+         declare
+            Code_Point : Wide_Wide_Character;
+            Available : Boolean;
+         begin
+            Terminal.App.Platform_IME.Poll_Commit (Code_Point, Available);
+            exit when not Available;
+            In_Q.Push
+              ((Kind => Terminal.App.Queues.Character,
+                Character_Event => (Code_Point => Code_Point)));
+            Dirty := True;
+            Need_Redraw := True;
+            Local_Redraw := True;
+         end;
+      end loop;
 
       loop
          exit when Terminal.App.Session_Table.State (Active_Runtime) /=
@@ -466,11 +555,12 @@ separate (Terminal.App.Main_Loop.Run)
                FB_Height,
                Terminal.App.Renderer.Cell_Width (R),
                Terminal.App.Renderer.Cell_Height (R),
-               Terminal.App.Renderer.Content_Margin,
+               Terminal.App.Renderer.Content_Padding (R),
                (if Unbounded.Length (Last_Tab_Title) = 0
                 then "Ada Terminal"
                 else Unbounded.To_String (Last_Tab_Title)),
                Interaction_Status);
+            Update_IME_Cursor (Snaps (Active_Render_Index).Cursor);
 
             if not Terminal.App.Vulkan_Presenter.Is_Initialized
               (Presenter)
@@ -531,16 +621,22 @@ separate (Terminal.App.Main_Loop.Run)
                Present_Status :=
                  Terminal.App.Vulkan_Presenter.Not_Attempted;
             elsif Can_Present then
-               Terminal.App.Renderer.Layout.Render_App
+               Terminal.App.Renderer.Layout.Render_Pane_Layout
                  (R,
                   Snaps,
                   Active_Render_Index,
                   Terminal.App.Tabs.Snapshot (Tabs),
                   (if Pane_Zoomed
                    then
-                     (Count => 1, Active => 1,
-                      Orientation => Terminal.App.Splits.Horizontal)
-                   else Terminal.App.Splits.Snapshot (Splits)),
+                     (Count => 1,
+                      Rects =>
+                        (1 => (Row => 1, Col => 1,
+                               Rows => Last_Rows, Cols => Last_Cols,
+                               Active => True),
+                         others => <>),
+                      others => <>)
+                   else Terminal.App.Splits.Layout
+                     (Splits, Last_Rows, Last_Cols)),
                   Render_Status);
                if Render_Status = Terminal.App.Renderer.Ok then
                   Terminal.App.Renderer.Presentation.Present

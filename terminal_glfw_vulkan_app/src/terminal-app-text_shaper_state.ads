@@ -26,11 +26,20 @@ private package Terminal.App.Text_Shaper_State is
 
    type Fallback_Face_Array is array
      (Positive range 1 .. Terminal.App.Fonts.Max_Fallback_Fonts) of HB.Font_Face;
+   type Style_Face_Array is array (Positive range 1 .. 3) of HB.Font_Face;
+   type Style_Enabled_Array is array (Positive range 1 .. 3) of Boolean;
 
    type State is limited record
       Default_Face        : HB.Font_Face;
       Default_Face_Loaded : Boolean := False;
       Default_Face_Tried  : Boolean := False;
+      Style_Faces         : Style_Face_Array;
+      Style_Face_Count    : Natural range 0 .. 3 := 0;
+      Style_Enabled       : Style_Enabled_Array := (others => False);
+      Feature_Length      : Natural range 0 .. 512 := 0;
+      Feature_Text        : String (1 .. 512) := (others => ASCII.NUL);
+      Variation_Length    : Natural range 0 .. 512 := 0;
+      Variation_Text      : String (1 .. 512) := (others => ASCII.NUL);
       Fallback_Faces      : Fallback_Face_Array;
       Fallback_Face_Count : Natural := 0;
       Shape_Cache         : Shape_Cache_Maps.Map;

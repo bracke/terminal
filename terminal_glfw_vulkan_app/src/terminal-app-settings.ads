@@ -28,9 +28,13 @@ package Terminal.App.Settings is
 
 private
    type Setting_Item is
-     (Theme, Font_Size, Wheel_Lines, Desktop_Notifications,
-      Bell_Notifications, Completion_Notifications, Default_Profile,
-      Config_Line);
+     (Theme, Follow_System_Theme, Font_Size, Wheel_Lines, Window_Opacity,
+      Background_Blur, Content_Padding,
+      Always_On_Top, Focus_Mode,
+      Window_Decorations, Shell_Integration, Desktop_Notifications,
+      Bell_Notifications, Completion_Notifications, Protected_Input,
+      Default_Profile,
+      Config_Line, Import_Config, Export_Config);
    Max_Line_Length : constant := 1_024;
    Max_Message_Length : constant := 128;
    type State is limited record

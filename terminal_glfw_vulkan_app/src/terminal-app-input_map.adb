@@ -217,16 +217,16 @@ package body Terminal.App.Input_Map is
          when X => return (if Event.Modifiers.Shift then 'X' else 'x');
          when Y => return (if Event.Modifiers.Shift then 'Y' else 'y');
          when Z => return (if Event.Modifiers.Shift then 'Z' else 'z');
-         when Num_0 => return '0';
-         when Num_1 => return '1';
-         when Num_2 => return '2';
-         when Num_3 => return '3';
-         when Num_4 => return '4';
-         when Num_5 => return '5';
-         when Num_6 => return '6';
-         when Num_7 => return '7';
-         when Num_8 => return '8';
-         when Num_9 => return '9';
+         when Num_0 => return (if Event.Modifiers.Shift then ')' else '0');
+         when Num_1 => return (if Event.Modifiers.Shift then '!' else '1');
+         when Num_2 => return (if Event.Modifiers.Shift then '@' else '2');
+         when Num_3 => return (if Event.Modifiers.Shift then '#' else '3');
+         when Num_4 => return (if Event.Modifiers.Shift then '$' else '4');
+         when Num_5 => return (if Event.Modifiers.Shift then '%' else '5');
+         when Num_6 => return (if Event.Modifiers.Shift then '^' else '6');
+         when Num_7 => return (if Event.Modifiers.Shift then '&' else '7');
+         when Num_8 => return (if Event.Modifiers.Shift then '*' else '8');
+         when Num_9 => return (if Event.Modifiers.Shift then '(' else '9');
          when Kp_0 => return '0';
          when Kp_1 => return '1';
          when Kp_2 => return '2';
@@ -299,15 +299,32 @@ package body Terminal.App.Input_Map is
       end case;
    end Control_Byte;
 
-   --  Bit 1 of the progressive keyboard enhancement flags: keys that the
-   --  legacy encoding sends ambiguously -- Escape, and keys typed with Alt,
-   --  Control, or Super -- are sent as CSI code ; modifiers u instead.
-   function Disambiguating (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
-     (Modes.Keyboard_Flags mod 2 = 1);
+   function Keyboard_Flag
+     (Modes : Terminal.Core.Mode_Snapshot;
+      Flag  : Positive) return Boolean is
+     ((Modes.Keyboard_Flags / Flag) mod 2 = 1);
 
-   --  A key's code in that encoding: the character it types without Shift,
-   --  or the C0/functional code assigned by kitty. Zero for cursor and
-   --  function keys, which keep their legacy CSI encoding.
+   function Disambiguating (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
+     (Keyboard_Flag (Modes, 1));
+
+   function Reporting_Events
+     (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
+     (Keyboard_Flag (Modes, 2));
+
+   function Reporting_Alternate_Keys
+     (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
+     (Keyboard_Flag (Modes, 4));
+
+   function Reporting_All_Keys
+     (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
+     (Keyboard_Flag (Modes, 8));
+
+   function Reporting_Associated_Text
+     (Modes : Terminal.Core.Mode_Snapshot) return Boolean is
+     (Keyboard_Flag (Modes, 16) and then Reporting_All_Keys (Modes));
+
+   --  A key's code in the progressive encoding: the character it types
+   --  without Shift, or the functional code assigned by the protocol.
    function Kitty_Key_Code (Event : GLFW_Vulkan.Input.Key_Event) return Natural is
       Unshifted : GLFW_Vulkan.Input.Key_Event := Event;
    begin
@@ -320,6 +337,28 @@ package body Terminal.App.Input_Map is
             return 9;
          when Backspace =>
             return 127;
+         when Insert     => return 2;
+         when Delete     => return 3;
+         when Left       => return 57_350;
+         when Right      => return 57_351;
+         when Up         => return 57_352;
+         when Down       => return 57_353;
+         when Page_Up    => return 57_354;
+         when Page_Down  => return 57_355;
+         when Home       => return 57_356;
+         when End_Key    => return 57_357;
+         when F1         => return 57_364;
+         when F2         => return 57_365;
+         when F3         => return 57_366;
+         when F4         => return 57_367;
+         when F5         => return 57_368;
+         when F6         => return 57_369;
+         when F7         => return 57_370;
+         when F8         => return 57_371;
+         when F9         => return 57_372;
+         when F10        => return 57_373;
+         when F11        => return 57_374;
+         when F12        => return 57_375;
          when Kp_0        => return 57_399;
          when Kp_1        => return 57_400;
          when Kp_2        => return 57_401;
@@ -343,33 +382,92 @@ package body Terminal.App.Input_Map is
       end case;
    end Kitty_Key_Code;
 
-   --  Whether the key goes out as CSI code ; modifiers u under Disambiguating.
-   function Kitty_Encoded (Event : GLFW_Vulkan.Input.Key_Event) return Boolean is
+   function Text_Code (Event : GLFW_Vulkan.Input.Key_Event) return Natural is
+      Value : constant Character := Alt_Printable (Event);
+   begin
+      return (if Value = ASCII.NUL then 0 else Character'Pos (Value));
+   end Text_Code;
+
+   function Functional_Key (Key : GLFW_Vulkan.Input.Key) return Boolean is
+     (Key in Escape | Enter | Tab | Backspace | Insert | Delete
+        | Left | Right | Up | Down | Page_Up | Page_Down | Home | End_Key
+        | F1 | F2 | F3 | F4 | F5 | F6 | F7 | F8 | F9 | F10 | F11 | F12
+        | Kp_Enter);
+
+   function Kitty_Encoded
+     (Event : GLFW_Vulkan.Input.Key_Event;
+      Modes : Terminal.Core.Mode_Snapshot) return Boolean
+   is
       Code : constant Natural := Kitty_Key_Code (Event);
       Held : constant Boolean :=
         Event.Modifiers.Alt or else Event.Modifiers.Control or else Event.Modifiers.Super;
    begin
       return Code /= 0
         and then
-          (Event.Key in Kp_0 | Kp_1 | Kp_2 | Kp_3 | Kp_4 | Kp_5 | Kp_6
-             | Kp_7 | Kp_8 | Kp_9 | Kp_Decimal | Kp_Divide | Kp_Multiply
-             | Kp_Subtract | Kp_Add | Kp_Equal | Kp_Enter
-           or else Event.Key = Escape
-           or else Held
-           or else (Event.Modifiers.Shift and then Event.Key in Enter | Tab | Backspace));
+          (Reporting_All_Keys (Modes)
+           or else (Reporting_Events (Modes) and then Functional_Key (Event.Key))
+           or else
+             (Disambiguating (Modes)
+              and then
+                (Event.Key in Kp_0 | Kp_1 | Kp_2 | Kp_3 | Kp_4 | Kp_5 | Kp_6
+                   | Kp_7 | Kp_8 | Kp_9 | Kp_Decimal | Kp_Divide | Kp_Multiply
+                   | Kp_Subtract | Kp_Add | Kp_Equal | Kp_Enter
+                 or else Event.Key = Escape
+                 or else
+                   (Held
+                    and then Event.Key not in
+                      Up | Down | Left | Right | Home | End_Key
+                        | Page_Up | Page_Down | Insert | Delete
+                        | F1 | F2 | F3 | F4 | F5 | F6
+                        | F7 | F8 | F9 | F10 | F11 | F12)
+                 or else
+                   (Event.Modifiers.Shift
+                    and then Event.Key in Enter | Tab | Backspace))));
    end Kitty_Encoded;
 
    procedure Append_Kitty_Key
      (Chunk : in out Terminal.App.Queues.Byte_Chunk;
-      Event : GLFW_Vulkan.Input.Key_Event)
+      Event : GLFW_Vulkan.Input.Key_Event;
+      Modes : Terminal.Core.Mode_Snapshot)
    is
       Modifier : constant Natural := Modifier_Code (Event.Modifiers);
+      Code : constant Natural := Kitty_Key_Code (Event);
+      Text : constant Natural := Text_Code (Event);
+      Unshifted : GLFW_Vulkan.Input.Key_Event := Event;
+      Base_Text : Natural;
+      Need_Modifier_Field : constant Boolean :=
+        Modifier > 1 or else Reporting_Events (Modes)
+          or else Reporting_Associated_Text (Modes);
    begin
+      Unshifted.Modifiers.Shift := False;
+      Base_Text := Text_Code (Unshifted);
       Append_String (Chunk, ASCII.ESC & "[");
-      Append_Natural (Chunk, Kitty_Key_Code (Event));
-      if Modifier > 1 then
+      Append_Natural (Chunk, Code);
+      if Reporting_Alternate_Keys (Modes)
+        and then Event.Modifiers.Shift
+        and then Base_Text /= 0
+        and then Text /= 0
+        and then Text /= Base_Text
+      then
+         Append (Chunk, Byte (Character'Pos (':')));
+         Append_Natural (Chunk, Text);
+      end if;
+      if Need_Modifier_Field then
          Append (Chunk, Byte (Character'Pos (';')));
          Append_Natural (Chunk, Modifier);
+      end if;
+      if Reporting_Events (Modes) then
+         Append (Chunk, Byte (Character'Pos (':')));
+         Append_Natural
+           (Chunk,
+            (case Event.Action is
+                when Press   => 1,
+                when Repeat  => 2,
+                when Release => 3));
+      end if;
+      if Reporting_Associated_Text (Modes) and then Text /= 0 then
+         Append (Chunk, Byte (Character'Pos (';')));
+         Append_Natural (Chunk, Text);
       end if;
       Append (Chunk, Byte (Character'Pos ('u')));
    end Append_Kitty_Key;
@@ -493,8 +591,7 @@ package body Terminal.App.Input_Map is
       Modes : Terminal.Core.Mode_Snapshot) return Wide_Wide_Character is
    begin
       if Event.Action /= Release
-        and then Disambiguating (Modes)
-        and then Kitty_Encoded (Event)
+        and then Kitty_Encoded (Event, Modes)
       then
          --  The key went out whole as CSI u; the character it typed with
          --  it must not follow.
@@ -525,12 +622,19 @@ package body Terminal.App.Input_Map is
       Alt_Char : Character;
    begin
       Chunk := (others => <>);
-      if Event.Action = Release then
+      if Event.Action = Release and then not Reporting_Events (Modes) then
          return;
       end if;
 
-      if Disambiguating (Modes) and then Kitty_Encoded (Event) then
-         Append_Kitty_Key (Chunk, Event);
+      if Kitty_Encoded (Event, Modes) then
+         Append_Kitty_Key (Chunk, Event, Modes);
+         return;
+      end if;
+
+      --  A release is meaningful only in progressive event-reporting mode,
+      --  and an unknown/unrepresentable key must not fall through to legacy
+      --  press encodings.
+      if Event.Action = Release then
          return;
       end if;
 
@@ -652,11 +756,35 @@ package body Terminal.App.Input_Map is
 
    procedure Encode_Character
      (Event : GLFW_Vulkan.Input.Character_Event;
+      Modes : Terminal.Core.Mode_Snapshot;
+      Chunk : out Terminal.App.Queues.Byte_Chunk)
+   is
+      Code : constant Natural := Wide_Wide_Character'Pos (Event.Code_Point);
+   begin
+      Chunk := (others => <>);
+      if Code in 16#D800# .. 16#DFFF# or else Code > 16#10FFFF# then
+         return;
+      elsif Reporting_All_Keys (Modes) then
+         Append_String (Chunk, ASCII.ESC & "[0;1");
+         if Reporting_Events (Modes) then
+            Append_String (Chunk, ":1");
+         end if;
+         if Reporting_Associated_Text (Modes) then
+            Append (Chunk, Byte (Character'Pos (';')));
+            Append_Natural (Chunk, Code);
+         end if;
+         Append (Chunk, Byte (Character'Pos ('u')));
+      else
+         Encode_UTF8 (Code, Chunk);
+      end if;
+   end Encode_Character;
+
+   procedure Encode_Character
+     (Event : GLFW_Vulkan.Input.Character_Event;
       Chunk : out Terminal.App.Queues.Byte_Chunk)
    is
    begin
-      Chunk := (others => <>);
-      Encode_UTF8 (Wide_Wide_Character'Pos (Event.Code_Point), Chunk);
+      Encode_Character (Event, (others => <>), Chunk);
    end Encode_Character;
 
    procedure Encode_Paste_Text

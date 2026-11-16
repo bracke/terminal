@@ -98,6 +98,11 @@ begin
         (Visible and then First.Row = 1 and then First.Col = 1
          and then Last.Row = 3,
          "shell block maps to a visible selectable range");
+      Terminal.App.Shell_Blocks.Visible_Range
+        (Core, Block, Natural'Last, First, Last, Visible);
+      Assert
+        (Visible,
+         "shell block clamps a stale scroll offset instead of underflowing");
    end;
 
    Terminal.Core.Finalize (Core);

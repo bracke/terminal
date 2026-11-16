@@ -114,13 +114,13 @@ is
       Header : constant Terminal.App.Graphics.Graphics_Header :=
         Resolved_Header (Terminal.App.Graphics.Header (Event));
    begin
-   if FIS.Is_Full (R.Frame_State.Frame_Images) then
-      R.Frame_State.Frame_Command_Overflowed := True;
-      return;
-   end if;
    if not Event.Pending
      or else Event.Protocol = Terminal.Core.No_Graphics
    then
+      return;
+   end if;
+   if FIS.Is_Full (R.Frame_State.Frame_Images) then
+      R.Frame_State.Frame_Command_Overflowed := True;
       return;
    end if;
 

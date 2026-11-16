@@ -1,4 +1,6 @@
 with Ada.Unchecked_Conversion;
+with Ada.Strings;
+with Ada.Strings.Fixed;
 
 with Interfaces.C;
 with Interfaces.C.Strings;
@@ -34,6 +36,25 @@ package body Terminal.App.HarfBuzz is
       Reserved  : C.unsigned;
    end record;
    pragma Convention (C, Glyph_Position);
+
+   type HB_Feature is record
+      Tag : C.unsigned;
+      Value : C.unsigned;
+      Start : C.unsigned;
+      Stop : C.unsigned;
+   end record;
+   pragma Convention (C, HB_Feature);
+   type HB_Feature_Array is array (Natural range 0 .. 31) of aliased HB_Feature;
+   pragma Convention (C, HB_Feature_Array);
+
+   type HB_Variation is record
+      Tag : C.unsigned;
+      Value : C.C_float;
+   end record;
+   pragma Convention (C, HB_Variation);
+   type HB_Variation_Array is
+     array (Natural range 0 .. 31) of aliased HB_Variation;
+   pragma Convention (C, HB_Variation_Array);
 
    type Glyph_Info_Array is
      array (Natural range 0 .. RM.Max_Shaped_Glyphs_Per_Run - 1) of
@@ -82,6 +103,24 @@ package body Terminal.App.HarfBuzz is
       X_Scale : C.int;
       Y_Scale : C.int)
    with Import, Convention => C, External_Name => "hb_font_set_scale";
+
+   function HB_Feature_From_String
+     (Text : CStr.chars_ptr;
+      Length : C.int;
+      Feature : access HB_Feature) return C.int
+   with Import, Convention => C, External_Name => "hb_feature_from_string";
+
+   function HB_Variation_From_String
+     (Text : CStr.chars_ptr;
+      Length : C.int;
+      Variation : access HB_Variation) return C.int
+   with Import, Convention => C, External_Name => "hb_variation_from_string";
+
+   procedure HB_Font_Set_Variations
+     (Font : System.Address;
+      Variations : access HB_Variation;
+      Count : C.unsigned)
+   with Import, Convention => C, External_Name => "hb_font_set_variations";
 
    function HB_Buffer_Create return System.Address
    with Import, Convention => C, External_Name => "hb_buffer_create";
@@ -233,6 +272,93 @@ package body Terminal.App.HarfBuzz is
          Status := Load_Failed;
    end Load;
 
+   procedure Configure
+     (Face       : in out Font_Face;
+      Features   : String;
+      Variations : String;
+      Accepted   : out Boolean)
+   is
+      Variation_Items : HB_Variation_Array := (others => (0, 0.0));
+      Variation_Count : Natural := 0;
+
+      procedure Parse_Variations is
+         First : Natural := Variations'First;
+         Comma : Natural;
+      begin
+         while First <= Variations'Last loop
+            Comma := Ada.Strings.Fixed.Index (Variations, ",", From => First);
+            if Comma = 0 then Comma := Variations'Last + 1; end if;
+            declare
+               Token : constant String := Ada.Strings.Fixed.Trim
+                 (Variations (First .. Comma - 1), Ada.Strings.Both);
+               Owner : Terminal.Common.C_Strings.Owner;
+            begin
+               if Token = "" or else Variation_Count = Variation_Items'Length then
+                  Accepted := False;
+                  return;
+               end if;
+               Terminal.Common.C_Strings.Set (Owner, Token);
+               if HB_Variation_From_String
+                 (Terminal.Common.C_Strings.Unsafe_Pointer (Owner),
+                  C.int (Token'Length),
+                  Variation_Items (Variation_Count)'Access) = 0
+               then
+                  Accepted := False;
+                  return;
+               end if;
+               Variation_Count := Variation_Count + 1;
+            end;
+            First := Comma + 1;
+         end loop;
+      end Parse_Variations;
+
+      procedure Validate_Features is
+         First : Natural := Features'First;
+         Comma : Natural;
+         Dummy : aliased HB_Feature;
+      begin
+         while First <= Features'Last loop
+            Comma := Ada.Strings.Fixed.Index (Features, ",", From => First);
+            if Comma = 0 then Comma := Features'Last + 1; end if;
+            declare
+               Token : constant String := Ada.Strings.Fixed.Trim
+                 (Features (First .. Comma - 1), Ada.Strings.Both);
+               Owner : Terminal.Common.C_Strings.Owner;
+            begin
+               if Token = "" then Accepted := False; return; end if;
+               Terminal.Common.C_Strings.Set (Owner, Token);
+               if HB_Feature_From_String
+                 (Terminal.Common.C_Strings.Unsafe_Pointer (Owner),
+                  C.int (Token'Length), Dummy'Access) = 0
+               then
+                  Accepted := False;
+                  return;
+               end if;
+            end;
+            First := Comma + 1;
+         end loop;
+      end Validate_Features;
+   begin
+      Accepted := Features'Length <= Max_Configuration_Length
+        and then Variations'Length <= Max_Configuration_Length
+        and then Face.Font /= System.Null_Address;
+      if not Accepted then return; end if;
+      if Features /= "" then Validate_Features; end if;
+      if not Accepted then return; end if;
+      if Variations /= "" then Parse_Variations; end if;
+      if not Accepted then return; end if;
+      Face.Feature_Length := Features'Length;
+      Face.Feature_Text := (others => ASCII.NUL);
+      if Features /= "" then
+         Face.Feature_Text (1 .. Features'Length) := Features;
+      end if;
+      if Variation_Count > 0 then
+         HB_Font_Set_Variations
+           (Face.Font, Variation_Items (0)'Access,
+            C.unsigned (Variation_Count));
+      end if;
+   end Configure;
+
    procedure Reset (Face : in out Font_Face) is
    begin
       if Face.Font /= System.Null_Address then
@@ -273,6 +399,9 @@ package body Terminal.App.HarfBuzz is
       Infos           : Glyph_Info_Array_Access;
       Positions       : Glyph_Position_Array_Access;
       Glyph_Count     : Natural;
+      Feature_Items   : HB_Feature_Array :=
+        (others => (Tag => 0, Value => 0, Start => 0, Stop => 0));
+      Feature_Count   : Natural := 0;
    begin
       Run.Shaped_Glyphs := (others => <>);
       Run.Shaped_Glyph_Count := 0;
@@ -306,7 +435,40 @@ package body Terminal.App.HarfBuzz is
          C.int (Run.Codepoint_Count),
          0,
          C.int (Run.Codepoint_Count));
-      HB_Shape (Face.Font, Buffer, System.Null_Address, 0);
+      if Face.Feature_Length > 0 then
+         declare
+            Features : constant String :=
+              Face.Feature_Text (1 .. Face.Feature_Length);
+            First : Natural := Features'First;
+            Comma : Natural;
+         begin
+            while First <= Features'Last loop
+               Comma := Ada.Strings.Fixed.Index (Features, ",", From => First);
+               if Comma = 0 then Comma := Features'Last + 1; end if;
+               declare
+                  Token : constant String := Ada.Strings.Fixed.Trim
+                    (Features (First .. Comma - 1), Ada.Strings.Both);
+                  Owner : Terminal.Common.C_Strings.Owner;
+               begin
+                  Terminal.Common.C_Strings.Set (Owner, Token);
+                  if Feature_Count < Feature_Items'Length
+                    and then HB_Feature_From_String
+                      (Terminal.Common.C_Strings.Unsafe_Pointer (Owner),
+                       C.int (Token'Length),
+                       Feature_Items (Feature_Count)'Access) /= 0
+                  then
+                     Feature_Count := Feature_Count + 1;
+                  end if;
+               end;
+               First := Comma + 1;
+            end loop;
+         end;
+      end if;
+      HB_Shape
+        (Face.Font, Buffer,
+         (if Feature_Count = 0 then System.Null_Address
+          else Feature_Items (0)'Address),
+         C.unsigned (Feature_Count));
 
       Glyph_Count := Natural (HB_Buffer_Get_Length (Buffer));
       if Glyph_Count = 0 then

@@ -701,7 +701,9 @@ begin
       Assert
         (Contains
            (Line,
-            "clipboard_status=Primary target uses app-local selection"),
+            "clipboard_status="
+            & Terminal.App.Clipboard_OSC52.Status_Label
+              (Terminal.Core.Clipboard_Primary)),
          "clipboard target status should be included");
       Assert
         (Contains (Line, "pty_queue_status=pty queue 12/64; overflows=1"),

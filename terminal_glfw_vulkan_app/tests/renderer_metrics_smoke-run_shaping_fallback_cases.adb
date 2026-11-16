@@ -21,17 +21,17 @@ begin
         Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
-        (Frame.Text_Run_Count = 1,
-         "neutral punctuation should join surrounding latin run");
+        (Frame.Text_Run_Count = 3,
+         "paired punctuation should remain distinct BiDi inputs");
       Assert
-        (Frame.Text_Runs (1).Codepoint_Count = 4,
-         "neutral latin run codepoint count");
+        (Frame.Text_Runs (2).Codepoint_Count = 2,
+         "neutral latin middle run codepoint count");
       Assert
-        (Frame.Text_Runs (1).Direction =
+        (Frame.Text_Runs (2).Direction =
            Terminal.App.Render_Model.Direction_Left_To_Right,
          "neutral latin run direction");
       Assert
-        (Frame.Text_Runs (1).Script =
+        (Frame.Text_Runs (2).Script =
            Terminal.App.Render_Model.Script_Latin,
          "neutral latin run script");
    end;
@@ -64,21 +64,100 @@ begin
         Terminal.App.Renderer.Testing.Last_Frame (R);
    begin
       Assert
-        (Frame.Text_Run_Count = 2,
+        (Frame.Text_Run_Count = 3,
          "neutral punctuation must not merge conflicting scripts");
       Assert
-        (Frame.Text_Runs (1).Codepoint_Count = 2,
-         "neutral mixed first run codepoint count");
+        (Frame.Text_Runs (1).Codepoint_Count = 1,
+         "neutral mixed punctuation run codepoint count");
       Assert
-        (Frame.Text_Runs (1).Script = Terminal.App.Render_Model.Script_Latin,
-         "neutral mixed first run script");
+        (Frame.Text_Runs (2).Script = Terminal.App.Render_Model.Script_Latin,
+         "neutral mixed latin run script");
       Assert
-        (Frame.Text_Runs (2).Script = Terminal.App.Render_Model.Script_Hebrew,
-         "neutral mixed second run script");
+        (Frame.Text_Runs (3).Script = Terminal.App.Render_Model.Script_Hebrew,
+         "neutral mixed Hebrew run script");
       Assert
-        (Frame.Text_Runs (2).Direction =
+        (Frame.Text_Runs (3).Direction =
            Terminal.App.Render_Model.Direction_Right_To_Left,
-         "neutral mixed second run direction");
+         "neutral mixed Hebrew run direction");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 5, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "paired-bracket BiDi core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#D7#,
+       2 => 16#90#,
+       3 => Byte (Character'Pos ('(')),
+       4 => Byte (Character'Pos ('A')),
+       5 => Byte (Character'Pos (')')),
+       6 => 16#D7#,
+       7 => 16#91#),
+      Feed_Status);
+   Assert
+     (Feed_Status = Terminal.Core.Ok,
+      "paired-bracket BiDi feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert
+     (Render_Status = Terminal.App.Renderer.Ok,
+      "paired-bracket BiDi render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Testing.Last_Frame (R);
+   begin
+      Assert
+        (Frame.Text_Run_Count = 5,
+         "paired brackets should retain five resolver runs");
+      Assert
+        (Frame.Text_Runs (2).Codepoints (1) = Character'Pos (')')
+         and then
+           Frame.Text_Runs (4).Codepoints (1) = Character'Pos ('('),
+         "odd-level paired brackets should use mirrored glyphs");
+      Assert
+        (Frame.Text_Runs (5).X < Frame.Text_Runs (3).X
+         and then Frame.Text_Runs (3).X < Frame.Text_Runs (1).X,
+         "paired-bracket paragraph should follow FriBidi visual order");
+   end;
+
+   Terminal.Core.Initialize (T, 1, 6, 10, Core_Status);
+   Assert
+     (Core_Status = Terminal.Core.Ok,
+      "pure RTL core initialize failed");
+   Terminal.Core.Feed
+     (T,
+      (1 => 16#D7#, 2 => 16#90#, 3 => 16#D7#, 4 => 16#91#),
+      Feed_Status);
+   Assert (Feed_Status = Terminal.Core.Ok, "pure RTL feed failed");
+
+   declare
+      Snap : Terminal.Core.Render_Snapshot := Terminal.Core.Snapshot (T);
+   begin
+      Terminal.App.Renderer.Render (R, Snap, Render_Status);
+      Terminal.Core.Release (Snap);
+   end;
+   Assert (Render_Status = Terminal.App.Renderer.Ok, "pure RTL render failed");
+
+   declare
+      Frame : constant Terminal.App.Render_Model.Frame_Commands :=
+        Terminal.App.Renderer.Testing.Last_Frame (R);
+   begin
+      Assert (Frame.Text_Run_Count = 1, "pure RTL text should coalesce");
+      Assert
+        (Frame.Text_Runs (1).Direction =
+           Terminal.App.Render_Model.Direction_Right_To_Left,
+         "pure RTL resolved direction");
+      Assert
+        (Frame.Text_Runs (1).X >=
+           Float (4 * Terminal.App.Renderer.Cell_Width (R)),
+         "pure RTL paragraph should be anchored at the right edge");
    end;
 
    Terminal.Core.Initialize (T, 1, 4, 10, Core_Status);

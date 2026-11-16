@@ -1028,6 +1028,13 @@ package body Terminal.PTY.Backend is
       end case;
    end Is_Alive;
 
+   function Has_Foreground_Process (S : in out Session) return Boolean is
+   begin
+      --  ConPTY does not expose the POSIX foreground-process-group concept.
+      --  Treat a live hosted process as requiring confirmation.
+      return Is_Alive (S);
+   end Has_Foreground_Process;
+
    function Child_State (S : in out Session) return Exit_State is
       Code : DWORD := 0;
    begin

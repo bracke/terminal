@@ -1,0 +1,13 @@
+abstract project Terminal_PTY_Build_Config is
+   type Build_Kind is ("production", "testing");
+   Build_Mode : Build_Kind :=
+     external ("TERMINAL_PTY_BUILD", "production");
+
+   C_Testing_Switches := ();
+   case Build_Mode is
+      when "testing" =>
+         C_Testing_Switches := ("-DTERMINAL_PTY_TESTING");
+      when "production" =>
+         null;
+   end case;
+end Terminal_PTY_Build_Config;

@@ -222,6 +222,7 @@ procedure Text_Shaper_Smoke is
    Backend   : TS.Backend_Status;
    Missing   : RM.Text_Run_Command := Run (16#10FFFF#);
    Backendless : RM.Text_Run_Command := Run (Character'Pos ('Z'));
+   Styled : RM.Text_Run_Command := Run (Character'Pos ('A'));
 
    procedure Assert_Shaped_Or_Needs_Backend
      (Text   : RM.Text_Run_Command;
@@ -354,6 +355,23 @@ begin
    Assert
      (Backend = TS.Backend_Ok and then TS.Backend_Available (Shaper),
       "HarfBuzz shaping backend should load the default font");
+   TS.Configure_Style_Fonts
+     (Shaper,
+      Terminal.App.Fonts.Default_Font_Path,
+      Terminal.App.Fonts.Default_Font_Path,
+      Terminal.App.Fonts.Default_Font_Path,
+      True, True, True,
+      "liga=0,kern=1", "wght=600", Backend);
+   Assert (Backend = TS.Backend_Ok,
+           "style faces, OpenType features, and axes configure");
+   Styled.Bold := True;
+   Styled.Italic := True;
+   TS.Prepare (Shaper, Styled, Status);
+   Assert
+     (Status = RM.Shape_Ok
+      and then Styled.Shaped_Glyph_Count = 1
+      and then Styled.Shaped_Glyphs (1).Font_Index = 3,
+      "bold italic text selects the configured style face");
    Assert
      (TS.Backend_Status_Label (Backend)'Length <= TS.Max_Status_Label_Length,
       "backend status label should be bounded");

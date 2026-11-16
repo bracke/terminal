@@ -86,6 +86,24 @@ begin
    Terminal.PTY.Backend.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
    Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
    Assert (Terminal.PTY.Backend.Is_Alive (S), "spawned shell should be alive");
+   if On_Windows then
+      Assert
+        (Terminal.PTY.Backend.Has_Foreground_Process (S),
+         "live ConPTY process conservatively requires close confirmation");
+   else
+      Wait_For_Output;
+      Assert
+        (not Terminal.PTY.Backend.Has_Foreground_Process (S),
+         "idle POSIX shell is not treated as a foreground job");
+      Send ("sleep 30" & ASCII.CR);
+      for Attempt in 1 .. 200 loop
+         exit when Terminal.PTY.Backend.Has_Foreground_Process (S);
+         delay 0.01;
+      end loop;
+      Assert
+        (Terminal.PTY.Backend.Has_Foreground_Process (S),
+         "POSIX foreground job is detected before close");
+   end if;
 
    Terminal.PTY.Backend.Close (S);
 

@@ -638,6 +638,8 @@ begin
    declare
       Plain : constant Terminal.Core.Mode_Snapshot := (others => <>);
       Kitty : constant Terminal.Core.Mode_Snapshot := (Keyboard_Flags => 1, others => <>);
+      Full : constant Terminal.Core.Mode_Snapshot :=
+        (Keyboard_Flags => 31, others => <>);
    begin
       IM.Encode_Key (Key_Event (GI.Escape), Plain, Chunk);
       Assert_Bytes (Chunk, (1 => 16#1B#), "legacy escape");
@@ -682,5 +684,32 @@ begin
       Assert
         (IM.Suppressed_Character (Key_Event (GI.A), Kitty) = Wide_Wide_Character'Val (0),
          "and its character is not suppressed");
+
+      IM.Encode_Key (Key_Event (GI.A, Shift => True), Full, Chunk);
+      Assert_Bytes
+        (Chunk,
+         To_Bytes (ASCII.ESC & "[97:65;2:1;65u"),
+         "all-key reporting includes alternate key and text");
+      Assert
+        (IM.Suppressed_Character (Key_Event (GI.A, Shift => True), Full) = 'A',
+         "all-key reporting suppresses the character callback");
+
+      IM.Encode_Key (Key_Event (GI.Up, Action => GI.Repeat), Full, Chunk);
+      Assert_Bytes
+        (Chunk, To_Bytes (ASCII.ESC & "[57352;1:2u"), "repeat event");
+      IM.Encode_Key (Key_Event (GI.Up, Action => GI.Release), Full, Chunk);
+      Assert_Bytes
+        (Chunk, To_Bytes (ASCII.ESC & "[57352;1:3u"), "release event");
+
+      IM.Encode_Key (Key_Event (GI.Num_1, Shift => True, Alt => True), Kitty, Chunk);
+      Assert_Bytes
+        (Chunk, To_Bytes (ASCII.ESC & "[49;4u"), "shift-alt digit key identity");
+
+      IM.Encode_Character
+        ((Code_Point => Wide_Wide_Character'Val (16#00E9#)), Full, Chunk);
+      Assert_Bytes
+        (Chunk,
+         To_Bytes (ASCII.ESC & "[0;1:1;233u"),
+         "IME-only character event uses associated text");
    end;
 end Input_Map_Smoke;

@@ -83,14 +83,17 @@ package body Terminal.App.Platform_Launcher is
      with Import, Convention => C,
           External_Name => "terminal_app_launcher_spawn";
 
-   procedure Launch_Program
+   procedure Launch_With_Arguments
      (Program : String;
-      URI     : String;
+      First   : String;
+      Second  : String;
+      Argument_Count : Positive;
       Status  : out Launch_Status)
    is
       Program_Name : Terminal.Common.C_Strings.Owner;
-      Target       : Terminal.Common.C_Strings.Owner;
-      Arguments    : aliased Argument_Array (0 .. 2);
+      First_Value  : Terminal.Common.C_Strings.Owner;
+      Second_Value : Terminal.Common.C_Strings.Owner;
+      Arguments    : aliased Argument_Array (0 .. 3);
       Reservation  : aliased Child_Tracker.Reservation;
       Child        : Spawned_Child_Guard (Reservation'Access);
       Result       : Interfaces.C.int;
@@ -102,10 +105,16 @@ package body Terminal.App.Platform_Launcher is
          return;
       end if;
       Terminal.Common.C_Strings.Set (Program_Name, Program);
-      Terminal.Common.C_Strings.Set (Target, URI);
+      Terminal.Common.C_Strings.Set (First_Value, First);
+      if Argument_Count > 1 then
+         Terminal.Common.C_Strings.Set (Second_Value, Second);
+      end if;
       Arguments :=
         (Terminal.Common.C_Strings.Unsafe_Pointer (Program_Name),
-         Terminal.Common.C_Strings.Unsafe_Pointer (Target),
+         Terminal.Common.C_Strings.Unsafe_Pointer (First_Value),
+         (if Argument_Count > 1
+          then Terminal.Common.C_Strings.Unsafe_Pointer (Second_Value)
+          else Interfaces.C.Strings.Null_Ptr),
          Interfaces.C.Strings.Null_Ptr);
       Terminal.Common.Process_Spawning.Acquire (Spawn_Guard);
       Result :=
@@ -135,6 +144,14 @@ package body Terminal.App.Platform_Launcher is
             E,
             "launch URI handler");
          raise;
+   end Launch_With_Arguments;
+
+   procedure Launch_Program
+     (Program : String;
+      URI     : String;
+      Status  : out Launch_Status) is
+   begin
+      Launch_With_Arguments (Program, URI, "", 1, Status);
    end Launch_Program;
 
    procedure Poll is
@@ -224,22 +241,53 @@ package body Terminal.App.Platform_Launcher is
    is
       Program : GNAT.OS_Lib.String_Access :=
         GNAT.OS_Lib.Locate_Exec_On_Path ("notify-send");
-      Content : constant String :=
-        (if Message'Length = 0 then Title
-         elsif Title'Length = 0 then Message
-         else Title & ": " & Message);
+      Apple_Program : GNAT.OS_Lib.String_Access := null;
+      Effective_Title : constant String :=
+        (if Title = "" then "Bracke Terminal" else Title);
+      Effective_Message : constant String :=
+        (if Message = "" then Title else Message);
+
+      function AppleScript_Quote (Value : String) return String is
+         Result : String (1 .. Value'Length * 2);
+         Last : Natural := 0;
+      begin
+         for Ch of Value loop
+            if Ch in '\' | '"' then
+               Last := Last + 1;
+               Result (Last) := '\';
+            end if;
+            Last := Last + 1;
+            Result (Last) := Ch;
+         end loop;
+         return (if Last = 0 then "" else Result (1 .. Last));
+      end AppleScript_Quote;
    begin
-      if Program = null then
-         Status := Launcher_Unavailable;
-      elsif Content'Length = 0 then
+      if Effective_Message = "" then
          Status := Launch_Failed;
+      elsif Program /= null then
+         Launch_With_Arguments
+           (Program.all, Effective_Title, Effective_Message, 2, Status);
       else
-         Launch_Program (Program.all, Content, Status);
+         Apple_Program := GNAT.OS_Lib.Locate_Exec_On_Path ("osascript");
+         if Apple_Program = null then
+            Status := Launcher_Unavailable;
+         else
+            Launch_With_Arguments
+              (Apple_Program.all,
+               "-e",
+               "display notification """ & AppleScript_Quote (Effective_Message)
+                 & """ with title """ & AppleScript_Quote (Effective_Title)
+                 & """",
+               2,
+               Status);
+         end if;
       end if;
       GNAT.OS_Lib.Free (Program);
+      GNAT.OS_Lib.Free (Apple_Program);
    exception
       when Storage_Error =>
          GNAT.OS_Lib.Free (Program);
+         GNAT.OS_Lib.Free (Apple_Program);
          Status := Launch_Failed;
    end Show_Notification;
 

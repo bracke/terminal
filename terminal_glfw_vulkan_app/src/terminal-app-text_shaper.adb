@@ -69,6 +69,13 @@ package body Terminal.App.Text_Shaper is
          HB.Reset (Item.Data.Fallback_Faces (I));
       end loop;
       Item.Data.Fallback_Face_Count := 0;
+      for I in Item.Data.Style_Faces'Range loop
+         HB.Reset (Item.Data.Style_Faces (I));
+      end loop;
+      Item.Data.Style_Face_Count := 0;
+      Item.Data.Style_Enabled := (others => False);
+      Item.Data.Feature_Length := 0;
+      Item.Data.Variation_Length := 0;
       Clear_Shape_Cache (Item);
 
       case Load_Result is
@@ -99,6 +106,23 @@ package body Terminal.App.Text_Shaper is
 
       case Load_Result is
          when HB.Loaded =>
+            declare
+               Accepted : Boolean;
+            begin
+               HB.Configure
+                 (Item.Data.Fallback_Faces (Slot),
+                  (if Item.Data.Feature_Length = 0 then ""
+                   else Item.Data.Feature_Text (1 .. Item.Data.Feature_Length)),
+                  (if Item.Data.Variation_Length = 0 then ""
+                   else Item.Data.Variation_Text
+                     (1 .. Item.Data.Variation_Length)),
+                  Accepted);
+               if not Accepted then
+                  HB.Reset (Item.Data.Fallback_Faces (Slot));
+                  Status := Backend_Load_Failed;
+                  return;
+               end if;
+            end;
             Item.Data.Fallback_Face_Count := Slot;
             --  A new fallback face can change how previously-unshaped runs shape,
             --  so the memoised results are no longer valid.
@@ -110,6 +134,68 @@ package body Terminal.App.Text_Shaper is
             Status := Backend_Load_Failed;
       end case;
    end Add_Fallback_Font;
+
+   procedure Configure_Style_Fonts
+     (Item        : in out Shaper;
+      Bold        : String;
+      Italic      : String;
+      Bold_Italic : String;
+      Bold_Enabled : Boolean;
+      Italic_Enabled : Boolean;
+      Bold_Italic_Enabled : Boolean;
+      Features    : String;
+      Variations  : String;
+      Status      : out Backend_Status)
+   is
+      Load_Result : HB.Load_Status;
+      Accepted : Boolean;
+      function Path (Index : Positive) return String is
+        (case Index is
+           when 1 => Bold,
+           when 2 => Italic,
+           when others => Bold_Italic);
+   begin
+      if not Item.Data.Default_Face_Loaded then
+         Status := Backend_Unavailable;
+         return;
+      end if;
+      HB.Configure
+        (Item.Data.Default_Face, Features, Variations, Accepted);
+      if not Accepted then
+         Status := Backend_Load_Failed;
+         return;
+      end if;
+      for I in Item.Data.Style_Faces'Range loop
+         HB.Load (Item.Data.Style_Faces (I), Path (I), Load_Result);
+         if Load_Result /= HB.Loaded then
+            Item.Data.Style_Face_Count := 0;
+            Status := Backend_Load_Failed;
+            return;
+         end if;
+         HB.Configure
+           (Item.Data.Style_Faces (I), Features, Variations, Accepted);
+         if not Accepted then
+            Item.Data.Style_Face_Count := 0;
+            Status := Backend_Load_Failed;
+            return;
+         end if;
+      end loop;
+      Item.Data.Style_Face_Count := 3;
+      Item.Data.Style_Enabled :=
+        [Bold_Enabled, Italic_Enabled, Bold_Italic_Enabled];
+      Item.Data.Feature_Length := Features'Length;
+      Item.Data.Feature_Text := (others => ASCII.NUL);
+      if Features /= "" then
+         Item.Data.Feature_Text (1 .. Features'Length) := Features;
+      end if;
+      Item.Data.Variation_Length := Variations'Length;
+      Item.Data.Variation_Text := (others => ASCII.NUL);
+      if Variations /= "" then
+         Item.Data.Variation_Text (1 .. Variations'Length) := Variations;
+      end if;
+      Clear_Shape_Cache (Item);
+      Status := Backend_Ok;
+   end Configure_Style_Fonts;
 
    function Backend_Available (Item : Shaper) return Boolean is
      (Item.Data.Default_Face_Loaded
@@ -362,7 +448,36 @@ package body Terminal.App.Text_Shaper is
       Primary_Result : RM.Text_Run_Command;
       Primary_Status : HB.Shape_Status := HB.Not_Loaded;
    begin
-      if Backend_Available (Item) then
+      declare
+         Style_Index : constant Natural :=
+           (if Item.Data.Style_Face_Count = 3
+              and then Item.Data.Style_Enabled (3)
+              and then Run.Bold and then Run.Italic
+            then 3
+            elsif Item.Data.Style_Face_Count = 3
+              and then Item.Data.Style_Enabled (2) and then Run.Italic
+            then 2
+            elsif Item.Data.Style_Face_Count = 3
+              and then Item.Data.Style_Enabled (1) and then Run.Bold
+            then 1
+            else 0);
+      begin
+      if Style_Index > 0
+        and then HB.Is_Loaded (Item.Data.Style_Faces (Style_Index))
+      then
+         Candidate := Run;
+         HB.Shape
+           (Item.Data.Style_Faces (Style_Index), Style_Index,
+            Candidate, Candidate_Status);
+         if Candidate_Status = HB.Shaped and then not Has_Notdef_Glyph (Candidate)
+         then
+            Run := Candidate;
+            Status := HB.Shaped;
+            return;
+         end if;
+         Primary_Result := Candidate;
+         Primary_Status := Candidate_Status;
+      elsif Backend_Available (Item) then
          Candidate := Run;
          HB.Shape (Item.Data.Default_Face, 0, Candidate, Candidate_Status);
          if Candidate_Status = HB.Shaped and then not Has_Notdef_Glyph (Candidate) then
@@ -374,12 +489,15 @@ package body Terminal.App.Text_Shaper is
          Primary_Result := Candidate;
          Primary_Status := Candidate_Status;
       end if;
+      end;
 
       for I in 1 .. Item.Data.Fallback_Face_Count loop
          if HB.Is_Loaded (Item.Data.Fallback_Faces (I)) then
             Candidate := Run;
             HB.Shape
-              (Item.Data.Fallback_Faces (I), I, Candidate, Candidate_Status);
+              (Item.Data.Fallback_Faces (I),
+               Item.Data.Style_Face_Count + I,
+               Candidate, Candidate_Status);
             if Candidate_Status = HB.Shaped
               and then not Has_Notdef_Glyph (Candidate)
             then

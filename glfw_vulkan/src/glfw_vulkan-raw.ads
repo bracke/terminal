@@ -10,6 +10,9 @@ package GLFW_Vulkan.Raw is
 
    GLFW_CLIENT_API : constant Interfaces.C.int := 16#00022001#;
    GLFW_NO_API     : constant Interfaces.C.int := 0;
+   GLFW_VISIBLE    : constant Interfaces.C.int := 16#00020004#;
+   GLFW_DECORATED  : constant Interfaces.C.int := 16#00020005#;
+   GLFW_FLOATING   : constant Interfaces.C.int := 16#00020007#;
 
    GLFW_PRESS   : constant Interfaces.C.int := 1;
    GLFW_RELEASE : constant Interfaces.C.int := 0;
@@ -72,6 +75,29 @@ package GLFW_Vulkan.Raw is
      (Window : GLFW_Window_Handle;
       Title  : Interfaces.C.Strings.chars_ptr)
      with Import, Convention => C, External_Name => "glfwSetWindowTitle";
+
+   procedure Set_Window_Opacity
+     (Window : GLFW_Window_Handle;
+      Opacity : Interfaces.C.C_float)
+     with Import, Convention => C, External_Name => "glfwSetWindowOpacity";
+
+   procedure Set_Window_Attrib
+     (Window : GLFW_Window_Handle;
+      Attribute : Interfaces.C.int;
+      Value : Interfaces.C.int)
+     with Import, Convention => C, External_Name => "glfwSetWindowAttrib";
+
+   function Get_Window_Attrib
+     (Window : GLFW_Window_Handle;
+      Attribute : Interfaces.C.int) return Interfaces.C.int
+     with Import, Convention => C, External_Name => "glfwGetWindowAttrib";
+
+   procedure Show_Window (Window : GLFW_Window_Handle)
+     with Import, Convention => C, External_Name => "glfwShowWindow";
+   procedure Hide_Window (Window : GLFW_Window_Handle)
+     with Import, Convention => C, External_Name => "glfwHideWindow";
+   procedure Focus_Window (Window : GLFW_Window_Handle)
+     with Import, Convention => C, External_Name => "glfwFocusWindow";
 
    procedure Create_Standard_Cursor_Owned
      (Target : access GLFW_Cursor_Handle;

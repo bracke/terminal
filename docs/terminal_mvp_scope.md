@@ -56,13 +56,16 @@
   `CSI 48 ; rows ; columns ; height ; width t`, the last two the text area in
   pixels. Setting the mode reports the current size at once; an unchanged
   resize request reports nothing. The mode is queryable with DECRQM.
-- Progressive keyboard enhancement (kitty's keyboard protocol), flag 1 only
-  (disambiguate escape codes): `CSI > flags u` pushes, `CSI < n u` pops, `CSI =
-  flags ; mode u` sets, adds, or removes flags, and `CSI ? u` answers `CSI ?
-  flags u`. Flags the terminal does not implement are dropped. The main and
-  the alternate screen keep separate stacks of at most eight entries; a full
-  stack loses its oldest entry, a full reset clears both, and a soft reset
-  leaves them. The active flags are part of the mode snapshot.
+- Progressive keyboard enhancement (Kitty's keyboard protocol), all standard
+  flags: disambiguated escape codes, key event types, alternate keys, all-key
+  escape encoding, and associated text. `CSI > flags u` pushes, `CSI < n u`
+  pops, `CSI = flags ; mode u` sets, adds, or removes flags, and `CSI ? u`
+  answers `CSI ? flags u`. Press, repeat, and release events retain their
+  distinct event types; character-only callbacks such as IME commits use key
+  code zero with associated Unicode text. The main and alternate screen keep
+  separate stacks of at most eight entries; a full stack loses its oldest
+  entry, a full reset clears both, and a soft reset leaves them. The active
+  flags are part of the mode snapshot.
 - XTVERSION (`CSI > q`) answers `DCS > | bracke-terminal <version> ST`.
 - The private identity query `OSC 7701 ; q ST` answers
   `OSC 7701 ; v=1 ; caps=<name>,... ST`, telling a program that it runs in
@@ -193,9 +196,10 @@ clipboard by the GLFW app. OSC 52 clipboard query requests use a lone `?`
 payload; they are detected by the core and answered by the app with a bounded
 base64 OSC 52 response generated from GLFW clipboard text. OSC 52 targets `c`,
 `p`, and `s` are recognized and exposed on the core request snapshot; `c` uses
-the GLFW system clipboard, while
-`p` and `s` use bounded app-owned target slots so they can round-trip
-independently. Query responses preserve the requested `c`/`p`/`s` target
+the GLFW system clipboard, while `p` and `s` use the native primary selection
+when a Wayland `wl-clipboard` or X11 `xsel` backend is available and retain
+bounded app-owned fallback slots. Query responses preserve the requested
+`c`/`p`/`s` target
 designator in the OSC 52 response. Unsupported OSC 52 target bytes are
 diagnosed and the request is ignored. OSC 8 hyperlinks are parsed into bounded
 per-cell snapshot metadata.
@@ -454,10 +458,15 @@ glyph path and do not fabricate font glyph indexes from Unicode codepoints.
 Runs shaped only to `.notdef` glyphs are rejected as shaped output: simple runs
 fall back to codepoint rendering, while complex runs remain backend-needed. The
 submit/presenter/device layers carry those runs without parsing terminal data.
-Mixed-direction rows are visually reordered at the renderer text-run level:
-RTL-base rows place logical runs from the right edge, and LTR-base rows reverse
-contiguous RTL run groups in place. Paragraph-BiDi fallback diagnostics remain
-available for unhandled reorder paths. Emoji clusters are preserved and
+Rows containing right-to-left content are resolved by FriBidi's complete UAX
+#9 implementation. Text-run construction retains distinct neutral/separator
+inputs (while still coalescing compatible strong, numeric, and whitespace
+cells), and passes every stored cluster scalar to the paragraph resolver so
+explicit embeddings and isolates are not discarded. Resolved embedding levels
+drive run direction and visual placement, RTL-base rows are anchored at the
+right edge, and paired brackets are mirrored and reshaped before drawing.
+Paragraph-BiDi fallback diagnostics report backend or mapping failures. Emoji
+clusters are preserved and
 classified as emoji text runs, but
 the renderer now tries `textrender` color glyph output before shaped monochrome
 text. Layered COLR/CPAL emoji and bitmap CBDT/CBLC or sbix PNG strikes render
@@ -516,8 +525,9 @@ are letters, digits,
 underscore, common shell path/URI characters, and non-ASCII letter-like cells.
 Wide-character token runs can be selected across continuation cells.
 Double-clicking punctuation outside that set selects that single cell.
-Triple-clicking selects the visible row. Middle-click pastes the app-owned
-primary selection slot when terminal mouse reporting is disabled. `Alt+Left`
+Triple-clicking selects the visible row. Middle-click reads the current native
+primary selection when available, falling back to the bounded app-owned mirror,
+when terminal mouse reporting is disabled. `Alt+Left`
 drag starts a rectangular selection that copies only the selected column range
 from each selected visible row.
 `Ctrl+Shift+F` opens incremental retained-text search; Enter/Down and Up move
@@ -551,10 +561,11 @@ OSC 52 clipboard set and query requests are supported for bounded text
 payloads, and `c`/`p`/`s` targets are recognized. Query responses are capped so
 their OSC framing and base64 payload fit in one bounded app byte chunk.
 The normal `c` target is backed by the native GLFW clipboard and mirrored into
-the bounded app target store. GLFW exposes no portable native primary/selection
-clipboard API, so the clipboard module reports that capability split explicitly
-with bounded status labels, and app-owned bounded target slots provide `p` and
-`s` behavior.
+the bounded app target store. The POSIX platform adapter provides native
+primary-selection interoperation through `wl-copy`/`wl-paste` on Wayland and
+`xsel` on X11 without invoking a shell; operations are length- and time-bounded.
+The app-owned slots remain the failure fallback and provide `p`/`s` behavior on
+platforms without a primary selection.
 
 Focus reporting via DEC private mode `?1004` is supported. When enabled, the
 app sends xterm focus-in and focus-out reports to the PTY as window focus
@@ -606,10 +617,23 @@ palette uses the same bounded in-content interaction overlay as keyboard link
 and copy modes.
 
 Profile keys use `profile.NAME.FIELD`; supported fields are `shell`, `command`,
-`cwd`, comma-separated `environment` assignments, built-in `theme`, and `ssh`.
-Names, environment identifiers, SSH targets, generated launch text, and the
+`cwd`, comma-separated `environment` assignments, built-in `theme`, `ssh`,
+`serial`/`baud`, `socket`, `container`, `wsl`, and `tls`. SSH profiles use
+OpenSSH connection sharing, keepalives, and the portable remote
+`xterm-256color` fallback. Connection-domain values and generated commands are
+bounded and shell quoted; serial, socket, container, WSL, and TLS profiles use
+`picocom`, `socat`, Docker, `wsl.exe`, and OpenSSL respectively.
+Names, environment identifiers, connection targets, generated launch text, and the
 registry itself are bounded and validated. `default-profile` selects the
 profile used by initial and newly created sessions.
+
+Appearance configuration includes live opacity, content padding, automatic or
+forced tab-bar visibility, tab chrome colors, and optional desktop light/dark
+following. Desktop preference discovery reads the active GTK/KDE user settings
+and is refreshed while the application runs. Native blur is requested through
+the KWin X11 property or Windows DWM backdrop API when supported. Optional
+background images use the bounded media decoder and shared GPU image path,
+with configurable opacity and placement below explicit terminal cell colors.
 
 ## Scrollbar and shell marks
 
@@ -696,9 +720,9 @@ package exposes the terminal profile advertised by the frontend:
 identity, direct Kitty RGB/RGBA/PNG queries, Kitty Unicode placeholders,
 bracketed paste, focus reporting, xterm mouse reporting with UTF-8, SGR, and
 urxvt coordinate encodings, DEC synchronized update, OSC 52 clipboard, OSC 8
-hyperlinks, and truecolor support. The profile also records tmux DCS passthrough and that OSC 52
-primary/selection targets are app-local rather than platform-native, with a
-bounded profile status label summarizing the advertised terminal identity.
+hyperlinks, and truecolor support. The profile also records tmux DCS passthrough
+and the runtime native/app-mirror backing of OSC 52 primary/selection targets,
+with a bounded profile status label summarizing the advertised terminal identity.
 
 ## Config and Themes
 
@@ -754,7 +778,12 @@ transcript export default to `Ctrl+Shift+Z`, `Ctrl+Shift+M`, `Ctrl+Shift+I`,
 
 `Ctrl+Comma` opens a bounded in-content settings editor. Arrow keys select and
 adjust common theme, font, scrolling, notification, and default-profile values;
-its config-line item accepts validated config/profile assignments.
+its config-line item accepts validated config/profile assignments, and import /
+export items accept paths for transactional full-config import and atomic
+canonical export. The canonical form contains every supported appearance,
+binding, profile, workspace, notification, transfer-policy, and resource-limit
+field. `--import-config=PATH` installs a validated canonical copy at the default
+config location; `--export-config=PATH` writes the effective startup config.
 `Ctrl+Shift+Comma` reloads the configured file and commits renderer, graphics,
 binding, profile, and notification changes only when live application succeeds.
 

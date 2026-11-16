@@ -4,7 +4,7 @@ procedure Build_App_Frame
    Snapshots      : Snapshot_Array;
    Active_Index   : Positive;
    Tabs           : Terminal.App.Tabs.Tab_Snapshot;
-   Splits         : Terminal.App.Splits.Split_Snapshot;
+   Layout         : Terminal.App.Splits.Pane_Layout;
    Status         : out Render_Status)
 is
    Cell_Count : Natural := 0;
@@ -15,7 +15,8 @@ is
    Image_Max  : Natural := 0;
    Image_Cell_Max : Natural := 0;
    Tab_Height : constant Natural :=
-     (if Tabs.Count > 1 then R.Text_State.CH + Pane_Border_Pixels else 0);
+     (if Tab_Bar_Visible (R, Natural (Tabs.Count))
+      then R.Text_State.CH + Pane_Border_Pixels else 0);
    Frame_W : Natural := 0;
    Frame_H : Natural := Tab_Height;
    Pane_X  : Natural := 0;
@@ -29,6 +30,10 @@ is
    Placement_Images : Natural := 0;
    Event_Images : Natural := 0;
    Event_Image_Slots : Natural := 0;
+   Legacy_Flat : constant Boolean :=
+     Layout.Count > 1 and then Layout.Divider_Count = 0;
+   Legacy_Orientation : constant Terminal.App.Splits.Split_Orientation :=
+     Layout.Dividers (1).Orientation;
 
    function Accumulate
      (Value     : in out Natural;
@@ -46,10 +51,10 @@ is
    end Accumulate;
 
    function Pane_Width (S : Terminal.Core.Render_Snapshot) return Natural is
-     (S.Cols * R.Text_State.CW + Content_Margin * 2);
+     (S.Cols * R.Text_State.CW + R.View_State.Content_Padding * 2);
 
    function Pane_Height (S : Terminal.Core.Render_Snapshot) return Natural is
-     (S.Rows * R.Text_State.CH + Content_Margin * 2);
+     (S.Rows * R.Text_State.CH + R.View_State.Content_Padding * 2);
 
    procedure Draw_Pane_Border
      (X      : Natural;
@@ -86,7 +91,7 @@ is
 
    procedure Draw_Tab_Bar is
    begin
-      if Tabs.Count <= 1 then
+      if not Tab_Bar_Visible (R, Natural (Tabs.Count)) then
          return;
       end if;
 
@@ -102,7 +107,7 @@ is
             Y      => 0.0,
             Width  => Float (Frame_W),
             Height => Float (Tab_Height),
-            Color  => (R => 0.08, G => 0.09, B => 0.10, A => 1.0));
+            Color  => R.View_State.Tabs.Bar_Background);
 
          for I in 1 .. Tabs.Count loop
             declare
@@ -121,8 +126,8 @@ is
                      Height => Float (R.Text_State.CH),
                      Color  =>
                        (if Active
-                        then (R => 0.18, G => 0.25, B => 0.34, A => 1.0)
-                        else (R => 0.12, G => 0.13, B => 0.15, A => 1.0)));
+                        then R.View_State.Tabs.Active_Background
+                        else R.View_State.Tabs.Inactive_Background));
                   if Col_Width > 0 then
                      declare
                         Label : constant String :=
@@ -183,11 +188,11 @@ begin
         or else not Terminal.App.Size_Arithmetic.Try_Multiply
           (Snapshots (I).Cols, R.Text_State.CW, Intermediate)
         or else not Terminal.App.Size_Arithmetic.Try_Add
-          (Intermediate, Content_Margin * 2, Pane_W)
+          (Intermediate, R.View_State.Content_Padding * 2, Pane_W)
         or else not Terminal.App.Size_Arithmetic.Try_Multiply
           (Snapshots (I).Rows, R.Text_State.CH, Intermediate)
         or else not Terminal.App.Size_Arithmetic.Try_Add
-          (Intermediate, Content_Margin * 2, Pane_H)
+          (Intermediate, R.View_State.Content_Padding * 2, Pane_H)
       then
          Set_Render_Status (R, Status, Invalid_Snapshot);
          return;
@@ -198,24 +203,43 @@ begin
          Set_Render_Status (R, Status, Invalid_Snapshot);
          return;
       end if;
-      if Splits.Orientation = Terminal.App.Splits.Vertical
-        and then Snapshots'Length > 1
-      then
-         if not Accumulate (Frame_W, Pane_W)
-           or else not Terminal.App.Size_Arithmetic.Try_Add
-             (Tab_Height, Pane_H, Intermediate)
+      if Legacy_Flat then
+         if Legacy_Orientation = Terminal.App.Splits.Vertical then
+            if not Accumulate (Frame_W, Pane_W)
+              or else not Terminal.App.Size_Arithmetic.Try_Add
+                (Tab_Height, Pane_H, Intermediate)
+            then
+               Set_Render_Status (R, Status, Invalid_Snapshot);
+               return;
+            end if;
+            Frame_H := Natural'Max (Frame_H, Intermediate);
+         else
+            Frame_W := Natural'Max (Frame_W, Pane_W);
+            if not Accumulate (Frame_H, Pane_H) then
+               Set_Render_Status (R, Status, Invalid_Snapshot);
+               return;
+            end if;
+         end if;
+      else
+         declare
+            X : constant Natural :=
+              (Layout.Rects (I).Col - 1) * R.Text_State.CW;
+            Y : constant Natural :=
+              Tab_Height + (Layout.Rects (I).Row - 1) * R.Text_State.CH;
+         begin
+         if not Terminal.App.Size_Arithmetic.Try_Add (X, Pane_W, Intermediate)
+         then
+            Set_Render_Status (R, Status, Invalid_Snapshot);
+            return;
+         end if;
+         Frame_W := Natural'Max (Frame_W, Intermediate);
+         if not Terminal.App.Size_Arithmetic.Try_Add (Y, Pane_H, Intermediate)
          then
             Set_Render_Status (R, Status, Invalid_Snapshot);
             return;
          end if;
          Frame_H := Natural'Max (Frame_H, Intermediate);
-      else
-         Frame_W := Natural'Max (Frame_W, Pane_W);
-         if not Accumulate (Frame_H, Pane_H)
-         then
-            Set_Render_Status (R, Status, Invalid_Snapshot);
-            return;
-         end if;
+         end;
       end if;
    end loop;
 
@@ -245,6 +269,9 @@ begin
      or else not Terminal.App.Size_Arithmetic.Try_Add
        (Image_Cell_Max, Placement_Images, Image_Max)
      or else not Accumulate (Image_Max, Event_Image_Slots)
+     or else
+       (R.View_State.Background_Object /= null
+        and then not Accumulate (Image_Max, 1))
      or else not Terminal.App.Size_Arithmetic.Try_Add
        (Cell_Count, 1, Rect_Max)
      or else not Terminal.App.Size_Arithmetic.Try_Multiply
@@ -294,6 +321,8 @@ begin
       Color  => R.View_State.Color_Theme.Default_BG,
       Layer  => RM.Rectangle_Base_Background);
 
+   Add_Background_Image (R);
+
    Draw_Tab_Bar;
    if Status /= Ok then
       Set_Render_Status (R, Status, Status);
@@ -304,15 +333,21 @@ begin
       declare
          W : constant Natural := Pane_Width (Snapshots (I));
          H : constant Natural := Pane_Height (Snapshots (I));
+         X : constant Natural :=
+           (if Legacy_Flat then Pane_X
+            else (Layout.Rects (I).Col - 1) * R.Text_State.CW);
+         Y : constant Natural :=
+           (if Legacy_Flat then Pane_Y
+            else Tab_Height + (Layout.Rects (I).Row - 1) * R.Text_State.CH);
       begin
          Draw_Pane_Border
-           (Pane_X,
-            Pane_Y,
+           (X,
+            Y,
             W,
             H,
             Active_Index = I);
-         R.Frame_State.Draw_Offset_X := Pane_X;
-         R.Frame_State.Draw_Offset_Y := Pane_Y;
+         R.Frame_State.Draw_Offset_X := X;
+         R.Frame_State.Draw_Offset_Y := Y;
          Draw_Snapshot_Into
            (R,
             Snapshots (I),
@@ -325,13 +360,12 @@ begin
             Set_Render_Status (R, Status, Draw_Status);
             return;
          end if;
-
-         if Splits.Orientation = Terminal.App.Splits.Vertical
-           and then Snapshots'Length > 1
-         then
-            Pane_X := Pane_X + W;
-         else
-            Pane_Y := Pane_Y + H;
+         if Legacy_Flat then
+            if Legacy_Orientation = Terminal.App.Splits.Vertical then
+               Pane_X := Pane_X + W;
+            else
+               Pane_Y := Pane_Y + H;
+            end if;
          end if;
       end;
    end loop;

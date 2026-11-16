@@ -49,6 +49,46 @@ package body Terminal.App.Session_Profiles is
       return True;
    end Valid_Host;
 
+   function Valid_Baud (Value : String) return Boolean is
+      Number : Natural;
+   begin
+      if Value = "" then return True; end if;
+      for Ch of Value loop
+         if Ch not in '0' .. '9' then return False; end if;
+      end loop;
+      Number := Natural'Value (Value);
+      return Number in 50 .. 4_000_000;
+   exception
+      when Constraint_Error => return False;
+   end Valid_Baud;
+
+   function Valid_Port (Value : String) return Boolean is
+      Number : Natural;
+   begin
+      if Value = "" then return True; end if;
+      for Ch of Value loop
+         if Ch not in '0' .. '9' then return False; end if;
+      end loop;
+      Number := Natural'Value (Value);
+      return Number in 1 .. 65_535;
+   exception
+      when Constraint_Error => return False;
+   end Valid_Port;
+
+   function Parse_Boolean (Value : String; Result : out Boolean) return Boolean is
+      Lower : constant String := Ada.Characters.Handling.To_Lower (Value);
+   begin
+      if Lower in "true" | "yes" | "on" | "1" then
+         Result := True;
+         return True;
+      elsif Lower in "false" | "no" | "off" | "0" | "" then
+         Result := False;
+         return True;
+      end if;
+      Result := False;
+      return False;
+   end Parse_Boolean;
+
    function Valid_Environment (Value : String) return Boolean is
       Start : Natural := Value'First;
       Stop : Natural;
@@ -111,9 +151,15 @@ package body Terminal.App.Session_Profiles is
          if not Valid_Name (Profile_Name) or else not Safe_Text (Value) then
             return;
          end if;
-         if Field not in "command" | "shell" | "cwd" | "environment" | "ssh" | "theme"
+         if Field not in "command" | "shell" | "cwd" | "environment" | "ssh"
+           | "serial" | "baud" | "socket" | "container" | "wsl" | "tls"
+           | "theme" | "persistent" | "ssh-identity" | "ssh-port"
+           | "ssh-jump" | "ssh-setup"
            or else (Field = "environment" and then not Valid_Environment (Value))
            or else (Field = "ssh" and then not Valid_Host (Value))
+           or else (Field = "tls" and then not Valid_Host (Value))
+           or else (Field = "baud" and then not Valid_Baud (Value))
+           or else (Field = "ssh-port" and then not Valid_Port (Value))
            or else (Field = "theme" and then Value /= ""
              and then not Terminal.App.Theme.Parse_Name (Value, Theme))
          then
@@ -130,10 +176,20 @@ package body Terminal.App.Session_Profiles is
             Set (Profiles.Items (Index).Start, Value);
             Profiles.Items (Index).Host := (others => <>);
             Profiles.Items (Index).Shell_Path := (others => <>);
+            Profiles.Items (Index).Serial := (others => <>);
+            Profiles.Items (Index).Socket := (others => <>);
+            Profiles.Items (Index).Container := (others => <>);
+            Profiles.Items (Index).WSL := (others => <>);
+            Profiles.Items (Index).TLS := (others => <>);
          elsif Field = "shell" then
             Set (Profiles.Items (Index).Shell_Path, Value);
             Profiles.Items (Index).Host := (others => <>);
             Profiles.Items (Index).Start := (others => <>);
+            Profiles.Items (Index).Serial := (others => <>);
+            Profiles.Items (Index).Socket := (others => <>);
+            Profiles.Items (Index).Container := (others => <>);
+            Profiles.Items (Index).WSL := (others => <>);
+            Profiles.Items (Index).TLS := (others => <>);
          elsif Field = "cwd" then
             Set (Profiles.Items (Index).CWD, Value);
          elsif Field = "environment" then
@@ -142,8 +198,77 @@ package body Terminal.App.Session_Profiles is
             Set (Profiles.Items (Index).Host, Value);
             Profiles.Items (Index).Start := (others => <>);
             Profiles.Items (Index).Shell_Path := (others => <>);
+            Profiles.Items (Index).Serial := (others => <>);
+            Profiles.Items (Index).Socket := (others => <>);
+            Profiles.Items (Index).Container := (others => <>);
+            Profiles.Items (Index).WSL := (others => <>);
+            Profiles.Items (Index).TLS := (others => <>);
+         elsif Field = "serial" then
+            Set (Profiles.Items (Index).Serial, Value);
+            Profiles.Items (Index).Host := (others => <>);
+            Profiles.Items (Index).Start := (others => <>);
+            Profiles.Items (Index).Shell_Path := (others => <>);
+            Profiles.Items (Index).Socket := (others => <>);
+            Profiles.Items (Index).Container := (others => <>);
+            Profiles.Items (Index).WSL := (others => <>);
+            Profiles.Items (Index).TLS := (others => <>);
+         elsif Field = "baud" then
+            Set (Profiles.Items (Index).Baud, Value);
+         elsif Field = "socket" then
+            Set (Profiles.Items (Index).Socket, Value);
+            Profiles.Items (Index).Host := (others => <>);
+            Profiles.Items (Index).Start := (others => <>);
+            Profiles.Items (Index).Shell_Path := (others => <>);
+            Profiles.Items (Index).Serial := (others => <>);
+            Profiles.Items (Index).Container := (others => <>);
+            Profiles.Items (Index).WSL := (others => <>);
+            Profiles.Items (Index).TLS := (others => <>);
+         elsif Field = "container" then
+            Set (Profiles.Items (Index).Container, Value);
+            Profiles.Items (Index).Host := (others => <>);
+            Profiles.Items (Index).Start := (others => <>);
+            Profiles.Items (Index).Shell_Path := (others => <>);
+            Profiles.Items (Index).Serial := (others => <>);
+            Profiles.Items (Index).Socket := (others => <>);
+            Profiles.Items (Index).WSL := (others => <>);
+            Profiles.Items (Index).TLS := (others => <>);
+         elsif Field = "wsl" then
+            Set (Profiles.Items (Index).WSL, Value);
+            Profiles.Items (Index).Host := (others => <>);
+            Profiles.Items (Index).Start := (others => <>);
+            Profiles.Items (Index).Shell_Path := (others => <>);
+            Profiles.Items (Index).Serial := (others => <>);
+            Profiles.Items (Index).Socket := (others => <>);
+            Profiles.Items (Index).Container := (others => <>);
+            Profiles.Items (Index).TLS := (others => <>);
+         elsif Field = "tls" then
+            Set (Profiles.Items (Index).TLS, Value);
+            Profiles.Items (Index).Host := (others => <>);
+            Profiles.Items (Index).Start := (others => <>);
+            Profiles.Items (Index).Shell_Path := (others => <>);
+            Profiles.Items (Index).Serial := (others => <>);
+            Profiles.Items (Index).Socket := (others => <>);
+            Profiles.Items (Index).Container := (others => <>);
+            Profiles.Items (Index).WSL := (others => <>);
          elsif Field = "theme" then
             Set (Profiles.Items (Index).Theme, Value);
+         elsif Field = "ssh-identity" then
+            Set (Profiles.Items (Index).Identity, Value);
+         elsif Field = "ssh-port" then
+            Set (Profiles.Items (Index).Port, Value);
+         elsif Field = "ssh-jump" then
+            if not Valid_Host (Value) then return; end if;
+            Set (Profiles.Items (Index).Jump_Host, Value);
+         elsif Field = "ssh-setup" then
+            if not Parse_Boolean
+              (Value, Profiles.Items (Index).Remote_Setup)
+            then
+               return;
+            end if;
+         elsif Field = "persistent" then
+            if not Parse_Boolean (Value, Profiles.Items (Index).Keep_Alive) then
+               return;
+            end if;
          else
             return;
          end if;
@@ -178,6 +303,21 @@ package body Terminal.App.Session_Profiles is
    function Shell (Value : Profile) return String is (Text (Value.Shell_Path));
    function Environment (Value : Profile) return String is (Text (Value.Env));
    function SSH_Host (Value : Profile) return String is (Text (Value.Host));
+   function SSH_Identity (Value : Profile) return String is
+     (Text (Value.Identity));
+   function SSH_Port (Value : Profile) return String is (Text (Value.Port));
+   function SSH_Jump_Host (Value : Profile) return String is
+     (Text (Value.Jump_Host));
+   function SSH_Remote_Setup (Value : Profile) return Boolean is
+     (Value.Remote_Setup);
+   function Persistent (Value : Profile) return Boolean is (Value.Keep_Alive);
+   function Serial_Device (Value : Profile) return String is (Text (Value.Serial));
+   function Serial_Baud (Value : Profile) return String is (Text (Value.Baud));
+   function Socket_Path (Value : Profile) return String is (Text (Value.Socket));
+   function Container_Name (Value : Profile) return String is
+     (Text (Value.Container));
+   function WSL_Distribution (Value : Profile) return String is (Text (Value.WSL));
+   function TLS_Host (Value : Profile) return String is (Text (Value.TLS));
    function Theme_Name (Value : Profile) return String is (Text (Value.Theme));
 
    function Shell_Quote (Value : String) return String is
@@ -219,6 +359,21 @@ package body Terminal.App.Session_Profiles is
       Start : Natural := Env'First;
       Stop : Natural;
       Equal : Natural;
+      procedure Append_SSH_Options is
+      begin
+         Append
+           ("-o ControlMaster=auto -o ControlPersist=600 "
+            & "-o ServerAliveInterval=30 -o ServerAliveCountMax=3 ");
+         if SSH_Identity (Value) /= "" then
+            Append ("-i " & Shell_Quote (SSH_Identity (Value)) & " ");
+         end if;
+         if SSH_Port (Value) /= "" then
+            Append ("-p " & SSH_Port (Value) & " ");
+         end if;
+         if SSH_Jump_Host (Value) /= "" then
+            Append ("-J " & Shell_Quote (SSH_Jump_Host (Value)) & " ");
+         end if;
+      end Append_SSH_Options;
    begin
       if Env /= "" then
          Append ("export ");
@@ -234,7 +389,51 @@ package body Terminal.App.Session_Profiles is
          Append ("; ");
       end if;
       if SSH_Host (Value) /= "" then
-         Append ("exec ssh -- " & Shell_Quote (SSH_Host (Value)));
+         Append ("TERM=xterm-256color exec ssh ");
+         Append_SSH_Options;
+         if SSH_Remote_Setup (Value) then Append ("-t "); end if;
+         Append ("-- " & Shell_Quote (SSH_Host (Value)));
+         if SSH_Remote_Setup (Value) then
+            Append
+              (" 'if command -v tic >/dev/null 2>&1; then "
+               & "printf %s\n "
+               & """bracke-terminal|Bracke Terminal,use=xterm-256color,"" "
+               & "| tic -x - >/dev/null 2>&1 && TERM=bracke-terminal; "
+               & "fi; export TERM BRACKE_TERMINAL_REMOTE=1; "
+               & "exec ""${SHELL:-/bin/sh}"" -l'");
+         end if;
+      elsif Serial_Device (Value) /= "" then
+         Append
+           ("exec picocom --baud "
+            & (if Serial_Baud (Value) = "" then "115200"
+               else Serial_Baud (Value))
+            & " -- " & Shell_Quote (Serial_Device (Value)));
+      elsif Socket_Path (Value) /= "" then
+         Append
+           ("exec socat STDIO UNIX-CONNECT:"
+            & Shell_Quote (Socket_Path (Value)));
+      elsif Container_Name (Value) /= "" then
+         Append
+           ("exec docker exec -it -- " & Shell_Quote (Container_Name (Value))
+            & " /bin/sh");
+      elsif WSL_Distribution (Value) /= "" then
+         Append
+           ("exec wsl.exe -d " & Shell_Quote (WSL_Distribution (Value)));
+      elsif TLS_Host (Value) /= "" then
+         Append
+           ("exec openssl s_client -quiet -connect "
+            & Shell_Quote (TLS_Host (Value)));
+      elsif Persistent (Value) then
+         Append
+           ("exec tmux new-session -A -s " & Shell_Quote (Name (Value)));
+         if Working_Directory (Value) /= "" then
+            Append (" -c " & Shell_Quote (Working_Directory (Value)));
+         end if;
+         if Shell (Value) /= "" then
+            Append (" " & Shell_Quote (Shell (Value)));
+         elsif Command (Value) /= "" then
+            Append (" " & Shell_Quote (Command (Value)));
+         end if;
       elsif Shell (Value) /= "" then
          Append ("exec " & Shell_Quote (Shell (Value)));
       else

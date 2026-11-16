@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.bracke.Terminal</id>
+  <name>Bracke Terminal</name>
+  <summary>GPU-accelerated terminal emulator</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <url type="homepage">https://github.com/bracke/terminal</url>
+  <url type="bugtracker">https://github.com/bracke/terminal/issues</url>
+  <developer id="io.bracke"><name>Bracke</name></developer>
+  <description>
+    <p>Bracke Terminal is an Ada terminal emulator using GLFW and Vulkan, with
+    tabs, nested panes, shell integration, graphics protocols, profiles, and
+    local automation.</p>
+  </description>
+  <launchable type="desktop-id">io.bracke.Terminal.desktop</launchable>
+  <provides><binary>bracke-terminal</binary></provides>
+  <content_rating type="oars-1.1"/>
+</component>

@@ -1,4 +1,5 @@
 with Terminal.App.Sessions;
+with Terminal.App.Splits;
 
 package Terminal.App.Workspace is
    Max_Path_Length : constant := 1_024;
@@ -32,6 +33,7 @@ package Terminal.App.Workspace is
       Count       : Terminal.App.Sessions.Session_Count := 1;
       Active      : Terminal.App.Sessions.Session_Index := 1;
       Orientation : Pane_Orientation := Horizontal;
+      Pane_Tree   : Terminal.App.Splits.Split_Tree;
       Entries     : Entry_Array := (others => <>);
    end record;
 

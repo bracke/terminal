@@ -1,0 +1,9 @@
+PackageIdentifier: Bracke.Terminal
+PackageVersion: @VERSION@
+PackageLocale: en-US
+Publisher: Bracke
+PackageName: Bracke Terminal
+License: MIT
+ShortDescription: GPU-accelerated terminal emulator
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

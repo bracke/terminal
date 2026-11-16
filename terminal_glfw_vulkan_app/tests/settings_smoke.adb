@@ -9,18 +9,42 @@ procedure Settings_Smoke is
    use type Terminal.App.Theme.Theme_Name;
    Config : Terminal.App.Config.Config;
    Settings : Terminal.App.Settings.State;
+   Boolean_Settings : Terminal.App.Settings.State;
    Changed : Boolean;
    Initial_Size : constant Positive := Config.Font_Pixel_Size;
    Line : constant String := "theme = light";
 begin
    Terminal.App.Settings.Enter (Settings);
    Assert (Terminal.App.Settings.Active (Settings), "settings enters");
-   Terminal.App.Settings.Move (Settings, 1);
+   Terminal.App.Settings.Move (Settings, 2);
    Terminal.App.Settings.Adjust (Settings, Config, 1, Changed);
    Assert (Changed, "font setting changes");
    Assert (Config.Font_Pixel_Size = Initial_Size + 1, "font size increments");
+   Terminal.App.Settings.Adjust
+     (Settings, Config, Integer'First, Changed);
+   Assert
+     (Changed
+      and then Config.Font_Pixel_Size =
+        Terminal.App.Config.Min_Font_Pixel_Size,
+      "font adjustment clamps without overflowing");
+   Terminal.App.Settings.Adjust
+     (Settings, Config, Integer'First, Changed);
+   Assert (not Changed, "clamped font adjustment reports no change");
 
-   for I in 1 .. 6 loop
+   Terminal.App.Settings.Enter (Boolean_Settings);
+   Terminal.App.Settings.Move (Boolean_Settings, 11);
+   Terminal.App.Settings.Adjust
+     (Boolean_Settings, Config, 0, Changed);
+   Assert
+     (not Changed and then Config.Desktop_Notifications,
+      "zero adjustment does not toggle a Boolean setting");
+   Terminal.App.Settings.Adjust
+     (Boolean_Settings, Config, Integer'Last, Changed);
+   Assert
+     (Changed and then not Config.Desktop_Notifications,
+      "nonzero Boolean adjustment toggles once without overflowing");
+
+   for I in 1 .. 14 loop
       Terminal.App.Settings.Move (Settings, 1);
    end loop;
    Terminal.App.Settings.Begin_Edit (Settings);

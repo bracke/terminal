@@ -5,7 +5,8 @@ procedure Handle_Mouse_Button_Event is
    procedure Set_Scroll_From_Pixel (Core : in out Terminal.Core.Terminal) is
       Max : constant Natural := Terminal.App.Scrollback_View.Max_Offset (Core);
       Top : constant Float :=
-        Float (Active_Pane_Origin_Y + Terminal.App.Renderer.Content_Margin);
+        Float
+          (Active_Pane_Origin_Y + Terminal.App.Renderer.Content_Padding (R));
       Height : constant Float :=
         Float (Active_Pane_Rows * Terminal.App.Renderer.Cell_Height (R));
       Position : Float := Event.Button_Event.Y - Top;
@@ -46,6 +47,7 @@ procedure Handle_Mouse_Button_Event is
    begin
       if Terminal.App.Input_Map.Mouse_Reporting_Enabled
         (Modes)
+        and then not Read_Only
         and then not
           Terminal.App.Input_Map
             .Local_Mouse_Selection_Override
@@ -190,15 +192,34 @@ procedure Handle_Mouse_Button_Event is
          end if;
       elsif Terminal.App.Input_Map.Is_Primary_Paste_Button
         (Event.Button_Event)
+        and then not Read_Only
       then
          Scroll_Offset := 0;
-         Terminal.App.Session_Table.Write_Paste
-           (Active_Runtime,
-            Terminal.App.Clipboard_OSC52.Text
-              (Clipboard_Targets,
-               Terminal.Core.Clipboard_Primary),
-            Modes.Bracketed_Paste,
-            Write_Stat);
+         declare
+            Native_Status : Terminal.App.Platform_Clipboard.Operation_Status;
+            Native_Text : constant String :=
+              Terminal.App.Platform_Clipboard.Primary_Text (Native_Status);
+            Paste_Text : constant String :=
+              (if Native_Status in Terminal.App.Platform_Clipboard.Ok |
+                 Terminal.App.Platform_Clipboard.Truncated
+               then Native_Text
+               else Terminal.App.Clipboard_OSC52.Text
+                 (Clipboard_Targets, Terminal.Core.Clipboard_Primary));
+         begin
+            if Native_Status in Terminal.App.Platform_Clipboard.Ok |
+              Terminal.App.Platform_Clipboard.Truncated
+            then
+               Terminal.App.Clipboard_OSC52.Store
+                 (Clipboard_Targets,
+                  Terminal.Core.Clipboard_Primary,
+                  Native_Text);
+            end if;
+            Terminal.App.Session_Table.Write_Paste
+              (Active_Runtime,
+               Paste_Text,
+               Modes.Bracketed_Paste,
+               Write_Stat);
+         end;
          Last_Write_Status := Write_Stat;
          if Fatal_Write (Write_Stat)
            and then Terminal.App.Session_Table.Count (Sessions) = 1

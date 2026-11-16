@@ -126,10 +126,11 @@ package body Terminal.App.Shell_Blocks is
       Produced : constant Natural := Terminal.Core.History_Rows_Produced (T);
       Rows : constant Positive := Terminal.Core.Terminal_Row_Count (T);
       Cols : constant Positive := Terminal.Core.Terminal_Column_Count (T);
+      Effective_Offset : constant Natural := Natural'Min (Offset, Produced);
       Top : constant Natural :=
-        (if Offset = 0 then
+        (if Effective_Offset = 0 then
            (if Produced = Natural'Last then Natural'Last else Produced + 1)
-         else Produced - Offset + 1);
+         else Produced - Effective_Offset + 1);
       Bottom : constant Natural :=
         (if Top > Natural'Last - (Rows - 1)
          then Natural'Last else Top + Rows - 1);

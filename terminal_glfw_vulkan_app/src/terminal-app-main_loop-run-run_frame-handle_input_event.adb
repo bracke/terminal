@@ -35,8 +35,11 @@ separate (Terminal.App.Main_Loop.Run.Run_Frame)
                Chunk := (others => <>);
          end case;
 
+         if Read_Only then
+            Chunk := (others => <>);
+         end if;
          if Chunk.Length > 0 then
-            if Broadcast_Input
+            if Broadcast_Input and then not Protected_Input
               and then Event.Kind in
                 Terminal.App.Queues.Key | Terminal.App.Queues.Character
               and then Terminal.App.Splits.Count (Splits) > 1

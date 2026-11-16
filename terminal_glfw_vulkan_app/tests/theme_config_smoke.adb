@@ -14,6 +14,7 @@ procedure Theme_Config_Smoke is
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Renderer.Theme_Update_Status;
    use type Terminal.App.Theme.Theme_Name;
+   use type Terminal.App.Theme.Tab_Bar_Mode;
    use type Terminal.Core.Initialize_Status;
 
    R : Terminal.App.Renderer.Renderer;
@@ -68,8 +69,81 @@ begin
         (Name = Terminal.App.Theme.High_Contrast,
          "high_contrast theme should resolve");
       Assert
+        (Terminal.App.Theme.Parse_Name ("solarized-dark", Name)
+         and then Name = Terminal.App.Theme.Solarized_Dark,
+         "bundled Solarized theme should parse");
+      Assert
+        (Terminal.App.Theme.Parse_Name ("dracula", Name)
+         and then Name = Terminal.App.Theme.Dracula,
+         "bundled Dracula theme should parse");
+      Assert
+        (Terminal.App.Theme.Parse_Name ("gruvbox-dark", Name)
+         and then Name = Terminal.App.Theme.Gruvbox_Dark,
+         "bundled Gruvbox theme should parse");
+      Assert
+        (Terminal.App.Theme.Parse_Name ("nord", Name)
+         and then Name = Terminal.App.Theme.Nord,
+         "bundled Nord theme should parse");
+      Assert
+        (Terminal.App.Theme.Parse_Name ("one-dark", Name)
+         and then Name = Terminal.App.Theme.One_Dark,
+         "bundled One Dark theme should parse");
+      Assert
         (not Terminal.App.Theme.Parse_Name ("missing", Name),
          "unknown theme should be rejected");
+      declare
+         Mode : Terminal.App.Theme.Tab_Bar_Mode;
+      begin
+         Assert
+           (Terminal.App.Theme.Parse_Tab_Bar_Mode ("auto", Mode)
+            and then Mode = Terminal.App.Theme.Tab_Auto,
+            "automatic tab-bar mode should parse");
+         Assert
+           (Terminal.App.Theme.Parse_Tab_Bar_Mode ("always", Mode)
+            and then Mode = Terminal.App.Theme.Tab_Always,
+            "always-visible tab-bar mode should parse");
+         Assert
+           (Terminal.App.Theme.Parse_Tab_Bar_Mode ("never", Mode)
+            and then Mode = Terminal.App.Theme.Tab_Never,
+            "hidden tab-bar mode should parse");
+         Assert
+           (not Terminal.App.Theme.Parse_Tab_Bar_Mode ("sometimes", Mode),
+            "unknown tab-bar mode should be rejected");
+      end;
+   end;
+
+   declare
+      C : Terminal.App.Config.Config;
+      Status : Terminal.App.Config.Line_Status;
+   begin
+      Terminal.App.Config.Apply_Line (C, "background = #11223380", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted and then C.Use_Custom_Theme,
+         "custom background color is accepted");
+      Assert_Color
+        (Terminal.App.Config.Active_Theme (C).Default_BG,
+         (R => Float (16#11#) / 255.0, G => Float (16#22#) / 255.0,
+          B => Float (16#33#) / 255.0, A => Float (16#80#) / 255.0),
+         "custom RGBA background");
+      Terminal.App.Config.Apply_Line (C, "palette-5 = #AABBCC", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted,
+         "custom ANSI palette color is accepted");
+      Assert_Color
+        (Terminal.App.Config.Active_Theme (C).Palette (5),
+         (R => Float (16#AA#) / 255.0, G => Float (16#BB#) / 255.0,
+          B => Float (16#CC#) / 255.0, A => 1.0),
+         "custom ANSI palette color");
+      Terminal.App.Config.Apply_Line (C, "foreground = #nothex", Status);
+      Assert
+        (Status = Terminal.App.Config.Invalid_Value,
+         "malformed custom color is rejected");
+      Terminal.App.Config.Apply_Line (C, "theme = nord", Status);
+      Assert
+        (Status = Terminal.App.Config.Accepted
+         and then not C.Use_Custom_Theme
+         and then C.Color_Theme = Terminal.App.Theme.Nord,
+         "selecting a catalog theme resets custom overrides");
    end;
 
    declare
@@ -437,6 +511,34 @@ begin
    Assert
      (Renderer_Status = Terminal.App.Renderer.Ok,
       "renderer initialize failed");
+   Assert
+     (Terminal.App.Renderer.Content_Padding (R) = 6,
+      "renderer default content padding");
+   Terminal.App.Renderer.Set_Content_Padding (R, 23);
+   Assert
+     (Terminal.App.Renderer.Content_Padding (R) = 23,
+      "renderer accepts configured content padding");
+   Terminal.App.Renderer.Set_Content_Padding (R, Natural'Last);
+   Assert
+     (Terminal.App.Renderer.Content_Padding (R) =
+        Terminal.App.Renderer.Max_Content_Padding,
+      "renderer clamps content padding");
+   Terminal.App.Renderer.Set_Tab_Style
+     (R, Terminal.App.Theme.Tab_Auto, Terminal.App.Theme.Default_Tab_Style);
+   Assert
+     (not Terminal.App.Renderer.Tab_Bar_Visible (R, 1)
+      and then Terminal.App.Renderer.Tab_Bar_Visible (R, 2),
+      "automatic tab bar appears for multiple tabs");
+   Terminal.App.Renderer.Set_Tab_Style
+     (R, Terminal.App.Theme.Tab_Always, Terminal.App.Theme.Default_Tab_Style);
+   Assert
+     (Terminal.App.Renderer.Tab_Bar_Visible (R, 1),
+      "always tab bar appears for one tab");
+   Terminal.App.Renderer.Set_Tab_Style
+     (R, Terminal.App.Theme.Tab_Never, Terminal.App.Theme.Default_Tab_Style);
+   Assert
+     (not Terminal.App.Renderer.Tab_Bar_Visible (R, 2),
+      "never tab bar remains hidden");
    Terminal.App.Renderer.Set_Theme
      (R, Terminal.App.Theme.Built_In (Terminal.App.Theme.Light), Theme_Status);
    Assert

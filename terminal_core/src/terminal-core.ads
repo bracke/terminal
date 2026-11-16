@@ -206,13 +206,12 @@ package Terminal.Core is
       --  DEC private mode 2048: report the size whenever it changes.
       In_Band_Resize     : Boolean := False;
       --  The active progressive keyboard enhancement flags, as the top of
-      --  the active screen's stack holds them. Only bit 1, disambiguate
-      --  escape codes, is supported.
+      --  the active screen's stack holds them.
       Keyboard_Flags     : Natural range 0 .. 31 := 0;
    end record;
 
    --  The keyboard enhancement flags this terminal implements.
-   Supported_Keyboard_Flags : constant := 1;
+   Supported_Keyboard_Flags : constant := 31;
 
    type Graphics_Protocol_Kind is
      (No_Graphics,
@@ -410,6 +409,14 @@ package Terminal.Core is
       Bell_Count : Natural := 0;
    end record;
 
+   type Progress_Kind is
+     (No_Progress, Normal_Progress, Error_Progress,
+      Indeterminate_Progress, Paused_Progress);
+   type Progress_Info is record
+      Kind    : Progress_Kind := No_Progress;
+      Percent : Natural range 0 .. 100 := 0;
+   end record;
+
    Max_Clipboard_Length : constant := 3072;
    subtype Clipboard_Length_Range is Natural range 0 .. Max_Clipboard_Length;
 
@@ -588,6 +595,8 @@ package Terminal.Core is
      (T : Terminal) return Shell_Integration_Snapshot;
    function Notification (T : Terminal) return Notification_Request;
    procedure Clear_Notification (T : in out Terminal);
+   function Progress (T : Terminal) return Progress_Info;
+   function Badge (T : Terminal) return Notification_Text;
    function Clipboard (T : Terminal) return Clipboard_Request;
    procedure Clear_Clipboard (T : in out Terminal);
    function Scrollback_Row_Count (T : Terminal) return Natural;
@@ -1017,6 +1026,8 @@ private
       Next_Shell_Command_Sequence : Natural := 1;
       History_Rows : Natural := 0;
       Notification_Data : Notification_Request;
+      Progress_Data : Progress_Info;
+      Badge_Data : Notification_Text;
       Clipboard_Data : Clipboard_Request;
       Hyperlinks    : Hyperlink_Runtime_State;
       Responses     : Response_Runtime_State;

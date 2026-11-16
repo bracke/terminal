@@ -1,4 +1,5 @@
 with Interfaces;
+with Terminal.App.Bidi;
 with Terminal.App.Graphics;
 with Terminal.App.Renderer.Visual_Style;
 with Terminal.App.Size_Arithmetic;
@@ -159,6 +160,8 @@ package body Terminal.App.Renderer.Text_Media is
         or else Cell.Text.Attachment_Count /= 0
         or else Cell.Style /= Base.Style
         or else Style.Is_Block_Cursor (Snapshot, Row, Col)
+        or else not Terminal.App.Bidi.Can_Join
+          (Natural (Base.Text.Code_Point), Natural (Cell.Text.Code_Point))
       then
          return False;
       end if;

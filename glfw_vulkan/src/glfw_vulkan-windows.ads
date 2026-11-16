@@ -22,6 +22,8 @@ package GLFW_Vulkan.Windows is
       Window_Invalid,
       Create_Failed);
 
+   type Property_Status is (Ok, Window_Invalid, Invalid_Value);
+
    procedure Create
      (Ctx    : in out GLFW_Vulkan.Context;
       W      : in out Window;
@@ -45,6 +47,22 @@ package GLFW_Vulkan.Windows is
    procedure Set_Title
      (W     : Window;
       Title : String);
+
+   procedure Set_Opacity
+     (W       : Window;
+      Opacity : Float;
+      Status  : out Property_Status);
+   procedure Set_Floating
+     (W       : Window;
+      Enabled : Boolean;
+      Status  : out Property_Status);
+   procedure Set_Decorated
+     (W       : Window;
+      Enabled : Boolean;
+      Status  : out Property_Status);
+   procedure Show (W : Window; Status : out Property_Status);
+   procedure Hide (W : Window; Status : out Property_Status);
+   procedure Toggle_Visibility (W : Window; Status : out Property_Status);
 
    procedure Set_Standard_Cursor
      (W      : in out Window;

@@ -17,16 +17,24 @@ project App_Tests is
    for Main use
      ("accessibility_smoke.adb",
       "app_profile_smoke.adb",
+      "background_image_smoke.adb",
+      "bidi_smoke.adb",
       "clipboard_osc52_smoke.adb",
       "command_palette_smoke.adb",
+      "crash_reports_smoke.adb",
+      "profile_discovery_smoke.adb",
+      "control_protocol_smoke.adb",
+      "control_server_smoke.adb",
       "colour_glyph_submit_smoke.adb",
       "config_file_smoke.adb",
       "copy_mode_smoke.adb",
       "cursor_blink_smoke.adb",
       "diagnostics_smoke.adb",
+      "file_drop_smoke.adb",
       "font_discovery_smoke.adb",
       "frame_image_storage_smoke.adb",
       "glfw_runtime_state_smoke.adb",
+      "global_hotkey_smoke.adb",
       "graphics_capabilities_smoke.adb",
       "graphics_replacement_benchmark_smoke.adb",
       "graphics_transport_smoke.adb",
@@ -36,11 +44,15 @@ project App_Tests is
       "image_placements_smoke.adb",
       "input_map_smoke.adb",
       "input_registry_smoke.adb",
+      "output_triggers_smoke.adb",
+      "platform_ime_smoke.adb",
       "iterm2_file_smoke.adb",
       "iterm2_media_smoke.adb",
       "kitty_control_matrix_smoke.adb",
       "pict_renderer_smoke.adb",
+      "platform_clipboard_smoke.adb",
       "queue_smoke.adb",
+      "remote_workflows_smoke.adb",
       "render_policy_smoke.adb",
       "renderer_animation_smoke.adb",
       "renderer_graphics_cells_smoke.adb",
@@ -53,8 +65,10 @@ project App_Tests is
       "renderer_transaction_smoke.adb",
       "resize_smoke.adb",
       "scrollback_view_smoke.adb",
+      "screen_text_smoke.adb",
       "selection_smoke.adb",
       "shell_interaction_smoke.adb",
+      "shell_integration_smoke.adb",
       "session_cleanup_shutdown_smoke.adb",
       "session_hardening_smoke.adb",
       "session_runtime_smoke.adb",
@@ -65,6 +79,7 @@ project App_Tests is
       "settings_smoke.adb",
       "shader_loader_smoke.adb",
       "splits_smoke.adb",
+      "system_theme_smoke.adb",
       "tabs_smoke.adb",
       "terminal-app-click_debounce_smoke.adb",
       "terminal-app-image_pipeline_units_smoke.adb",
@@ -78,6 +93,7 @@ project App_Tests is
       "vulkan_recovery_smoke.adb",
       "vulkan_submit_smoke.adb",
       "workspace_smoke.adb",
+      "workspace_names_smoke.adb",
       "external_graphics_stream_probe.adb",
       "pty_core_integration_smoke.adb",
       "pty_m1_commands_smoke.adb",
@@ -106,9 +122,12 @@ project App_Tests is
    package Linker is
       case Link_Host is
          when "windows" =>
-            for Switches ("Ada") use ("-lglfw3", "-lvulkan-1", "-lharfbuzz");
+            for Switches ("Ada") use
+              ("-lglfw3", "-lvulkan-1", "-lharfbuzz", "-lfribidi",
+               "-limm32");
          when "posix" =>
-            for Switches ("Ada") use ("-lglfw", "-lvulkan", "-lharfbuzz");
+            for Switches ("Ada") use
+              ("-lglfw", "-lvulkan", "-lharfbuzz", "-lfribidi", "-lX11");
       end case;
    end Linker;
 end App_Tests;

@@ -15,15 +15,46 @@ procedure Poll_Backends is
    procedure Capture_Output
      (Index : Terminal.App.Sessions.Session_Index;
       Chunk : Terminal.App.Queues.Byte_Chunk) is
+      Runtime : constant Terminal.App.Session_Table.Runtime_Borrow :=
+        Terminal.App.Session_Table.Runtime_At (Sessions, Index);
+      Stream : constant Terminal.Core.Graphics_Stream_ID :=
+        Terminal.App.Session_Table.Graphics_Stream_ID (Runtime);
    begin
-      declare
-         Runtime : constant Terminal.App.Session_Table.Runtime_Borrow :=
-           Terminal.App.Session_Table.Runtime_At (Sessions, Index);
-      begin
+      if Terminal.App.Session_Recording.Active (Recording) then
          Terminal.App.Session_Recording.Record_Output
-           (Recording,
-            Terminal.App.Session_Table.Graphics_Stream_ID (Runtime), Chunk);
-      end;
+           (Recording, Stream, Chunk);
+      end if;
+      if Terminal.App.Output_Triggers.Count
+        (App_Config.Output_Trigger_Rules) > 0
+      then
+         declare
+            Fired : Terminal.App.Output_Triggers.Fired_Set;
+            Launch : Terminal.App.Platform_Launcher.Launch_Status;
+         begin
+            Terminal.App.Output_Triggers.Process
+              (Output_Trigger_Detector,
+               App_Config.Output_Trigger_Rules,
+               Index,
+               Stream,
+               Chunk,
+               Ada.Real_Time.Clock,
+               Fired);
+            for Trigger in 1 .. Terminal.App.Output_Triggers.Count
+              (App_Config.Output_Trigger_Rules)
+            loop
+               if Fired (Trigger) and then App_Config.Desktop_Notifications then
+                  Terminal.App.Platform_Launcher.Show_Notification
+                    ("Terminal output: "
+                     & Terminal.App.Output_Triggers.Name
+                       (App_Config.Output_Trigger_Rules, Trigger),
+                     "Matched: "
+                     & Terminal.App.Output_Triggers.Pattern
+                       (App_Config.Output_Trigger_Rules, Trigger),
+                     Launch);
+               end if;
+            end loop;
+         end;
+      end if;
    end Capture_Output;
    procedure Deliver_Notification (Index : Terminal.App.Sessions.Session_Index) is
       Runtime : constant Terminal.App.Session_Table.Runtime_Borrow :=
@@ -67,7 +98,10 @@ procedure Poll_Backends is
       Terminal.App.Session_Runtime.With_Core (Core, Deliver'Access);
    end Deliver_Notification;
 begin
-   if Terminal.App.Session_Recording.Active (Recording) then
+   if Terminal.App.Session_Recording.Active (Recording)
+     or else Terminal.App.Output_Triggers.Count
+       (App_Config.Output_Trigger_Rules) > 0
+   then
       Terminal.App.Session_Table.Poll_Output
         (Sessions, Output, Runtime_Feed, Runtime_Write, Capture_Output'Access);
    else

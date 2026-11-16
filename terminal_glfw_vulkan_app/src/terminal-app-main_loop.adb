@@ -1,4 +1,5 @@
 with Ada.Real_Time;
+with Ada.Environment_Variables;
 with Ada.Strings;
 with Ada.Strings.Fixed;
 with Ada.Strings.Unbounded;
@@ -18,21 +19,29 @@ with Terminal.App.Clipboard_OSC52;
 with Terminal.App.Click_Debounce;
 with Terminal.App.Cleanup_Diagnostics;
 with Terminal.App.Config;
+with Terminal.App.Control_Protocol;
+with Terminal.App.Control_Server;
 with Terminal.App.Command_Palette;
 with Terminal.App.Copy_Mode;
 with Terminal.App.Cursor_Blink;
 with Terminal.App.Diagnostics;
 with Terminal.App.Fonts;
+with Terminal.App.File_Drop;
 with Terminal.App.Frame_Completion;
 with Terminal.App.Graphics;
 with Terminal.App.Graphics_Profile;
+with Terminal.App.Global_Hotkey;
 with Terminal.App.Hyperlinks;
 with Terminal.App.Input_Map;
 with Terminal.App.ITerm2_Files;
 with Terminal.App.Key_Bindings;
 with Terminal.App.PTY_Write;
+with Terminal.App.Platform_Clipboard;
+with Terminal.App.Platform_Appearance;
 with Terminal.App.PTY_Cleanup_Lifecycle;
 with Terminal.App.Platform_Launcher;
+with Terminal.App.Platform_IME;
+with Terminal.App.Output_Triggers;
 with Terminal.App.Queues;
 with Terminal.App.Renderer;
 with Terminal.App.Renderer.Graphics;
@@ -41,9 +50,12 @@ with Terminal.App.Renderer.Presentation;
 with Terminal.App.Render_Policy;
 with Terminal.App.Resize;
 with Terminal.App.Scrollback_View;
+with Terminal.App.Screen_Text;
 with Terminal.App.Shell_Blocks;
+with Terminal.App.Shell_Integration;
 with Terminal.App.Selection;
 with Terminal.App.Settings;
+with Terminal.App.System_Theme;
 with Terminal.App.Session_Runtime;
 with Terminal.App.Session_Recording;
 with Terminal.App.Session_Profiles;
@@ -66,10 +78,12 @@ package body Terminal.App.Main_Loop is
    use type Ada.Real_Time.Time;
    use type GLFW_Vulkan.Init_Status;
    use type GLFW_Vulkan.Windows.Create_Status;
+   use type GLFW_Vulkan.Windows.Property_Status;
    use type Terminal.App.Renderer.Init_Status;
    use type Terminal.App.Renderer.Render_Status;
    use type Terminal.App.Renderer.Theme_Update_Status;
    use type Terminal.App.Renderer.Font_Update_Status;
+   use type Terminal.App.Renderer.Background_Update_Status;
    use type Terminal.App.Vulkan_Context.Init_Status;
    use type Terminal.App.Vulkan_Presenter.Init_Status;
    use type Terminal.App.Vulkan_Presenter.Present_Status;
@@ -91,13 +105,25 @@ package body Terminal.App.Main_Loop is
    use type Terminal.Core.Clipboard_Operation;
    use type Terminal.Core.Clipboard_Target;
    use type Terminal.Core.Notification_Kind;
+   use type Terminal.Core.Progress_Kind;
    use type Terminal.Core.Graphics_Stream_ID;
    use type Terminal.App.Workspace.IO_Status;
    use type Terminal.App.Workspace.Layout_Kind;
    use type Terminal.App.Workspace.Pane_Orientation;
    use type Terminal.App.Platform_Launcher.Launch_Status;
+   use type Terminal.App.Platform_Appearance.Blur_Status;
+   use type Terminal.App.File_Drop.Install_Status;
+   use type Terminal.App.Global_Hotkey.Register_Status;
+   use type Terminal.App.Platform_IME.Install_Status;
    use type Terminal.App.Config.Config_Load_Status;
+   use type Terminal.App.Control_Protocol.Command_Kind;
+   use type Terminal.App.Control_Protocol.Parse_Status;
+   use type Terminal.App.Control_Server.Poll_Status;
+   use type Terminal.App.Control_Server.Reply_Status;
+   use type Terminal.App.Control_Server.Start_Status;
    use type Terminal.App.Session_Recording.IO_Status;
+   use type Terminal.App.System_Theme.Preference;
+   use type Terminal.App.Theme.Theme_Name;
    use type GLFW_Vulkan.Input.Key;
    use type GLFW_Vulkan.Input.Key_Action;
    use type GLFW_Vulkan.Input.Mouse_Button;
@@ -109,6 +135,7 @@ package body Terminal.App.Main_Loop is
    --  INPUT, not by the blink/redraw signal, so a blinking cursor still presents
    --  only on its own toggle and does not hold the window open. ~24 = ~0.4s.
    Present_Grace_Frames : constant := 24;
+   Control_Environment : constant String := "BRACKE_TERMINAL_CONTROL";
    Last_Tab_Title    : Unbounded.Unbounded_String;
    Last_Window_Title : Unbounded.Unbounded_String;
 
@@ -182,6 +209,7 @@ package body Terminal.App.Main_Loop is
       Runtime : in out Terminal.App.Session_Runtime.Runtime;
       Store : in out Terminal.App.Clipboard_OSC52.Target_Store;
       T : in out Terminal.Core.Terminal;
+      Protected_Input : Boolean;
       Ok : out Boolean;
       Last_Write_Status : in out Terminal.App.PTY_Write.Write_All_Status;
       Last_Clipboard_Target : in out Terminal.Core.Clipboard_Target)
@@ -190,20 +218,40 @@ package body Terminal.App.Main_Loop is
         Terminal.Core.Clipboard (T);
       Chunk : Terminal.App.Queues.Byte_Chunk;
       Write_Stat : Terminal.App.PTY_Write.Write_All_Status;
+      Native_Status : Terminal.App.Platform_Clipboard.Operation_Status;
+
+      function Selection_Text return String is
+         Native : constant String :=
+           Terminal.App.Platform_Clipboard.Primary_Text (Native_Status);
+      begin
+         if Native_Status in Terminal.App.Platform_Clipboard.Ok |
+           Terminal.App.Platform_Clipboard.Truncated
+         then
+            Terminal.App.Clipboard_OSC52.Store (Store, Request.Target, Native);
+            return Native;
+         else
+            return Terminal.App.Clipboard_OSC52.Text (Store, Request.Target);
+         end if;
+      end Selection_Text;
    begin
       Ok := True;
       if Request.Pending then
          Last_Clipboard_Target := Request.Target;
-         if Request.Operation = Terminal.Core.Clipboard_Query then
+         if Protected_Input
+           and then Request.Operation = Terminal.Core.Clipboard_Set
+         then
+            null;
+         elsif Request.Operation = Terminal.Core.Clipboard_Query then
             if Terminal.App.Session_Runtime.Has_Pending_Write (Runtime) then
                Last_Write_Status := Terminal.App.PTY_Write.Incomplete;
                return;
             end if;
             Terminal.App.Clipboard_OSC52.Build_Query_Response
               (Request.Target,
-               (if Request.Target = Terminal.Core.Clipboard_Clipboard
+               (if Protected_Input then ""
+                elsif Request.Target = Terminal.Core.Clipboard_Clipboard
                 then GLFW_Vulkan.Clipboard.Get_Text (W)
-                else Terminal.App.Clipboard_OSC52.Text (Store, Request.Target)),
+                else Selection_Text),
                Chunk);
             Terminal.App.Session_Runtime.Write (Runtime, Chunk, Write_Stat);
             Last_Write_Status := Write_Stat;
@@ -229,6 +277,11 @@ package body Terminal.App.Main_Loop is
                   (if Request.Length = 0
                    then ""
                    else Request.Text (1 .. Request.Length)));
+               Terminal.App.Platform_Clipboard.Set_Primary
+                 ((if Request.Length = 0
+                   then ""
+                   else Request.Text (1 .. Request.Length)),
+                  Native_Status);
             end if;
          end if;
          Terminal.Core.Clear_Clipboard (T);
@@ -278,5 +331,7 @@ package body Terminal.App.Main_Loop is
 
    Double_Click_Interval : constant Duration := 0.5;
 
-   procedure Run (Workspace_Override : String := "") is separate;
+   procedure Run
+     (Workspace_Override : String := "";
+      Quick              : Boolean := False) is separate;
 end Terminal.App.Main_Loop;

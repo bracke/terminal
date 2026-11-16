@@ -87,6 +87,7 @@ package body Terminal.App.Renderer.Image_Objects is
 
    procedure Release_All (R : in out Renderer) is
    begin
+      R.View_State.Background_Object := null;
       Terminal.App.Image_Store.Release_All
         (R.Graphics_State.Resources.Image_Objects);
       Terminal.App.Renderer.Placement_State.Release_All (R);
@@ -322,6 +323,7 @@ package body Terminal.App.Renderer.Image_Objects is
            (Preserve_Image_ID /= 0
             and then Current.Stream_ID = Preserve_Stream
             and then Current.ID = Preserve_Image_ID)
+           and then Current /= R.View_State.Background_Object
            and then not Terminal.App.Renderer.Placement_State.Has_Image_Placement
              (R, Current)
            and then

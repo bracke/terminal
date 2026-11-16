@@ -91,6 +91,11 @@ package Terminal.App.Session_Table is
       Col     : Positive;
       Status  : out Table_Status);
 
+   procedure Restore_Pane_Tree
+     (Table  : in out Runtime_Table;
+      Tree   : Terminal.App.Splits.Split_Tree;
+      Status : out Table_Status);
+
    procedure Set_Active_Tab_Label
      (Table  : in out Runtime_Table;
       Label  : String;
@@ -127,6 +132,7 @@ package Terminal.App.Session_Table is
    function Graphics_Stream_ID
      (Borrow : Runtime_Borrow) return Terminal.Core.Graphics_Stream_ID;
    function Has_Pending_Write (Borrow : Runtime_Borrow) return Boolean;
+   function Has_Foreground_Process (Borrow : Runtime_Borrow) return Boolean;
    procedure Write
      (Borrow : Runtime_Borrow;
       Chunk  : Terminal.App.Queues.Byte_Chunk;

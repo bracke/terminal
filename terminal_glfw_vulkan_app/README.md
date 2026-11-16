@@ -6,7 +6,8 @@ point together. `TERMINAL_PTY_OS=windows` selects ConPTY; the default selects
 the POSIX backend used on Linux and macOS.
 
 This crate links against system HarfBuzz (`libharfbuzz.so`) for shaped text-run
-metadata. The current visible glyph path still uses `textrender` rasterization.
+metadata and FriBidi (`libfribidi.so`) for UAX #9 paragraph layout. The current
+visible glyph path still uses `textrender` rasterization.
 
 The renderer package is deliberately an adapter boundary: it consumes
 `Terminal.Core.Render_Snapshot` plus complete staged graphics events and never
@@ -133,14 +134,24 @@ The runtime table also owns the tab and split models, committing their active
 indices together with session activation so the main loop cannot maintain a
 second, divergent layout state.
 
+Appearance state is runtime-configurable rather than compiled into renderer
+geometry. Content padding participates in grid sizing, hit testing, image
+placement, and frame construction. Tab chrome supports automatic, always, and
+never visibility plus independent bar/active/inactive colors. Optional system
+theme following discovers GTK or KDE light/dark preferences and reapplies the
+theme when that preference changes. Background files are decoded under the
+same byte, dimension, and allocation limits as inline media, retained as a
+pinned renderer image object, and drawn below explicit cell backgrounds.
+
 `Terminal.App.Workspace` persists a bounded, versioned tab/pane description,
 active session, labels, OSC 7 working directories, and per-session startup
 commands. Restore reconstructs sessions before the first frame and submits
 quoted directory changes plus explicitly configured/saved commands through the
 normal bounded PTY writer. The notification path similarly remains bounded:
 the core produces BEL, OSC 9/99, and OSC 133 completion requests, while the app
-applies independent policy switches before the POSIX launcher invokes
-`notify-send`. Link activation also recognizes plain `http`, `https`, `mailto`,
+applies independent policy switches before dispatching Linux `notify-send`,
+macOS Notification Center, or Windows toast delivery. Link activation also
+recognizes plain `http`, `https`, `mailto`,
 and absolute-path tokens; `Ctrl+Shift+O` exposes deterministic keyboard
 selection without sending navigation keys to the PTY.
 
@@ -161,7 +172,10 @@ Application chrome routes tab-bar, pane-border, and scrollbar pointer input
 before terminal mouse reporting. Tabs support activation, close, and runtime-
 preserving drag reorder; split weights change through draggable dividers. The
 bounded `Ctrl+Shift+U` composition state renders Unicode hexadecimal pre-edit
-text, while GLFW character callbacks carry committed platform-IME Unicode.
+text. The separate native IME boundary uses XIM pre-edit callbacks on X11 and
+IMM composition messages on Windows, presents bounded pre-edit status, places
+the native candidate UI at the active pane cursor, and feeds committed scalars
+through the same character queue.
 OSC 133 `A/B/C/D` phases retain bounded command blocks, including exit status
 and optional `D;status;duration_ms` timing, for select/copy/rerun actions.
 

@@ -14,6 +14,7 @@ procedure Core_OSC_Cases is
    use type Terminal.Core.Graphics_Protocol_Kind;
    use type Terminal.Core.Initialize_Status;
    use type Terminal.Core.Notification_Kind;
+   use type Terminal.Core.Progress_Kind;
    use type Terminal.Core.Shell_Mark_Kind;
    use type Terminal.Core.Semantic_Zone;
    use Core_String_Smoke_Support;
@@ -198,6 +199,32 @@ begin
      (Terminal.Core.Notification (T).Pending,
       "OSC 9 creates a legacy desktop notification");
    Terminal.Core.Clear_Notification (T);
+
+   Terminal.Core.Feed
+     (T,
+      To_Bytes
+        (ASCII.ESC & "]9;4;1;42" & ASCII.BEL
+         & ASCII.ESC & "]1337;SetBadgeFormat=YnVpbGQ=" & ASCII.BEL),
+      Feed_Status);
+   Assert
+     (Terminal.Core.Progress (T).Kind = Terminal.Core.Normal_Progress
+      and then Terminal.Core.Progress (T).Percent = 42,
+      "OSC 9;4 exposes task progress");
+   Assert
+     (Terminal.Core.Badge (T).Length = 5
+      and then Terminal.Core.Badge (T).Text (1 .. 5) = "build",
+      "OSC 1337 exposes decoded badge text");
+   Terminal.Core.Feed
+     (T, To_Bytes (ASCII.ESC & "]9;4;4;80" & ASCII.BEL), Feed_Status);
+   Assert
+     (Terminal.Core.Progress (T).Kind = Terminal.Core.Paused_Progress
+      and then Terminal.Core.Progress (T).Percent = 80,
+      "OSC 9;4 paused progress state");
+   Terminal.Core.Feed
+     (T, To_Bytes (ASCII.ESC & "]9;4;0" & ASCII.BEL), Feed_Status);
+   Assert
+     (Terminal.Core.Progress (T).Kind = Terminal.Core.No_Progress,
+      "OSC 9;4 clears task progress");
 
    Terminal.Core.Feed
      (T,

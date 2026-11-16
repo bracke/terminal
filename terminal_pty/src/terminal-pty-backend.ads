@@ -96,6 +96,10 @@ package Terminal.PTY.Backend is
       Status : out Resize_Status);
 
    function Is_Alive (S : in out Session) return Boolean;
+   --  True when closing the terminal would interrupt a foreground job rather
+   --  than merely end an idle shell.  Backends that cannot distinguish a
+   --  descendant conservatively report a live process.
+   function Has_Foreground_Process (S : in out Session) return Boolean;
 
    type Exit_State is
      (Still_Running,

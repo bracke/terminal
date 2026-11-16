@@ -460,6 +460,34 @@ package body Terminal.App.Session_Table is
       Table.Splits := Next_Splits;
    end Split_Pane;
 
+   procedure Restore_Pane_Tree
+     (Table  : in out Runtime_Table;
+      Tree   : Terminal.App.Splits.Split_Tree;
+      Status : out Table_Status)
+   is
+      Next : Terminal.App.Splits.Split_State;
+      Split_Status : Terminal.App.Splits.Split_Status;
+   begin
+      Check_Owner (Table);
+      if not Is_Open (Table, Status) then
+         return;
+      elsif Terminal.App.Tabs.Count (Table.Tabs) > 1 then
+         Status := Layout_Conflict;
+         return;
+      elsif Natural (Tree.Count) /= Terminal.App.Sessions.Count (Table.Sessions)
+      then
+         Status := Invalid_Index;
+         return;
+      end if;
+      Terminal.App.Splits.Restore (Next, Tree, Split_Status);
+      if Split_Status /= Terminal.App.Splits.Ok then
+         Status := Invalid_Index;
+         return;
+      end if;
+      Table.Splits := Next;
+      Status := Ok;
+   end Restore_Pane_Tree;
+
    procedure Close_Pane
      (Table  : in out Runtime_Table;
       Status : out Table_Status)
@@ -898,6 +926,16 @@ package body Terminal.App.Session_Table is
       end if;
       return Terminal.App.Session_Runtime.Has_Pending_Write (Borrow.Item.all);
    end Has_Pending_Write;
+
+   function Has_Foreground_Process (Borrow : Runtime_Borrow) return Boolean is
+   begin
+      Check_Owner (Borrow.Owner.all);
+      if Borrow.Item = null or else not Borrow.Guard.Hold.Active then
+         raise Runtime_Unavailable with "runtime borrow is unavailable";
+      end if;
+      return Terminal.App.Session_Runtime.Has_Foreground_Process
+        (Borrow.Item.all);
+   end Has_Foreground_Process;
 
    procedure Write
      (Borrow : Runtime_Borrow;

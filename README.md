@@ -14,7 +14,10 @@ compiler and project tools through `alr exec` so ignored local Alire state canno
 silently select a different toolchain.
 
 System build/runtime prerequisites include GLFW, Vulkan loader/driver support,
-and HarfBuzz (`libharfbuzz.so`) for app-layer text shaping.
+HarfBuzz (`libharfbuzz.so`) for app-layer text shaping, and FriBidi
+(`libfribidi.so`) for Unicode bidirectional paragraph layout.
+Native Linux primary-selection interoperability is enabled when `wl-copy` and
+`wl-paste` are available on Wayland, or `xsel` is available on X11.
 
 Crates:
 
@@ -37,6 +40,17 @@ through bounded primary-screen scrollback. `Ctrl+Shift+F` searches retained
 text; `Alt+R`, `Alt+C`, and `Alt+W` toggle regex, case, and whole-word modes,
 while `Ctrl+Up`/`Ctrl+Down` browse search history. All visible matches are
 underlined and the overlay reports the current/total match count.
+
+Named persistent sessions and layouts use the same atomic versioned workspace
+format as crash recovery:
+
+```sh
+./bin/terminal --session=project
+./bin/terminal --layout=three-pane
+```
+
+Session names live under the XDG state directory; layout names live under the
+XDG config directory. Names are portable and traversal-safe.
 `Ctrl+Shift+Space` enters keyboard copy mode, and
 `Ctrl+Shift+O` enters keyboard link mode for detected URLs and absolute paths.
 Use arrows or Tab to choose a target, Enter to open it, and Escape to cancel.
@@ -46,14 +60,23 @@ the in-window scrollbar shows the current retained-history position. Tabs can
 be clicked, closed with their `x` or middle click, and reordered by dragging;
 split borders and the scrollbar are draggable. `Ctrl+Shift+U` opens a bounded
 Unicode `U+` pre-edit overlay, with Enter/Space committing the scalar and
-Escape cancelling it. Platform IME committed text continues through GLFW's
-Unicode character path. `Ctrl+Shift+B`, `Ctrl+Shift+Y`, and `Ctrl+Shift+R`
+Escape cancelling it. Native XIM on X11 and IMM on Windows provide bounded
+platform pre-edit text, committed Unicode, focus handling, and cursor-relative
+candidate positioning. `Ctrl+Shift+B`, `Ctrl+Shift+Y`, and `Ctrl+Shift+R`
 select, copy, or rerun the latest OSC 133 command block.
 `Ctrl+Shift+Equal`/`Ctrl+Shift+Minus`/`Ctrl+Shift+0` adjust or reset font zoom.
 `Ctrl+Shift+N` opens a process-backed window and `Ctrl+Shift+D` detaches the
 active tab to a new window by handing off its working directory, label, and
 startup command. `Ctrl+Comma` opens the settings/profile-line editor;
 `Ctrl+Shift+Comma` transactionally reloads the configuration.
+The settings editor also imports or exports a complete canonical configuration,
+including custom colors, profiles, bindings, policy, and resource limits.
+Headless equivalents are available for migration and backup:
+
+```sh
+./bin/terminal --export-config=/tmp/bracke-terminal.conf
+./bin/terminal --import-config=/tmp/bracke-terminal.conf
+```
 `Ctrl+Shift+Z` zooms the active pane, `Ctrl+Shift+M` moves it to the next pane
 position, and `Ctrl+Shift+I` broadcasts keyboard and paste input to every pane.
 `Ctrl+Shift+G` starts or stops bounded output recording, `Ctrl+Shift+J` replays
@@ -62,6 +85,15 @@ active session's retained transcript. The Vulkan content surface publishes the
 active pane, cursor row, and interaction status through the sibling `a11y`
 crate, using native AT-SPI when available and its validating fallback otherwise.
 Font path, font size, and every app-owned shortcut are configurable.
+`content-padding` controls the terminal inset; `tab-bar = auto|always|never`
+and the three tab background color keys style tab chrome. Setting
+`follow-system-theme = true` follows light/dark desktop changes at runtime
+using GTK/KDE preferences (with `BRACKE_TERMINAL_COLOR_SCHEME` as an explicit
+override). `background-blur = true` requests native compositor blur on
+supported X11/KWin and Windows DWM desktops.
+`background-image = PATH` decodes a bounded PNG, JPEG, GIF, or PICT through
+the normal image pipeline and places its first frame below cell backgrounds;
+`background-image-opacity = 0..100` controls its tint alpha.
 
 The app restores and saves its tab/pane workspace under
 `$XDG_STATE_HOME/ada-terminal/workspace` (or the corresponding home-state
@@ -69,13 +101,49 @@ path), including active session, labels, OSC 7 working directories, and bounded
 startup commands. Desktop notifications accept OSC 9 and the title/body subset
 of OSC 99. Bell and OSC 133 command-completion notifications are separately
 opt-in with `bell-notifications` and `command-completion-notifications`.
+Delivery uses `notify-send` on Linux, Notification Center through `osascript`
+on macOS, and a native Windows toast launched by an encoded PowerShell command.
 Recordings and transcript exports use the configured workspace path with
 `.recording` and `.txt` suffixes, respectively.
 
 Session profiles use bounded `profile.NAME.FIELD` keys. Fields are `shell`,
-`command`, `cwd`, `environment` (comma-separated assignments), `theme`, and
-`ssh`; `default-profile = NAME` applies one to new sessions. SSH profiles launch
+`command`, `cwd`, `environment` (comma-separated assignments), `theme`, `ssh`,
+`serial`, `baud`, `socket`, `container`, `wsl`, and `tls`; `default-profile =
+NAME` applies one to new sessions. SSH profiles launch
 through the same palette and PTY lifecycle as local profiles.
+Local profiles may set `persistent=true` to create or reconnect to a named tmux
+daemon session. SSH profiles additionally support `ssh-identity`, `ssh-port`,
+`ssh-jump`, and `ssh-setup`; the latter installs the bundled terminal identity
+through the remote `tic` when available and exports a remote-integration marker.
+
+`protected-input = true` confines keyboard and paste input to the active pane,
+disables broadcast and remote-control injection, and prevents terminal-driven
+OSC 52 reads or writes. Bounded `output-trigger.NAME = PATTERN` rules match
+literal output across PTY read boundaries, isolate reused session streams, and
+raise desktop notifications with a five-second per-rule cooldown.
+
+Dropped files are inserted as safely single-quoted shell paths. SSH profiles
+also drive `--upload=PROFILE LOCAL REMOTE`, `--download=PROFILE REMOTE LOCAL`,
+`--remote-edit=PROFILE REMOTE`, and `--remote-open=PROFILE REMOTE`; these invoke
+`scp`/`ssh` with direct argument vectors and inherit the profile's key, port,
+and jump-host settings.
+
+`global-hotkey = ctrl+alt+t` registers an OS-level X11/Windows shortcut that
+toggles window visibility. `focus-mode = true` removes native window chrome;
+both settings are applied by live config reload, and focus mode is also exposed
+in the in-app settings panel.
+
+Typography accepts `font-bold-path`, `font-italic-path`, and
+`font-bold-italic-path` for real style faces. `font-features` takes comma-
+separated HarfBuzz feature expressions such as `liga=0,kern=1`, while
+`font-variations` takes axis coordinates such as `wght=625,wdth=90`; configured
+faces share the existing bounded atlas and fall back to synthetic styling only
+for styles without a dedicated path.
+
+Release tooling emits minisign-protected stable, beta, and nightly manifests
+with pinned size and SHA-256. Feed templates cover Debian `Signed-By` sources,
+Homebrew, WinGet/MSIX, and macOS bundles; see
+[`docs/update_channels.md`](docs/update_channels.md).
 
 Graphics support includes Kitty image objects and indexed/direct formats,
 Unicode placeholders, animations, local transfer media under explicit policy,

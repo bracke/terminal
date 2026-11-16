@@ -87,6 +87,7 @@ package body Terminal.App.Renderer is
    use type RM.Text_Run_Script;
    use type RM.Text_Run_Shape_Status;
    use type Terminal.App.Renderer_State.Shaped_Run_Map_Array_Access;
+   use type Terminal.App.Text_Shaper.Backend_Status;
    use type Textrender.Status_Code;
    use type VS.Build_Status;
    use Terminal.App.Renderer.Placement_Operations;
@@ -481,6 +482,11 @@ package body Terminal.App.Renderer is
      (R      : in out Renderer;
       Font_Path : String;
       Font_Pixel_Size : Positive;
+      Bold_Font_Path : String;
+      Italic_Font_Path : String;
+      Bold_Italic_Font_Path : String;
+      Font_Features : String;
+      Font_Variations : String;
       Status  : out Init_Status)
    is separate;
 
@@ -489,7 +495,12 @@ package body Terminal.App.Renderer is
       Context : Terminal.App.Vulkan_Context.Context;
       Status  : out Init_Status;
       Font_Path : String := "";
-      Font_Pixel_Size : Positive := Default_Font_Pixel_Size) is
+      Font_Pixel_Size : Positive := Default_Font_Pixel_Size;
+      Bold_Font_Path : String := "";
+      Italic_Font_Path : String := "";
+      Bold_Italic_Font_Path : String := "";
+      Font_Features : String := "";
+      Font_Variations : String := "") is
    begin
       R.Lifecycle.Closed := False;
       R.Lifecycle.Needs_Finalization := True;
@@ -502,7 +513,9 @@ package body Terminal.App.Renderer is
       end if;
 
       R.Lifecycle.Has_Context := True;
-      Initialize_Text (R, Font_Path, Font_Pixel_Size, Status);
+      Initialize_Text
+        (R, Font_Path, Font_Pixel_Size, Bold_Font_Path, Italic_Font_Path,
+         Bold_Italic_Font_Path, Font_Features, Font_Variations, Status);
       if Status /= Ok then
          R.Lifecycle.Has_Context := False;
       end if;
@@ -512,20 +525,32 @@ package body Terminal.App.Renderer is
      (R      : out Renderer;
       Status : out Init_Status;
       Font_Path : String := "";
-      Font_Pixel_Size : Positive := Default_Font_Pixel_Size) is
+      Font_Pixel_Size : Positive := Default_Font_Pixel_Size;
+      Bold_Font_Path : String := "";
+      Italic_Font_Path : String := "";
+      Bold_Italic_Font_Path : String := "";
+      Font_Features : String := "";
+      Font_Variations : String := "") is
    begin
       R.Lifecycle.Closed := False;
       R.Lifecycle.Needs_Finalization := True;
       R.Graphics_State.Cleanup_Complete := False;
       R.Lifecycle.Has_Context := False;
-      Initialize_Text (R, Font_Path, Font_Pixel_Size, Status);
+      Initialize_Text
+        (R, Font_Path, Font_Pixel_Size, Bold_Font_Path, Italic_Font_Path,
+         Bold_Italic_Font_Path, Font_Features, Font_Variations, Status);
    end Initialize_Headless;
 
    procedure Set_Font
      (R               : in out Renderer;
       Font_Path       : String;
       Font_Pixel_Size : Positive;
-      Status          : out Font_Update_Status)
+      Status          : out Font_Update_Status;
+      Bold_Font_Path : String := "";
+      Italic_Font_Path : String := "";
+      Bold_Italic_Font_Path : String := "";
+      Font_Features : String := "";
+      Font_Variations : String := "")
    is
       Init : Init_Status;
    begin
@@ -533,13 +558,24 @@ package body Terminal.App.Renderer is
       Terminal.App.Text_Shaper.Reset (R.Text_State.Shaper);
       R.Text_State.Text_Loaded := False;
       Text_Pipeline.Invalidate_Caches (R);
-      Initialize_Text (R, Font_Path, Font_Pixel_Size, Init);
+      Initialize_Text
+        (R, Font_Path, Font_Pixel_Size, Bold_Font_Path, Italic_Font_Path,
+         Bold_Italic_Font_Path, Font_Features, Font_Variations, Init);
       Status := (if Init = Ok then Font_Ok else Font_Load_Failed);
    exception
       when Storage_Error =>
          R.Text_State.Text_Loaded := False;
          Status := Font_Load_Failed;
    end Set_Font;
+
+   procedure Set_Background_Image
+     (R               : in out Renderer;
+      Path            : String;
+      Opacity_Percent : Natural;
+      Status          : out Background_Update_Status)
+   is separate;
+
+   procedure Add_Background_Image (R : in out Renderer) is separate;
 
    procedure Draw_Glyph
      (R         : in out Renderer;
@@ -612,7 +648,7 @@ package body Terminal.App.Renderer is
       Snapshots      : Snapshot_Array;
       Active_Index   : Positive;
       Tabs           : Terminal.App.Tabs.Tab_Snapshot;
-      Splits         : Terminal.App.Splits.Split_Snapshot;
+      Layout         : Terminal.App.Splits.Pane_Layout;
       Status         : out Render_Status)
    is separate;
 
@@ -703,6 +739,34 @@ package body Terminal.App.Renderer is
    begin
       return R.Text_State.CH;
    end Cell_Height;
+
+   function Content_Padding (R : Renderer) return Natural is
+     (R.View_State.Content_Padding);
+
+   procedure Set_Content_Padding
+     (R       : in out Renderer;
+      Padding : Natural) is
+   begin
+      R.View_State.Content_Padding :=
+        Natural'Min (Padding, Max_Content_Padding);
+      Text_Pipeline.Invalidate_Caches (R);
+   end Set_Content_Padding;
+
+   procedure Set_Tab_Style
+     (R     : in out Renderer;
+      Mode  : Terminal.App.Theme.Tab_Bar_Mode;
+      Style : Terminal.App.Theme.Tab_Style) is
+   begin
+      R.View_State.Tab_Bar := Mode;
+      R.View_State.Tabs := Style;
+   end Set_Tab_Style;
+
+   function Tab_Bar_Visible
+     (R : Renderer; Tab_Count : Natural) return Boolean is
+     (case R.View_State.Tab_Bar is
+        when Terminal.App.Theme.Tab_Auto => Tab_Count > 1,
+        when Terminal.App.Theme.Tab_Always => Tab_Count > 0,
+        when Terminal.App.Theme.Tab_Never => False);
 
    function Diagnostics
      (R                     : Renderer;

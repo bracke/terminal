@@ -390,7 +390,50 @@ procedure Finish_OSC (T : in out Terminal) is
    end Decode_Notification_Text;
 
    procedure Decode_OSC9 (First : Natural; Last : Natural) is
+      State : Natural;
+      Percent : Natural := 0;
+      Valid : Boolean := True;
    begin
+      if First + 2 <= Last
+        and then T.Parser.OSC_Data (First) = '4'
+        and then T.Parser.OSC_Data (First + 1) = ';'
+        and then T.Parser.OSC_Data (First + 2) in '0' .. '4'
+      then
+         State := Standard.Character'Pos (T.Parser.OSC_Data (First + 2))
+           - Standard.Character'Pos ('0');
+         if First + 3 <= Last then
+            Valid := T.Parser.OSC_Data (First + 3) = ';'
+              and then First + 4 <= Last;
+            if Valid then
+               for I in First + 4 .. Last loop
+                  if T.Parser.OSC_Data (I) not in '0' .. '9' then
+                     Valid := False;
+                     exit;
+                  end if;
+                  Percent := Append_Decimal_Digit
+                    (Percent,
+                     Standard.Character'Pos (T.Parser.OSC_Data (I))
+                       - Standard.Character'Pos ('0'),
+                     101);
+               end loop;
+               Valid := Valid and then Percent <= 100;
+            end if;
+         end if;
+         if not Valid then
+            Increment_Saturating (T.Diag.Unsupported_Sequence);
+            return;
+         end if;
+         T.Progress_Data :=
+           (Kind =>
+              (case State is
+                  when 0 => No_Progress,
+                  when 1 => Normal_Progress,
+                  when 2 => Error_Progress,
+                  when 3 => Indeterminate_Progress,
+                  when others => Paused_Progress),
+            Percent => Percent);
+         return;
+      end if;
       T.Notification_Data.Kind := Desktop_Notification;
       Set_Notification_Text (T.Notification_Data.Title, First, Last);
       T.Notification_Data.Message := (others => <>);
@@ -816,6 +859,21 @@ begin
       Append_Response_Char (T, ASCII.ESC);
       Append_Response_Char (T, '\');
       End_Response (T);
+   elsif Command = 1337 and then Payload_Starts_With ("SetBadgeFormat=") then
+      declare
+         Valid : Boolean := True;
+         Data_First : constant Natural := Payload_First + 15;
+      begin
+         if Data_First > T.Parser.OSC_Count then
+            T.Badge_Data := (others => <>);
+         else
+            Decode_Notification_Text
+              (T.Badge_Data, Data_First, T.Parser.OSC_Count, Valid);
+         end if;
+         if not Valid then
+            Increment_Saturating (T.Diag.Unsupported_Sequence);
+         end if;
+      end;
    elsif Command = 1337 and then Payload_Starts_With ("File=") then
       Note_Graphics_Protocol
         (T,

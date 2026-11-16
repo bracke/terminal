@@ -4,7 +4,8 @@ procedure Handle_Cursor_Position_Event is
    procedure Set_Scroll_From_Pixel (Core : in out Terminal.Core.Terminal) is
       Max : constant Natural := Terminal.App.Scrollback_View.Max_Offset (Core);
       Top : constant Float :=
-        Float (Active_Pane_Origin_Y + Terminal.App.Renderer.Content_Margin);
+        Float
+          (Active_Pane_Origin_Y + Terminal.App.Renderer.Content_Padding (R));
       Height : constant Float :=
         Float (Active_Pane_Rows * Terminal.App.Renderer.Cell_Height (R));
       Position : Float := Event.Cursor_Event.Y - Top;
@@ -30,7 +31,9 @@ procedure Handle_Cursor_Position_Event is
          Dirty := True;
          Need_Redraw := True;
          Local_Redraw := True;
-      elsif Terminal.App.Input_Map.Mouse_Reporting_Enabled (Modes) then
+      elsif Terminal.App.Input_Map.Mouse_Reporting_Enabled (Modes)
+        and then not Read_Only
+      then
          Terminal.App.Input_Map.Encode_Mouse_Motion
            (Event.Cursor_Event,
             Modes,

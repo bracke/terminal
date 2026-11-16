@@ -1,5 +1,5 @@
 with "../terminal_pty.gpr";
-with "../config/terminal_pty_build_config.gpr";
+with "../terminal_pty_build_config.gpr";
 with "aunit";
 
 project PTY_Tests is

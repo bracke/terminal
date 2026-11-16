@@ -530,6 +530,18 @@ package body Terminal.PTY.Backend is
       return False;
    end Is_Alive;
 
+   function Has_Foreground_Process (S : in out Session) return Boolean is
+      Foreground : int;
+   begin
+      if S.Closed or else S.Master_FD < 0 or else S.Child_PID <= 0
+        or else not Is_Alive (S)
+      then
+         return False;
+      end if;
+      Foreground := tcgetpgrp (int (S.Master_FD));
+      return Foreground > 0 and then Foreground /= int (S.Child_PID);
+   end Has_Foreground_Process;
+
    function Child_State (S : in out Session) return Exit_State is
       Status : aliased int := 0;
       R : int;

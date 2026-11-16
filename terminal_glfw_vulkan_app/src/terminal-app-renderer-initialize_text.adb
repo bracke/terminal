@@ -3,6 +3,11 @@ procedure Initialize_Text
   (R      : in out Renderer;
    Font_Path : String;
    Font_Pixel_Size : Positive;
+   Bold_Font_Path : String;
+   Italic_Font_Path : String;
+   Bold_Italic_Font_Path : String;
+   Font_Features : String;
+   Font_Variations : String;
    Status  : out Init_Status)
 is
    Effective_Font_Path : constant String :=
@@ -11,6 +16,21 @@ is
       else Font_Path);
    Text_Status : Textrender.Status_Code;
    Shape_Backend_Status : Terminal.App.Text_Shaper.Backend_Status;
+   Effective_Bold : constant String :=
+     (if Bold_Font_Path = "" then Effective_Font_Path else Bold_Font_Path);
+   Effective_Italic : constant String :=
+     (if Italic_Font_Path = "" then Effective_Font_Path else Italic_Font_Path);
+   Effective_Bold_Italic : constant String :=
+     (if Bold_Italic_Font_Path = "" then Effective_Font_Path
+      else Bold_Italic_Font_Path);
+   procedure Add_Style_Font (Path : String) is
+      Result : constant Textrender.Status_Code :=
+        Textrender.Add_Fallback_Font (R.Text_State.Text, Path);
+   begin
+      if Result /= Textrender.Success then
+         raise Constraint_Error with "style font load failed";
+      end if;
+   end Add_Style_Font;
 begin
    R.Text_State.CW := 8;
    R.Text_State.CH := 16;
@@ -81,6 +101,31 @@ begin
      (R      => R.Text_State.Text,
       Extent => Colour_PNG_Extent'Access,
       Decode => Decode_Colour_PNG'Access);
+
+   begin
+      Add_Style_Font (Effective_Bold);
+      Add_Style_Font (Effective_Italic);
+      Add_Style_Font (Effective_Bold_Italic);
+   exception
+      when Constraint_Error =>
+         R.Lifecycle.Initialized := False;
+         R.Text_State.Text_Loaded := False;
+         Status := Failed;
+         return;
+   end;
+   Terminal.App.Text_Shaper.Configure_Style_Fonts
+     (R.Text_State.Shaper, Effective_Bold, Effective_Italic,
+      Effective_Bold_Italic,
+      Bold_Font_Path /= "", Italic_Font_Path /= "",
+      Bold_Italic_Font_Path /= "",
+      Font_Features, Font_Variations,
+      Shape_Backend_Status);
+   if Shape_Backend_Status /= Terminal.App.Text_Shaper.Backend_Ok then
+      R.Lifecycle.Initialized := False;
+      R.Text_State.Text_Loaded := False;
+      Status := Failed;
+      return;
+   end if;
 
    R.Text_State.CH := Positive'Max
      (R.Text_State.CH, Ceiling_Positive (Textrender.Line_Height (R.Text_State.Text)));

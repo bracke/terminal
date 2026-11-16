@@ -64,6 +64,8 @@ begin
    T.Next_Shell_Command_Sequence := 1;
    T.History_Rows := 0;
    T.Notification_Data := (others => <>);
+   T.Progress_Data := (others => <>);
+   T.Badge_Data := (others => <>);
    T.Clipboard_Data := (others => <>);
    T.Hyperlinks.Current := null;
    T.Responses := (others => <>);

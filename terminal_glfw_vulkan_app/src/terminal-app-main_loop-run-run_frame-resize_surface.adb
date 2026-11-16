@@ -20,7 +20,7 @@ begin
       FB_Height,
       Terminal.App.Renderer.Cell_Width (R),
       Terminal.App.Renderer.Cell_Height (R),
-      Terminal.App.Renderer.Content_Margin,
+      Terminal.App.Renderer.Content_Padding (R),
       New_Rows,
       New_Cols);
    if New_Rows = Last_Rows and then New_Cols = Last_Cols then
