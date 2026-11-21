@@ -6,6 +6,12 @@
 
 #define BRACKE_HOTKEY_ID 0x4252
 
+/* windows.h declares MOD_NOREPEAT only for _WIN32_WINNT >= 0x0601, which the
+   mingw-w64 toolchain does not target by default; Windows 7+ honours it. */
+#ifndef MOD_NOREPEAT
+#define MOD_NOREPEAT 0x4000
+#endif
+
 static int bracke_hotkey_registered;
 
 void bracke_global_hotkey_unregister(void) {

@@ -26,7 +26,10 @@ int terminal_native_set_background_blur(void *window_handle, int enabled)
     if (library == NULL) {
         return 1;
     }
-    set_attribute = (dwm_set_window_attribute_fn)(void *)
+    /* GetProcAddress returns a generic function pointer; going through
+       void (*)(void) keeps ISO C (no object-pointer detour) and GCC's
+       -Wcast-function-type quiet. */
+    set_attribute = (dwm_set_window_attribute_fn)(void (*)(void))
         GetProcAddress(library, "DwmSetWindowAttribute");
     if (set_attribute == NULL) {
         FreeLibrary(library);
