@@ -1,10 +1,16 @@
-with "../c_string_ownership.gpr";
-
+--  The contract test calls the library's internal C primitives, so it
+--  compiles the library's sources rather than linking the standalone library:
+--  that library's partial link localizes hidden symbols on macOS, and the
+--  binder of a main that only sees its interface does not link the tasking
+--  runtime the library's protected object needs. The failure tests do the same.
 project C_String_Ownership_Tests is
    for Languages use ("Ada", "C");
-   for Source_Dirs use (".");
+   for Source_Dirs use (".", "../src");
    for Source_Files use
-     ("c_string_ownership_contract.c",
+     ("c_string_ownership.ads",
+      "c_string_ownership.adb",
+      "c_string_ownership_memory.c",
+      "c_string_ownership_contract.c",
       "c_string_ownership_smoke.adb");
    for Object_Dir use "obj";
    for Exec_Dir use "bin";

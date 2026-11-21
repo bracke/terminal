@@ -28,7 +28,11 @@ library project Terminal_PTY is
       when "windows" =>
          for Languages use ("Ada", "C");
          for Source_Dirs use ("src", "config", "src/platform/windows");
+         --  The pseudo console (HPCON, CreatePseudoConsole) is declared only
+         --  for Windows 10 1809 (NTDDI_WIN10_RS5) and later; mingw-w64 targets
+         --  an older Windows by default.
          C_Switches := C_Switches
+           & ("-D_WIN32_WINNT=0x0A00", "-DNTDDI_VERSION=0x0A000006")
            & Terminal_PTY_Build_Config.C_Testing_Switches;
          case Terminal_PTY_Build_Config.Build_Mode is
             when "testing" =>
