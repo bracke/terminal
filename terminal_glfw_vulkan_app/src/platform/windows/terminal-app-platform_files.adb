@@ -4,6 +4,7 @@ with Terminal.Common.C_Strings;
 
 package body Terminal.App.Platform_Files is
    use type Interfaces.C.int;
+   use type Interfaces.C.unsigned_long;
    Movefile_Replace_Existing : constant Interfaces.C.unsigned_long := 1;
    Movefile_Write_Through : constant Interfaces.C.unsigned_long := 8;
    function Move_File_Ex

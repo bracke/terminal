@@ -70,13 +70,18 @@ package body Terminal.App.Shell_Integration is
          elsif Home /= "" then Home & "/.local/share"
          else "")
         & "/bracke-terminal/shell-integration/bracke-terminal." & Extension;
+      --  A development run starts in the repository root or, like the app
+      --  crate's own tests, in terminal_glfw_vulkan_app/ just below it.
       Development : constant String :=
         "resources/shell-integration/bracke-terminal." & Extension;
+      App_Crate_Development : constant String := "../" & Development;
    begin
       if Exists (Installed) then
          return Installed;
       elsif Exists (Development) then
          return Development;
+      elsif Exists (App_Crate_Development) then
+         return App_Crate_Development;
       else
          return "";
       end if;

@@ -8,7 +8,8 @@ on:
 jobs:
   afl-coverage:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Two 420 s campaigns plus a cold build of terminal and its siblings.
+    timeout-minutes: 45
     steps:
       - name: Check out terminal
         uses: actions/checkout@v7
