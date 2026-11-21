@@ -35,6 +35,15 @@ private package Terminal.PTY.POSIX_Native is
      (FD : int; Rows : unsigned_short; Cols : unsigned_short) return int
      with Import, Convention => C,
           External_Name => "terminal_pty_set_winsize";
+   --  The first size of a new PTY: on the master, or through the slave where
+   --  the master refuses it (macOS, before the slave was ever opened).
+   function C_Set_Initial_Winsize
+     (Master_FD  : int;
+      Slave_Path : Interfaces.C.Strings.chars_ptr;
+      Rows       : unsigned_short;
+      Cols       : unsigned_short) return int
+     with Import, Convention => C,
+          External_Name => "terminal_pty_set_initial_winsize";
    function C_Open_Flags return int
      with Import, Convention => C,
           External_Name => "terminal_pty_open_flags";

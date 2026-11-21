@@ -75,6 +75,32 @@ int terminal_pty_set_winsize (int fd, unsigned short rows,
    return ioctl (fd, TIOCSWINSZ, &ws);
 }
 
+/* Give a new PTY its first size. Linux takes it on the master; macOS
+   refuses TIOCSWINSZ on a master whose slave was never opened, so open the
+   slave (without making it a controlling terminal), size it there, and close
+   it again. Returns 0 on success. */
+int terminal_pty_set_initial_winsize (int master_fd, const char *slave_path,
+                                      unsigned short rows,
+                                      unsigned short cols)
+{
+   int slave;
+   int result;
+   int saved;
+
+   if (terminal_pty_set_winsize (master_fd, rows, cols) == 0) {
+      return 0;
+   }
+   slave = open (slave_path, O_RDWR | O_NOCTTY);
+   if (slave < 0) {
+      return -1;
+   }
+   result = terminal_pty_set_winsize (slave, rows, cols);
+   saved = errno;
+   close (slave);
+   errno = saved;
+   return result;
+}
+
 /* Make FD the controlling terminal of the calling (session-leader) process.
    Returns 0 on success. */
 int terminal_pty_set_controlling_tty (int fd)

@@ -308,7 +308,9 @@ package body Terminal.PTY.Backend is
          return;
       end if;
 
-      Set_Size (Master.FD, Rows, Cols, Size_OK);
+      Size_OK := C_Set_Initial_Winsize
+        (Master.FD, Slave_Path.Value,
+         unsigned_short (Rows), unsigned_short (Cols)) = 0;
       if not Size_OK then
          Status := Invalid_Size;
          return;
