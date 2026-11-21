@@ -160,33 +160,41 @@ int terminal_pty_create_spawn_pipe (int *read_fd, int *write_fd)
 }
 
 /* EOF means exec closed the status descriptor and therefore succeeded. A
-   positive byte is a child-reported failure category; -1 is a pipe failure. */
+   child-reported failure is a step byte then the low byte of its errno,
+   returned as step + 256 * errno; -1 is a pipe failure. */
 int terminal_pty_wait_for_child_exec (int fd)
 {
-   unsigned char result;
+   unsigned char report[2] = { 0U, 0U };
+   size_t have = 0U;
    ssize_t count;
 
-   do {
-      count = read (fd, &result, sizeof result);
-   } while (count < 0 && errno == EINTR);
-   if (count == 0) {
-      return 0;
+   while (have < sizeof report) {
+      do {
+         count = read (fd, report + have, sizeof report - have);
+      } while (count < 0 && errno == EINTR);
+      if (count <= 0) {
+         break;
+      }
+      have += (size_t) count;
    }
-   if (count == (ssize_t) sizeof result) {
-      return (int) result;
+   if (have == 0U) {
+      return count == 0 ? 0 : -1;
    }
-   return -1;
+   return (int) report[0] + 256 * (int) report[1];
 }
 
 /* Only async-signal-safe operations are permitted between fork and exec in the
-   multithreaded application. Report one byte best-effort, then terminate. */
+   multithreaded application. Report the failed step and errno best-effort,
+   then terminate. */
 void terminal_pty_child_spawn_failed (int fd, int code)
 {
-   unsigned char value = (unsigned char) code;
+   unsigned char report[2];
    ssize_t count;
 
+   report[0] = (unsigned char) code;
+   report[1] = (unsigned char) errno;
    do {
-      count = write (fd, &value, sizeof value);
+      count = write (fd, report, sizeof report);
    } while (count < 0 && errno == EINTR);
    _exit (127);
 }
@@ -215,6 +223,8 @@ int terminal_pty_spawn_child
       return 0;
    }
 
+   /* Step codes: 1 setsid, 3 open slave, 4 controlling tty, 5 dup2;
+      2 is exec (below). */
    close (spawn_read_fd);
    if (setsid () < 0) {
       terminal_pty_child_spawn_failed (spawn_write_fd, 1);
@@ -222,12 +232,16 @@ int terminal_pty_spawn_child
 
    {
       int slave = terminal_pty_open_slave (slave_path);
-      if (slave < 0
-          || terminal_pty_set_controlling_tty (slave) != 0
-          || dup2 (slave, STDIN_FILENO) < 0
+      if (slave < 0) {
+         terminal_pty_child_spawn_failed (spawn_write_fd, 3);
+      }
+      if (terminal_pty_set_controlling_tty (slave) != 0) {
+         terminal_pty_child_spawn_failed (spawn_write_fd, 4);
+      }
+      if (dup2 (slave, STDIN_FILENO) < 0
           || dup2 (slave, STDOUT_FILENO) < 0
           || dup2 (slave, STDERR_FILENO) < 0) {
-         terminal_pty_child_spawn_failed (spawn_write_fd, 1);
+         terminal_pty_child_spawn_failed (spawn_write_fd, 5);
       }
       close (master_fd);
       if (slave > STDERR_FILENO) {

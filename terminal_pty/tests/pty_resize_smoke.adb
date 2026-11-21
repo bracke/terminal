@@ -201,7 +201,9 @@ procedure PTY_Resize_Smoke is
 begin
    Terminal.PTY.Backend.Spawn_Default_Shell
      (S, Initial_Rows, Initial_Cols, Spawn_Status);
-   Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
+   Assert
+     (Spawn_Status = Terminal.PTY.Backend.Ok,
+      "pty spawn failed: " & Spawn_Status'Image);
 
    declare
       Ready_Data : constant Byte_Array := To_Bytes (Ready_Command);

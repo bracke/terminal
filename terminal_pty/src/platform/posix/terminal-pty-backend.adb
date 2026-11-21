@@ -403,8 +403,15 @@ package body Terminal.PTY.Backend is
             if Child.PID > 0 then
                Child_Publication_Gate.Restore_Child (S, Child);
             end if;
+            --  The child reports its failed step and errno as step + 256 *
+            --  errno; keep both, as step * 1000 + errno, for diagnostics.
+            if Child_Result > 0 then
+               S.Spawn_Debug.Last_Error :=
+                 Natural (Child_Result mod 256) * 1000
+                 + Natural (Child_Result / 256);
+            end if;
             Status :=
-              (if Child_Result = Child_Exec_Error
+              (if Child_Result mod 256 = Child_Exec_Error
                then Exec_Failed
                else Child_Setup_Failed);
             return;

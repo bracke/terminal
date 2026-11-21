@@ -170,7 +170,11 @@ begin
 
    Terminal.PTY.Backend.Spawn_Default_Shell
      (S, Rows, Cols, Spawn_Status, Requested_Features);
-   Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
+   Assert
+     (Spawn_Status = Terminal.PTY.Backend.Ok,
+      "pty spawn failed: " & Spawn_Status'Image
+        & " step*1000+errno="
+        & Terminal.PTY.Backend.Testing.Spawn_Diagnostics (S).Last_Error'Image);
 
    Alive_After_Spawn := Terminal.PTY.Backend.Is_Alive (S);
 

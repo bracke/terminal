@@ -84,7 +84,11 @@ procedure PTY_Close_Smoke is
    end Wait_For_Output;
 begin
    Terminal.PTY.Backend.Spawn_Default_Shell (S, 24, 80, Spawn_Status);
-   Assert (Spawn_Status = Terminal.PTY.Backend.Ok, "pty spawn failed");
+   Assert
+     (Spawn_Status = Terminal.PTY.Backend.Ok,
+      "pty spawn failed: " & Spawn_Status'Image
+        & " step*1000+errno="
+        & Terminal.PTY.Backend.Testing.Spawn_Diagnostics (S).Last_Error'Image);
    Assert (Terminal.PTY.Backend.Is_Alive (S), "spawned shell should be alive");
    if On_Windows then
       Assert
