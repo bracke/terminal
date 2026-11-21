@@ -1,6 +1,17 @@
 #ifndef TERMINAL_PTY_WINDOWS_INTERNAL_H
 #define TERMINAL_PTY_WINDOWS_INTERNAL_H
 
+/* The pseudo console (HPCON, CreatePseudoConsole) is declared only for
+   Windows 10 1809 (NTDDI_WIN10_RS5) and later; mingw-w64 targets an older
+   Windows by default. Every Windows shim, the tests' included, includes this
+   header first, so it decides before windows.h is seen. */
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
+#ifndef NTDDI_VERSION
+#define NTDDI_VERSION 0x0A000006
+#endif
+
 #include <windows.h>
 
 void *terminal_pty_build_windows_environment
