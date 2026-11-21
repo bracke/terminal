@@ -53,6 +53,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libvulkan-dev \
             libharfbuzz-dev \
+            libfribidi-dev \
             libglfw3-dev \
             mesa-vulkan-drivers \
             xvfb \
@@ -188,7 +189,7 @@ jobs:
           brew unlink openssl@1.1 || true
           # MoltenVK provides the Vulkan loader/ICD on macOS; glfw is linked by
           # the glfw_vulkan crate.
-          brew install vulkan-headers vulkan-loader molten-vk glfw harfbuzz
+          brew install vulkan-headers vulkan-loader molten-vk glfw harfbuzz fribidi
           echo "LIBRARY_PATH=$(brew --prefix)/lib" >> "$GITHUB_ENV"
       - name: Build terminal
         working-directory: terminal
@@ -257,7 +258,8 @@ jobs:
           packages="mingw-w64-x86_64-vulkan-loader
                     mingw-w64-x86_64-vulkan-headers
                     mingw-w64-ucrt-x86_64-glfw
-                    mingw-w64-x86_64-harfbuzz"
+                    mingw-w64-x86_64-harfbuzz
+                    mingw-w64-x86_64-fribidi"
           sync() { pacman -Sy --noconfirm --needed --disable-download-timeout "$@" $packages; }
           synced=""
           for attempt in 1 2 3; do

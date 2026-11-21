@@ -1,3 +1,6 @@
+/* The X input method exists only where GLFW runs on X11; other POSIX hosts
+   (macOS) get the stubs at the end, which report no input method. */
+#if defined(__linux__) && !defined(__APPLE__)
 #define GLFW_EXPOSE_NATIVE_X11
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
@@ -345,3 +348,40 @@ void bracke_ime_set_cursor(int x, int y, int width, int height)
         XFree(attributes);
     }
 }
+#else
+typedef void (*bracke_ime_text_callback)(const char *text);
+
+int bracke_ime_initialize(void *window, bracke_ime_text_callback commit,
+                          bracke_ime_text_callback preedit)
+{
+    (void)window;
+    (void)commit;
+    (void)preedit;
+    return -1;
+}
+
+void bracke_ime_finalize(void)
+{
+}
+
+int bracke_ime_process_key(int scancode, int action, int modifiers)
+{
+    (void)scancode;
+    (void)action;
+    (void)modifiers;
+    return 0;
+}
+
+void bracke_ime_set_focused(int focused)
+{
+    (void)focused;
+}
+
+void bracke_ime_set_cursor(int x, int y, int width, int height)
+{
+    (void)x;
+    (void)y;
+    (void)width;
+    (void)height;
+}
+#endif

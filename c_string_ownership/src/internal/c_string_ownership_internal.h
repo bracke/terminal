@@ -3,7 +3,9 @@
 
 #include <stddef.h>
 
-#if defined(__GNUC__)
+/* PE objects have no ELF visibility; GCC warns there (an error under
+   -Werror). Unexported symbols stay internal to the DLL there anyway. */
+#if defined(__GNUC__) && !defined(_WIN32)
 # define C_STRING_OWNERSHIP_INTERNAL __attribute__((visibility("hidden")))
 #else
 # define C_STRING_OWNERSHIP_INTERNAL

@@ -30,12 +30,18 @@ jobs:
             afl++ \
             libvulkan-dev \
             libharfbuzz-dev \
+            libfribidi-dev \
             libglfw3-dev \
             libxcursor-dev \
             libxxf86vm-dev \
             libxrandr-dev \
             libxinerama-dev \
             libxi-dev
+      - name: Build terminal
+        # Generates the Alire config projects (zlib_config.gpr, giflib's build
+        # profile, ...) that the raw gprbuild calls below depend on.
+        working-directory: terminal
+        run: alr --non-interactive build
       - name: Build Ada graphics tooling
         working-directory: terminal
         run: alr --non-interactive exec -- gprbuild -p -P tools/graphics_tools.gpr
@@ -45,13 +51,22 @@ jobs:
       - name: Run bounded decode/store/render campaign
         working-directory: terminal
         run: tools/bin/graphics_fuzz_runner 420 fuzz/findings pipeline
+      - name: Pack corpus and findings
+        # AFL names its queue files id:000000,time:0,...; upload-artifact
+        # refuses colons in paths, so the findings travel as one tarball.
+        if: always()
+        working-directory: terminal
+        run: |
+          dirs=""
+          for d in terminal_core/fuzz/findings terminal_glfw_vulkan_app/fuzz/findings; do
+            [ -d "$d" ] && dirs="$dirs $d"
+          done
+          if [ -n "$dirs" ]; then tar -czf graphics-fuzz-findings.tar.gz $dirs; fi
       - name: Upload corpus and findings
         if: always()
         uses: actions/upload-artifact@v6
         with:
           name: graphics-fuzz-findings
-          path: |
-            terminal/terminal_core/fuzz/findings
-            terminal/terminal_glfw_vulkan_app/fuzz/findings
+          path: terminal/graphics-fuzz-findings.tar.gz
           if-no-files-found: warn
           retention-days: 14

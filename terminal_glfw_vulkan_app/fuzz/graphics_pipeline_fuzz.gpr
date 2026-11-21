@@ -34,7 +34,7 @@ project Graphics_Pipeline_Fuzz is
 
    package Linker is
       for Switches ("Ada") use
-        ("-no-pie", "-lglfw", "-lvulkan", "-lharfbuzz");
+        ("-no-pie", "-lglfw", "-lvulkan", "-lharfbuzz", "-lfribidi");
       for Switches ("C") use ("-no-pie");
    end Linker;
 end Graphics_Pipeline_Fuzz;
