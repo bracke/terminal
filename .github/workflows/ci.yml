@@ -183,7 +183,10 @@ jobs:
 
       - name: Install system libraries (macOS)
         run: |
-          brew update
+          # Keep the runner image's coherent Homebrew snapshot: brew update on
+          # the Intel runner moves formulae onto bottles it lacks and builds
+          # them from source, which ate over 40 minutes of this job.
+          export HOMEBREW_NO_AUTO_UPDATE=1
           # The Intel image can still have openssl@1.1 linked. Harfbuzz pulls an
           # openssl@3 upgrade, whose link step otherwise collides with it.
           brew unlink openssl@1.1 || true
